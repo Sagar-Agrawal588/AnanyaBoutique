@@ -6,38 +6,48 @@
 
 import crypto from "crypto";
 import fsPromises from "fs/promises";
-import path from "path";
 import mongoose from "mongoose";
+import path from "path";
 import { fileURLToPath } from "url";
+import { getAccessTokenSecret } from "../config/authSecrets.js";
+import { sendTemplatedEmail } from "../config/emailService.js";
+import { checkExclusiveAccess } from "../middlewares/membershipGuard.js";
 import AddressModel from "../models/address.model.js";
 import CategoryModel from "../models/category.model.js";
+import ComboModel from "../models/combo.model.js";
+import ComboOrderModel from "../models/comboOrder.model.js";
 import CouponModel from "../models/coupon.model.js";
 import InvoiceModel from "../models/invoice.model.js";
 import OrderModel from "../models/order.model.js";
 import ProductModel from "../models/product.model.js";
-import ComboModel from "../models/combo.model.js";
-import ComboOrderModel from "../models/comboOrder.model.js";
 import PurchaseOrderModel from "../models/purchaseOrder.model.js";
 import SettingsModel from "../models/settings.model.js";
 import UserModel from "../models/user.model.js";
-import { sendTemplatedEmail } from "../config/emailService.js";
-import { getAccessTokenSecret } from "../config/authSecrets.js";
-import {
-  ADDRESS_DEV_SAMPLE,
-  INDIA_COUNTRY,
-  buildLegacyGuestDetails,
-  buildOrderAddressSnapshot,
-  composeAddressLine1,
-  composeFullAddressText,
-  normalizeStructuredAddress,
-  serializeAddressDocument,
-  snapshotToDisplayAddress,
-  validateStructuredAddress,
-} from "../utils/addressUtils.js";
+import { emitOrderStatusUpdate } from "../realtime/orderEvents.js";
+import { emitTrackingEvent } from "../services/analytics/trackingEmitter.service.js";
+import { autoCreateShipmentForPaidOrder } from "../services/automatedShipping.service.js";
 import {
   applyRedemptionToUser,
   awardCoinsToUser,
 } from "../services/coin.service.js";
+import {
+  buildComboOrderSnapshot,
+  computeComboAvailability,
+  confirmComboStock,
+  evaluateComboEligibility,
+  expandComboToOrderProducts,
+  isComboEligibleForSegment,
+  releaseComboStock,
+  reserveComboStock,
+  resolveUserSegment,
+  restoreComboStock,
+} from "../services/combos/combo.service.js";
+import {
+  confirmInventory,
+  releaseInventory,
+  reserveInventory,
+  restoreInventory,
+} from "../services/inventory.service.js";
 import {
   createPaytmPayment,
   getPaytmStatus,
@@ -56,18 +66,18 @@ import {
 } from "../services/tax.service.js";
 import { createUserLocationLog } from "../services/userLocationLog.service.js";
 import {
-  buildComboOrderSnapshot,
-  computeComboAvailability,
-  evaluateComboEligibility,
-  expandComboToOrderProducts,
-  reserveComboStock,
-  releaseComboStock,
-  confirmComboStock,
-  restoreComboStock,
-  resolveUserSegment,
-  isComboEligibleForSegment,
-} from "../services/combos/combo.service.js";
-import { checkExclusiveAccess } from "../middlewares/membershipGuard.js";
+  buildLegacyGuestDetails,
+  buildOrderAddressSnapshot,
+  composeAddressLine1,
+  INDIA_COUNTRY,
+  normalizeStructuredAddress,
+  serializeAddressDocument,
+  validateStructuredAddress,
+} from "../utils/addressUtils.js";
+import {
+  calculateOrderTotal,
+  normalizeOrderForResponse,
+} from "../utils/calculateOrderTotal.js";
 import {
   AppError,
   asyncHandler,
@@ -83,10 +93,9 @@ import {
   getAbsolutePathFromStoredInvoicePath,
 } from "../utils/generateInvoicePdf.js";
 import {
-  calculateOrderTotal,
-  normalizeOrderForResponse,
-} from "../utils/calculateOrderTotal.js";
-import { syncOrderStatus, syncOrderToFirestore } from "../utils/orderFirestoreSync.js";
+  syncOrderStatus,
+  syncOrderToFirestore,
+} from "../utils/orderFirestoreSync.js";
 import {
   applyOrderStatusTransition,
   normalizeOrderStatus,
@@ -97,16 +106,7 @@ import {
   calculateReferralDiscount,
   updateInfluencerStats,
 } from "./influencer.controller.js";
-import { emitOrderStatusUpdate } from "../realtime/orderEvents.js";
 import { sendOrderUpdateNotification } from "./notification.controller.js";
-import {
-  confirmInventory,
-  releaseInventory,
-  reserveInventory,
-  restoreInventory,
-} from "../services/inventory.service.js";
-import { autoCreateShipmentForPaidOrder } from "../services/automatedShipping.service.js";
-import { emitTrackingEvent } from "../services/analytics/trackingEmitter.service.js";
 
 // ==================== PAYMENT PROVIDER CONFIGURATION ====================
 
@@ -123,7 +123,9 @@ const configuredPaymentProvider = String(
 const PAYTM_MERCHANT_ID = String(process.env.PAYTM_MERCHANT_ID || "").trim();
 const PAYTM_MERCHANT_KEY = String(process.env.PAYTM_MERCHANT_KEY || "").trim();
 const PHONEPE_CLIENT_ID = String(process.env.PHONEPE_CLIENT_ID || "").trim();
-const PHONEPE_CLIENT_SECRET = String(process.env.PHONEPE_CLIENT_SECRET || "").trim();
+const PHONEPE_CLIENT_SECRET = String(
+  process.env.PHONEPE_CLIENT_SECRET || "",
+).trim();
 const isValidPaytmMerchantKey = (value) =>
   [16, 24, 32].includes(String(value || "").trim().length);
 const isTruthyEnv = (value) => {
@@ -140,13 +142,13 @@ const isTruthyEnv = (value) => {
 const PAYMENT_PROVIDER_ENV_ENABLED = Object.freeze({
   PAYTM: Boolean(
     isTruthyEnv(process.env.PAYTM_ENABLED) &&
-      PAYTM_MERCHANT_ID &&
-      isValidPaytmMerchantKey(PAYTM_MERCHANT_KEY),
+    PAYTM_MERCHANT_ID &&
+    isValidPaytmMerchantKey(PAYTM_MERCHANT_KEY),
   ),
   PHONEPE: Boolean(
     isTruthyEnv(process.env.PHONEPE_ENABLED) &&
-      PHONEPE_CLIENT_ID &&
-      PHONEPE_CLIENT_SECRET,
+    PHONEPE_CLIENT_ID &&
+    PHONEPE_CLIENT_SECRET,
   ),
 });
 const getEnabledPaymentProviders = () =>
@@ -157,7 +159,9 @@ const normalizeSupportedPaymentProvider = (value) => {
   const normalized = String(value || "")
     .trim()
     .toUpperCase();
-  return Object.values(PAYMENT_PROVIDERS).includes(normalized) ? normalized : "";
+  return Object.values(PAYMENT_PROVIDERS).includes(normalized)
+    ? normalized
+    : "";
 };
 const resolveDefaultPaymentProvider = () => {
   const requested = configuredPaymentProvider;
@@ -181,7 +185,9 @@ const PAYMENT_ENV_ENABLED = Boolean(
   Object.values(PAYMENT_PROVIDER_ENV_ENABLED).some(Boolean),
 );
 const getRuntimeDefaultPaymentProvider = async () => {
-  const paymentProviderSetting = await getCachedSetting("defaultPaymentProvider");
+  const paymentProviderSetting = await getCachedSetting(
+    "defaultPaymentProvider",
+  );
   const preferredProvider =
     normalizeSupportedPaymentProvider(paymentProviderSetting?.value) ||
     PAYMENT_PROVIDER ||
@@ -270,6 +276,95 @@ const isPaymentEnabled = async () => {
 const isMaintenanceMode = async () => {
   const maintenanceSetting = await getCachedSetting("maintenanceMode");
   return Boolean(maintenanceSetting?.value);
+};
+
+const ORDER_SERIES_DEFAULTS = Object.freeze({
+  prefix: "H1G",
+  padding: 4,
+});
+
+const escapeRegExp = (value) =>
+  String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const resolveFinancialYearCode = (date = new Date()) => {
+  const current = date instanceof Date ? date : new Date(date);
+  const year = current.getFullYear();
+  const month = current.getMonth();
+  const fyStartYear = month >= 3 ? year : year - 1;
+  const fyEndYear = fyStartYear + 1;
+  return `${String(fyStartYear).slice(-2)}${String(fyEndYear).slice(-2)}`;
+};
+
+const resolveOrderSeriesSettings = async () => {
+  const orderSettings = await getCachedSetting("orderSettings");
+  const rawPrefix = String(
+    orderSettings?.value?.orderSeriesPrefix || ORDER_SERIES_DEFAULTS.prefix,
+  )
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+    .slice(0, 6);
+  const rawPadding = Number(orderSettings?.value?.orderSeriesPadding);
+
+  return {
+    prefix: rawPrefix || ORDER_SERIES_DEFAULTS.prefix,
+    padding: Math.min(
+      8,
+      Math.max(
+        3,
+        Number.isFinite(rawPadding)
+          ? rawPadding
+          : ORDER_SERIES_DEFAULTS.padding,
+      ),
+    ),
+  };
+};
+
+const parseOrderSequenceNumber = (value, scopePrefix) => {
+  const raw = String(value || "").trim().toUpperCase();
+  if (!raw) return null;
+  const normalizedScope = String(scopePrefix || "").toUpperCase();
+  const legacyScope = normalizedScope.replace("-", "");
+
+  let sequenceText = "";
+  if (raw.startsWith(normalizedScope)) {
+    sequenceText = raw.slice(normalizedScope.length);
+  } else if (raw.startsWith(legacyScope)) {
+    sequenceText = raw.slice(legacyScope.length);
+  } else {
+    return null;
+  }
+  const sequence = Number(sequenceText);
+  return Number.isFinite(sequence) && sequence > 0 ? sequence : null;
+};
+
+const generateOrderSeriesNumber = async (referenceDate = new Date()) => {
+  const settings = await resolveOrderSeriesSettings();
+  const fyCode = resolveFinancialYearCode(referenceDate);
+  const scopePrefix = `${settings.prefix}-${fyCode}/`;
+  const legacyScopePrefix = `${settings.prefix}${fyCode}/`;
+  const regex = new RegExp(
+    `^(?:${escapeRegExp(scopePrefix)}|${escapeRegExp(legacyScopePrefix)})\\d+$`,
+    "i",
+  );
+
+  const latest = await OrderModel.findOne({ orderNumber: { $regex: regex } })
+    .select("orderNumber")
+    .sort({ createdAt: -1, _id: -1 })
+    .lean();
+
+  let nextSequence =
+    parseOrderSequenceNumber(latest?.orderNumber, scopePrefix) || 0;
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    nextSequence += 1;
+    const candidate = `${scopePrefix}${String(nextSequence).padStart(settings.padding, "0")}`;
+    const exists = await OrderModel.exists({ orderNumber: candidate });
+    if (!exists) return candidate;
+  }
+
+  const fallbackSequence = Date.now().toString().slice(-settings.padding);
+  return `${scopePrefix}${fallbackSequence}`;
 };
 
 const isDateOnlyString = (value) =>
@@ -551,7 +646,10 @@ const persistInvoiceSnapshotToDisk = async ({
     filenameSeed,
     `test_invoice_${Date.now()}`,
   );
-  const jsonAbsolutePath = path.join(TEST_INVOICE_EXPORT_DIR, `${safeName}.json`);
+  const jsonAbsolutePath = path.join(
+    TEST_INVOICE_EXPORT_DIR,
+    `${safeName}.json`,
+  );
 
   try {
     await fsPromises.mkdir(TEST_INVOICE_EXPORT_DIR, { recursive: true });
@@ -567,7 +665,10 @@ const persistInvoiceSnapshotToDisk = async ({
       : null;
     if (sourcePdfPath) {
       const pdfExt = path.extname(sourcePdfPath) || ".pdf";
-      pdfAbsolutePath = path.join(TEST_INVOICE_EXPORT_DIR, `${safeName}${pdfExt}`);
+      pdfAbsolutePath = path.join(
+        TEST_INVOICE_EXPORT_DIR,
+        `${safeName}${pdfExt}`,
+      );
       const sourceResolved = path.resolve(sourcePdfPath);
       const destinationResolved = path.resolve(pdfAbsolutePath);
       if (sourceResolved !== destinationResolved) {
@@ -645,7 +746,8 @@ const emitPurchaseCompletedTrackingEvent = ({
       source,
       orderId,
       orderNumber:
-        String(order?.orderNumber || order?.displayOrderId || "").trim() || null,
+        String(order?.orderNumber || order?.displayOrderId || "").trim() ||
+        null,
       paymentMethod: String(order?.paymentMethod || "").trim() || "unknown",
       paymentStatus: String(order?.payment_status || "").trim() || "unknown",
       orderStatus: String(order?.order_status || "").trim() || "unknown",
@@ -672,7 +774,9 @@ const emitPurchaseCompletedTrackingEvent = ({
       req,
       eventType: "combo_purchase",
       userId: order?.user ? String(order.user) : null,
-      sessionId: String(order?.trackingSessionId || req.analyticsSessionId || ""),
+      sessionId: String(
+        order?.trackingSessionId || req.analyticsSessionId || "",
+      ),
       metadata: {
         source,
         comboId: String(combo.comboId || ""),
@@ -781,7 +885,9 @@ const stringifyOrderItemsForEmail = (order) => {
       const name = String(item?.productTitle || item?.name || "Item").trim();
       const quantity = Math.max(Number(item?.quantity || 0), 0);
       const lineTotal = round2(
-        Number(item?.subTotal || item?.subTotalAmt || item?.price * quantity || 0),
+        Number(
+          item?.subTotal || item?.subTotalAmt || item?.price * quantity || 0,
+        ),
       );
       return `${index + 1}. ${name} x ${quantity} = ${formatInr(lineTotal)}`;
     })
@@ -816,7 +922,9 @@ const resolveOrderRecipient = async (order) => {
 
   try {
     const user = await UserModel.findById(userId).select("email name").lean();
-    const resolvedEmail = String(user?.email || "").trim().toLowerCase();
+    const resolvedEmail = String(user?.email || "")
+      .trim()
+      .toLowerCase();
     const resolvedName =
       String(user?.name || fallbackName || "Customer").trim() || "Customer";
     return { email: resolvedEmail, name: resolvedName };
@@ -902,7 +1010,9 @@ const linkOrderToUserByEmail = async (order) => {
   );
   const emailMatch = buildEmailMatchRegex(email);
   if (!emailMatch) return false;
-  const user = await UserModel.findOne({ email: emailMatch }).select("_id").lean();
+  const user = await UserModel.findOne({ email: emailMatch })
+    .select("_id")
+    .lean();
   if (!user?._id) return false;
   order.user = user._id;
   return true;
@@ -948,7 +1058,7 @@ const sendOrderConfirmationEmail = async (order) => {
     const originalSubtotal = round2(
       Number(
         order?.originalPrice ||
-          (Number(order?.subtotal || 0) + Number(order?.discount || 0)) ||
+          Number(order?.subtotal || 0) + Number(order?.discount || 0) ||
           0,
       ),
     );
@@ -959,7 +1069,9 @@ const sendOrderConfirmationEmail = async (order) => {
     const taxableAmount = round2(Number(order?.subtotal || 0));
     const taxAmount = round2(Number(order?.tax || 0));
     const shippingAmount = round2(Number(order?.shipping || 0));
-    const finalAmount = round2(Number(order?.finalAmount || order?.totalAmt || 0));
+    const finalAmount = round2(
+      Number(order?.finalAmount || order?.totalAmt || 0),
+    );
 
     const text = [
       `Order No: ${displayOrderNumber}`,
@@ -1010,15 +1122,22 @@ const sendOrderConfirmationEmail = async (order) => {
       return false;
     }
 
-    if (order?.confirmationEmailSentAt == null && typeof order?.save === "function") {
+    if (
+      order?.confirmationEmailSentAt == null &&
+      typeof order?.save === "function"
+    ) {
       try {
         order.confirmationEmailSentAt = new Date();
         await order.save();
       } catch (persistError) {
-        logger.warn("sendOrderConfirmationEmail", "Failed to persist sent flag", {
-          orderId: order?._id,
-          error: persistError?.message || String(persistError),
-        });
+        logger.warn(
+          "sendOrderConfirmationEmail",
+          "Failed to persist sent flag",
+          {
+            orderId: order?._id,
+            error: persistError?.message || String(persistError),
+          },
+        );
       }
     }
 
@@ -1195,11 +1314,17 @@ const clearOrderPaymentReminderState = (order) => {
 };
 
 const resolvePaymentProviderLabel = (provider) =>
-  String(provider || "").trim().toUpperCase() === PAYMENT_PROVIDERS.PAYTM
+  String(provider || "")
+    .trim()
+    .toUpperCase() === PAYMENT_PROVIDERS.PAYTM
     ? "Paytm"
     : "PhonePe";
 
-const inferPaymentFailureKind = ({ hint = "", state = "", raw = null } = {}) => {
+const inferPaymentFailureKind = ({
+  hint = "",
+  state = "",
+  raw = null,
+} = {}) => {
   const fragments = [
     hint,
     state,
@@ -1278,8 +1403,14 @@ const sendOrderPaymentReminderEmail = async (
       (order?.user && rawOrderId
         ? `${siteUrl}/orders/${encodeURIComponent(rawOrderId)}`
         : siteUrl);
-    const actionLabel = paymentUrl ? "Pay Now" : order?.user ? "View your order" : "Visit the store";
-    const finalAmount = round2(Number(order?.finalAmount || order?.totalAmt || 0));
+    const actionLabel = paymentUrl
+      ? "Pay Now"
+      : order?.user
+        ? "View your order"
+        : "Visit the store";
+    const finalAmount = round2(
+      Number(order?.finalAmount || order?.totalAmt || 0),
+    );
     const providerLabel = resolvePaymentProviderLabel(paymentProvider);
     const normalizedFailureKind =
       failureKind === "cancelled" ? "cancelled" : "failed";
@@ -1315,9 +1446,7 @@ const sendOrderPaymentReminderEmail = async (
         order_date: formatOrderDateForEmail(order?.createdAt),
         payment_provider: providerLabel,
         failure_kind:
-          normalizedFailureKind === "cancelled"
-            ? "Cancelled"
-            : "Failed",
+          normalizedFailureKind === "cancelled" ? "Cancelled" : "Failed",
         failure_message: failureMessage,
         items_text: stringifyOrderItemsForEmail(order),
         final_amount: formatInr(finalAmount),
@@ -1387,6 +1516,124 @@ const maybeSendOrderPaymentReminderEmail = async ({
     });
     return false;
   }
+};
+
+const PAYMENT_EMAIL_DELAY_MS = Math.max(
+  Number(process.env.ORDER_PAYMENT_EMAIL_DELAY_MS || 60_000),
+  0,
+);
+const scheduledOrderEmailTasks = new Map();
+
+const scheduleOrderEmailTask = ({
+  orderId,
+  taskType,
+  delayMs = PAYMENT_EMAIL_DELAY_MS,
+  logContext = "orderEmailScheduler",
+  task,
+}) => {
+  const normalizedOrderId = String(orderId || "").trim();
+  const normalizedTaskType = String(taskType || "")
+    .trim()
+    .toLowerCase();
+  if (!normalizedOrderId || !normalizedTaskType || typeof task !== "function") {
+    return false;
+  }
+
+  const key = `${normalizedTaskType}:${normalizedOrderId}`;
+  if (scheduledOrderEmailTasks.has(key)) {
+    return false;
+  }
+
+  const timer = setTimeout(
+    async () => {
+      scheduledOrderEmailTasks.delete(key);
+      try {
+        await task();
+      } catch (error) {
+        logger.error(logContext, "Scheduled order email task failed", {
+          orderId: normalizedOrderId,
+          taskType: normalizedTaskType,
+          error: error?.message || String(error),
+        });
+      }
+    },
+    Math.max(Number(delayMs || 0), 0),
+  );
+
+  if (typeof timer?.unref === "function") {
+    timer.unref();
+  }
+
+  scheduledOrderEmailTasks.set(key, timer);
+  return true;
+};
+
+const scheduleOrderPaymentSuccessEmails = ({
+  order,
+  paymentProvider,
+  logContext = "paymentWebhook",
+}) => {
+  const orderId = String(order?._id || "").trim();
+  if (!orderId) return false;
+
+  return scheduleOrderEmailTask({
+    orderId,
+    taskType: "payment_success",
+    logContext,
+    task: async () => {
+      const freshOrder = await OrderModel.findById(orderId);
+      if (!freshOrder) return;
+
+      const paymentStatus = String(freshOrder.payment_status || "")
+        .trim()
+        .toLowerCase();
+      if (paymentStatus !== "paid") {
+        return;
+      }
+
+      await sendOrderPaymentSuccessEmail(freshOrder, {
+        paymentProvider,
+      });
+
+      if (!freshOrder.confirmationEmailSentAt) {
+        await sendOrderConfirmationEmail(freshOrder);
+      }
+    },
+  });
+};
+
+const scheduleOrderPaymentReminderEmail = ({
+  order,
+  failureKind = "failed",
+  paymentProvider = PAYMENT_PROVIDERS.PHONEPE,
+  logContext = "paymentWebhook",
+}) => {
+  const orderId = String(order?._id || "").trim();
+  if (!orderId) return false;
+
+  return scheduleOrderEmailTask({
+    orderId,
+    taskType: "payment_reminder",
+    logContext,
+    task: async () => {
+      const freshOrder = await OrderModel.findById(orderId);
+      if (!freshOrder) return;
+
+      const paymentStatus = String(freshOrder.payment_status || "")
+        .trim()
+        .toLowerCase();
+      if (paymentStatus === "paid") {
+        return;
+      }
+
+      await maybeSendOrderPaymentReminderEmail({
+        order: freshOrder,
+        failureKind,
+        paymentProvider,
+        logContext,
+      });
+    },
+  });
 };
 
 const CHECKOUT_GST_RATE = 5;
@@ -1506,7 +1753,9 @@ const extractPaytmWebhookFields = (payload = {}) => {
 };
 
 const normalizePaytmState = (value) => {
-  const normalized = String(value || "").trim().toLowerCase();
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase();
   if (!normalized) return "";
   if (normalized === "s") return "success";
   if (normalized === "f") return "fail";
@@ -1536,7 +1785,9 @@ const extractOrderIdFromMerchantTransactionId = (merchantTransactionId) => {
     return directOrderId;
   }
 
-  const withSuffixMatch = normalized.match(/^BOG_([a-fA-F0-9]{24})(?:[_-].+)?$/);
+  const withSuffixMatch = normalized.match(
+    /^BOG_([a-fA-F0-9]{24})(?:[_-].+)?$/,
+  );
   if (!withSuffixMatch?.[1]) return null;
 
   return withSuffixMatch[1];
@@ -1544,7 +1795,9 @@ const extractOrderIdFromMerchantTransactionId = (merchantTransactionId) => {
 
 const verifyPaytmWebhookState = async (merchantTransactionId) => {
   try {
-    const statusResponse = await getPaytmStatus({ orderId: merchantTransactionId });
+    const statusResponse = await getPaytmStatus({
+      orderId: merchantTransactionId,
+    });
     const payload =
       statusResponse && typeof statusResponse === "object"
         ? statusResponse
@@ -1610,12 +1863,20 @@ const isBrowserNavigationRequest = (req) => {
     .trim()
     .toLowerCase();
   const accept = String(req?.headers?.accept || "").toLowerCase();
-  const contentType = String(req?.headers?.["content-type"] || "").toLowerCase();
+  const contentType = String(
+    req?.headers?.["content-type"] || "",
+  ).toLowerCase();
   const origin = String(req?.headers?.origin || "").toLowerCase();
   const referer = String(req?.headers?.referer || "").toLowerCase();
-  const secFetchDest = String(req?.headers?.["sec-fetch-dest"] || "").toLowerCase();
-  const secFetchMode = String(req?.headers?.["sec-fetch-mode"] || "").toLowerCase();
-  const secFetchUser = String(req?.headers?.["sec-fetch-user"] || "").toLowerCase();
+  const secFetchDest = String(
+    req?.headers?.["sec-fetch-dest"] || "",
+  ).toLowerCase();
+  const secFetchMode = String(
+    req?.headers?.["sec-fetch-mode"] || "",
+  ).toLowerCase();
+  const secFetchUser = String(
+    req?.headers?.["sec-fetch-user"] || "",
+  ).toLowerCase();
   const userAgent = String(req?.headers?.["user-agent"] || "").toLowerCase();
 
   if (method === "GET") return true;
@@ -1715,7 +1976,10 @@ const shouldRedirectPaytm = (req) => {
   if (req.rawBody) {
     const rawPayload = parsePaytmRawBody(req.rawBody);
     const resolvedRawPayload = resolvePaytmCandidatePayload(rawPayload);
-    if (hasPaytmFieldKeys(rawPayload) || hasPaytmFieldKeys(resolvedRawPayload)) {
+    if (
+      hasPaytmFieldKeys(rawPayload) ||
+      hasPaytmFieldKeys(resolvedRawPayload)
+    ) {
       return true;
     }
   }
@@ -1742,14 +2006,20 @@ const redirectPaytmWebhookToClient = (res, { orderId, paymentState }) => {
     const target = new URL(path, `${getClientBaseUrl()}/`);
     target.searchParams.set("paymentProvider", "PAYTM");
     if (paymentState) {
-      target.searchParams.set("paymentState", String(paymentState).toLowerCase());
+      target.searchParams.set(
+        "paymentState",
+        String(paymentState).toLowerCase(),
+      );
     }
     return res.redirect(303, target.toString());
   } catch {
     const fallback = new URL("/my-orders", "https://healthyonegram.com/");
     fallback.searchParams.set("paymentProvider", "PAYTM");
     if (paymentState) {
-      fallback.searchParams.set("paymentState", String(paymentState).toLowerCase());
+      fallback.searchParams.set(
+        "paymentState",
+        String(paymentState).toLowerCase(),
+      );
     }
     return res.redirect(303, fallback.toString());
   }
@@ -2004,7 +2274,10 @@ const buildBillingDetailsFromCheckoutContact = (checkoutContact = {}) => {
   };
 };
 
-const buildGuestOrderDetails = (checkoutContact = {}, { include = false } = {}) => {
+const buildGuestOrderDetails = (
+  checkoutContact = {},
+  { include = false } = {},
+) => {
   if (!include) return {};
 
   const contact = checkoutContact.contact || {};
@@ -2035,12 +2308,34 @@ const normalizeOrderProducts = ({ products, dbProductMap }) => {
     const subTotal = round2(price * quantity);
     const variantId = item.variantId || item.variant || null;
     const variantName = item.variantName || item.variantTitle || "";
+    const variants = Array.isArray(dbProduct?.variants) ? dbProduct.variants : [];
+    const selectedVariant =
+      variants.find((variant) => String(variant?._id || "") === String(variantId || "")) ||
+      variants.find(
+        (variant) =>
+          String(variant?.name || "").trim().toLowerCase() ===
+          String(variantName || "").trim().toLowerCase(),
+      ) ||
+      variants.find((variant) => variant?.isDefault) ||
+      variants[0] ||
+      null;
+
+    const resolvedSku = String(
+      selectedVariant?.sku || dbProduct?.sku || item?.sku || "",
+    )
+      .trim()
+      .toUpperCase();
+    const resolvedHsn = String(
+      selectedVariant?.hsnCode || dbProduct?.hsnCode || item?.hsnCode || "",
+    ).trim();
 
     return {
       productId,
       productTitle: item.productTitle || dbProduct.name || "Product",
       variantId: variantId ? String(variantId) : null,
       variantName: variantName ? String(variantName) : "",
+      sku: resolvedSku,
+      hsnCode: resolvedHsn,
       quantity,
       price,
       image: item.image || dbProduct.images?.[0] || dbProduct.thumbnail || "",
@@ -2099,10 +2394,10 @@ const isInvoiceEligible = (order) => {
 
   const hasExistingInvoice = Boolean(
     order.invoicePath ||
-      order.invoiceNumber ||
-      order.invoiceGeneratedAt ||
-      order.isInvoiceGenerated ||
-      order.invoiceUrl,
+    order.invoiceNumber ||
+    order.invoiceGeneratedAt ||
+    order.isInvoiceGenerated ||
+    order.invoiceUrl,
   );
   if (hasExistingInvoice) {
     return true;
@@ -2112,11 +2407,17 @@ const isInvoiceEligible = (order) => {
     return false;
   }
 
-  if (String(order.payment_status || "").trim().toLowerCase() === "paid") {
+  if (
+    String(order.payment_status || "")
+      .trim()
+      .toLowerCase() === "paid"
+  ) {
     return true;
   }
 
-  if ([ORDER_STATUS.DELIVERED, ORDER_STATUS.COMPLETED].includes(normalizedStatus)) {
+  if (
+    [ORDER_STATUS.DELIVERED, ORDER_STATUS.COMPLETED].includes(normalizedStatus)
+  ) {
     return true;
   }
 
@@ -2218,12 +2519,15 @@ const getInvoiceSellerDetails = async () => {
   };
 };
 
-const fetchAndNormalizeOrderProducts = async (products = [], logContext = "order") => {
+const fetchAndNormalizeOrderProducts = async (
+  products = [],
+  logContext = "order",
+) => {
   const productIds = products.map((p) => String(p.productId || ""));
   const dbProducts = await ProductModel.find({
     _id: { $in: productIds },
   })
-    .select("_id name price images thumbnail isExclusive")
+    .select("_id name price images thumbnail isExclusive sku hsnCode variants")
     .lean();
   const dbProductMap = new Map(dbProducts.map((p) => [String(p._id), p]));
   const missingIds = productIds.filter((id) => !dbProductMap.has(String(id)));
@@ -2281,13 +2585,19 @@ const fetchAndNormalizeOrderCombos = async ({
 
   const segmentInfo = await resolveUserSegment({ userId });
   const allItems = dbCombos.flatMap((combo) => combo.items || []);
-  const productIds = allItems.map((item) => String(item.productId || "")).filter(Boolean);
+  const productIds = allItems
+    .map((item) => String(item.productId || ""))
+    .filter(Boolean);
   const products = productIds.length
     ? await ProductModel.find({ _id: { $in: productIds } })
-        .select("_id stock stock_quantity reserved_quantity track_inventory trackInventory hasVariants variants")
+        .select(
+          "_id stock stock_quantity reserved_quantity track_inventory trackInventory hasVariants variants",
+        )
         .lean()
     : [];
-  const productMap = new Map(products.map((product) => [String(product._id), product]));
+  const productMap = new Map(
+    products.map((product) => [String(product._id), product]),
+  );
 
   const normalizedCombos = [];
   const expandedProducts = [];
@@ -2348,7 +2658,9 @@ const fetchAndNormalizeOrderCombos = async ({
 
   comboOriginalAmount = round2(comboOriginalAmount);
   comboPriceAmount = round2(comboPriceAmount);
-  const comboDiscount = round2(Math.max(comboOriginalAmount - comboPriceAmount, 0));
+  const comboDiscount = round2(
+    Math.max(comboOriginalAmount - comboPriceAmount, 0),
+  );
 
   return {
     normalizedCombos,
@@ -2455,7 +2767,8 @@ const calculateCheckoutPricing = async ({
 
   const totalWeight = normalizedProducts.reduce(
     (sum, item) =>
-      sum + (Math.max(Number(item.quantity || 0), 0) * DEFAULT_PRODUCT_WEIGHT_GRAMS),
+      sum +
+      Math.max(Number(item.quantity || 0), 0) * DEFAULT_PRODUCT_WEIGHT_GRAMS,
     0,
   );
 
@@ -2480,7 +2793,10 @@ const calculateCheckoutPricing = async ({
 
   const finalAmount = round2(postDiscountInclusive + shippingCharge);
   const totalDiscount = round2(
-    membershipDiscount + influencerDiscount + couponDiscount + normalizedComboDiscount,
+    membershipDiscount +
+      influencerDiscount +
+      couponDiscount +
+      normalizedComboDiscount,
   );
 
   let influencerCommission = 0;
@@ -2699,7 +3015,9 @@ export const ensureOrderInvoice = async (orderDoc, options = {}) => {
     orderDoc.invoiceNumber = invoiceNumber;
     orderDoc.invoicePath = invoicePath;
     orderDoc.invoiceGeneratedAt =
-      orderDoc.invoiceGeneratedAt || generated?.invoiceGeneratedAt || new Date();
+      orderDoc.invoiceGeneratedAt ||
+      generated?.invoiceGeneratedAt ||
+      new Date();
     orderDoc.isInvoiceGenerated = Boolean(invoicePath);
     orderDoc.invoiceUrl = invoicePath || null;
 
@@ -2717,7 +3035,10 @@ export const ensureOrderInvoice = async (orderDoc, options = {}) => {
     }
 
     const createdBy = toObjectIdOrNull(
-      orderDoc.user || orderDoc.user?._id || populatedOrder.user || populatedOrder.user?._id,
+      orderDoc.user ||
+        orderDoc.user?._id ||
+        populatedOrder.user ||
+        populatedOrder.user?._id,
     );
 
     const orderSetPayload = {
@@ -2836,26 +3157,36 @@ export const getAllOrders = asyncHandler(async (req, res) => {
       purchaseOrder: null,
     };
     const andFilters = [];
-    const normalizedStatus = String(status || "all").trim().toLowerCase();
-    const shipmentTransferredFilter = {
-      shipping_provider: "XPRESSBEES",
-      $or: [
-        { awb_number: { $exists: true, $nin: [null, ""] } },
-        { awbNumber: { $exists: true, $nin: [null, ""] } },
-        { shipmentId: { $exists: true, $nin: [null, ""] } },
-      ],
-    };
+    const normalizedStatus = String(status || "all")
+      .trim()
+      .toLowerCase();
+    const successStatuses = [
+      ORDER_STATUS.ACCEPTED,
+      ORDER_STATUS.CONFIRMED_LEGACY,
+      ORDER_STATUS.SHIPPED,
+      ORDER_STATUS.OUT_FOR_DELIVERY,
+      ORDER_STATUS.DELIVERED,
+      ORDER_STATUS.COMPLETED,
+    ];
+    const pendingStatuses = [
+      ORDER_STATUS.PENDING,
+      ORDER_STATUS.PAYMENT_PENDING,
+      ORDER_STATUS.IN_WAREHOUSE,
+    ];
+    const failedStatuses = [
+      ORDER_STATUS.CANCELLED,
+      ORDER_STATUS.RTO,
+      ORDER_STATUS.RTO_COMPLETED,
+    ];
 
     // Filter by status
     if (normalizedStatus && normalizedStatus !== "all") {
       if (normalizedStatus === "successful") {
-        andFilters.push(shipmentTransferredFilter);
+        filter.order_status = { $in: successStatuses };
       } else if (normalizedStatus === "failed") {
-        andFilters.push({ payment_status: "failed" });
-        andFilters.push({ $nor: [shipmentTransferredFilter] });
+        filter.order_status = { $in: failedStatuses };
       } else if (normalizedStatus === "pending") {
-        andFilters.push({ payment_status: { $ne: "failed" } });
-        andFilters.push({ $nor: [shipmentTransferredFilter] });
+        filter.order_status = { $in: pendingStatuses };
       } else {
         const normalizedOrderStatus = normalizeOrderStatus(normalizedStatus);
         if (normalizedOrderStatus === ORDER_STATUS.ACCEPTED) {
@@ -2883,7 +3214,9 @@ export const getAllOrders = asyncHandler(async (req, res) => {
       ];
 
       if (mongoose.Types.ObjectId.isValid(normalizedSearch)) {
-        searchFilters.push({ _id: new mongoose.Types.ObjectId(normalizedSearch) });
+        searchFilters.push({
+          _id: new mongoose.Types.ObjectId(normalizedSearch),
+        });
       }
 
       andFilters.push({ $or: searchFilters });
@@ -2921,7 +3254,9 @@ export const getAllOrders = asyncHandler(async (req, res) => {
       shipmentSource: "PAYMENT_STATUS_RECONCILE_ADMIN_LIST_AUTO_SHIPMENT",
     });
 
-    const normalizedOrders = orders.map((order) => normalizeOrderForResponse(order));
+    const normalizedOrders = orders.map((order) =>
+      normalizeOrderForResponse(order),
+    );
 
     logger.info("getAllOrders", `Retrieved ${orders.length} orders`, {
       total,
@@ -2967,7 +3302,9 @@ export const getOrderStats = asyncHandler(async (req, res) => {
       OrderModel.countDocuments(),
       OrderModel.countDocuments({ order_status: "pending" }),
       OrderModel.countDocuments({ order_status: "pending_payment" }),
-      OrderModel.countDocuments({ order_status: { $in: ["accepted", "confirmed"] } }),
+      OrderModel.countDocuments({
+        order_status: { $in: ["accepted", "confirmed"] },
+      }),
       OrderModel.countDocuments({ order_status: "in_warehouse" }),
       OrderModel.countDocuments({ order_status: "shipped" }),
       OrderModel.countDocuments({ order_status: "out_for_delivery" }),
@@ -3161,7 +3498,8 @@ export const getOrderById = asyncHandler(async (req, res) => {
     if (req.user?.role) {
       isAdmin = req.user.role === "Admin";
     } else {
-      const viewer = await UserModel.findById(requesterId).select("role status");
+      const viewer =
+        await UserModel.findById(requesterId).select("role status");
       if (!viewer) {
         throw new AppError("UNAUTHORIZED");
       }
@@ -3344,7 +3682,11 @@ export const retryOrderShipment = asyncHandler(async (req, res) => {
       throw new AppError("NOT_FOUND", { entity: "Order", id: orderId });
     }
 
-    if (String(order.payment_status || "").trim().toLowerCase() !== "paid") {
+    if (
+      String(order.payment_status || "")
+        .trim()
+        .toLowerCase() !== "paid"
+    ) {
       return sendError(
         res,
         new AppError("VALIDATION_ERROR", {
@@ -3389,12 +3731,9 @@ export const retryOrderShipment = asyncHandler(async (req, res) => {
       res,
       {
         repaired: true,
-        awb_number:
-          result.order?.awb_number || result.order?.awbNumber || null,
+        awb_number: result.order?.awb_number || result.order?.awbNumber || null,
         shipping_provider:
-          result.order?.shipping_provider ||
-          result.order?.courierName ||
-          null,
+          result.order?.shipping_provider || result.order?.courierName || null,
         shipmentResult: result.shipmentResult,
         invoiceResult: result.invoiceResult,
       },
@@ -3429,9 +3768,7 @@ export const getUserOrders = asyncHandler(async (req, res) => {
       throw new AppError("UNAUTHORIZED");
     }
 
-    const userRecord = await UserModel.findById(userId)
-      .select("email")
-      .lean();
+    const userRecord = await UserModel.findById(userId).select("email").lean();
     const userEmail = normalizeEmail(userRecord?.email || "");
     const emailMatch = buildEmailMatchRegex(userEmail);
     const orderQuery = emailMatch
@@ -3465,7 +3802,9 @@ export const getUserOrders = asyncHandler(async (req, res) => {
       shipmentSource: "PAYMENT_STATUS_RECONCILE_USER_LIST_AUTO_SHIPMENT",
     });
 
-    const normalizedOrders = orders.map((order) => normalizeOrderForResponse(order));
+    const normalizedOrders = orders.map((order) =>
+      normalizeOrderForResponse(order),
+    );
 
     logger.info("getUserOrders", `Retrieved ${orders.length} orders for user`, {
       userId,
@@ -3514,9 +3853,7 @@ export const getUserOrderById = asyncHandler(async (req, res) => {
 
     // Check ownership
     const orderUserId = order.user?._id?.toString() || order.user?.toString();
-    const requester = await UserModel.findById(userId)
-      .select("email")
-      .lean();
+    const requester = await UserModel.findById(userId).select("email").lean();
     const requesterEmail = normalizeEmail(requester?.email || "");
     const orderEmail = normalizeEmail(
       order?.billingDetails?.email || order?.guestDetails?.email || "",
@@ -3653,7 +3990,10 @@ export const downloadOrderInvoice = asyncHandler(async (req, res) => {
       if (fallbackInvoiceAbsolutePath) {
         try {
           await fsPromises.access(fallbackInvoiceAbsolutePath);
-          const fallbackFilename = `${order.invoiceNumber || `invoice_${orderId}`}.pdf`;
+          const fallbackFilename = `${sanitizeFileComponent(
+            order.invoiceNumber || `invoice_${orderId}`,
+            `invoice_${orderId}`,
+          )}.pdf`;
           logger.warn(
             "downloadOrderInvoice",
             "Serving fallback invoice file after generation failure",
@@ -3684,7 +4024,10 @@ export const downloadOrderInvoice = asyncHandler(async (req, res) => {
 
     await fsPromises.access(invoiceResult.absolutePath);
 
-    const filename = `${invoiceResult.order.invoiceNumber || `invoice_${orderId}`}.pdf`;
+    const filename = `${sanitizeFileComponent(
+      invoiceResult.order.invoiceNumber || `invoice_${orderId}`,
+      `invoice_${orderId}`,
+    )}.pdf`;
 
     return res.download(invoiceResult.absolutePath, filename, (error) => {
       if (error) {
@@ -3710,12 +4053,16 @@ export const downloadOrderInvoice = asyncHandler(async (req, res) => {
       return sendError(res, error);
     }
 
-    logger.error("downloadOrderInvoice", "Unexpected error in downloadOrderInvoice", {
-      orderId: req?.params?.orderId || null,
-      requesterId: req?.user || null,
-      error: error?.message || String(error),
-      stack: error?.stack || null,
-    });
+    logger.error(
+      "downloadOrderInvoice",
+      "Unexpected error in downloadOrderInvoice",
+      {
+        orderId: req?.params?.orderId || null,
+        requesterId: req?.user || null,
+        error: error?.message || String(error),
+        stack: error?.stack || null,
+      },
+    );
     const dbError = handleDatabaseError(error, "downloadOrderInvoice");
     return sendError(res, dbError);
   }
@@ -3778,10 +4125,8 @@ export const createOrder = asyncHandler(async (req, res) => {
       comboCount: Array.isArray(combos) ? combos.length : 0,
     });
 
-    const { normalizedProducts, dbProducts } = await fetchAndNormalizeOrderProducts(
-      products || [],
-      "createOrder",
-    );
+    const { normalizedProducts, dbProducts } =
+      await fetchAndNormalizeOrderProducts(products || [], "createOrder");
     const comboPayload = await fetchAndNormalizeOrderCombos({
       combos: combos || [],
       userId,
@@ -3868,7 +4213,8 @@ export const createOrder = asyncHandler(async (req, res) => {
     const shippingCharge = pricing.shippingCharge;
     const computedFinalAmount = pricing.finalAmount;
     const totalDiscount = pricing.totalDiscount;
-    const comboDiscount = pricing.comboDiscount || comboPayload.comboDiscount || 0;
+    const comboDiscount =
+      pricing.comboDiscount || comboPayload.comboDiscount || 0;
     const payableAmount = Math.max(computedFinalAmount, 1);
 
     const checkoutPurchaseOrder = await authorizePurchaseOrderForCheckout({
@@ -3876,7 +4222,9 @@ export const createOrder = asyncHandler(async (req, res) => {
       userId,
       checkoutContact,
     });
-    const billingDetails = buildBillingDetailsFromCheckoutContact(checkoutContact);
+    const generatedOrderNumber = await generateOrderSeriesNumber();
+    const billingDetails =
+      buildBillingDetailsFromCheckoutContact(checkoutContact);
     const guestOrderDetails = buildGuestOrderDetails(checkoutContact, {
       include: !userId,
     });
@@ -3892,7 +4240,11 @@ export const createOrder = asyncHandler(async (req, res) => {
       payment_status: "pending",
       order_status: "pending",
       statusTimeline: [
-        { status: ORDER_STATUS.PENDING, source: "ORDER_CREATE", timestamp: new Date() },
+        {
+          status: ORDER_STATUS.PENDING,
+          source: "ORDER_CREATE",
+          timestamp: new Date(),
+        },
       ],
       paymentMethod: selectedPaymentProvider,
       originalPrice: pricing.originalAmount,
@@ -3918,8 +4270,10 @@ export const createOrder = asyncHandler(async (req, res) => {
       deliveryAddressSnapshot: checkoutContact.addressSnapshot,
       guestDetails: guestOrderDetails,
       trackingSessionId:
-        String(req.analyticsSessionId || req.cookies?.hog_sid || "")
-          .trim() || null,
+        String(req.analyticsSessionId || req.cookies?.hog_sid || "").trim() ||
+        null,
+      orderNumber: generatedOrderNumber,
+      displayOrderId: generatedOrderNumber,
       analyticsConsent: resolveAnalyticsConsentFromRequest(req),
       coinRedemption: {
         coinsUsed: Number(redemption.coinsUsed || 0),
@@ -3952,10 +4306,14 @@ export const createOrder = asyncHandler(async (req, res) => {
         try {
           await releaseInventory(order, "ORDER_CREATE_FAIL");
         } catch (releaseError) {
-          logger.error("createOrder", "Failed to rollback inventory reservation", {
-            orderId: order._id,
-            error: releaseError.message,
-          });
+          logger.error(
+            "createOrder",
+            "Failed to rollback inventory reservation",
+            {
+              orderId: order._id,
+              error: releaseError.message,
+            },
+          );
         }
       }
       throw inventoryError;
@@ -4053,17 +4411,21 @@ export const createOrder = asyncHandler(async (req, res) => {
     }
 
     if (comboPayload.normalizedCombos.length > 0) {
-      const comboOrders = comboPayload.normalizedCombos.map((comboSnapshot) => ({
-        comboId: comboSnapshot.comboId,
-        orderId: order._id,
-        userId,
-        quantity: comboSnapshot.quantity,
-        comboPrice: round2(comboSnapshot.comboPrice * comboSnapshot.quantity),
-        originalPrice: round2(comboSnapshot.originalPrice * comboSnapshot.quantity),
-        savings: round2(comboSnapshot.savings * comboSnapshot.quantity),
-        orderTotal: round2(Number(order.finalAmount || order.totalAmt || 0)),
-        items: comboSnapshot.items,
-      }));
+      const comboOrders = comboPayload.normalizedCombos.map(
+        (comboSnapshot) => ({
+          comboId: comboSnapshot.comboId,
+          orderId: order._id,
+          userId,
+          quantity: comboSnapshot.quantity,
+          comboPrice: round2(comboSnapshot.comboPrice * comboSnapshot.quantity),
+          originalPrice: round2(
+            comboSnapshot.originalPrice * comboSnapshot.quantity,
+          ),
+          savings: round2(comboSnapshot.savings * comboSnapshot.quantity),
+          orderTotal: round2(Number(order.finalAmount || order.totalAmt || 0)),
+          items: comboSnapshot.items,
+        }),
+      );
       await ComboOrderModel.insertMany(comboOrders);
     }
 
@@ -4074,12 +4436,7 @@ export const createOrder = asyncHandler(async (req, res) => {
 
     emitOrderStatusUpdate(order, "ORDER_CREATE");
 
-    await sendOrderConfirmationEmail(order);
-
-    const primaryOrigin = String(process.env.CLIENT_URL || "")
-      .split(",")[0]
-      .trim()
-      .replace(/\/+$/, "");
+    const primaryOrigin = getClientBaseUrl();
     const backendUrl = getBackendBaseUrl(req);
     const merchantTransactionId = `BOG_${order._id}`;
 
@@ -4150,12 +4507,11 @@ export const createOrder = asyncHandler(async (req, res) => {
         `${defaultPhonePeCallback}?merchantOrderId=${encodeURIComponent(
           merchantTransactionId,
         )}`;
-      const defaultPhonePeRedirect =
-        `${primaryOrigin}/payment/phonepe?merchantOrderId=${encodeURIComponent(
-          merchantTransactionId,
-        )}&orderId=${encodeURIComponent(String(order._id))}&paymentProvider=${encodeURIComponent(
-          PAYMENT_PROVIDERS.PHONEPE,
-        )}&flow=order&returnPath=${encodeURIComponent("/my-orders")}`;
+      const defaultPhonePeRedirect = `${primaryOrigin}/payment/phonepe?merchantOrderId=${encodeURIComponent(
+        merchantTransactionId,
+      )}&orderId=${encodeURIComponent(String(order._id))}&paymentProvider=${encodeURIComponent(
+        PAYMENT_PROVIDERS.PHONEPE,
+      )}&flow=order&returnPath=${encodeURIComponent("/my-orders")}`;
       const redirectUrl =
         process.env.PHONEPE_REDIRECT_URL || defaultPhonePeRedirect;
 
@@ -4250,10 +4606,11 @@ export const previewOrderPricing = asyncHandler(async (req, res) => {
 
     const userId = req.user?._id || req.user?.id || req.user || null;
 
-    const { normalizedProducts, dbProducts } = await fetchAndNormalizeOrderProducts(
-      products || [],
-      "previewOrderPricing",
-    );
+    const { normalizedProducts, dbProducts } =
+      await fetchAndNormalizeOrderProducts(
+        products || [],
+        "previewOrderPricing",
+      );
     const comboPayload = await fetchAndNormalizeOrderCombos({
       combos: combos || [],
       userId,
@@ -4401,10 +4758,8 @@ export const saveOrderForLater = asyncHandler(async (req, res) => {
       comboCount: Array.isArray(combos) ? combos.length : 0,
     });
 
-    const { normalizedProducts, dbProducts } = await fetchAndNormalizeOrderProducts(
-      products || [],
-      "saveOrderForLater",
-    );
+    const { normalizedProducts, dbProducts } =
+      await fetchAndNormalizeOrderProducts(products || [], "saveOrderForLater");
     const comboPayload = await fetchAndNormalizeOrderCombos({
       combos: combos || [],
       userId,
@@ -4491,14 +4846,17 @@ export const saveOrderForLater = asyncHandler(async (req, res) => {
     const shippingCharge = pricing.shippingCharge;
     const finalOrderAmount = pricing.finalAmount;
     const totalDiscount = pricing.totalDiscount;
-    const comboDiscount = pricing.comboDiscount || comboPayload.comboDiscount || 0;
+    const comboDiscount =
+      pricing.comboDiscount || comboPayload.comboDiscount || 0;
 
     const checkoutPurchaseOrder = await authorizePurchaseOrderForCheckout({
       purchaseOrderId,
       userId,
       checkoutContact,
     });
-    const billingDetails = buildBillingDetailsFromCheckoutContact(checkoutContact);
+    const generatedOrderNumber = await generateOrderSeriesNumber();
+    const billingDetails =
+      buildBillingDetailsFromCheckoutContact(checkoutContact);
     const guestOrderDetails = buildGuestOrderDetails(checkoutContact, {
       include: !userId,
     });
@@ -4514,7 +4872,11 @@ export const saveOrderForLater = asyncHandler(async (req, res) => {
       order_status: "pending_payment",
       payment_status: "unavailable",
       statusTimeline: [
-        { status: ORDER_STATUS.PAYMENT_PENDING, source: "ORDER_SAVE", timestamp: new Date() },
+        {
+          status: ORDER_STATUS.PAYMENT_PENDING,
+          source: "ORDER_SAVE",
+          timestamp: new Date(),
+        },
       ],
       paymentMethod: "PENDING",
       couponCode: normalizedCouponCode || null,
@@ -4545,8 +4907,10 @@ export const saveOrderForLater = asyncHandler(async (req, res) => {
       deliveryAddressSnapshot: checkoutContact.addressSnapshot,
       guestDetails: guestOrderDetails,
       trackingSessionId:
-        String(req.analyticsSessionId || req.cookies?.hog_sid || "")
-          .trim() || null,
+        String(req.analyticsSessionId || req.cookies?.hog_sid || "").trim() ||
+        null,
+      orderNumber: generatedOrderNumber,
+      displayOrderId: generatedOrderNumber,
       analyticsConsent: resolveAnalyticsConsentFromRequest(req),
       coinRedemption: {
         coinsUsed: Number(redemption.coinsUsed || 0),
@@ -4568,19 +4932,27 @@ export const saveOrderForLater = asyncHandler(async (req, res) => {
       try {
         await releaseComboStock(savedOrder, "ORDER_SAVE_FAIL");
       } catch (releaseError) {
-        logger.error("saveOrderForLater", "Failed to rollback combo reservation", {
-          orderId: savedOrder._id,
-          error: releaseError.message,
-        });
+        logger.error(
+          "saveOrderForLater",
+          "Failed to rollback combo reservation",
+          {
+            orderId: savedOrder._id,
+            error: releaseError.message,
+          },
+        );
       }
       if (savedOrder.inventoryStatus === "reserved") {
         try {
           await releaseInventory(savedOrder, "ORDER_SAVE_FAIL");
         } catch (releaseError) {
-          logger.error("saveOrderForLater", "Failed to rollback inventory reservation", {
-            orderId: savedOrder._id,
-            error: releaseError.message,
-          });
+          logger.error(
+            "saveOrderForLater",
+            "Failed to rollback inventory reservation",
+            {
+              orderId: savedOrder._id,
+              error: releaseError.message,
+            },
+          );
         }
       }
       throw inventoryError;
@@ -4678,25 +5050,29 @@ export const saveOrderForLater = asyncHandler(async (req, res) => {
     }
 
     if (comboPayload.normalizedCombos.length > 0) {
-      const comboOrders = comboPayload.normalizedCombos.map((comboSnapshot) => ({
-        comboId: comboSnapshot.comboId,
-        orderId: savedOrder._id,
-        userId,
-        quantity: comboSnapshot.quantity,
-        comboPrice: round2(comboSnapshot.comboPrice * comboSnapshot.quantity),
-        originalPrice: round2(comboSnapshot.originalPrice * comboSnapshot.quantity),
-        savings: round2(comboSnapshot.savings * comboSnapshot.quantity),
-        orderTotal: round2(Number(savedOrder.finalAmount || savedOrder.totalAmt || 0)),
-        items: comboSnapshot.items,
-      }));
+      const comboOrders = comboPayload.normalizedCombos.map(
+        (comboSnapshot) => ({
+          comboId: comboSnapshot.comboId,
+          orderId: savedOrder._id,
+          userId,
+          quantity: comboSnapshot.quantity,
+          comboPrice: round2(comboSnapshot.comboPrice * comboSnapshot.quantity),
+          originalPrice: round2(
+            comboSnapshot.originalPrice * comboSnapshot.quantity,
+          ),
+          savings: round2(comboSnapshot.savings * comboSnapshot.quantity),
+          orderTotal: round2(
+            Number(savedOrder.finalAmount || savedOrder.totalAmt || 0),
+          ),
+          items: comboSnapshot.items,
+        }),
+      );
       await ComboOrderModel.insertMany(comboOrders);
     }
 
     logger.info("saveOrderForLater", "Order saved for later", {
       orderId: savedOrder._id,
     });
-
-    await sendOrderConfirmationEmail(savedOrder);
 
     // Update influencer stats only once per order.
     if (influencerData && !savedOrder.influencerStatsSynced) {
@@ -4766,10 +5142,9 @@ export const getPaymentGatewayStatus = asyncHandler(async (req, res) => {
     const enabledProviders = getEnabledPaymentProviders();
     const defaultProvider = await getRuntimeDefaultPaymentProvider();
     const providerStatus = Object.fromEntries(
-      Object.entries(PAYMENT_PROVIDER_ENV_ENABLED).map(([provider, enabled]) => [
-        provider,
-        Boolean(enabled),
-      ]),
+      Object.entries(PAYMENT_PROVIDER_ENV_ENABLED).map(
+        ([provider, enabled]) => [provider, Boolean(enabled)],
+      ),
     );
 
     logger.info("getPaymentGatewayStatus", "Status check", {
@@ -4949,10 +5324,7 @@ export const initiatePayOrderPayment = asyncHandler(async (req, res) => {
       1,
     );
 
-    const primaryOrigin = String(process.env.CLIENT_URL || "")
-      .split(",")[0]
-      .trim()
-      .replace(/\/+$/, "");
+    const primaryOrigin = getClientBaseUrl();
     const backendUrl = getBackendBaseUrl(req);
     const returnPath = `/pay-order/${encodeURIComponent(String(order._id))}?key=${encodeURIComponent(
       token,
@@ -4967,8 +5339,9 @@ export const initiatePayOrderPayment = asyncHandler(async (req, res) => {
 
     if (selectedPaymentProvider === PAYMENT_PROVIDERS.PAYTM) {
       const merchantTransactionId =
-        String(order.paytmOrderId || order.paymentId || `BOG_${order._id}`).trim() ||
-        `BOG_${order._id}`;
+        String(
+          order.paytmOrderId || order.paymentId || `BOG_${order._id}`,
+        ).trim() || `BOG_${order._id}`;
       const callbackBase = backendUrl || getClientBaseUrl();
       const callbackUrl =
         process.env.PAYTM_ORDER_CALLBACK_URL ||
@@ -5042,12 +5415,11 @@ export const initiatePayOrderPayment = asyncHandler(async (req, res) => {
         `${defaultPhonePeCallback}?merchantOrderId=${encodeURIComponent(
           merchantTransactionId,
         )}`;
-      const defaultPhonePeRedirect =
-        `${primaryOrigin}/payment/phonepe?merchantOrderId=${encodeURIComponent(
-          merchantTransactionId,
-        )}&orderId=${encodeURIComponent(String(order._id))}&paymentProvider=${encodeURIComponent(
-          PAYMENT_PROVIDERS.PHONEPE,
-        )}&flow=order&returnPath=${encodeURIComponent(returnPath)}`;
+      const defaultPhonePeRedirect = `${primaryOrigin}/payment/phonepe?merchantOrderId=${encodeURIComponent(
+        merchantTransactionId,
+      )}&orderId=${encodeURIComponent(String(order._id))}&paymentProvider=${encodeURIComponent(
+        PAYMENT_PROVIDERS.PHONEPE,
+      )}&flow=order&returnPath=${encodeURIComponent(returnPath)}`;
       const redirectUrl =
         process.env.PHONEPE_REDIRECT_URL || defaultPhonePeRedirect;
 
@@ -5185,18 +5557,16 @@ export const retryOrderPayment = asyncHandler(async (req, res) => {
       1,
     );
 
-    const primaryOrigin = String(process.env.CLIENT_URL || "")
-      .split(",")[0]
-      .trim()
-      .replace(/\/+$/, "");
+    const primaryOrigin = getClientBaseUrl();
     const backendUrl = getBackendBaseUrl(req);
 
     const contact = order.billingDetails || order.guestDetails || {};
 
     if (selectedPaymentProvider === PAYMENT_PROVIDERS.PAYTM) {
       const merchantTransactionId =
-        String(order.paytmOrderId || order.paymentId || `BOG_${order._id}`).trim() ||
-        `BOG_${order._id}`;
+        String(
+          order.paytmOrderId || order.paymentId || `BOG_${order._id}`,
+        ).trim() || `BOG_${order._id}`;
       const callbackBase = backendUrl || getClientBaseUrl();
       const callbackUrl =
         process.env.PAYTM_ORDER_CALLBACK_URL ||
@@ -5265,12 +5635,11 @@ export const retryOrderPayment = asyncHandler(async (req, res) => {
         `${defaultPhonePeCallback}?merchantOrderId=${encodeURIComponent(
           merchantTransactionId,
         )}`;
-      const defaultPhonePeRedirect =
-        `${primaryOrigin}/payment/phonepe?merchantOrderId=${encodeURIComponent(
-          merchantTransactionId,
-        )}&orderId=${encodeURIComponent(String(order._id))}&paymentProvider=${encodeURIComponent(
-          PAYMENT_PROVIDERS.PHONEPE,
-        )}&flow=order&returnPath=${encodeURIComponent("/my-orders")}`;
+      const defaultPhonePeRedirect = `${primaryOrigin}/payment/phonepe?merchantOrderId=${encodeURIComponent(
+        merchantTransactionId,
+      )}&orderId=${encodeURIComponent(String(order._id))}&paymentProvider=${encodeURIComponent(
+        PAYMENT_PROVIDERS.PHONEPE,
+      )}&flow=order&returnPath=${encodeURIComponent("/my-orders")}`;
       const redirectUrl =
         process.env.PHONEPE_REDIRECT_URL || defaultPhonePeRedirect;
 
@@ -5360,7 +5729,8 @@ const runPostPaymentSuccessTasks = async ({
   }
 
   if (order.influencerId && !order.influencerStatsSynced) {
-    const effectiveAmount = order.finalAmount > 0 ? order.finalAmount : order.totalAmt;
+    const effectiveAmount =
+      order.finalAmount > 0 ? order.finalAmount : order.totalAmt;
     const commissionBaseAmount = resolveInfluencerCommissionBase(order);
     let commission = order.influencerCommission || 0;
     if (!commission && order.influencerId) {
@@ -5443,10 +5813,10 @@ const runPostPaymentSuccessTasks = async ({
 const hasInvoiceArtifacts = (order) =>
   Boolean(
     order?.invoicePath ||
-      order?.invoiceNumber ||
-      order?.invoiceGeneratedAt ||
-      order?.isInvoiceGenerated ||
-      order?.invoiceUrl,
+    order?.invoiceNumber ||
+    order?.invoiceGeneratedAt ||
+    order?.isInvoiceGenerated ||
+    order?.invoiceUrl,
   );
 
 const hasBookedShipment = (order) =>
@@ -5483,7 +5853,11 @@ const repairPaidOrderArtifacts = async ({
     return { ok: false, repaired: false, reason: "ORDER_NOT_FOUND" };
   }
 
-  if (String(order.payment_status || "").trim().toLowerCase() !== "paid") {
+  if (
+    String(order.payment_status || "")
+      .trim()
+      .toLowerCase() !== "paid"
+  ) {
     return { ok: true, repaired: false, reason: "PAYMENT_NOT_PAID", order };
   }
 
@@ -5540,7 +5914,10 @@ const resolvePaymentProviderFromOrder = (order = {}) => {
     .trim()
     .toUpperCase();
 
-  if (method === PAYMENT_PROVIDERS.PAYTM || String(order?.paytmOrderId || "").trim()) {
+  if (
+    method === PAYMENT_PROVIDERS.PAYTM ||
+    String(order?.paytmOrderId || "").trim()
+  ) {
     return PAYMENT_PROVIDERS.PAYTM;
   }
 
@@ -5584,8 +5961,10 @@ const shouldAttemptPaymentReconciliation = (order, { force = false } = {}) => {
       PAYMENT_PROVIDER_ENV_ENABLED.PAYTM &&
       Boolean(
         String(order.paytmOrderId || "").trim() ||
-          (resolvePaymentProviderFromOrder(order) === PAYMENT_PROVIDERS.PAYTM &&
-            String(order.paymentId || "").trim().startsWith("BOG_")),
+        (resolvePaymentProviderFromOrder(order) === PAYMENT_PROVIDERS.PAYTM &&
+          String(order.paymentId || "")
+            .trim()
+            .startsWith("BOG_")),
       )
     );
   }
@@ -5620,7 +5999,10 @@ const applyResolvedPaymentStatus = async ({
     return { ok: false, skipped: true, reason: "ORDER_NOT_FOUND" };
   }
 
-  const wasPaid = String(order.payment_status || "").trim().toLowerCase() === "paid";
+  const wasPaid =
+    String(order.payment_status || "")
+      .trim()
+      .toLowerCase() === "paid";
   let orderMutated = false;
   const hasPaymentReminder =
     Boolean(order.paymentReminderEmailSentAt) ||
@@ -5682,7 +6064,12 @@ const applyResolvedPaymentStatus = async ({
       orderMutated = true;
     }
   } else if (normalizedState === "pending") {
-    if (!wasPaid && String(order.payment_status || "").trim().toLowerCase() !== "pending") {
+    if (
+      !wasPaid &&
+      String(order.payment_status || "")
+        .trim()
+        .toLowerCase() !== "pending"
+    ) {
       order.payment_status = "pending";
       orderMutated = true;
     }
@@ -5700,18 +6087,31 @@ const applyResolvedPaymentStatus = async ({
   }
 
   let invoiceResult = null;
-  if (String(order.payment_status || "").trim().toLowerCase() === "paid") {
+  if (
+    String(order.payment_status || "")
+      .trim()
+      .toLowerCase() === "paid"
+  ) {
     invoiceResult = await ensureOrderInvoice(order);
     if (!invoiceResult.ok) {
-      logger.warn(logContext, "Invoice generation failed after payment confirmation", {
-        orderId: order._id,
-        provider: paymentProvider,
-        reason: invoiceResult.reason,
-      });
+      logger.warn(
+        logContext,
+        "Invoice generation failed after payment confirmation",
+        {
+          orderId: order._id,
+          provider: paymentProvider,
+          reason: invoiceResult.reason,
+        },
+      );
     }
   }
 
-  if (!wasPaid && String(order.payment_status || "").trim().toLowerCase() === "paid") {
+  if (
+    !wasPaid &&
+    String(order.payment_status || "")
+      .trim()
+      .toLowerCase() === "paid"
+  ) {
     try {
       if (await linkOrderToUserByEmail(order)) {
         orderMutated = true;
@@ -5738,31 +6138,23 @@ const applyResolvedPaymentStatus = async ({
       shipmentSource,
     });
 
-    sendOrderPaymentSuccessEmail(order, {
+    scheduleOrderPaymentSuccessEmails({
+      order,
       paymentProvider,
-    }).catch((err) =>
-      logger.error(logContext, "Failed to send payment success email", {
-        orderId: order?._id,
-        error: err?.message || String(err),
-      }),
-    );
-
-    if (!order.confirmationEmailSentAt) {
-      sendOrderConfirmationEmail(order).catch((err) =>
-        logger.error(logContext, "Failed to send order confirmation email", {
-          orderId: order?._id,
-          error: err?.message || String(err),
-        }),
-      );
-    }
+      logContext,
+    });
   }
 
   if (orderMutated || invoiceResult?.ok) {
     syncOrderToFirestore(order, "update").catch((err) =>
-      logger.error(logContext, "Failed to sync order after payment resolution", {
-        orderId: order._id,
-        error: err.message,
-      }),
+      logger.error(
+        logContext,
+        "Failed to sync order after payment resolution",
+        {
+          orderId: order._id,
+          error: err.message,
+        },
+      ),
     );
     emitOrderStatusUpdate(order, successSource);
   }
@@ -5807,17 +6199,29 @@ const reconcileOrderPaymentStatus = async ({
   if (provider === PAYMENT_PROVIDERS.PAYTM) {
     const merchantTransactionId =
       String(order.paytmOrderId || "").trim() ||
-      (String(order.paymentId || "").trim().startsWith("BOG_")
+      (String(order.paymentId || "")
+        .trim()
+        .startsWith("BOG_")
         ? String(order.paymentId || "").trim()
         : "");
     if (!merchantTransactionId) {
-      return { ok: true, skipped: true, reason: "MISSING_PAYTM_ORDER_ID", order };
+      return {
+        ok: true,
+        skipped: true,
+        reason: "MISSING_PAYTM_ORDER_ID",
+        order,
+      };
     }
 
     const verifiedStatus = await verifyPaytmWebhookState(merchantTransactionId);
     const normalizedState = resolvePaytmState(verifiedStatus?.state);
     if (!normalizedState) {
-      return { ok: true, skipped: true, reason: "PAYTM_STATE_UNCHANGED", order };
+      return {
+        ok: true,
+        skipped: true,
+        reason: "PAYTM_STATE_UNCHANGED",
+        order,
+      };
     }
 
     return applyResolvedPaymentStatus({
@@ -5839,26 +6243,44 @@ const reconcileOrderPaymentStatus = async ({
   if (provider === PAYMENT_PROVIDERS.PHONEPE) {
     const merchantOrderId = String(order.phonepeMerchantOrderId || "").trim();
     if (!merchantOrderId) {
-      return { ok: true, skipped: true, reason: "MISSING_PHONEPE_ORDER_ID", order };
+      return {
+        ok: true,
+        skipped: true,
+        reason: "MISSING_PHONEPE_ORDER_ID",
+        order,
+      };
     }
 
     const verifiedStatus = await verifyPhonePeWebhookState(merchantOrderId);
     const normalizedState = normalizePhonePeState(verifiedStatus?.state);
     if (!normalizedState) {
-      return { ok: true, skipped: true, reason: "PHONEPE_STATE_UNCHANGED", order };
+      return {
+        ok: true,
+        skipped: true,
+        reason: "PHONEPE_STATE_UNCHANGED",
+        order,
+      };
     }
 
     const resolvedState =
-      normalizedState.includes("COMPLETED") || normalizedState.includes("SUCCESS")
+      normalizedState.includes("COMPLETED") ||
+      normalizedState.includes("SUCCESS")
         ? "success"
-        : normalizedState.includes("FAIL") || normalizedState.includes("DECLINED")
+        : normalizedState.includes("FAIL") ||
+            normalizedState.includes("DECLINED")
           ? "fail"
-          : normalizedState.includes("PENDING") || normalizedState.includes("CREATED")
+          : normalizedState.includes("PENDING") ||
+              normalizedState.includes("CREATED")
             ? "pending"
             : "";
 
     if (!resolvedState) {
-      return { ok: true, skipped: true, reason: "PHONEPE_STATE_UNKNOWN", order };
+      return {
+        ok: true,
+        skipped: true,
+        reason: "PHONEPE_STATE_UNKNOWN",
+        order,
+      };
     }
 
     return applyResolvedPaymentStatus({
@@ -5870,7 +6292,8 @@ const reconcileOrderPaymentStatus = async ({
       providerOrderIdField: "phonepeMerchantOrderId",
       providerTransactionIdField: "phonepeTransactionId",
       extraUpdates: {
-        phonepeOrderId: verifiedStatus?.phonepeOrderId || order.phonepeOrderId || null,
+        phonepeOrderId:
+          verifiedStatus?.phonepeOrderId || order.phonepeOrderId || null,
       },
       successSource,
       shipmentSource,
@@ -5907,7 +6330,9 @@ const reconcileOrdersForListing = async ({
   };
 
   const needsPaidRepair = (order) =>
-    String(order?.payment_status || "").trim().toLowerCase() === "paid" &&
+    String(order?.payment_status || "")
+      .trim()
+      .toLowerCase() === "paid" &&
     (!hasInvoiceArtifacts(order) || !hasBookedShipment(order));
 
   list.forEach((order) => {
@@ -5958,12 +6383,15 @@ export const handlePaytmWebhook = asyncHandler(async (req, res) => {
     logger.debug("handlePaytmWebhook", "Webhook received");
     const wantsBrowserRedirect = shouldRedirectPaytm(req);
     const bodyHasPayload =
-      req.body && typeof req.body === "object" && Object.keys(req.body).length > 0;
+      req.body &&
+      typeof req.body === "object" &&
+      Object.keys(req.body).length > 0;
     const rawBodyPayload =
       !bodyHasPayload && req.rawBody ? parsePaytmRawBody(req.rawBody) : null;
     const queryPayload =
       req.query && typeof req.query === "object" ? req.query : null;
-    const hasQueryPayload = queryPayload && Object.keys(queryPayload).length > 0;
+    const hasQueryPayload =
+      queryPayload && Object.keys(queryPayload).length > 0;
     if (
       wantsBrowserRedirect &&
       String(req?.method || "").toUpperCase() === "GET" &&
@@ -6004,7 +6432,9 @@ export const handlePaytmWebhook = asyncHandler(async (req, res) => {
         : sendSuccess(res, {}, "Webhook received");
     }
 
-    const orderId = extractOrderIdFromMerchantTransactionId(merchantTransactionId);
+    const orderId = extractOrderIdFromMerchantTransactionId(
+      merchantTransactionId,
+    );
     if (!orderId || !mongoose.Types.ObjectId.isValid(orderId)) {
       logger.warn("handlePaytmWebhook", "Invalid orderId in transaction", {
         merchantTransactionId,
@@ -6022,11 +6452,17 @@ export const handlePaytmWebhook = asyncHandler(async (req, res) => {
         merchantTransactionId,
       });
       return wantsBrowserRedirect
-        ? redirectPaytmWebhookToClient(res, { orderId, paymentState: "pending" })
+        ? redirectPaytmWebhookToClient(res, {
+            orderId,
+            paymentState: "pending",
+          })
         : sendSuccess(res, {}, "Webhook received");
     }
 
-    if (order.paytmOrderId && String(order.paytmOrderId) !== String(merchantTransactionId)) {
+    if (
+      order.paytmOrderId &&
+      String(order.paytmOrderId) !== String(merchantTransactionId)
+    ) {
       logger.warn("handlePaytmWebhook", "Transaction/order mismatch", {
         orderId: order._id,
         merchantTransactionId,
@@ -6035,7 +6471,9 @@ export const handlePaytmWebhook = asyncHandler(async (req, res) => {
       return wantsBrowserRedirect
         ? redirectPaytmWebhookToClient(res, {
             orderId: order._id,
-            paymentState: String(order.payment_status || "pending").toLowerCase(),
+            paymentState: String(
+              order.payment_status || "pending",
+            ).toLowerCase(),
           })
         : sendSuccess(res, {}, "Webhook received");
     }
@@ -6045,7 +6483,9 @@ export const handlePaytmWebhook = asyncHandler(async (req, res) => {
       return wantsBrowserRedirect
         ? redirectPaytmWebhookToClient(res, {
             orderId: order._id,
-            paymentState: String(order.payment_status || "pending").toLowerCase(),
+            paymentState: String(
+              order.payment_status || "pending",
+            ).toLowerCase(),
           })
         : sendSuccess(res, {}, "Webhook acknowledged");
     }
@@ -6064,7 +6504,9 @@ export const handlePaytmWebhook = asyncHandler(async (req, res) => {
       return wantsBrowserRedirect
         ? redirectPaytmWebhookToClient(res, {
             orderId: order._id,
-            paymentState: String(order.payment_status || "pending").toLowerCase(),
+            paymentState: String(
+              order.payment_status || "pending",
+            ).toLowerCase(),
           })
         : sendSuccess(res, {}, "Webhook received");
     }
@@ -6113,9 +6555,18 @@ export const handlePaytmWebhook = asyncHandler(async (req, res) => {
       normalizedState === "fail" &&
       String(order.payment_status || "").toLowerCase() === "failed"
     ) {
-      await maybeSendOrderPaymentReminderEmail({
+      scheduleOrderPaymentReminderEmail({
         order,
         failureKind,
+        paymentProvider: PAYMENT_PROVIDERS.PAYTM,
+        logContext: "handlePaytmWebhook",
+      });
+    } else if (
+      normalizedState === "pending" &&
+      String(order.payment_status || "").toLowerCase() === "pending"
+    ) {
+      scheduleOrderPaymentReminderEmail({
+        order,
         paymentProvider: PAYMENT_PROVIDERS.PAYTM,
         logContext: "handlePaytmWebhook",
       });
@@ -6274,7 +6725,9 @@ export const handlePhonePeWebhook = asyncHandler(async (req, res) => {
       return sendSuccess(res, {}, "Webhook received");
     }
 
-    const orderId = extractOrderIdFromMerchantTransactionId(merchantTransactionId);
+    const orderId = extractOrderIdFromMerchantTransactionId(
+      merchantTransactionId,
+    );
     if (!orderId || !mongoose.Types.ObjectId.isValid(orderId)) {
       logger.warn("handlePhonePeWebhook", "Invalid orderId in transaction", {
         merchantTransactionId,
@@ -6295,14 +6748,20 @@ export const handlePhonePeWebhook = asyncHandler(async (req, res) => {
       order.phonepeMerchantOrderId &&
       String(order.phonepeMerchantOrderId) !== String(merchantTransactionId)
     ) {
-      logger.info("handlePhonePeWebhook", "Processing alternate retry transaction id", {
-        orderId: order._id,
-        merchantTransactionId,
-        previous: order.phonepeMerchantOrderId,
-      });
+      logger.info(
+        "handlePhonePeWebhook",
+        "Processing alternate retry transaction id",
+        {
+          orderId: order._id,
+          merchantTransactionId,
+          previous: order.phonepeMerchantOrderId,
+        },
+      );
     }
 
-    const verifiedStatus = await verifyPhonePeWebhookState(merchantTransactionId);
+    const verifiedStatus = await verifyPhonePeWebhookState(
+      merchantTransactionId,
+    );
     if (!verifiedStatus) {
       return sendSuccess(res, {}, "Webhook acknowledged");
     }
@@ -6319,11 +6778,14 @@ export const handlePhonePeWebhook = asyncHandler(async (req, res) => {
       .trim();
     const transactionId = verifiedStatus.transactionId || null;
     const resolvedState =
-      normalizedState.includes("COMPLETED") || normalizedState.includes("SUCCESS")
+      normalizedState.includes("COMPLETED") ||
+      normalizedState.includes("SUCCESS")
         ? "success"
-        : normalizedState.includes("FAIL") || normalizedState.includes("DECLINED")
+        : normalizedState.includes("FAIL") ||
+            normalizedState.includes("DECLINED")
           ? "fail"
-          : normalizedState.includes("PENDING") || normalizedState.includes("CREATED")
+          : normalizedState.includes("PENDING") ||
+              normalizedState.includes("CREATED")
             ? "pending"
             : "";
 
@@ -6360,7 +6822,8 @@ export const handlePhonePeWebhook = asyncHandler(async (req, res) => {
       providerOrderIdField: "phonepeMerchantOrderId",
       providerTransactionIdField: "phonepeTransactionId",
       extraUpdates: {
-        phonepeOrderId: verifiedStatus.phonepeOrderId || order.phonepeOrderId || null,
+        phonepeOrderId:
+          verifiedStatus.phonepeOrderId || order.phonepeOrderId || null,
       },
       successSource: "PHONEPE_WEBHOOK",
       shipmentSource: "PHONEPE_WEBHOOK_AUTO_SHIPMENT",
@@ -6374,9 +6837,18 @@ export const handlePhonePeWebhook = asyncHandler(async (req, res) => {
       resolvedState === "fail" &&
       String(order.payment_status || "").toLowerCase() === "failed"
     ) {
-      await maybeSendOrderPaymentReminderEmail({
+      scheduleOrderPaymentReminderEmail({
         order,
         failureKind,
+        paymentProvider: PAYMENT_PROVIDERS.PHONEPE,
+        logContext: "handlePhonePeWebhook",
+      });
+    } else if (
+      resolvedState === "pending" &&
+      String(order.payment_status || "").toLowerCase() === "pending"
+    ) {
+      scheduleOrderPaymentReminderEmail({
+        order,
         paymentProvider: PAYMENT_PROVIDERS.PHONEPE,
         logContext: "handlePhonePeWebhook",
       });
@@ -6450,7 +6922,9 @@ export const createTestOrder = asyncHandler(async (req, res) => {
       "_id name email mobile",
     );
     if (!user) {
-      logger.warn("createTestOrder", "User not found", { userId: effectiveUserId });
+      logger.warn("createTestOrder", "User not found", {
+        userId: effectiveUserId,
+      });
       throw new AppError("USER_NOT_FOUND");
     }
 
@@ -6479,6 +6953,8 @@ export const createTestOrder = asyncHandler(async (req, res) => {
           productTitle: product.name,
           variantId: null,
           variantName: "",
+          sku: String(product.sku || "").trim().toUpperCase(),
+          hsnCode: String(product.hsnCode || "").trim(),
           quantity,
           price,
           image: product.images?.[0] || product.thumbnail || "",
@@ -6498,12 +6974,16 @@ export const createTestOrder = asyncHandler(async (req, res) => {
       state: selectedState,
       contact: {
         fullName: String(user.name || "Demo User"),
-        email: String(user.email || "").trim().toLowerCase(),
+        email: String(user.email || "")
+          .trim()
+          .toLowerCase(),
         phone: String(user.mobile || body.phone || "").trim(),
         address: selectedAddress || "Demo test order (shipping suppressed)",
         pincode: selectedPincode,
         state: selectedState,
-        gst: String(body.gstNumber || "").trim().toUpperCase(),
+        gst: String(body.gstNumber || "")
+          .trim()
+          .toUpperCase(),
       },
     };
 
@@ -6532,7 +7012,9 @@ export const createTestOrder = asyncHandler(async (req, res) => {
     const taxableAmount = round2(Number(pricing.taxableAmount || 0));
     const gstAmount = round2(Number(pricing.gstAmount || 0));
     const finalAmount = round2(taxableAmount + gstAmount + shippingCharge);
-    const billingDetails = buildBillingDetailsFromCheckoutContact(checkoutContact);
+    const generatedOrderNumber = await generateOrderSeriesNumber();
+    const billingDetails =
+      buildBillingDetailsFromCheckoutContact(checkoutContact);
 
     // Create test order (paid + accepted), but shipping-suppressed.
     const testOrder = new OrderModel({
@@ -6547,8 +7029,16 @@ export const createTestOrder = asyncHandler(async (req, res) => {
       payment_status: "paid",
       order_status: ORDER_STATUS.ACCEPTED,
       statusTimeline: [
-        { status: ORDER_STATUS.PENDING, source: "TEST_CREATE", timestamp: new Date() },
-        { status: ORDER_STATUS.ACCEPTED, source: "TEST_CREATE", timestamp: new Date() },
+        {
+          status: ORDER_STATUS.PENDING,
+          source: "TEST_CREATE",
+          timestamp: new Date(),
+        },
+        {
+          status: ORDER_STATUS.ACCEPTED,
+          source: "TEST_CREATE",
+          timestamp: new Date(),
+        },
       ],
       paymentId: `TEST_${Date.now()}`,
       originalPrice: round2(Number(pricing.originalAmount || finalAmount)),
@@ -6577,8 +7067,10 @@ export const createTestOrder = asyncHandler(async (req, res) => {
       deliveryAddressSnapshot: checkoutContact.addressSnapshot,
       guestDetails: {},
       trackingSessionId:
-        String(req.analyticsSessionId || req.cookies?.hog_sid || "")
-          .trim() || null,
+        String(req.analyticsSessionId || req.cookies?.hog_sid || "").trim() ||
+        null,
+      orderNumber: generatedOrderNumber,
+      displayOrderId: generatedOrderNumber,
       analyticsConsent: resolveAnalyticsConsentFromRequest(req),
       isSavedOrder: true,
       isDemoOrder: true,
@@ -6678,7 +7170,9 @@ export const createTestOrder = asyncHandler(async (req, res) => {
 
     const localDiskInvoice = await persistInvoiceSnapshotToDisk({
       filenameSeed:
-        testOrder.invoiceNumber || testOrder._id || `test_invoice_${Date.now()}`,
+        testOrder.invoiceNumber ||
+        testOrder._id ||
+        `test_invoice_${Date.now()}`,
       invoicePath: testOrder.invoicePath || "",
       context: "createTestOrder",
       payload: {

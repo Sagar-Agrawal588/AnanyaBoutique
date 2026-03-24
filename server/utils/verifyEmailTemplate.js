@@ -1,74 +1,123 @@
-const VerificationEmail=(username,otp)=>{
-    return `<!DOCTYPE html>
+const VerificationEmail = (username, otp) => {
+  return `<!DOCTYPE html>
     <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Email Verification</title>
-        <style>
-            body {
-                font-family: Arial, sans-serif;
+        <head>
+            <meta charset="UTF-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+            <title>Email Verification OTP</title>
+        </head>
+        <body
+            style="
                 margin: 0;
                 padding: 0;
-                background-color: #f4f4f4;
-                color: #333;
-            }
-            .container {
-                max-width: 600px;
-                margin: 20px auto;
-                background: #fff;
-                padding: 20px;
-                border-radius: 8px;
-                box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-            }
-            .header {
-            text-align: center;
-            border-bottom: 1px solid #eee;
-            padding-bottom: 10px;
-            margin-bottom: 20px;
-            }
-            .header h1 {
-                color: #4CAF50;
-}
-            .content {
-                text-align: center;
-            }
-            .content p {
-            font-size: 16px;
-                line-height: 1.5;
-            }
-                .otp{
-                    font-size:20px;
-                    font-weight:bold;
-                    color:#4CAF50;
-                    margin:20px 0;
-                }
-            .footer {
-                text-align: center;
-                font-size: 14px;
-                color: #777;
-                margin-top: 20px;
-}        </style>
-    </head>
-    <body>
-        <div class="container">
-            <div class="header">
-            <h1>Hii ${username} Please Verify Your Email</h1>
-            </div>
-            <div class="content">
-                <p>Thank you for registering with BuyOneGram! To complete your registration, please use the following One-Time Password (OTP) to verify your email address:</p>
-                <div class="otp">${otp}</div>
-                <p>This OTP is valid for the next 15 minutes. Please do not share this code with anyone.</p>
-                <p>If you did not request this verification, please ignore this email.</p>
-                <p>Best regards,<br/>The BuyOneGram Team</p>
-            </div>
-            <div class="footer">
-                <p>&copy; 2024 BuyOneGram. All rights reserved.</p>
-            </div>
-        </div>
-    </body>
+                background: #f6f1ea;
+                font-family: 'Segoe UI', Arial, sans-serif;
+                color: #1c1c1c;
+            "
+        >
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                <tr>
+                    <td align="center" style="padding: 32px 12px">
+                        <table
+                            role="presentation"
+                            width="640"
+                            cellspacing="0"
+                            cellpadding="0"
+                            style="
+                                width: 100%;
+                                max-width: 640px;
+                                background: #ffffff;
+                                border-radius: 18px;
+                                overflow: hidden;
+                                border: 1px solid #eadfd4;
+                            "
+                        >
+                            <tr>
+                                <td
+                                    style="
+                                        padding: 24px 28px;
+                                        background: linear-gradient(135deg, #2563eb 0%, #0ea5e9 100%);
+                                        color: #ffffff;
+                                    "
+                                >
+                                    <div
+                                        style="
+                                            font-size: 12px;
+                                            letter-spacing: 2px;
+                                            text-transform: uppercase;
+                                            opacity: 0.9;
+                                        "
+                                    >
+                                        HealthyOneGram
+                                    </div>
+                                    <h1 style="margin: 8px 0 0; font-size: 26px; line-height: 1.2">
+                                        One-Time Password
+                                    </h1>
+                                    <p style="margin: 8px 0 0; font-size: 14px; opacity: 0.95">
+                                        Use this OTP to complete your verification securely.
+                                    </p>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 26px 28px">
+                                    <p style="margin: 0 0 10px">
+                                        Hello <strong>${username}</strong>,
+                                    </p>
+                                    <p style="margin: 0 0 14px">
+                                        Please use the OTP below to continue. This code is valid for
+                                        15 minutes.
+                                    </p>
+
+                                    <div
+                                        style="
+                                            background: #eff6ff;
+                                            border-left: 4px solid #2563eb;
+                                            padding: 16px 14px;
+                                            border-radius: 12px;
+                                            margin: 14px 0 14px;
+                                            text-align: center;
+                                        "
+                                    >
+                                        <p style="margin: 0 0 4px; font-size: 12px; color: #1e3a8a">
+                                            ONE-TIME PASSWORD
+                                        </p>
+                                        <p
+                                            style="
+                                                margin: 0;
+                                                font-size: 34px;
+                                                letter-spacing: 6px;
+                                                font-weight: 800;
+                                                color: #1d4ed8;
+                                            "
+                                        >
+                                            ${otp}
+                                        </p>
+                                    </div>
+
+                                    <p style="margin: 0; font-size: 13px; color: #6b5b4d">
+                                        If you did not request this, please ignore this email.
+                                    </p>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td
+                                    style="
+                                        padding: 16px 28px;
+                                        background: #f3ebe1;
+                                        font-size: 12px;
+                                        color: #6b5b4d;
+                                    "
+                                >
+                                    <p style="margin: 0">
+                                        &copy; 2026 HealthyOneGram. All rights reserved.
+                                    </p>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+            </table>
+        </body>
     </html>`;
-
-
 };
 export default VerificationEmail;

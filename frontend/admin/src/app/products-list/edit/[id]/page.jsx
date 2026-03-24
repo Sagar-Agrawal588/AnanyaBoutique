@@ -31,6 +31,7 @@ const EditProduct = () => {
   const [isExclusive, setIsExclusive] = useState(false);
   const [demandStatus, setDemandStatus] = useState("NORMAL");
   const [brand, setBrand] = useState("");
+  const [hsnCode, setHsnCode] = useState("");
   const [discount, setDiscount] = useState("");
   const [rating, setRating] = useState(4);
   const [tags, setTags] = useState("");
@@ -146,6 +147,7 @@ const EditProduct = () => {
         setIsExclusive(Boolean(product.isExclusive));
         setDemandStatus(product.demandStatus || "NORMAL");
         setBrand(product.brand || "");
+        setHsnCode(product.hsnCode || "");
         setDiscount(product.discount || "");
         setRating(product.rating || 4);
         setTags(product.tags ? product.tags.join(", ") : "");
@@ -325,6 +327,7 @@ const EditProduct = () => {
         isExclusive,
         demandStatus,
         brand,
+        hsnCode: String(hsnCode || "").trim(),
         discount: discount ? Number(discount) : 0,
         rating,
         tags: tags ? tags.split(",").map((t) => t.trim()) : [],
@@ -502,7 +505,7 @@ const EditProduct = () => {
           </div>
 
           {/* Product Details */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 mb-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-5">
             <div className="col flex flex-col gap-1">
               <span className="text-[15px] text-gray-800 font-medium">
                 Brand
@@ -512,6 +515,22 @@ const EditProduct = () => {
                 value={brand}
                 onChange={(e) => setBrand(e.target.value)}
                 placeholder="Brand name"
+                className="w-full h-[40px] border border-[rgba(0,0,0,0.2)] outline-none rounded-md focus:border-blue-500 px-3 text-[14px]"
+              />
+            </div>
+
+            <div className="col flex flex-col gap-1">
+              <span className="text-[15px] text-gray-800 font-medium">
+                HSN Code
+              </span>
+              <input
+                type="text"
+                value={hsnCode}
+                onChange={(e) =>
+                  setHsnCode(e.target.value.replace(/[^a-zA-Z0-9]/g, ""))
+                }
+                placeholder="e.g., 2106"
+                maxLength={12}
                 className="w-full h-[40px] border border-[rgba(0,0,0,0.2)] outline-none rounded-md focus:border-blue-500 px-3 text-[14px]"
               />
             </div>

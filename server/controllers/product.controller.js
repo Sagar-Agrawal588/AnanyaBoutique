@@ -2,6 +2,10 @@ import mongoose from "mongoose";
 import CategoryModel from "../models/category.model.js";
 import ProductModel from "../models/product.model.js";
 import { checkExclusiveAccess } from "../middlewares/membershipGuard.js";
+import {
+  getCartUpsellProductSuggestion,
+  getFrequentlyBoughtTogether,
+} from "../services/combos/comboRecommendation.service.js";
 
 const isProduction = process.env.NODE_ENV === "production";
 // Debug-only logging to keep production output clean
@@ -32,6 +36,14 @@ const toBoolean = (value) => {
 const roundWholeNumber = (value) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? Math.round(parsed) : null;
+};
+
+const normalizeHsnCode = (value) => {
+  const normalized = String(value || "")
+    .trim()
+    .replace(/\s+/g, "");
+  if (!normalized) return "";
+  return normalized.slice(0, 12);
 };
 
 const normalizeStockValue = (value, fallback = 0) => {
@@ -603,6 +615,70 @@ export const getRelatedProducts = async (req, res) => {
   }
 };
 
+/**
+ * Get frequently bought together products for a product
+ * @route GET /api/products/:id/frequently-bought
+ */
+export const getFrequentlyBoughtProducts = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { limit = 4 } = req.query;
+
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        error: true,
+        success: false,
+        message: "Invalid product id",
+      });
+    }
+
+    const recommendations = await getFrequentlyBoughtTogether(id, {
+      limit: Math.max(Number(limit) || 4, 1),
+    });
+
+    return res.status(200).json({
+      error: false,
+      success: true,
+      data: recommendations,
+    });
+  } catch (error) {
+    console.error("Error fetching frequently bought products:", error);
+    return res.status(500).json({
+      error: true,
+      success: false,
+      message: "Failed to fetch frequently bought products",
+      details: error.message,
+    });
+  }
+};
+
+/**
+ * Get single upsell product suggestion from cart context
+ * @route POST /api/products/upsell
+ */
+export const getCartUpsellProduct = async (req, res) => {
+  try {
+    const cartItems = Array.isArray(req.body?.items) ? req.body.items : [];
+    const suggestion = await getCartUpsellProductSuggestion(cartItems, {
+      limit: 1,
+    });
+
+    return res.status(200).json({
+      error: false,
+      success: true,
+      data: suggestion,
+    });
+  } catch (error) {
+    console.error("Error fetching cart upsell product:", error);
+    return res.status(500).json({
+      error: true,
+      success: false,
+      message: "Failed to fetch upsell recommendation",
+      details: error.message,
+    });
+  }
+};
+
 // ==================== ADMIN ENDPOINTS ====================
 
 /**
@@ -629,6 +705,7 @@ export const createProduct = async (req, res) => {
       variantType,
       weight,
       unit,
+      hsnCode,
       tags,
       isFeatured,
       isNewArrival,
@@ -788,6 +865,7 @@ export const createProduct = async (req, res) => {
       variantType,
       weight,
       unit,
+      hsnCode: normalizeHsnCode(hsnCode),
       tags: tags || [],
       isFeatured: isFeatured || false,
       isNewArrival: isNewArrival || false,
@@ -906,6 +984,9 @@ export const updateProduct = async (req, res) => {
       } else {
         delete updateData.originalPrice;
       }
+    }
+    if ("hsnCode" in updateData) {
+      updateData.hsnCode = normalizeHsnCode(updateData.hsnCode);
     }
 
     const product = await ProductModel.findById(id);

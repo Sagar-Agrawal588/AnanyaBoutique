@@ -66,6 +66,12 @@ const variantSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  hsnCode: {
+    type: String,
+    default: "",
+    trim: true,
+    set: (value) => String(value || "").replace(/\D/g, "").slice(0, 6),
+  },
   price: {
     type: Number,
     required: true,
@@ -207,9 +213,20 @@ const productSchema = new mongoose.Schema(
       uppercase: true,
       trim: true,
     },
+    hsnCode: {
+      type: String,
+      default: "",
+      trim: true,
+      set: (value) => String(value || "").replace(/\D/g, "").slice(0, 6),
+    },
     barcode: {
       type: String,
       default: "",
+    },
+    hsnCode: {
+      type: String,
+      default: "",
+      trim: true,
     },
     stock: {
       type: Number,

@@ -7,14 +7,9 @@ import UseCurrentLocationGoogleMaps from "@/components/UseCurrentLocationGoogleM
 import { useCart } from "@/context/CartContext";
 import { useReferral } from "@/context/ReferralContext";
 import { useSettings } from "@/context/SettingsContext";
-import useIndiaPincodeLookup from "@/hooks/useIndiaPincodeLookup";
 import { MyContext } from "@/context/ThemeProvider";
+import useIndiaPincodeLookup from "@/hooks/useIndiaPincodeLookup";
 import { useShippingDisplayCharge } from "@/hooks/useShippingDisplayCharge";
-import {
-  getStoredAffiliateData,
-  initAffiliateTracking,
-  setAffiliateFromCoupon,
-} from "@/utils/affiliateTracking";
 import {
   applyGoogleLocationToForm,
   applyPincodeLookupToForm,
@@ -30,9 +25,15 @@ import {
   normalizeStateValue,
   validateAddressForm as validateStructuredAddressForm,
 } from "@/utils/addressForm";
+import {
+  getStoredAffiliateData,
+  initAffiliateTracking,
+  setAffiliateFromCoupon,
+} from "@/utils/affiliateTracking";
 import { trackEvent } from "@/utils/analyticsTracker";
 import { calculateOrderTotals } from "@/utils/calculateOrderTotals.mjs";
 import { round2 } from "@/utils/gst";
+import { getImageUrl } from "@/utils/imageUtils";
 import { getDisplayTaxBreakup } from "@/utils/shippingDisplay";
 import {
   Alert,
@@ -116,7 +117,8 @@ const Checkout = () => {
   const isGuestCheckout = !authToken;
 
   const isComboItem = (item) =>
-    item?.itemType === "combo" || Boolean(item?.combo || item?.comboSnapshot?.comboId);
+    item?.itemType === "combo" ||
+    Boolean(item?.combo || item?.comboSnapshot?.comboId);
 
   // Get referral/influencer data from context
   const {
@@ -133,10 +135,21 @@ const Checkout = () => {
   // Helper to normalize cart item data (handles both API and localStorage structures)
   const getItemData = (item) => {
     if (isComboItem(item)) {
-      const combo = item?.comboSnapshot || item?.combo || {};
+      const comboSnapshot =
+        item?.comboSnapshot && typeof item.comboSnapshot === "object"
+          ? item.comboSnapshot
+          : {};
+      const comboDoc =
+        item?.combo && typeof item.combo === "object" ? item.combo : {};
+      const combo = {
+        ...comboDoc,
+        ...comboSnapshot,
+      };
       const comboItems = Array.isArray(combo?.items) ? combo.items : [];
       const comboId =
         combo?.comboId ||
+        comboSnapshot?.comboId ||
+        comboDoc?._id ||
         combo?._id ||
         item?.combo ||
         item?.comboSnapshot?.comboId ||
@@ -147,10 +160,21 @@ const Checkout = () => {
         id: comboId,
         name: combo?.comboName || combo?.name || "Combo Bundle",
         image:
+          comboSnapshot?.comboThumbnail ||
+          comboDoc?.comboThumbnail ||
+          combo?.comboThumbnail ||
+          comboSnapshot?.thumbnail ||
+          comboDoc?.thumbnail ||
           combo?.thumbnail ||
+          comboSnapshot?.image ||
+          comboDoc?.image ||
           combo?.image ||
+          comboSnapshot?.comboImages?.[0] ||
+          comboDoc?.comboImages?.[0] ||
+          combo?.comboImages?.[0] ||
+          comboItems?.[0]?.image ||
           item?.image ||
-          "/placeholder.png",
+          "/product_1.png",
         price: item?.price ?? combo?.comboPrice ?? 0,
         quantity: item?.quantity || 1,
         demandStatus: "NORMAL",
@@ -185,7 +209,7 @@ const Checkout = () => {
         product?.images?.[0] ||
         item.image ||
         item.images?.[0] ||
-        "/placeholder.png",
+        "/product_1.png",
       price: item.price || product?.price || 0,
       quantity: item.quantity || 1,
       demandStatus: product?.demandStatus || item.demandStatus || "NORMAL",
@@ -201,7 +225,8 @@ const Checkout = () => {
   const [isSavingOrder, setIsSavingOrder] = useState(false);
   const [paymentGatewayEnabled, setPaymentGatewayEnabled] = useState(true);
   const [paymentProviders, setPaymentProviders] = useState([]);
-  const [selectedPaymentProvider, setSelectedPaymentProvider] = useState("PHONEPE");
+  const [selectedPaymentProvider, setSelectedPaymentProvider] =
+    useState("PHONEPE");
   const [isCreatingDemoOrder, setIsCreatingDemoOrder] = useState(false);
   const [snackbar, setSnackbar] = useState({
     open: false,
@@ -234,7 +259,9 @@ const Checkout = () => {
   const [locationPayload, setLocationPayload] = useState(null);
   const [formData, setFormData] = useState(() => createEmptyAddressForm());
   const [formErrors, setFormErrors] = useState({});
-  const [guestDetails, setGuestDetails] = useState(() => createEmptyAddressForm());
+  const [guestDetails, setGuestDetails] = useState(() =>
+    createEmptyAddressForm(),
+  );
   const [guestLocationPayload, setGuestLocationPayload] = useState(null);
   const [checkoutLocationPayload, setCheckoutLocationPayload] = useState(null);
   const [guestErrors, setGuestErrors] = useState({});
@@ -328,9 +355,7 @@ const Checkout = () => {
 
   // Step 3: Referral/Influencer discount on GST-exclusive base (trade discount)
   // Note: Backend will recalculate for security — this is for display only.
-  const activeInfluencerCode = String(
-    referralData?.code || referralCode || "",
-  )
+  const activeInfluencerCode = String(referralData?.code || referralCode || "")
     .trim()
     .toUpperCase();
   const referralDiscount = activeInfluencerCode
@@ -450,7 +475,8 @@ const Checkout = () => {
     if (!Array.isArray(cartItems) || cartItems.length === 0) return;
 
     const comboCount = (cartItems || []).reduce(
-      (sum, item) => (isComboItem(item) ? sum + Number(item?.quantity || 1) : sum),
+      (sum, item) =>
+        isComboItem(item) ? sum + Number(item?.quantity || 1) : sum,
       0,
     );
 
@@ -482,7 +508,11 @@ const Checkout = () => {
             ? payload.enabledProviders
             : providersFromObject
         )
-          .map((provider) => String(provider || "").trim().toUpperCase())
+          .map((provider) =>
+            String(provider || "")
+              .trim()
+              .toUpperCase(),
+          )
           .filter(Boolean);
         const defaultProvider = String(
           payload?.defaultProvider ||
@@ -497,7 +527,8 @@ const Checkout = () => {
         setPaymentProviders(enabledProviders);
         setSelectedPaymentProvider((prev) => {
           if (enabledProviders.includes(prev)) return prev;
-          if (enabledProviders.includes(defaultProvider)) return defaultProvider;
+          if (enabledProviders.includes(defaultProvider))
+            return defaultProvider;
           return enabledProviders[0] || "PHONEPE";
         });
       } catch (error) {
@@ -545,7 +576,9 @@ const Checkout = () => {
   useEffect(() => {
     const fetchDynamicCheckoutSettings = async () => {
       try {
-        const coinSettingsRes = await fetch(`${API_URL}/api/coins/settings/public`);
+        const coinSettingsRes = await fetch(
+          `${API_URL}/api/coins/settings/public`,
+        );
 
         if (coinSettingsRes?.ok) {
           const coinSettingsData = await coinSettingsRes.json();
@@ -581,12 +614,15 @@ const Checkout = () => {
           }
 
           if (!(resolvedCoinBalance > 0)) {
-            const coinSummaryRes = await fetch(`${API_URL}/api/user/coins-summary`, {
-              headers: {
-                Authorization: `Bearer ${authToken}`,
+            const coinSummaryRes = await fetch(
+              `${API_URL}/api/user/coins-summary`,
+              {
+                headers: {
+                  Authorization: `Bearer ${authToken}`,
+                },
+                credentials: "include",
               },
-              credentials: "include",
-            });
+            );
             if (coinSummaryRes.ok) {
               const coinSummaryData = await coinSummaryRes.json();
               if (coinSummaryData?.success) {
@@ -992,7 +1028,8 @@ const Checkout = () => {
   );
 
   // Validate coupon with backend
-  const handleApplyCoupon = () => applyCouponCode(couponCode, { source: "manual" });
+  const handleApplyCoupon = () =>
+    applyCouponCode(couponCode, { source: "manual" });
 
   // Remove applied coupon
   const handleRemoveCoupon = () => {
@@ -1037,7 +1074,9 @@ const Checkout = () => {
   const buildOrderComboLineItems = () =>
     buildOrderCombosPayload().map((combo) => {
       const match = (cartItems || []).find(
-        (item) => isComboItem(item) && String(getItemData(item).id) === String(combo.comboId),
+        (item) =>
+          isComboItem(item) &&
+          String(getItemData(item).id) === String(combo.comboId),
       );
       const matchData = match ? getItemData(match) : null;
       const unitPrice = round2(matchData?.price || 0);
@@ -1070,9 +1109,7 @@ const Checkout = () => {
         state: savedForm.state,
         pincode: savedForm.pincode,
         mobile:
-          address.mobile_number ||
-          address.mobile ||
-          savedForm.mobileNumber,
+          address.mobile_number || address.mobile || savedForm.mobileNumber,
         addressType: address.addressType || savedForm.addressType,
       };
     }
@@ -1155,7 +1192,9 @@ const Checkout = () => {
         couponCode:
           responseData?.order?.couponCode || appliedCoupon?.code || null,
         invoiceNumber:
-          responseData?.invoice?.invoiceNumber || apiInvoice?.invoiceNumber || null,
+          responseData?.invoice?.invoiceNumber ||
+          apiInvoice?.invoiceNumber ||
+          null,
         invoicePath:
           responseData?.invoice?.invoicePath || apiInvoice?.invoicePath || "",
         shippingSuppressed: Boolean(responseData?.shippingSuppressed),
@@ -1192,7 +1231,10 @@ const Checkout = () => {
       })();
 
       const nextInvoices = [invoiceRecord, ...existingInvoices].slice(0, 30);
-      localStorage.setItem(TEST_INVOICE_STORAGE_KEY, JSON.stringify(nextInvoices));
+      localStorage.setItem(
+        TEST_INVOICE_STORAGE_KEY,
+        JSON.stringify(nextInvoices),
+      );
       localStorage.setItem("bog_last_test_invoice", JSON.stringify(invoiceRecord));
 
       const token = getStoredAccessToken();
@@ -1223,10 +1265,7 @@ const Checkout = () => {
             TEST_INVOICE_STORAGE_KEY,
             JSON.stringify(updatedInvoices),
           );
-          localStorage.setItem(
-            "bog_last_test_invoice",
-            JSON.stringify(updatedInvoice),
-          );
+          localStorage.setItem("bog_last_test_invoice", JSON.stringify(updatedInvoice));
         })
         .catch(() => {
           // Disk-sync is best-effort.
@@ -1280,7 +1319,11 @@ const Checkout = () => {
           ? statusPayload.enabledProviders
           : []
       )
-        .map((provider) => String(provider || "").trim().toUpperCase())
+        .map((provider) =>
+          String(provider || "")
+            .trim()
+            .toUpperCase(),
+        )
         .filter(Boolean);
       const runtimeDefaultProvider = String(
         statusPayload?.defaultProvider ||
@@ -1328,10 +1371,11 @@ const Checkout = () => {
           coins: 0,
         },
         paymentType: "prepaid",
-        paymentProvider:
-          runtimeEnabledProviders.includes(selectedPaymentProvider)
-            ? selectedPaymentProvider
-            : runtimeDefaultProvider,
+        paymentProvider: runtimeEnabledProviders.includes(
+          selectedPaymentProvider,
+        )
+          ? selectedPaymentProvider
+          : runtimeDefaultProvider,
         guestDetails: buildGuestDetailsPayload(),
         shippingAddress: buildShippingAddressPayload(selectedAddrObj),
       };
@@ -1347,6 +1391,9 @@ const Checkout = () => {
 
       const data = await response.json();
       if (!data.success) {
+        if (String(data?.code || "").toUpperCase() === "INSUFFICIENT_STOCK") {
+          throw new Error("Stock changed. Please update your cart.");
+        }
         throw new Error(data.message || "Payment initialization failed");
       }
 
@@ -1533,7 +1580,9 @@ const Checkout = () => {
         );
       }
       if (!selectedAddress) {
-        throw new Error("Select a saved delivery address to create a demo order.");
+        throw new Error(
+          "Select a saved delivery address to create a demo order.",
+        );
       }
 
       const selectedAddrObj = addresses.find((a) => a._id === selectedAddress);
@@ -1600,8 +1649,7 @@ const Checkout = () => {
       setSnackbar({
         open: true,
         message:
-          error.message ||
-          "Failed to create demo order. Please try again.",
+          error.message || "Failed to create demo order. Please try again.",
         severity: "error",
       });
     } finally {
@@ -1789,18 +1837,18 @@ const Checkout = () => {
                               lookupGuestPincode(guestDetails.pincode);
                             }
                           }}
-                        error={
-                          !!guestErrors.pincode ||
-                          (guestPincodeLookup.status === "error" &&
-                            !hasResolvedPincodeDetails(guestDetails))
-                        }
-                        helperText={
-                          guestErrors.pincode ||
-                          (guestPincodeLookup.status === "error" &&
-                          hasResolvedPincodeDetails(guestDetails)
-                            ? ""
-                            : getLookupHelperText(guestPincodeLookup))
-                        }
+                          error={
+                            !!guestErrors.pincode ||
+                            (guestPincodeLookup.status === "error" &&
+                              !hasResolvedPincodeDetails(guestDetails))
+                          }
+                          helperText={
+                            guestErrors.pincode ||
+                            (guestPincodeLookup.status === "error" &&
+                            hasResolvedPincodeDetails(guestDetails)
+                              ? ""
+                              : getLookupHelperText(guestPincodeLookup))
+                          }
                           variant="outlined"
                           fullWidth
                           size="small"
@@ -2035,7 +2083,7 @@ const Checkout = () => {
                       >
                         <div className="w-20 h-20 rounded-2xl bg-gray-50 flex items-center justify-center p-2 shrink-0">
                           <img
-                            src={data.image}
+                            src={getImageUrl(data.image)}
                             alt={data.name}
                             className="w-full h-full object-contain"
                           />
@@ -2098,7 +2146,9 @@ const Checkout = () => {
                   <div className="space-y-4 mb-8">
                     <div className="flex justify-between text-gray-400 font-bold uppercase tracking-widest text-xs">
                       <span>Subtotal</span>
-                      <span className="text-white">₹{cartBaseSubtotal.toFixed(2)}</span>
+                      <span className="text-white">
+                        ₹{cartBaseSubtotal.toFixed(2)}
+                      </span>
                     </div>
 
                     {couponDiscount > 0 && (
@@ -2113,8 +2163,7 @@ const Checkout = () => {
                     {activeInfluencerCode && (
                       <div className="flex justify-between text-primary/80 font-bold uppercase tracking-widest text-xs">
                         <span className="flex items-center gap-1">
-                          <FiTag /> Influencer{" "}
-                          ({activeInfluencerCode})
+                          <FiTag /> Influencer ({activeInfluencerCode})
                         </span>
                         <span>-₹{referralDiscount.toFixed(2)}</span>
                       </div>
@@ -2123,7 +2172,9 @@ const Checkout = () => {
                     {hasSubtotalReduction && (
                       <div className="flex justify-between text-gray-300 font-bold uppercase tracking-widest text-xs">
                         <span>Discounted Subtotal</span>
-                        <span className="text-white">₹{subtotal.toFixed(2)}</span>
+                        <span className="text-white">
+                          ₹{subtotal.toFixed(2)}
+                        </span>
                       </div>
                     )}
 
@@ -2239,15 +2290,20 @@ const Checkout = () => {
                         <div className="flex items-start justify-between gap-3">
                           <div>
                             <p className="font-bold text-primary text-sm">
-                              Influencer code auto-applied: {activeInfluencerCode}
+                              Influencer code auto-applied:{" "}
+                              {activeInfluencerCode}
                             </p>
                             <p className="text-xs text-primary font-semibold mt-1">
-                              Discount on subtotal: ₹{referralDiscount.toFixed(2)}
+                              Discount on subtotal: ₹
+                              {referralDiscount.toFixed(2)}
                             </p>
-                            {Number(referralData?.maxDiscountAmount || 0) > 0 && (
+                            {Number(referralData?.maxDiscountAmount || 0) >
+                              0 && (
                               <p className="text-[11px] text-primary/80 mt-1">
                                 Max discount: ₹
-                                {Number(referralData.maxDiscountAmount).toFixed(2)}
+                                {Number(referralData.maxDiscountAmount).toFixed(
+                                  2,
+                                )}
                               </p>
                             )}
                           </div>
@@ -2341,8 +2397,8 @@ const Checkout = () => {
                         </span>
                       </div>
                       <p className="text-xs text-gray-500 font-medium">
-                        Coins are earned on orders and can be redeemed on membership
-                        subscription checkout.
+                        Coins are earned on orders and can be redeemed on
+                        membership subscription checkout.
                       </p>
                     </div>
                   )}

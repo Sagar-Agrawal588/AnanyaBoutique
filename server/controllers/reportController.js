@@ -22,6 +22,12 @@ import {
 const REPORT_DEFAULT_LIMIT = 20;
 const REPORT_MAX_LIMIT = 100;
 
+const deriveLegacyDisplayOrderId = (orderId) => {
+  const rawOrderId = String(orderId || "").trim();
+  if (!rawOrderId) return "";
+  return `BOG-${rawOrderId.slice(-8).toUpperCase()}`;
+};
+
 const CONFIRMED_STATUSES = [
   ORDER_STATUS.ACCEPTED,
   ORDER_STATUS.CONFIRMED_LEGACY,
@@ -278,7 +284,7 @@ const buildSearchMatch = (searchTerm) => {
 const normalizeReportRow = (row) => {
   const orderId = String(row?.orderId || row?._id || "").trim();
   const orderDisplayId = String(
-    row?.orderNumber || row?.displayOrderId || orderId || "",
+    row?.orderNumber || row?.displayOrderId || deriveLegacyDisplayOrderId(orderId) || orderId || "",
   ).trim();
 
   return {
@@ -307,16 +313,32 @@ export const getOrdersReport = asyncHandler(async (req, res) => {
       req.query.page,
       req.query.limit,
     );
+    const includeRto =
+      String(req.query.includeRto || "")
+        .trim()
+        .toLowerCase() === "true";
+    const reportStatusFilter = includeRto
+      ? { $in: [...CONFIRMED_STATUSES, ...RTO_STATUSES] }
+      : { $in: CONFIRMED_STATUSES };
     const searchTerm = sanitizeSearch(req.query.search);
 
     const baseMatch = {
       purchaseOrder: null,
       createdAt: { $gte: startDate, $lte: endDate },
+      payment_status: { $in: ["paid", "confirmed", "PAID", "CONFIRMED"] },
+    };
+    const reportMatch = {
+      ...baseMatch,
+      order_status: reportStatusFilter,
+    };
+    const chartMatch = {
+      ...baseMatch,
+      order_status: { $in: [...CONFIRMED_STATUSES, ...RTO_STATUSES] },
     };
     const searchMatch = buildSearchMatch(searchTerm);
 
     const reportPipeline = [
-      { $match: baseMatch },
+      { $match: reportMatch },
       { $unwind: "$products" },
       ...(searchMatch ? [{ $match: searchMatch }] : []),
       {
@@ -371,8 +393,7 @@ export const getOrdersReport = asyncHandler(async (req, res) => {
     const chartPipeline = [
       {
         $match: {
-          ...baseMatch,
-          order_status: { $in: [...CONFIRMED_STATUSES, ...RTO_STATUSES] },
+          ...chartMatch,
         },
       },
       {
@@ -448,20 +469,14 @@ export const exportOrdersReport = asyncHandler(async (req, res) => {
         .trim()
         .toLowerCase() === "true";
     const statusFilter = includeRto
-      ? {
-          $in: [
-            ORDER_STATUS.DELIVERED,
-            ORDER_STATUS.COMPLETED,
-            ORDER_STATUS.RTO,
-            ORDER_STATUS.RTO_COMPLETED,
-          ],
-        }
-      : { $in: [ORDER_STATUS.DELIVERED, ORDER_STATUS.COMPLETED] };
+      ? { $in: [...CONFIRMED_STATUSES, ...RTO_STATUSES] }
+      : { $in: CONFIRMED_STATUSES };
     const searchTerm = sanitizeSearch(req.query.search);
     const baseMatch = {
       purchaseOrder: null,
       createdAt: { $gte: startDate, $lte: endDate },
       order_status: statusFilter,
+      payment_status: { $in: ["paid", "confirmed", "PAID", "CONFIRMED"] },
     };
     const searchMatch = buildSearchMatch(searchTerm);
 
@@ -480,6 +495,11 @@ export const exportOrdersReport = asyncHandler(async (req, res) => {
               onNull: null,
             },
           },
+          productIdText: {
+            $trim: {
+              input: { $toString: { $ifNull: ["$products.productId", ""] } },
+            },
+          },
         },
       },
       {
@@ -487,11 +507,31 @@ export const exportOrdersReport = asyncHandler(async (req, res) => {
           from: "products",
           let: {
             pid: "$productObjectId",
+            pidText: "$productIdText",
             vid: "$products.variantId",
             vname: "$products.variantName",
           },
           pipeline: [
-            { $match: { $expr: { $eq: ["$_id", "$$pid"] } } },
+            {
+              $match: {
+                $expr: {
+                  $or: [
+                    {
+                      $and: [
+                        { $ne: ["$$pid", null] },
+                        { $eq: ["$_id", "$$pid"] },
+                      ],
+                    },
+                    {
+                      $and: [
+                        { $ne: ["$$pidText", ""] },
+                        { $eq: ["$slug", "$$pidText"] },
+                      ],
+                    },
+                  ],
+                },
+              },
+            },
             {
               $project: {
                 name: 1,
@@ -535,10 +575,35 @@ export const exportOrdersReport = asyncHandler(async (req, res) => {
                               },
                             ],
                           },
+                          {
+                            $and: [
+                              {
+                                $or: [
+                                  { $eq: ["$$vid", null] },
+                                  { $eq: ["$$vid", ""] },
+                                ],
+                              },
+                              {
+                                $or: [
+                                  { $eq: ["$$vname", null] },
+                                  { $eq: ["$$vname", ""] },
+                                ],
+                              },
+                              { $eq: ["$$v.isDefault", true] },
+                            ],
+                          },
                         ],
                       },
                     },
                   },
+                },
+              },
+            },
+            {
+              $addFields: {
+                // Backfill missing variant selection (legacy orders) so SKU/HSN/etc are still available.
+                variant: {
+                  $ifNull: ["$variant", { $arrayElemAt: ["$variants", 0] }],
                 },
               },
             },
@@ -558,6 +623,7 @@ export const exportOrdersReport = asyncHandler(async (req, res) => {
                   _id: 1,
                   name: 1,
                   sku: 1,
+                  hsnCode: 1,
                   price: 1,
                   originalPrice: 1,
                   weight: 1,
@@ -583,6 +649,8 @@ export const exportOrdersReport = asyncHandler(async (req, res) => {
           productName: "$products.productTitle",
           variantId: "$products.variantId",
           variantName: "$products.variantName",
+          skuSnapshot: "$products.sku",
+          hsnSnapshot: "$products.hsnCode",
           quantity: "$products.quantity",
           price: "$products.price",
           subTotal: "$products.subTotal",
@@ -596,18 +664,22 @@ export const exportOrdersReport = asyncHandler(async (req, res) => {
                 ],
               },
             ],
-          },
-          couponCode: 1,
-          discountAmount: { $ifNull: ["$discountAmount", "$discount"] },
-          influencerId: 1,
-          influencerCode: 1,
-          affiliateCode: 1,
-          influencerDiscount: 1,
-          influencerCommission: 1,
-          shipping: 1,
-          subtotal: 1,
-          gst: 1,
-          productDoc: 1,
+           },
+           couponCode: 1,
+           couponDiscount: { $ifNull: ["$discountAmount", 0] },
+           membershipDiscount: { $ifNull: ["$membershipDiscount", 0] },
+           influencerDiscount: { $ifNull: ["$influencerDiscount", 0] },
+           comboDiscount: { $ifNull: ["$comboDiscount", 0] },
+           coinDiscount: { $ifNull: ["$coinRedemption.amount", 0] },
+           totalDiscount: { $ifNull: ["$discount", 0] },
+           influencerId: 1,
+           influencerCode: 1,
+           affiliateCode: 1,
+           influencerCommission: 1,
+           shipping: 1,
+           subtotal: 1,
+           gst: 1,
+           productDoc: 1,
         },
       },
     ];
@@ -644,14 +716,25 @@ export const exportOrdersReport = asyncHandler(async (req, res) => {
     for await (const row of cursor) {
       const orderId = String(row?.orderId || row?._id || "").trim();
       const orderDisplayId = String(
-        row?.orderNumber || row?.displayOrderId || orderId || "",
+        row?.orderNumber ||
+          row?.displayOrderId ||
+          deriveLegacyDisplayOrderId(orderId) ||
+          orderId ||
+          "",
       ).trim();
 
       const productDoc = row?.productDoc || null;
       const variantDoc = productDoc?.variant || null;
-      const sku = String(variantDoc?.sku || productDoc?.sku || "").trim();
+      const sku = String(
+        row?.skuSnapshot || variantDoc?.sku || productDoc?.sku || "",
+      )
+        .trim()
+        .toUpperCase();
       const hsn =
+        String(row?.hsnSnapshot || "").trim() ||
+        String(variantDoc?.hsnCode || "").trim() ||
         String(productDoc?.hsnCode || "").trim() ||
+        extractHsnFromSpecifications(variantDoc?.attributes) ||
         extractHsnFromSpecifications(productDoc?.specifications);
       const deliveryStatus = String(
         row?.deliveryStatus || row?.shipmentStatus || row?.shipment_status || "pending",
@@ -661,12 +744,18 @@ export const exportOrdersReport = asyncHandler(async (req, res) => {
         .addRow({
           orderId: orderDisplayId || orderId,
           productId: String(row?.productId || "").trim(),
-          sku,
-          hsnCode: hsn ? String(hsn).trim() : "",
+          sku: sku || "N/A",
+          hsnCode: hsn ? String(hsn).trim() : "N/A",
           productName: String(row?.productName || "").trim(),
           variantName: String(row?.variantName || "").trim(),
           quantity: Number(row?.quantity || 0),
           price: Number(row?.price || 0),
+          couponCode: String(row?.couponCode || "").trim(),
+          couponDiscount: Number(row?.couponDiscount || 0),
+          membershipDiscount: Number(row?.membershipDiscount || 0),
+          influencerDiscount: Number(row?.influencerDiscount || 0),
+          coinDiscount: Number(row?.coinDiscount || 0),
+          totalDiscount: Number(row?.totalDiscount || 0),
           orderStatus: resolveOrderStatusLabel(row?.order_status),
           customer: String(row?.customerName || "").trim() || "Guest",
           orderDate: row?.createdAt
@@ -863,22 +952,29 @@ export const exportOrdersReport = asyncHandler(async (req, res) => {
               : "",
           cgstPercent: defaultCgstPercent,
           sgstPercent: defaultSgstPercent,
-          subtotalProduct: { formula: `B${rowNumber}` },
-          influencerDiscountRs: { formula: `J${rowNumber}*(F${rowNumber}/100)` },
-          couponDiscountRs: { formula: `J${rowNumber}*(G${rowNumber}/100)` },
-          discountedProductPrice: { formula: `J${rowNumber}-K${rowNumber}-L${rowNumber}` },
-          cgstRs: { formula: `M${rowNumber}*(H${rowNumber}/100)` },
-          sgstRs: { formula: `M${rowNumber}*(I${rowNumber}/100)` },
-          productPriceAfterGst: { formula: `M${rowNumber}+N${rowNumber}+O${rowNumber}` },
-          customerPrice: { formula: `P${rowNumber}+C${rowNumber}` },
-          influencerCommissionRs: { formula: `Q${rowNumber}*(E${rowNumber}/100)` },
-          totalCost: { formula: `B${rowNumber}+C${rowNumber}+R${rowNumber}` },
-          actualProfit: { formula: `Q${rowNumber}-S${rowNumber}` },
+          subtotalProduct:
+            Number.isFinite(item?.sellingPrice) && item.sellingPrice > 0
+              ? Number(item.sellingPrice)
+            : Number.isFinite(item?.mrp) && item.mrp > 0
+                ? Number(item.mrp)
+                : "",
+          influencerDiscountRs: {
+            formula: `IFERROR(J${rowNumber}*(F${rowNumber}/100),0)`,
+          },
+          couponDiscountRs: { formula: `IFERROR(J${rowNumber}*(G${rowNumber}/100),0)` },
+          discountedProductPrice: { formula: `IFERROR(J${rowNumber}-K${rowNumber}-L${rowNumber},0)` },
+          cgstRs: { formula: `IFERROR(M${rowNumber}*(H${rowNumber}/100),0)` },
+          sgstRs: { formula: `IFERROR(M${rowNumber}*(I${rowNumber}/100),0)` },
+          productPriceAfterGst: { formula: `IFERROR(M${rowNumber}+N${rowNumber}+O${rowNumber},0)` },
+          customerPrice: { formula: `IFERROR(P${rowNumber}+C${rowNumber},0)` },
+          influencerCommissionRs: { formula: `IFERROR(Q${rowNumber}*(E${rowNumber}/100),0)` },
+          totalCost: { formula: `IFERROR(B${rowNumber}+C${rowNumber}+R${rowNumber},0)` },
+          actualProfit: { formula: `IFERROR(Q${rowNumber}-S${rowNumber},0)` },
           actualMarginPercent: {
-            formula: `IF(Q${rowNumber}=0,0,T${rowNumber}/Q${rowNumber}*100)`,
+            formula: `IFERROR(IF(Q${rowNumber}=0,0,T${rowNumber}/Q${rowNumber}*100),0)`,
           },
           minCustomerPriceForTargetMargin: {
-            formula: `IF(D${rowNumber}=0,0,S${rowNumber}/(1-D${rowNumber}/100))`,
+            formula: `IFERROR(IF(D${rowNumber}=0,0,S${rowNumber}/(1-D${rowNumber}/100)),0)`,
           },
           productId: item.productId,
           variantId: item.variantId || "",

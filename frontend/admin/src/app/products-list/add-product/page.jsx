@@ -29,6 +29,7 @@ const AddProduct = () => {
   const [demandStatus, setDemandStatus] = useState("NORMAL");
   const [stock, setStock] = useState("");
   const [brand, setBrand] = useState("");
+  const [hsnCode, setHsnCode] = useState("");
   const [discount, setDiscount] = useState("");
   const [rating, setRating] = useState(4);
   const [weight, setWeight] = useState("");
@@ -226,6 +227,7 @@ const AddProduct = () => {
         demandStatus,
         stock: stock ? Number(stock) : 0,
         brand,
+        hsnCode: String(hsnCode || "").trim(),
         discount: discount ? Number(discount) : 0,
         rating,
         weight: weight ? Number(weight) : undefined,
@@ -396,6 +398,22 @@ const AddProduct = () => {
                 value={brand}
                 onChange={(e) => setBrand(e.target.value)}
                 placeholder="Brand name"
+                className="w-full h-[40px] border border-[rgba(0,0,0,0.2)] outline-none rounded-md focus:border-blue-500 px-3 text-[14px]"
+              />
+            </div>
+
+            <div className="col flex flex-col gap-1">
+              <span className="text-[15px] text-gray-800 font-medium">
+                HSN Code
+              </span>
+              <input
+                type="text"
+                value={hsnCode}
+                onChange={(e) =>
+                  setHsnCode(e.target.value.replace(/[^a-zA-Z0-9]/g, ""))
+                }
+                placeholder="e.g., 2106"
+                maxLength={12}
                 className="w-full h-[40px] border border-[rgba(0,0,0,0.2)] outline-none rounded-md focus:border-blue-500 px-3 text-[14px]"
               />
             </div>

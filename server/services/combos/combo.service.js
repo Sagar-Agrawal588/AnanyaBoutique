@@ -20,10 +20,7 @@ const normalizeComboTag = (tag) =>
 
 export const normalizeComboTags = (tags = []) => {
   if (!Array.isArray(tags)) return [];
-  return tags
-    .map(normalizeComboTag)
-    .filter(Boolean)
-    .slice(0, 12);
+  return tags.map(normalizeComboTag).filter(Boolean).slice(0, 12);
 };
 
 export const normalizeComboItemsPayload = (items = []) => {
@@ -32,17 +29,48 @@ export const normalizeComboItemsPayload = (items = []) => {
     .map((item) => ({
       productId: String(item?.productId || item?.product || "").trim(),
       quantity: Math.max(Number(item?.quantity || 1), 1),
+      quantityRequired: Math.max(
+        Number(item?.quantityRequired || item?.quantity || 1),
+        1,
+      ),
       variantId: String(item?.variantId || item?.variant || "").trim(),
       variantName: String(item?.variantName || "").trim(),
+      variantSku: String(item?.variantSku || "").trim(),
     }))
     .filter((item) => item.productId);
+};
+
+const sanitizeSkuPart = (value, fallback = "ITEM") => {
+  const normalized = String(value || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "");
+  return normalized || fallback;
+};
+
+export const buildComboSkuFromItems = (items = []) => {
+  const mapped = (Array.isArray(items) ? items : [])
+    .map((item) =>
+      sanitizeSkuPart(
+        item?.variantSku || item?.variantName || item?.productTitle || "",
+      ),
+    )
+    .filter(Boolean)
+    .slice(0, 6);
+
+  if (mapped.length === 0) {
+    return `COMBO-${Date.now().toString().slice(-6)}`;
+  }
+
+  return `COMBO-${mapped.join("-")}`;
 };
 
 const resolveVariantFromProduct = (product, variantId) => {
   if (!product || !variantId) return null;
   const variants = Array.isArray(product?.variants) ? product.variants : [];
   return (
-    variants.find((variant) => String(variant?._id) === String(variantId)) || null
+    variants.find((variant) => String(variant?._id) === String(variantId)) ||
+    null
   );
 };
 
@@ -67,9 +95,18 @@ const resolveProductPrices = (product, variant) => {
 };
 
 export const buildComboPricing = ({ items = [], pricing = {} } = {}) => {
-  const originalTotal = round2(
+  const baseTotal = round2(
     items.reduce(
       (sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 0),
+      0,
+    ),
+  );
+  const originalTotal = round2(
+    items.reduce(
+      (sum, item) =>
+        sum +
+        Number(item.originalPrice ?? item.price ?? 0) *
+          Number(item.quantity || 0),
       0,
     ),
   );
@@ -77,13 +114,13 @@ export const buildComboPricing = ({ items = [], pricing = {} } = {}) => {
   const pricingType = String(pricing?.type || "fixed_price").trim();
   const pricingValue = Math.max(Number(pricing?.value || 0), 0);
 
-  let comboPrice = originalTotal;
+  let comboPrice = baseTotal;
   if (pricingType === "fixed_price") {
-    comboPrice = pricingValue > 0 ? pricingValue : originalTotal;
+    comboPrice = pricingValue > 0 ? pricingValue : baseTotal;
   } else if (pricingType === "percent_discount") {
-    comboPrice = round2(originalTotal * (1 - pricingValue / 100));
+    comboPrice = round2(baseTotal * (1 - pricingValue / 100));
   } else if (pricingType === "fixed_discount") {
-    comboPrice = round2(originalTotal - pricingValue);
+    comboPrice = round2(baseTotal - pricingValue);
   }
 
   comboPrice = Math.max(round2(comboPrice), 0);
@@ -116,7 +153,9 @@ export const buildComboItemsSnapshot = async ({ items = [] } = {}) => {
     )
     .lean();
 
-  const productMap = new Map(dbProducts.map((product) => [String(product._id), product]));
+  const productMap = new Map(
+    dbProducts.map((product) => [String(product._id), product]),
+  );
   const missing = productIds.filter((id) => !productMap.has(String(id)));
   if (missing.length > 0) {
     throw new AppError("PRODUCT_NOT_FOUND", { missing });
@@ -128,12 +167,20 @@ export const buildComboItemsSnapshot = async ({ items = [] } = {}) => {
       throw new AppError("PRODUCT_NOT_FOUND", { productId: item.productId });
     }
 
-    const variantId = item.variantId && item.variantId !== "undefined" && item.variantId !== "null"
-      ? item.variantId
+    const variantId =
+      item.variantId &&
+      item.variantId !== "undefined" &&
+      item.variantId !== "null"
+        ? item.variantId
+        : null;
+    const variant = variantId
+      ? resolveVariantFromProduct(product, variantId)
       : null;
-    const variant = variantId ? resolveVariantFromProduct(product, variantId) : null;
     if (variantId && !variant) {
-      throw new AppError("INVALID_INPUT", { field: "variantId", value: variantId });
+      throw new AppError("INVALID_INPUT", {
+        field: "variantId",
+        value: variantId,
+      });
     }
 
     const { price, originalPrice } = resolveProductPrices(product, variant);
@@ -145,7 +192,17 @@ export const buildComboItemsSnapshot = async ({ items = [] } = {}) => {
       productTitle: product.name || "Product",
       variantId: variant?._id || null,
       variantName: item.variantName || variant?.name || "",
-      quantity: Math.max(Number(item.quantity || 1), 1),
+      variantSku: String(item.variantSku || variant?.sku || "")
+        .trim()
+        .toUpperCase(),
+      quantity: Math.max(
+        Number(item.quantity || item.quantityRequired || 1),
+        1,
+      ),
+      quantityRequired: Math.max(
+        Number(item.quantityRequired || item.quantity || 1),
+        1,
+      ),
       price,
       originalPrice,
       image,
@@ -164,25 +221,54 @@ export const computeComboAvailability = async (combo, productCache = null) => {
       Number(combo.stockQuantity || 0) - Number(combo.reservedQuantity || 0),
       0,
     );
-    return { available, stockMode: "manual" };
+    return {
+      available,
+      stockMode: "manual",
+      outOfStockItems: [],
+      limitingItems: [],
+    };
   }
 
   const items = Array.isArray(combo.items) ? combo.items : [];
   if (items.length === 0) {
-    return { available: 0, stockMode: "auto" };
+    return {
+      available: 0,
+      stockMode: "auto",
+      outOfStockItems: [],
+      limitingItems: [],
+    };
   }
 
-  const productIds = items.map((item) => String(item.productId || "")).filter(Boolean);
+  const productIds = items
+    .map((item) => String(item.productId || ""))
+    .filter(Boolean);
   const products = productCache
     ? productIds.map((id) => productCache.get(String(id))).filter(Boolean)
     : await ProductModel.find({ _id: { $in: productIds } })
-        .select("_id stock stock_quantity reserved_quantity track_inventory trackInventory hasVariants variants")
+        .select(
+          "_id stock stock_quantity reserved_quantity track_inventory trackInventory hasVariants variants",
+        )
         .lean();
-  const productMap = new Map(products.map((product) => [String(product._id), product]));
+  const productMap = new Map(
+    products.map((product) => [String(product._id), product]),
+  );
 
-  const availablePerItem = items.map((item) => {
+  const availabilityByItem = items.map((item) => {
     const product = productMap.get(String(item.productId));
-    if (!product) return 0;
+    if (!product) {
+      return {
+        availableCombos: 0,
+        availableUnits: 0,
+        productId: String(item.productId || ""),
+        productTitle: item.productTitle || "Product",
+        variantId: item.variantId ? String(item.variantId) : "",
+        variantName: item.variantName || "",
+        requiredQuantity: Math.max(
+          Number(item.quantityRequired || item.quantity || 1),
+          1,
+        ),
+      };
+    }
 
     const trackInventory =
       typeof product.track_inventory === "boolean"
@@ -191,15 +277,43 @@ export const computeComboAvailability = async (combo, productCache = null) => {
           ? product.trackInventory
           : true;
     if (!trackInventory) {
-      return Number.MAX_SAFE_INTEGER;
+      return {
+        availableCombos: Number.MAX_SAFE_INTEGER,
+        availableUnits: Number.MAX_SAFE_INTEGER,
+        productId: String(item.productId || ""),
+        productTitle: item.productTitle || "Product",
+        variantId: item.variantId ? String(item.variantId) : "",
+        variantName: item.variantName || "",
+        requiredQuantity: Math.max(
+          Number(item.quantityRequired || item.quantity || 1),
+          1,
+        ),
+      };
     }
 
     let available = 0;
-    if (item.variantId && product.hasVariants && Array.isArray(product.variants)) {
+    if (
+      item.variantId &&
+      product.hasVariants &&
+      Array.isArray(product.variants)
+    ) {
       const variant = product.variants.find(
         (v) => String(v?._id) === String(item.variantId),
       );
-      if (!variant) return 0;
+      if (!variant) {
+        return {
+          availableCombos: 0,
+          availableUnits: 0,
+          productId: String(item.productId || ""),
+          productTitle: item.productTitle || "Product",
+          variantId: item.variantId ? String(item.variantId) : "",
+          variantName: item.variantName || "",
+          requiredQuantity: Math.max(
+            Number(item.quantityRequired || item.quantity || 1),
+            1,
+          ),
+        };
+      }
       const stock = Number(variant.stock_quantity ?? variant.stock ?? 0);
       const reserved = Number(variant.reserved_quantity ?? 0);
       available = Math.max(stock - reserved, 0);
@@ -209,19 +323,72 @@ export const computeComboAvailability = async (combo, productCache = null) => {
       available = Math.max(stock - reserved, 0);
     }
 
-    const perCombo = Math.floor(available / Math.max(Number(item.quantity || 1), 1));
-    return perCombo;
+    const requiredQuantity = Math.max(
+      Number(item.quantityRequired || item.quantity || 1),
+      1,
+    );
+    const perCombo = Math.floor(available / requiredQuantity);
+    return {
+      availableCombos: perCombo,
+      availableUnits: available,
+      productId: String(item.productId || ""),
+      productTitle: item.productTitle || "Product",
+      variantId: item.variantId ? String(item.variantId) : "",
+      variantName: item.variantName || "",
+      requiredQuantity,
+    };
   });
 
-  const available = availablePerItem.length
-    ? Math.max(Math.min(...availablePerItem), 0)
+  const available = availabilityByItem.length
+    ? Math.max(
+        Math.min(
+          ...availabilityByItem.map((entry) =>
+            Number(entry.availableCombos || 0),
+          ),
+        ),
+        0,
+      )
     : 0;
 
-  return { available, stockMode: "auto" };
+  const outOfStockItems = availabilityByItem
+    .filter((entry) => Number(entry.availableUnits || 0) <= 0)
+    .map((entry) => ({
+      productId: entry.productId,
+      productTitle: entry.productTitle,
+      variantId: entry.variantId,
+      variantName: entry.variantName,
+      requiredQuantity: entry.requiredQuantity,
+      availableUnits: 0,
+      availableCombos: 0,
+    }));
+
+  const limitingItems = availabilityByItem
+    .filter((entry) => Number.isFinite(entry.availableCombos))
+    .sort(
+      (a, b) => Number(a.availableCombos || 0) - Number(b.availableCombos || 0),
+    )
+    .slice(0, 3)
+    .map((entry) => ({
+      productId: entry.productId,
+      productTitle: entry.productTitle,
+      variantId: entry.variantId,
+      variantName: entry.variantName,
+      requiredQuantity: entry.requiredQuantity,
+      availableUnits: entry.availableUnits,
+      availableCombos: entry.availableCombos,
+    }));
+
+  return { available, stockMode: "auto", outOfStockItems, limitingItems };
 };
 
-export const allocateTotalsProportionally = (baseTotals = [], targetTotal = 0) => {
-  const originalSum = baseTotals.reduce((sum, value) => sum + Number(value || 0), 0);
+export const allocateTotalsProportionally = (
+  baseTotals = [],
+  targetTotal = 0,
+) => {
+  const originalSum = baseTotals.reduce(
+    (sum, value) => sum + Number(value || 0),
+    0,
+  );
   const normalizedTarget = round2(Math.max(Number(targetTotal || 0), 0));
   if (originalSum <= 0 || baseTotals.length === 0) {
     return baseTotals.map(() => 0);
@@ -263,6 +430,8 @@ export const expandComboToOrderProducts = (combo, quantity = 1) => {
       productTitle: item.productTitle || "Product",
       variantId: item.variantId ? String(item.variantId) : null,
       variantName: item.variantName || "",
+      sku: String(item.variantSku || "").trim().toUpperCase(),
+      hsnCode: String(item.hsnCode || "").trim(),
       quantity: lineQty,
       price: unitPrice,
       image: item.image || "",
@@ -274,26 +443,48 @@ export const expandComboToOrderProducts = (combo, quantity = 1) => {
 export const buildComboOrderSnapshot = (combo, quantity = 1) => {
   if (!combo) return null;
   const comboQty = Math.max(Number(quantity || 1), 1);
+  const comboImage =
+    combo.comboThumbnail ||
+    combo.thumbnail ||
+    combo.image ||
+    (Array.isArray(combo.comboImages) ? combo.comboImages[0] : "") ||
+    "";
+
+  const items = (combo.items || []).map((item) => ({
+    productId: String(item.productId || ""),
+    productTitle: item.productTitle || "Product",
+    variantId: item.variantId ? String(item.variantId) : null,
+    variantName: item.variantName || "",
+    variantSku: String(item.variantSku || "")
+      .trim()
+      .toUpperCase(),
+    quantity: Math.max(Number(item.quantity || item.quantityRequired || 1), 1),
+    quantityRequired: Math.max(
+      Number(item.quantityRequired || item.quantity || 1),
+      1,
+    ),
+    price: round2(Number(item.price || 0)),
+    originalPrice: round2(Number(item.originalPrice || 0)),
+    image: item.image || "",
+  }));
 
   return {
     comboId: String(combo._id || ""),
     comboName: combo.name || "Combo",
     comboSlug: combo.slug || "",
+    comboSku: String(combo.sku || "").trim(),
     comboType: combo.comboType || "",
+    thumbnail: comboImage,
+    image: comboImage,
     quantity: comboQty,
     comboPrice: round2(Number(combo.comboPrice || 0)),
-    originalPrice: round2(Number(combo.originalTotal || 0)),
+    originalPrice: round2(
+      Number(combo.originalPrice ?? combo.originalTotal ?? 0),
+    ),
     savings: round2(Number(combo.totalSavings || 0)),
-    items: (combo.items || []).map((item) => ({
-      productId: String(item.productId || ""),
-      productTitle: item.productTitle || "Product",
-      variantId: item.variantId ? String(item.variantId) : null,
-      variantName: item.variantName || "",
-      quantity: Math.max(Number(item.quantity || 1), 1),
-      price: round2(Number(item.price || 0)),
-      originalPrice: round2(Number(item.originalPrice || 0)),
-      image: item.image || "",
-    })),
+    items,
+    productsInsideCombo: items,
+    variantIds: items.map((item) => item.variantId).filter(Boolean),
   };
 };
 
@@ -310,7 +501,12 @@ export const upsertComboItems = async (comboId, items = []) => {
     productTitle: item.productTitle,
     variantId: item.variantId || null,
     variantName: item.variantName || "",
+    variantSku: item.variantSku || "",
     quantity: item.quantity,
+    quantityRequired: Math.max(
+      Number(item.quantityRequired || item.quantity || 1),
+      1,
+    ),
     price: item.price,
     originalPrice: item.originalPrice,
     image: item.image,
@@ -327,7 +523,9 @@ export const resolveComboStatus = ({
   status,
 }) => {
   const now = new Date();
-  const normalizedStatus = String(status || "").trim().toLowerCase();
+  const normalizedStatus = String(status || "")
+    .trim()
+    .toLowerCase();
 
   if (normalizedStatus === "disabled") {
     return "disabled";
@@ -471,7 +669,10 @@ export const evaluateComboEligibility = (combo, { now = new Date() } = {}) => {
   return { eligible: true };
 };
 
-export const resolveUserSegment = async ({ userId = null, highValueThreshold = 5000 } = {}) => {
+export const resolveUserSegment = async ({
+  userId = null,
+  highValueThreshold = 5000,
+} = {}) => {
   if (!userId) {
     return { segment: "new", orderCount: 0, lifetimeSpend: 0 };
   }
@@ -485,11 +686,7 @@ export const resolveUserSegment = async ({ userId = null, highValueThreshold = 5
         orderCount: { $sum: 1 },
         lifetimeSpend: {
           $sum: {
-            $cond: [
-              { $gt: ["$finalAmount", 0] },
-              "$finalAmount",
-              "$totalAmt",
-            ],
+            $cond: [{ $gt: ["$finalAmount", 0] }, "$finalAmount", "$totalAmt"],
           },
         },
       },
@@ -508,11 +705,17 @@ export const resolveUserSegment = async ({ userId = null, highValueThreshold = 5
   };
 };
 
-export const isComboEligibleForSegment = (combo, segmentInfo, categoryIds = []) => {
+export const isComboEligibleForSegment = (
+  combo,
+  segmentInfo,
+  categoryIds = [],
+) => {
   if (!combo) return false;
   const targets = combo.segmentTargets || {};
   const segments = Array.isArray(targets.segments) ? targets.segments : [];
-  const categories = Array.isArray(targets.categories) ? targets.categories.map(String) : [];
+  const categories = Array.isArray(targets.categories)
+    ? targets.categories.map(String)
+    : [];
 
   if (segments.length > 0) {
     if (!segmentInfo?.segment || !segments.includes(segmentInfo.segment)) {
@@ -521,7 +724,9 @@ export const isComboEligibleForSegment = (combo, segmentInfo, categoryIds = []) 
   }
 
   if (categories.length > 0) {
-    const matchesCategory = categoryIds.some((id) => categories.includes(String(id)));
+    const matchesCategory = categoryIds.some((id) =>
+      categories.includes(String(id)),
+    );
     if (!matchesCategory) return false;
   }
 
@@ -550,13 +755,19 @@ export const attachComboAvailability = async (combos = []) => {
   if (!Array.isArray(combos) || combos.length === 0) return [];
 
   const items = combos.flatMap((combo) => combo.items || []);
-  const productIds = items.map((item) => String(item.productId || "")).filter(Boolean);
+  const productIds = items
+    .map((item) => String(item.productId || ""))
+    .filter(Boolean);
   const products = productIds.length
     ? await ProductModel.find({ _id: { $in: productIds } })
-        .select("_id stock stock_quantity reserved_quantity track_inventory trackInventory hasVariants variants")
+        .select(
+          "_id stock stock_quantity reserved_quantity track_inventory trackInventory hasVariants variants",
+        )
         .lean()
     : [];
-  const productMap = new Map(products.map((product) => [String(product._id), product]));
+  const productMap = new Map(
+    products.map((product) => [String(product._id), product]),
+  );
 
   return Promise.all(
     combos.map(async (combo) => {

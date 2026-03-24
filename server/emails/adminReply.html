@@ -1,31 +1,124 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Support Ticket Update</title>
-</head>
-<body style="margin:0;padding:0;background:#f7f7f7;font-family:Segoe UI,Arial,sans-serif;color:#222;">
-  <div style="max-width:620px;margin:0 auto;background:#fff;">
-    <div style="padding:24px;background:#c1591c;color:#fff;">
-      <h1 style="margin:0;font-size:22px;">Support Ticket Update</h1>
-      <p style="margin:8px 0 0;font-size:14px;">Your ticket has a new update from our team.</p>
-    </div>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Support Ticket Update</title>
+  </head>
+  <body
+    style="
+      margin: 0;
+      padding: 0;
+      background: #f6f1ea;
+      font-family: &quot;Segoe UI&quot;, Arial, sans-serif;
+      color: #1c1c1c;
+    "
+  >
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+      <tr>
+        <td align="center" style="padding: 32px 12px">
+          <table
+            role="presentation"
+            width="640"
+            cellspacing="0"
+            cellpadding="0"
+            style="
+              width: 100%;
+              max-width: 640px;
+              background: #ffffff;
+              border-radius: 18px;
+              overflow: hidden;
+              border: 1px solid #eadfd4;
+            "
+          >
+            <tr>
+              <td
+                style="
+                  padding: 24px 28px;
+                  background: linear-gradient(135deg, #c1591c 0%, #7c3f15 100%);
+                  color: #ffffff;
+                "
+              >
+                <div
+                  style="
+                    font-size: 12px;
+                    letter-spacing: 2px;
+                    text-transform: uppercase;
+                    opacity: 0.9;
+                  "
+                >
+                  HealthyOneGram
+                </div>
+                <h1 style="margin: 8px 0 0; font-size: 26px; line-height: 1.2">
+                  Support Ticket Update
+                </h1>
+                <p style="margin: 8px 0 0; font-size: 14px; opacity: 0.95">
+                  Your ticket has a new update from our team.
+                </p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 26px 28px">
+                <p style="margin: 0 0 12px">
+                  Hello <strong>{{customer_name}}</strong>,
+                </p>
+                <p style="margin: 0 0 12px">
+                  Ticket <strong>{{ticket_id}}</strong> is now
+                  <strong>{{status}}</strong>.
+                </p>
+                <p style="margin: 0 0 14px">
+                  Updated at: <strong>{{updated_at}}</strong>
+                </p>
 
-    <div style="padding:24px;">
-      <p style="margin:0 0 12px;">Hello <strong>{{customer_name}}</strong>,</p>
-      <p style="margin:0 0 12px;">Ticket <strong>{{ticket_id}}</strong> is now <strong>{{status}}</strong>.</p>
-      <p style="margin:0 0 12px;">Updated at: <strong>{{updated_at}}</strong></p>
+                <div
+                  style="
+                    background: #f9f5f0;
+                    border-left: 4px solid #c1591c;
+                    padding: 12px 14px;
+                    border-radius: 12px;
+                    margin: 12px 0 16px;
+                  "
+                >
+                  <p style="margin: 0 0 8px; font-weight: 700">Admin Reply</p>
+                  <pre
+                    style="
+                      white-space: pre-wrap;
+                      background: #fff;
+                      padding: 12px;
+                      border-radius: 8px;
+                      margin: 0;
+                      font-family: &quot;Segoe UI&quot;, Arial, sans-serif;
+                    "
+                  >
+{{admin_reply}}</pre
+                  >
+                </div>
 
-      <p style="margin:0 0 8px;font-weight:600;">Admin Reply</p>
-      <pre style="white-space:pre-wrap;background:#f8f8f8;padding:12px;border-radius:6px;margin:0;">{{admin_reply}}</pre>
-
-      <p style="margin:16px 0 0;">You can continue on <a href="{{support_url}}">{{support_url}}</a></p>
-    </div>
-
-    <div style="padding:16px 24px;background:#f0f0f0;font-size:12px;color:#666;">
-      <p style="margin:0;">&copy; {{year}} HealthyOneGram customer support.</p>
-    </div>
-  </div>
-</body>
+                <p style="margin: 0; font-size: 13px; color: #6b5b4d">
+                  You can continue on
+                  <a href="{{support_url}}" style="color: #7c3f15"
+                    >{{support_url}}</a
+                  >
+                </p>
+              </td>
+            </tr>
+            <tr>
+              <td
+                style="
+                  padding: 16px 28px;
+                  background: #f3ebe1;
+                  font-size: 12px;
+                  color: #6b5b4d;
+                "
+              >
+                <p style="margin: 0">
+                  &copy; {{year}} HealthyOneGram customer support.
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
 </html>

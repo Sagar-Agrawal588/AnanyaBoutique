@@ -2,6 +2,7 @@ import admin from "firebase-admin";
 import { sendEmail, sendTemplatedEmail } from "../config/emailService.js";
 import { isFirebaseReady } from "../config/firebaseAdmin.js";
 import Newsletter from "../models/newsletter.model.js";
+import SettingsModel from "../models/settings.model.js";
 import { logger } from "../utils/errorHandler.js";
 
 const isProduction = process.env.NODE_ENV === "production";
@@ -19,6 +20,78 @@ const ALLOWED_SOURCES = new Set([
   "blogs",
   "other",
 ]);
+
+const NEWSLETTER_TEMPLATE_SETTING_KEY = "newsletterEmailTemplate";
+const DEFAULT_NEWSLETTER_SUBJECT = "Latest updates from HealthyOneGram";
+const DEFAULT_NEWSLETTER_HTML = `
+<div style="font-family: Arial, sans-serif; max-width: 680px; margin: 0 auto; color: #1f2937; line-height: 1.6;">
+  <h1 style="margin-bottom: 12px;">HealthyOneGram Newsletter</h1>
+  <p>Hello {{email}},</p>
+  <p>Thanks for being part of our community. This is your newsletter content preview.</p>
+  <p>Update this template from the admin panel before sending.</p>
+</div>
+`.trim();
+
+const resolveBroadcastEnabled = () => {
+  const raw = String(process.env.NEWSLETTER_BROADCAST_ENABLED || "")
+    .trim()
+    .toLowerCase();
+
+  if (!raw) {
+    return process.env.NODE_ENV !== "production";
+  }
+
+  if (["0", "false", "no", "off", "disabled"].includes(raw)) {
+    return false;
+  }
+
+  return ["1", "true", "yes", "on", "enabled"].includes(raw);
+};
+
+const normalizeTemplatePayload = (value = {}) => {
+  const subject = String(value.subject || "").trim();
+  const html = String(value.html || "").trim();
+  return {
+    subject: subject || DEFAULT_NEWSLETTER_SUBJECT,
+    html: html || DEFAULT_NEWSLETTER_HTML,
+    updatedAt: new Date(),
+  };
+};
+
+const getStoredNewsletterTemplate = async () => {
+  const setting = await SettingsModel.findOne({
+    key: NEWSLETTER_TEMPLATE_SETTING_KEY,
+    isActive: true,
+  })
+    .select("value")
+    .lean();
+
+  return normalizeTemplatePayload(setting?.value || {});
+};
+
+const renderBroadcastHtml = (html, email) => {
+  const safeEmail = String(email || "").trim();
+  return String(html || "")
+    .replaceAll("{{email}}", safeEmail)
+    .replaceAll("{{ year }}", String(new Date().getFullYear()))
+    .replaceAll("{{year}}", String(new Date().getFullYear()));
+};
+
+const getBroadcastAttachments = (req) => {
+  const files = Array.isArray(req?.files) ? req.files : [];
+
+  return files
+    .map((file) => {
+      if (!file?.buffer) return null;
+
+      return {
+        filename: String(file.originalname || file.filename || "attachment"),
+        content: file.buffer,
+        contentType: String(file.mimetype || "application/octet-stream"),
+      };
+    })
+    .filter(Boolean);
+};
 
 const normalizeSource = (source) => {
   const value = String(source || "").trim().toLowerCase();
@@ -425,6 +498,248 @@ export const deleteSubscriber = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to delete subscriber",
+    });
+  }
+};
+
+export const getAdminNewsletterTemplate = async (_req, res) => {
+  try {
+    const template = await getStoredNewsletterTemplate();
+    return res.status(200).json({
+      success: true,
+      data: template,
+    });
+  } catch (error) {
+    console.error("Get newsletter template error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch newsletter template",
+    });
+  }
+};
+
+export const updateAdminNewsletterTemplate = async (req, res) => {
+  try {
+    const { subject, html } = req.body || {};
+    const template = normalizeTemplatePayload({ subject, html });
+    const adminId = req.user?.id || req.user || null;
+
+    await SettingsModel.findOneAndUpdate(
+      { key: NEWSLETTER_TEMPLATE_SETTING_KEY },
+      {
+        $set: {
+          value: template,
+          description: "Newsletter HTML template for admin broadcasts",
+          category: "notification",
+          updatedBy: adminId,
+          isActive: true,
+        },
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true },
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Newsletter template saved",
+      data: template,
+    });
+  } catch (error) {
+    console.error("Update newsletter template error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to save newsletter template",
+    });
+  }
+};
+
+export const sendNewsletterBroadcast = async (req, res) => {
+  try {
+    if (!resolveBroadcastEnabled()) {
+      return res.status(403).json({
+        success: false,
+        message:
+          "Broadcast sending is disabled. Set NEWSLETTER_BROADCAST_ENABLED=true to enable.",
+      });
+    }
+
+    const { subject, html, status = "active" } = req.body || {};
+    const attachments = getBroadcastAttachments(req);
+    const storedTemplate = await getStoredNewsletterTemplate();
+    const template = normalizeTemplatePayload({
+      subject: subject || storedTemplate.subject,
+      html: html || storedTemplate.html,
+    });
+
+    const query = {};
+    if (status === "active") query.isActive = true;
+    if (status === "inactive") query.isActive = false;
+
+    const subscribers = await Newsletter.find(query)
+      .select("email isActive")
+      .lean();
+
+    if (!subscribers.length) {
+      return res.status(200).json({
+        success: true,
+        message: "No subscribers available for broadcast",
+        data: {
+          attempted: 0,
+          sent: 0,
+          failed: 0,
+        },
+      });
+    }
+
+    let sent = 0;
+    let failed = 0;
+
+    for (const subscriber of subscribers) {
+      const email = String(subscriber?.email || "").trim().toLowerCase();
+      if (!email || !isValidEmail(email)) {
+        failed += 1;
+        continue;
+      }
+
+      const result = await sendEmail({
+        to: email,
+        subject: template.subject,
+        html: renderBroadcastHtml(template.html, email),
+        text: template.subject,
+        context: "newsletter.broadcast",
+        attachments,
+      });
+
+      if (result?.success) {
+        sent += 1;
+      } else {
+        failed += 1;
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Newsletter broadcast processed",
+      data: {
+        attempted: subscribers.length,
+        sent,
+        failed,
+        attachments: attachments.map((item) => item.filename),
+      },
+    });
+  } catch (error) {
+    console.error("Newsletter broadcast error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to send newsletter broadcast",
+    });
+  }
+};
+
+// Backward-compatible campaign endpoints used by admin UI/routes
+export const getCampaignTemplate = async (_req, res) => {
+  try {
+    const template = await getStoredNewsletterTemplate();
+    return res.status(200).json({
+      success: true,
+      template: {
+        subject: template.subject,
+        html: template.html,
+        text: "",
+      },
+      updatedAt: template.updatedAt || null,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch newsletter template",
+    });
+  }
+};
+
+export const updateCampaignTemplate = async (req, res) => {
+  try {
+    const { subject, html } = req.body || {};
+    const template = normalizeTemplatePayload({ subject, html });
+    const adminId = req.user?.id || req.user || null;
+
+    await SettingsModel.findOneAndUpdate(
+      { key: NEWSLETTER_TEMPLATE_SETTING_KEY },
+      {
+        $set: {
+          value: template,
+          description: "Newsletter HTML template for admin broadcasts",
+          category: "notification",
+          updatedBy: adminId,
+          isActive: true,
+        },
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true },
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Newsletter template saved",
+      template: {
+        subject: template.subject,
+        html: template.html,
+        text: "",
+      },
+      updatedAt: template.updatedAt || null,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Failed to save newsletter template",
+    });
+  }
+};
+
+export const sendCampaign = async (req, res) => {
+  try {
+    const mode = String(req.body?.mode || "active").trim().toLowerCase();
+    const storedTemplate = await getStoredNewsletterTemplate();
+    const template = normalizeTemplatePayload({
+      subject: req.body?.subject || storedTemplate.subject,
+      html: req.body?.html || storedTemplate.html,
+    });
+
+    if (mode === "test") {
+      const testEmail = String(req.body?.testEmail || "").trim().toLowerCase();
+      if (!testEmail || !isValidEmail(testEmail)) {
+        return res.status(400).json({
+          success: false,
+          message: "Valid testEmail is required for test mode",
+        });
+      }
+
+      const result = await sendEmail({
+        to: testEmail,
+        subject: template.subject,
+        html: renderBroadcastHtml(template.html, testEmail),
+        text: template.subject,
+        context: "newsletter.campaign.test",
+      });
+
+      return res.status(result?.success ? 200 : 502).json({
+        success: Boolean(result?.success),
+        message: result?.success
+          ? "Test newsletter sent"
+          : "Failed to send test newsletter",
+        result,
+      });
+    }
+
+    req.body = {
+      ...req.body,
+      subject: template.subject,
+      html: template.html,
+      status: "active",
+    };
+    return sendNewsletterBroadcast(req, res);
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Failed to send newsletter campaign",
     });
   }
 };

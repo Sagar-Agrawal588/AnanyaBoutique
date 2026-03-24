@@ -1,11 +1,14 @@
 "use client";
 
-import { API_BASE_URL } from "@/utils/api";
 import { trackEvent } from "@/utils/analyticsTracker";
+import { API_BASE_URL } from "@/utils/api";
 
 import { useSettings } from "@/context/SettingsContext";
 import { round2 } from "@/utils/gst";
-import { getResponseErrorMessage, parseJsonSafely } from "@/utils/safeJsonFetch";
+import {
+  getResponseErrorMessage,
+  parseJsonSafely,
+} from "@/utils/safeJsonFetch";
 import Cookies from "js-cookie";
 import { createContext, useContext, useEffect, useState } from "react";
 import { toast } from "react-hot-toast";
@@ -24,7 +27,6 @@ const API_URL = String(API_BASE_URL || "")
   .trim()
   .replace(/\/+$/, "")
   .replace(/\/api$/i, "");
-const USE_DEV_PROXY = process.env.NODE_ENV !== "production";
 
 const buildApiUrl = (path) => {
   const normalizedPath = String(path || "").startsWith("/")
@@ -34,20 +36,28 @@ const buildApiUrl = (path) => {
     ? normalizedPath
     : `/api${normalizedPath}`;
 
-  if (USE_DEV_PROXY) {
+  if (!API_URL) {
     return apiPath;
   }
 
   return `${API_URL}${apiPath}`;
 };
 
+const resolveCartErrorMessage = (message, fallback) => {
+  const normalized = String(message || "").trim();
+  if (/an unexpected error occurred/i.test(normalized)) {
+    return fallback;
+  }
+  return normalized || fallback;
+};
+
 const isComboPayload = (value) =>
   Boolean(
     value?.itemType === "combo" ||
-      value?.comboId ||
-      value?.combo?._id ||
-      value?.combo?.id ||
-      value?.comboSnapshot?.comboId,
+    value?.comboId ||
+    value?.combo?._id ||
+    value?.combo?.id ||
+    value?.comboSnapshot?.comboId,
   );
 
 const resolveComboId = (value) => {
@@ -99,8 +109,43 @@ const resolveComboPrice = (value) =>
       0,
   );
 
+const buildComboCartPayload = (combo, quantity = 1) => {
+  const comboId = resolveComboId(combo);
+  const name = resolveComboLabel(combo) || "Combo Bundle";
+  const price = resolveComboPrice(combo);
+  const image =
+    combo?.comboThumbnail ||
+    combo?.thumbnail ||
+    combo?.image ||
+    combo?.comboImages?.[0] ||
+    "/product_1.png";
+  const items = (Array.isArray(combo?.items) ? combo.items : []).map(
+    (item) => ({
+      productId: String(item?.productId || item?.product || "").trim(),
+      variantId:
+        String(item?.variantId || item?.variant || "").trim() || undefined,
+      quantity: Math.max(
+        Number(item?.quantity || item?.quantityRequired || 1),
+        1,
+      ),
+    }),
+  );
+
+  return {
+    type: "combo",
+    itemType: "combo",
+    comboId,
+    name,
+    price,
+    quantity: Math.max(Number(quantity || 1), 1),
+    image,
+    items: items.filter((item) => item.productId),
+  };
+};
+
 const isComboCartItem = (item) =>
-  item?.itemType === "combo" || Boolean(item?.combo || item?.comboSnapshot?.comboId);
+  item?.itemType === "combo" ||
+  Boolean(item?.combo || item?.comboSnapshot?.comboId);
 
 const normalizeCartItems = (rawItems) => {
   if (!Array.isArray(rawItems)) return [];
@@ -200,7 +245,7 @@ export const CartProvider = ({ children }) => {
       if (token) {
         headers["Authorization"] = `Bearer ${token}`;
       }
-      if (sessionId && !token) {
+      if (sessionId) {
         headers["X-Session-Id"] = sessionId;
       }
 
@@ -274,9 +319,20 @@ export const CartProvider = ({ children }) => {
       const sessionId = getSessionId();
       const isComboRequest = isComboPayload(product);
       const comboId = isComboRequest ? resolveComboId(product) : "";
+      const comboPayload = isComboRequest
+        ? buildComboCartPayload(product, quantity)
+        : null;
 
       if (isComboRequest && !comboId) {
         toast.error("Combo is unavailable right now.");
+        return { success: false, message: "Combo unavailable" };
+      }
+
+      if (
+        isComboRequest &&
+        (!comboPayload?.items || comboPayload.items.length === 0)
+      ) {
+        toast.error("Combo items are unavailable right now.");
         return { success: false, message: "Combo unavailable" };
       }
 
@@ -287,7 +343,7 @@ export const CartProvider = ({ children }) => {
       if (token) {
         headers["Authorization"] = `Bearer ${token}`;
       }
-      if (sessionId && !token) {
+      if (sessionId) {
         headers["X-Session-Id"] = sessionId;
       }
 
@@ -297,26 +353,30 @@ export const CartProvider = ({ children }) => {
         credentials: "include",
         body: JSON.stringify(
           isComboRequest
-            ? {
-                itemType: "combo",
-                comboId: comboId || undefined,
-                quantity,
-              }
+            ? comboPayload
             : {
                 productId: product._id || product.id,
                 quantity,
                 price: product.price,
                 originalPrice: product.originalPrice || product.oldPrice,
-                variantId: product.variantId || product.selectedVariant?._id || undefined,
+                variantId:
+                  product.variantId ||
+                  product.selectedVariant?._id ||
+                  undefined,
                 variantName: product.selectedVariant?.name || undefined,
               },
         ),
       });
 
       const data = await parseJsonSafely(response);
-      const errorMessage = getResponseErrorMessage(
-        data,
-        isComboRequest ? "Cannot add combo" : "Cannot add item",
+      const errorMessage = resolveCartErrorMessage(
+        getResponseErrorMessage(
+          data,
+          isComboRequest ? "Unable to add combo right now." : "Cannot add item",
+        ),
+        isComboRequest
+          ? "Unable to add combo right now. Please refresh and try again."
+          : "Cannot add item",
       );
 
       if (data?.success) {
@@ -338,7 +398,9 @@ export const CartProvider = ({ children }) => {
             productId: String(product._id || product.id || ""),
             quantity: Number(quantity || 1),
             price: Number(product.price || 0),
-            variantId: String(product.variantId || product.selectedVariant?._id || ""),
+            variantId: String(
+              product.variantId || product.selectedVariant?._id || "",
+            ),
           });
         }
 
@@ -379,7 +441,9 @@ export const CartProvider = ({ children }) => {
           productId: String(product._id || product.id || ""),
           quantity: Number(quantity || 1),
           price: Number(product.price || 0),
-          variantId: String(product.variantId || product.selectedVariant?._id || ""),
+          variantId: String(
+            product.variantId || product.selectedVariant?._id || "",
+          ),
           source: "local_fallback",
         });
         if (cartItems.length === 0) {
@@ -398,7 +462,9 @@ export const CartProvider = ({ children }) => {
         productId: String(product._id || product.id || ""),
         quantity: Number(quantity || 1),
         price: Number(product.price || 0),
-        variantId: String(product.variantId || product.selectedVariant?._id || ""),
+        variantId: String(
+          product.variantId || product.selectedVariant?._id || "",
+        ),
         source: "local_fallback",
       });
       if (cartItems.length === 0) {
@@ -497,8 +563,12 @@ export const CartProvider = ({ children }) => {
       const token = getToken();
       const sessionId = getSessionId();
       const isComboRequest =
-        options?.itemType === "combo" || options?.comboId || isComboPayload(options);
-      const comboId = isComboRequest ? resolveComboId(options) || productId : "";
+        options?.itemType === "combo" ||
+        options?.comboId ||
+        isComboPayload(options);
+      const comboId = isComboRequest
+        ? resolveComboId(options) || productId
+        : "";
 
       const headers = {
         "Content-Type": "application/json",
@@ -507,7 +577,7 @@ export const CartProvider = ({ children }) => {
       if (token) {
         headers["Authorization"] = `Bearer ${token}`;
       }
-      if (sessionId && !token) {
+      if (sessionId) {
         headers["X-Session-Id"] = sessionId;
       }
 
@@ -531,9 +601,16 @@ export const CartProvider = ({ children }) => {
       });
 
       const data = await parseJsonSafely(response);
-      const errorMessage = getResponseErrorMessage(
-        data,
-        isComboRequest ? "Cannot update combo" : "Cannot update quantity",
+      const errorMessage = resolveCartErrorMessage(
+        getResponseErrorMessage(
+          data,
+          isComboRequest
+            ? "Unable to update combo right now."
+            : "Cannot update quantity",
+        ),
+        isComboRequest
+          ? "Unable to update combo right now. Please refresh and try again."
+          : "Cannot update quantity",
       );
 
       if (data?.success) {
@@ -568,8 +645,9 @@ export const CartProvider = ({ children }) => {
   const updateQuantityLocal = (productId, quantity, variantId = null) => {
     setCartItems((prev) => {
       const newItems = prev.map((item) =>
-        String(item.product?._id || item.product?.id || item.product || item.id) ===
-          String(productId) &&
+        String(
+          item.product?._id || item.product?.id || item.product || item.id,
+        ) === String(productId) &&
         String(resolveVariantId(item) || "") === String(variantId || "")
           ? { ...item, quantity }
           : item,
@@ -583,19 +661,23 @@ export const CartProvider = ({ children }) => {
   // Remove from cart
   const removeFromCart = async (productId, variantId = null, options = {}) => {
     const isComboRequest =
-      options?.itemType === "combo" || options?.comboId || isComboPayload(options);
-    const resolvedVariantId =
-      !isComboRequest
-        ? variantId ??
-          resolveVariantId(
-            cartItems.find(
-              (item) =>
-                String(
-                  item.product?._id || item.product?.id || item.product || item.id,
-                ) === String(productId),
-            ),
-          )
-        : null;
+      options?.itemType === "combo" ||
+      options?.comboId ||
+      isComboPayload(options);
+    const resolvedVariantId = !isComboRequest
+      ? (variantId ??
+        resolveVariantId(
+          cartItems.find(
+            (item) =>
+              String(
+                item.product?._id ||
+                  item.product?.id ||
+                  item.product ||
+                  item.id,
+              ) === String(productId),
+          ),
+        ))
+      : null;
     const comboId = isComboRequest ? resolveComboId(options) || productId : "";
 
     try {
@@ -610,7 +692,7 @@ export const CartProvider = ({ children }) => {
       if (token) {
         headers["Authorization"] = `Bearer ${token}`;
       }
-      if (sessionId && !token) {
+      if (sessionId) {
         headers["X-Session-Id"] = sessionId;
       }
 
@@ -621,14 +703,19 @@ export const CartProvider = ({ children }) => {
           queryParts.push(`comboId=${encodeURIComponent(String(comboId))}`);
         }
       } else if (resolvedVariantId) {
-        queryParts.push(`variantId=${encodeURIComponent(String(resolvedVariantId))}`);
+        queryParts.push(
+          `variantId=${encodeURIComponent(String(resolvedVariantId))}`,
+        );
       }
       const query = queryParts.length ? `?${queryParts.join("&")}` : "";
-      const response = await fetch(buildApiUrl(`/cart/remove/${productId}${query}`), {
-        method: "DELETE",
-        headers,
-        credentials: "include",
-      });
+      const response = await fetch(
+        buildApiUrl(`/cart/remove/${productId}${query}`),
+        {
+          method: "DELETE",
+          headers,
+          credentials: "include",
+        },
+      );
 
       const data = await parseJsonSafely(response);
 
@@ -677,7 +764,9 @@ export const CartProvider = ({ children }) => {
   // Remove locally
   const removeFromCartLocal = (productId, variantId = null, options = {}) => {
     const isComboRequest =
-      options?.itemType === "combo" || options?.comboId || isComboPayload(options);
+      options?.itemType === "combo" ||
+      options?.comboId ||
+      isComboPayload(options);
     const comboId = isComboRequest ? resolveComboId(options) || productId : "";
     setCartItems((prev) => {
       const newItems = prev.filter((item) => {
@@ -717,7 +806,7 @@ export const CartProvider = ({ children }) => {
       if (token) {
         headers["Authorization"] = `Bearer ${token}`;
       }
-      if (sessionId && !token) {
+      if (sessionId) {
         headers["X-Session-Id"] = sessionId;
       }
 
@@ -778,7 +867,14 @@ export const CartProvider = ({ children }) => {
   };
 
   const addComboToCart = (combo, quantity = 1) =>
-    addToCart({ ...combo, itemType: "combo" }, quantity);
+    addToCart(
+      {
+        ...combo,
+        ...buildComboCartPayload(combo, quantity),
+        itemType: "combo",
+      },
+      quantity,
+    );
 
   const updateComboQuantity = (comboId, quantity) =>
     updateQuantity(comboId, quantity, null, { itemType: "combo", comboId });

@@ -5,9 +5,9 @@ import express from "express";
 import helmet from "helmet";
 import http from "http";
 import morgan from "morgan";
+import dns from "node:dns";
 import path from "path";
 import { fileURLToPath } from "url";
-import "./config/dayjs.js";
 import {
   ACCESS_TOKEN_SECRET_KEYS,
   REFRESH_TOKEN_SECRET_KEYS,
@@ -15,17 +15,45 @@ import {
   getRefreshTokenSecret,
 } from "./config/authSecrets.js";
 import connectDb from "./config/connectDb.js";
+import "./config/dayjs.js";
+import analyticsSession from "./middlewares/analyticsSession.js";
 import createCookieCsrfGuard from "./middlewares/csrfGuard.js";
 import {
-  analyticsLimiter,
   adminLimiter,
+  analyticsLimiter,
   generalLimiter,
   uploadLimiter,
 } from "./middlewares/rateLimiter.js";
 import { UPLOAD_ROOT } from "./middlewares/upload.js";
-import analyticsSession from "./middlewares/analyticsSession.js";
 
-dotenv.config();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+dotenv.config({ path: path.resolve(__dirname, ".env") });
+
+const applyLocalDnsOverrides = () => {
+  try {
+    const currentServers = dns.getServers();
+    const usesOnlyLoopback =
+      currentServers.length > 0 &&
+      currentServers.every((server) =>
+        /^127\.0\.0\.1$|^::1$/.test(String(server || "").trim()),
+      );
+
+    if (usesOnlyLoopback) {
+      dns.setServers(["1.1.1.1", "8.8.8.8"]);
+      console.log(
+        "[startup] DNS servers overridden for Atlas SRV lookups (1.1.1.1, 8.8.8.8).",
+      );
+    }
+  } catch (error) {
+    console.warn(
+      "[startup] Unable to override DNS servers for SRV lookups:",
+      error?.message || error,
+    );
+  }
+};
+
+applyLocalDnsOverrides();
 
 const normalizeEnvValue = (value) => {
   let normalized = String(value || "").trim();
@@ -145,9 +173,7 @@ if (refreshTokenSecret.length < MIN_JWT_SECRET_LENGTH) {
   );
 }
 if (accessTokenSecret === refreshTokenSecret) {
-  throw new Error(
-    "Access and refresh token secrets must be different values.",
-  );
+  throw new Error("Access and refresh token secrets must be different values.");
 }
 
 // Route imports
@@ -155,12 +181,14 @@ import { initializeFirebaseAdmin } from "./config/firebaseAdmin.js";
 import { initializeSettings } from "./controllers/settings.controller.js";
 import { initSocket } from "./realtime/socket.js";
 import aboutPageRouter from "./routes/aboutPage.route.js";
+import apiDocumentRouter from "./routes/apiDocument.route.js";
 import addressRouter from "./routes/address.route.js";
+import adminAnalyticsRouter from "./routes/adminAnalytics.route.js";
+import adminAuthRouter from "./routes/adminAuth.route.js";
+import adminEmailTemplatesRouter from "./routes/adminEmailTemplates.route.js";
 import adminMembershipRouter from "./routes/adminMembership.route.js";
 import adminOrdersRouter from "./routes/adminOrders.js";
-import adminAnalyticsRouter from "./routes/adminAnalytics.route.js";
 import adminReviewRouter from "./routes/adminReview.route.js";
-import adminAuthRouter from "./routes/adminAuth.route.js";
 import analyticsRouter from "./routes/analytics.route.js";
 import bannerRouter from "./routes/banner.route.js";
 import blogRouter from "./routes/blog.route.js";
@@ -182,14 +210,15 @@ import notificationRouter from "./routes/notification.route.js";
 import orderRouter from "./routes/order.route.js";
 import policyRouter from "./routes/policy.route.js";
 import popupRouter from "./routes/popup.route.js";
+import partnerApiRouter from "./routes/partnerApi.route.js";
 import productRouter from "./routes/product.route.js";
 import purchaseOrderRouter from "./routes/purchaseOrder.route.js";
 import refundRouter from "./routes/refund.route.js";
 import reviewRouter from "./routes/review.route.js";
 import settingsRouter from "./routes/settings.route.js";
 import shippingRouter from "./routes/shipping.route.js";
-import supportRouter from "./routes/support.route.js";
 import statisticsRouter from "./routes/statistics.route.js";
+import supportRouter from "./routes/support.route.js";
 import trackingRouter from "./routes/tracking.route.js";
 import uploadRouter from "./routes/upload.route.js";
 import userRouter from "./routes/user.route.js";
@@ -197,16 +226,13 @@ import userLocationLogRouter from "./routes/userLocationLog.route.js";
 import vendorRouter from "./routes/vendor.routes.js";
 import webhookRouter from "./routes/webhook.route.js";
 import wishlistRouter from "./routes/wishlist.route.js";
+import { startComboAnalysisJob } from "./services/combos/comboAnalysis.service.js";
+import { startFrequentlyBoughtTogetherJob } from "./services/combos/frequentlyBoughtTogether.service.js";
 import { startExpressbeesPolling } from "./services/expressbeesPolling.service.js";
-import { startOrderFeedbackJob } from "./services/orderFeedback.service.js";
 import { startInventoryReservationExpiryJob } from "./services/inventoryReservationExpiry.service.js";
 import { startMembershipExpiryJob } from "./services/membershipExpiry.service.js";
+import { startOrderFeedbackJob } from "./services/orderFeedback.service.js";
 import { startLocationLogRetentionJob } from "./services/userLocationLog.service.js";
-import { startFrequentlyBoughtTogetherJob } from "./services/combos/frequentlyBoughtTogether.service.js";
-
-// Get __dirname in ES modules
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const app = express();
 const server = http.createServer(app);
@@ -374,6 +400,7 @@ app.get("/", (req, res) => {
 
 // API routes with rate limiting
 app.use("/api/about", generalLimiter, aboutPageRouter);
+app.use("/api/api-docs", generalLimiter, apiDocumentRouter);
 app.use("/api", analyticsLimiter, trackingRouter);
 app.use("/api/analytics", analyticsLimiter, analyticsRouter);
 app.use("/api/user", generalLimiter, userRouter);
@@ -387,6 +414,7 @@ app.use("/api/blogs", adminLimiter, blogRouter);
 app.use("/api/orders", generalLimiter, orderRouter);
 app.use("/api/admin/orders", adminLimiter, adminOrdersRouter);
 app.use("/api/admin/analytics", adminLimiter, adminAnalyticsRouter);
+app.use("/api/admin/email-templates", adminLimiter, adminEmailTemplatesRouter);
 app.use("/api/admin", adminLimiter, adminMembershipRouter);
 app.use("/api/cart", generalLimiter, cartRouter);
 app.use("/api/combos", generalLimiter, comboRouter);
@@ -406,6 +434,7 @@ app.use("/api/influencers", generalLimiter, influencerRouter);
 app.use("/api/invoices", generalLimiter, invoiceRouter);
 app.use("/api/notifications", generalLimiter, notificationRouter);
 app.use("/api/newsletter", generalLimiter, newsletterRouter);
+app.use("/api/v1/partner", generalLimiter, partnerApiRouter);
 app.use("/api/settings", generalLimiter, settingsRouter);
 app.use("/api/shipping", generalLimiter, shippingRouter);
 app.use("/api/webhooks", generalLimiter, webhookRouter);
@@ -442,7 +471,9 @@ const isPaytmCallbackRequest = (req) => {
   if (origin.includes("paytm") || referer.includes("paytm")) {
     return true;
   }
-  const contentType = String(req?.headers?.["content-type"] || "").toLowerCase();
+  const contentType = String(
+    req?.headers?.["content-type"] || "",
+  ).toLowerCase();
   if (contentType.includes("application/x-www-form-urlencoded")) {
     return true;
   }
@@ -503,67 +534,92 @@ app.use((err, req, res, next) => {
 
 app.use((err, req, res, next) => {
   const isProduction = process.env.NODE_ENV === "production";
+  const requestHost = String(
+    req.hostname || req.headers.host || "",
+  ).toLowerCase();
+  const isLocalRequest =
+    requestHost.includes("localhost") || requestHost.includes("127.0.0.1");
   console.error("Global error:", isProduction ? err.message : err);
 
   res.status(err.status || 500).json({
     error: true,
     success: false,
-    message: isProduction
-      ? "An unexpected error occurred"
-      : err.message || "Internal server error",
+    message:
+      isProduction && !isLocalRequest
+        ? "An unexpected error occurred"
+        : err.message || "Internal server error",
     ...(isProduction ? {} : { stack: err.stack }),
   });
 });
 
-connectDb().then(async () => {
-  await initializeSettings();
+connectDb()
+  .then(async () => {
+    await initializeSettings();
 
-  // Firebase is optional in production; skip initialization when credentials are absent.
-  if (process.env.FIREBASE_PRIVATE_KEY) {
+    // Firebase is optional in production; skip initialization when credentials are absent.
+    if (process.env.FIREBASE_PRIVATE_KEY) {
+      try {
+        initializeFirebaseAdmin();
+      } catch (error) {
+        console.error(
+          "Firebase initialization skipped due to configuration error:",
+          error?.message || error,
+        );
+      }
+    } else {
+      console.log(
+        "Firebase credentials not provided; push notifications are disabled.",
+      );
+    }
+
+    startLocationLogRetentionJob();
+
+    const requestedPort = Number(process.env.PORT || 8080);
+    const isLocalEnv = process.env.NODE_ENV !== "production";
+    let activePort = requestedPort;
+
+    initSocket(server, {
+      origins: allowedOrigins,
+      jwtSecret: accessTokenSecret,
+    });
+
+    server.on("error", (error) => {
+      if (error?.code === "EADDRINUSE" && isLocalEnv) {
+        const fallbackPort = Number(activePort) + 1;
+        console.warn(
+          `[startup] Port ${activePort} is already in use. Retrying on ${fallbackPort}.`,
+        );
+        activePort = fallbackPort;
+        setTimeout(() => {
+          server.listen(activePort);
+        }, 100);
+        return;
+      }
+
+      console.error("Server failed to start:", error?.message || error);
+      process.exit(1);
+    });
+
+    server.listen(activePort, () => {
+      console.log(`Server is running on port ${activePort}`);
+      console.log("API service started");
+    });
+
     try {
-      initializeFirebaseAdmin();
+      startExpressbeesPolling();
     } catch (error) {
       console.error(
-        "Firebase initialization skipped due to configuration error:",
+        "Xpressbees polling startup skipped due to configuration error:",
         error?.message || error,
       );
     }
-  } else {
-    console.log(
-      "Firebase credentials not provided; push notifications are disabled.",
-    );
-  }
-
-  startLocationLogRetentionJob();
-
-  const PORT = process.env.PORT || 8080;
-
-  initSocket(server, {
-    origins: allowedOrigins,
-    jwtSecret: accessTokenSecret,
+    startInventoryReservationExpiryJob();
+    startMembershipExpiryJob();
+    startOrderFeedbackJob();
+    startFrequentlyBoughtTogetherJob();
+    startComboAnalysisJob();
+  })
+  .catch((error) => {
+    console.error("Server startup failed:", error?.message || error);
+    process.exit(1);
   });
-
-  server.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
-    console.log("API service started");
-  });
-
-  try {
-    startExpressbeesPolling();
-  } catch (error) {
-    console.error(
-      "Xpressbees polling startup skipped due to configuration error:",
-      error?.message || error,
-    );
-  }
-  startInventoryReservationExpiryJob();
-  startMembershipExpiryJob();
-  startOrderFeedbackJob();
-  startFrequentlyBoughtTogetherJob();
-}).catch((error) => {
-  console.error(
-    "Server startup failed:",
-    error?.message || error,
-  );
-  process.exit(1);
-});
