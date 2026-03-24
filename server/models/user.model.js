@@ -132,6 +132,11 @@ const userSchema = mongoose.Schema(
       orderUpdates: { type: Boolean, default: true },
       promotionalEmails: { type: Boolean, default: true },
     },
+    email_opt_out: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
     // Appearance Settings
     preferences: {
       darkMode: { type: Boolean, default: false },

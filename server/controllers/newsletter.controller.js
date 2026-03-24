@@ -2,7 +2,9 @@ import admin from "firebase-admin";
 import { sendEmail, sendTemplatedEmail } from "../config/emailService.js";
 import { isFirebaseReady } from "../config/firebaseAdmin.js";
 import Newsletter from "../models/newsletter.model.js";
+import UserModel from "../models/user.model.js";
 import SettingsModel from "../models/settings.model.js";
+import EmailLogModel from "../models/emailLog.model.js";
 import { logger } from "../utils/errorHandler.js";
 
 const isProduction = process.env.NODE_ENV === "production";
@@ -105,6 +107,29 @@ const getPublicSiteUrl = () => {
     "https://healthyonegram.com";
   const first = String(raw).split(",")[0].trim();
   return first.replace(/\/+$/, "");
+};
+
+const appendUnsubscribeFooter = (html, email) => {
+  const siteUrl = getPublicSiteUrl();
+  const unsubscribeUrl = `${siteUrl}/api/newsletter/unsubscribe?email=${encodeURIComponent(
+    String(email || "").trim().toLowerCase(),
+  )}`;
+  return `${String(html || "")}<div style="margin-top:20px;padding-top:12px;border-top:1px solid #e5e7eb;color:#6b7280;font-size:12px;">To stop marketing emails, <a href="${unsubscribeUrl}">unsubscribe here</a>.</div>`;
+};
+
+const applyUserEmailOptOut = async (email, optedOut) => {
+  const normalizedEmail = String(email || "").trim().toLowerCase();
+  if (!normalizedEmail) return;
+
+  await UserModel.updateMany(
+    { email: { $regex: `^${normalizedEmail.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, $options: "i" } },
+    {
+      $set: {
+        email_opt_out: Boolean(optedOut),
+        "notificationSettings.promotionalEmails": !Boolean(optedOut),
+      },
+    },
+  );
 };
 
 /**
@@ -323,6 +348,7 @@ export const subscribe = async (req, res) => {
       existingSubscriber.unsubscribedAt = null;
       existingSubscriber.subscribedAt = new Date();
       await existingSubscriber.save();
+      await applyUserEmailOptOut(normalizedEmail, false);
 
       // Also update in Firebase
       await updateFirebaseSubscriber(normalizedEmail, true);
@@ -347,6 +373,8 @@ export const subscribe = async (req, res) => {
       email: normalizedEmail,
       source: safeSource,
     });
+
+    await applyUserEmailOptOut(normalizedEmail, false);
 
     // Send welcome email to new subscriber (awaited for reliable logging)
     await sendWelcomeEmail(normalizedEmail);
@@ -396,7 +424,7 @@ export const subscribe = async (req, res) => {
 // Unsubscribe from newsletter
 export const unsubscribe = async (req, res) => {
   try {
-    const { email } = req.body;
+    const email = req.body?.email || req.query?.email;
 
     if (!email) {
       return res.status(400).json({
@@ -418,11 +446,20 @@ export const unsubscribe = async (req, res) => {
     subscriber.isActive = false;
     subscriber.unsubscribedAt = new Date();
     await subscriber.save();
+    await applyUserEmailOptOut(normalizedEmail, true);
 
     // Also update in Firebase
     await updateFirebaseSubscriber(normalizedEmail, false);
 
-    res.status(200).json({
+    const isBrowserRequest = req.method === "GET";
+
+    if (isBrowserRequest) {
+      return res.status(200).send(
+        `<html><body style="font-family:Arial,sans-serif;padding:32px;color:#111827;"><h2>You have been unsubscribed</h2><p>${normalizedEmail} will no longer receive promotional/newsletter emails.</p><p>Transactional emails (order updates/invoices) will still be delivered.</p></body></html>`,
+      );
+    }
+
+    return res.status(200).json({
       success: true,
       message: "You have been unsubscribed from our newsletter",
     });
@@ -600,10 +637,42 @@ export const sendNewsletterBroadcast = async (req, res) => {
         continue;
       }
 
+      const user = await UserModel.findOne({
+        email: { $regex: `^${email.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, $options: "i" },
+      })
+        .select("_id email_opt_out notificationSettings")
+        .lean();
+
+      if (
+        user?.email_opt_out === true ||
+        user?.notificationSettings?.promotionalEmails === false ||
+        user?.notificationSettings?.emailNotifications === false
+      ) {
+        await EmailLogModel.create({
+          user_id: user?._id || null,
+          to_email: email,
+          email_type: "newsletter",
+          template_type: "newsletterEmailTemplate",
+          subject: template.subject,
+          status: "skipped",
+          error_message: "User opted out from promotional emails",
+        });
+        continue;
+      }
+
+      const emailLog = await EmailLogModel.create({
+        user_id: user?._id || null,
+        to_email: email,
+        email_type: "newsletter",
+        template_type: "newsletterEmailTemplate",
+        subject: template.subject,
+        status: "queued",
+      });
+
       const result = await sendEmail({
         to: email,
         subject: template.subject,
-        html: renderBroadcastHtml(template.html, email),
+        html: appendUnsubscribeFooter(renderBroadcastHtml(template.html, email), email),
         text: template.subject,
         context: "newsletter.broadcast",
         attachments,
@@ -611,8 +680,27 @@ export const sendNewsletterBroadcast = async (req, res) => {
 
       if (result?.success) {
         sent += 1;
+        await EmailLogModel.updateOne(
+          { _id: emailLog._id },
+          {
+            $set: {
+              status: "sent",
+              sent_at: new Date(),
+              provider_message_id: String(result?.messageId || ""),
+            },
+          },
+        );
       } else {
         failed += 1;
+        await EmailLogModel.updateOne(
+          { _id: emailLog._id },
+          {
+            $set: {
+              status: "failed",
+              error_message: String(result?.error || "Failed to send").slice(0, 1000),
+            },
+          },
+        );
       }
     }
 

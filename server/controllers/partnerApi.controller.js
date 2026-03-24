@@ -8,6 +8,7 @@ import Partner from "../models/partner.model.js";
 import PartnerApiKey from "../models/partnerApiKey.model.js";
 import Product from "../models/product.model.js";
 import { getPartnerRateLimitSnapshot } from "../middlewares/partnerApiAuth.js";
+import { splitGstInclusiveAmount } from "../services/tax.service.js";
 
 const SITE_URL =
   String(process.env.NEXT_PUBLIC_SITE_URL || process.env.CLIENT_URL || "https://healthyonegram.com")
@@ -68,6 +69,79 @@ const parseNumber = (value, fallback) => {
   return Number.isFinite(number) ? number : fallback;
 };
 
+const ALLOWED_VISIBLE_PRODUCT_FIELDS = Object.freeze([
+  "description",
+  "shortDescription",
+  "images",
+  "category",
+  "tags",
+  "discount",
+  "stock",
+  "shipping",
+  "hsnCode",
+  "gstBreakup",
+]);
+
+const DEFAULT_VISIBLE_PRODUCT_FIELDS = Object.freeze([
+  "description",
+  "shortDescription",
+  "images",
+  "category",
+  "tags",
+  "discount",
+  "stock",
+  "shipping",
+  "hsnCode",
+  "gstBreakup",
+]);
+
+const normalizeVisibleProductFields = (rawFields) => {
+  const incoming = Array.isArray(rawFields) ? rawFields : DEFAULT_VISIBLE_PRODUCT_FIELDS;
+  const normalized = incoming
+    .map((field) => String(field || "").trim())
+    .filter((field) => ALLOWED_VISIBLE_PRODUCT_FIELDS.includes(field));
+
+  return normalized.length > 0
+    ? Array.from(new Set(normalized))
+    : [...DEFAULT_VISIBLE_PRODUCT_FIELDS];
+};
+
+const hasVisibleField = (visibleFields, fieldName) =>
+  normalizeVisibleProductFields(visibleFields).includes(fieldName);
+
+const normalizeTaxState = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+
+const buildPriceTaxBreakup = (inclusiveAmount, stateForTax) => {
+  const summary = splitGstInclusiveAmount(inclusiveAmount, 5, stateForTax || "");
+  const normalizedState = normalizeTaxState(stateForTax);
+  const isRajasthan = normalizedState === "rajasthan";
+
+  const taxPaise = Math.round(Number(summary.tax || 0) * 100);
+  if (isRajasthan) {
+    const half = Math.floor(taxPaise / 2);
+    const remaining = taxPaise - half;
+    return {
+      ...summary,
+      mode: "CGST_SGST",
+      cgst: half / 100,
+      sgst: remaining / 100,
+      igst: 0,
+    };
+  }
+
+  return {
+    ...summary,
+    mode: "IGST",
+    cgst: 0,
+    sgst: 0,
+    igst: taxPaise / 100,
+  };
+};
+
 const escapeRegex = (value = "") =>
   String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -87,47 +161,108 @@ const getAvailableStock = (product) => {
   return Math.max(directAvailable, 0);
 };
 
-const mapPartnerProduct = (product) => {
+const mapPartnerProduct = (product, options = {}) => {
+  const visibleFields = normalizeVisibleProductFields(options.visibleFields);
+  const stateForTax = String(options.stateForTax || "").trim();
   const availableQuantity = getAvailableStock(product);
   const discountedAmount = Number(product?.price || 0);
   const originalAmount = Number(product?.originalPrice || discountedAmount || 0);
   const discountValue = Number(product?.discount || 0);
 
-  return {
+  const discountedTax = buildPriceTaxBreakup(discountedAmount, stateForTax);
+  const originalTax = buildPriceTaxBreakup(originalAmount, stateForTax);
+
+  const payload = {
     id: String(product._id),
     sku: String(product.sku || "").trim() || null,
     name: product.name,
-    description: product.description || "",
-    shortDescription: product.shortDescription || "",
-    images: Array.isArray(product.images) ? product.images.filter(Boolean) : [],
     productUrl: `${SITE_URL}/product/${String(product._id)}`,
-    category: product.category
+    hsnCode: String(product?.hsnCode || "").trim() || null,
+    price: {
+      amount: discountedAmount,
+      currency: "INR",
+      originalAmount,
+      taxableAmount: Number(discountedTax.taxableAmount || 0),
+      gstAmount: Number(discountedTax.tax || 0),
+      amountWithGst: Number(discountedTax.grossAmount || discountedAmount),
+    },
+    updatedAt: product.updatedAt,
+  };
+
+  if (hasVisibleField(visibleFields, "description")) {
+    payload.description = product.description || "";
+  }
+
+  if (hasVisibleField(visibleFields, "shortDescription")) {
+    payload.shortDescription = product.shortDescription || "";
+  }
+
+  if (hasVisibleField(visibleFields, "images")) {
+    payload.images = Array.isArray(product.images) ? product.images.filter(Boolean) : [];
+  }
+
+  if (hasVisibleField(visibleFields, "category")) {
+    payload.category = product.category
       ? {
           id: String(product.category._id || ""),
           name: product.category.name || "",
           slug: product.category.slug || "",
         }
-      : null,
-    tags: Array.isArray(product.tags) ? product.tags : [],
-    price: {
-      amount: discountedAmount,
-      currency: "INR",
-      originalAmount,
-    },
-    discount: {
+      : null;
+  }
+
+  if (hasVisibleField(visibleFields, "tags")) {
+    payload.tags = Array.isArray(product.tags) ? product.tags : [];
+  }
+
+  if (hasVisibleField(visibleFields, "discount")) {
+    payload.discount = {
       type: "percentage",
       value: discountValue,
-    },
-    stock: {
+    };
+  }
+
+  if (hasVisibleField(visibleFields, "stock")) {
+    payload.stock = {
       status: availableQuantity > 0 ? "in_stock" : "out_of_stock",
       availableQuantity,
-    },
-    shipping: {
+    };
+  }
+
+  if (hasVisibleField(visibleFields, "shipping")) {
+    payload.shipping = {
       freeShipping: discountedAmount >= 499,
       estimatedDispatchDays: availableQuantity > 0 ? 1 : 3,
-    },
-    updatedAt: product.updatedAt,
-  };
+    };
+  }
+
+  if (hasVisibleField(visibleFields, "gstBreakup")) {
+    payload.price.gstBreakup = {
+      state: stateForTax || "",
+      mode: discountedTax.mode,
+      rate: Number(discountedTax.rate || 5),
+      cgst: Number(discountedTax.cgst || 0),
+      sgst: Number(discountedTax.sgst || 0),
+      igst: Number(discountedTax.igst || 0),
+    };
+    payload.price.originalGstBreakup = {
+      state: stateForTax || "",
+      mode: originalTax.mode,
+      rate: Number(originalTax.rate || 5),
+      cgst: Number(originalTax.cgst || 0),
+      sgst: Number(originalTax.sgst || 0),
+      igst: Number(originalTax.igst || 0),
+      taxableAmount: Number(originalTax.taxableAmount || 0),
+      gstAmount: Number(originalTax.tax || 0),
+      amountWithGst: Number(originalTax.grossAmount || originalAmount),
+    };
+  }
+
+  if (!hasVisibleField(visibleFields, "hsnCode")) {
+    delete payload.hsnCode;
+  }
+
+  return payload;
 };
 
 const withMeta = (req, payload) => ({
@@ -192,16 +327,16 @@ const getPartnerGuideDetails = (req) => {
     {
       method: "GET",
       path: "/products",
-      fullUrl: `${baseUrl}/products?limit=20&page=1`,
+      fullUrl: `${baseUrl}/products?limit=20&page=1&deliveryState=Rajasthan`,
       scope: "catalog.read",
-      description: "List products",
+      description: "List products (includes GST breakup by deliveryState)",
     },
     {
       method: "GET",
       path: "/products/:productId",
-      fullUrl: `${baseUrl}/products/PRODUCT_ID_OR_SLUG`,
+      fullUrl: `${baseUrl}/products/PRODUCT_ID_OR_SLUG?deliveryState=Rajasthan`,
       scope: "catalog.read",
-      description: "Get one product",
+      description: "Get one product (includes GST breakup by deliveryState)",
     },
     {
       method: "GET",
@@ -213,9 +348,9 @@ const getPartnerGuideDetails = (req) => {
     {
       method: "GET",
       path: "/pricing",
-      fullUrl: `${baseUrl}/pricing`,
+      fullUrl: `${baseUrl}/pricing?deliveryState=Rajasthan`,
       scope: "price.read",
-      description: "Current prices and discounts",
+      description: "Current prices with GST/taxable breakup by deliveryState",
     },
     {
       method: "GET",
@@ -600,6 +735,8 @@ export const getPartnerApiGuidePdf = async (req, res) => {
 
 export const getPartnerProducts = async (req, res) => {
   try {
+    const deliveryState = String(req.query.deliveryState || req.query.state || "").trim();
+    const visibleFields = normalizeVisibleProductFields(req.partner?.visibleProductFields);
     const page = Math.max(parseNumber(req.query.page, 1), 1);
     const limit = Math.min(Math.max(parseNumber(req.query.limit, 20), 1), 100);
     const skip = (page - 1) * limit;
@@ -663,7 +800,12 @@ export const getPartnerProducts = async (req, res) => {
       Product.countDocuments(query),
     ]);
 
-    const data = items.map(mapPartnerProduct);
+    const data = items.map((item) =>
+      mapPartnerProduct(item, {
+        stateForTax: deliveryState,
+        visibleFields,
+      }),
+    );
     const body = withMeta(req, {
       success: true,
       data,
@@ -695,6 +837,8 @@ export const getPartnerProducts = async (req, res) => {
 
 export const getPartnerProductById = async (req, res) => {
   try {
+    const deliveryState = String(req.query.deliveryState || req.query.state || "").trim();
+    const visibleFields = normalizeVisibleProductFields(req.partner?.visibleProductFields);
     const id = String(req.params.productId || "").trim();
     const query = { isActive: true };
     if (mongoose.Types.ObjectId.isValid(id)) {
@@ -722,7 +866,10 @@ export const getPartnerProductById = async (req, res) => {
 
     const body = withMeta(req, {
       success: true,
-      data: mapPartnerProduct(product),
+      data: mapPartnerProduct(product, {
+        stateForTax: deliveryState,
+        visibleFields,
+      }),
     });
 
     if (setEtagAndHandle304(req, res, body)) return;
@@ -822,6 +969,8 @@ export const getPartnerInventory = async (req, res) => {
 
 export const getPartnerPricing = async (req, res) => {
   try {
+    const deliveryState = String(req.query.deliveryState || req.query.state || "").trim();
+    const visibleFields = normalizeVisibleProductFields(req.partner?.visibleProductFields);
     const query = { isActive: true };
 
     const productId = String(req.query.productId || "").trim();
@@ -844,20 +993,58 @@ export const getPartnerPricing = async (req, res) => {
       .limit(200)
       .lean();
 
-    const data = items.map((item) => ({
-      productId: String(item._id),
-      sku: String(item.sku || "").trim() || null,
-      price: {
-        amount: Number(item.price || 0),
+    const data = items.map((item) => {
+      const amountWithGst = Number(item.price || 0);
+      const originalAmountWithGst = Number(item.originalPrice || item.price || 0);
+      const discountedTax = buildPriceTaxBreakup(amountWithGst, deliveryState);
+      const originalTax = buildPriceTaxBreakup(originalAmountWithGst, deliveryState);
+      const price = {
+        amount: amountWithGst,
         currency: "INR",
-        originalAmount: Number(item.originalPrice || item.price || 0),
-      },
-      discount: {
-        type: "percentage",
-        value: Number(item.discount || 0),
-      },
-      updatedAt: item.updatedAt,
-    }));
+        originalAmount: originalAmountWithGst,
+        taxableAmount: Number(discountedTax.taxableAmount || 0),
+        gstAmount: Number(discountedTax.tax || 0),
+        amountWithGst: Number(discountedTax.grossAmount || amountWithGst),
+      };
+
+      if (hasVisibleField(visibleFields, "gstBreakup")) {
+        price.gstBreakup = {
+          state: deliveryState || "",
+          mode: discountedTax.mode,
+          rate: Number(discountedTax.rate || 5),
+          cgst: Number(discountedTax.cgst || 0),
+          sgst: Number(discountedTax.sgst || 0),
+          igst: Number(discountedTax.igst || 0),
+        };
+        price.originalGstBreakup = {
+          state: deliveryState || "",
+          mode: originalTax.mode,
+          rate: Number(originalTax.rate || 5),
+          cgst: Number(originalTax.cgst || 0),
+          sgst: Number(originalTax.sgst || 0),
+          igst: Number(originalTax.igst || 0),
+          taxableAmount: Number(originalTax.taxableAmount || 0),
+          gstAmount: Number(originalTax.tax || 0),
+          amountWithGst: Number(originalTax.grossAmount || originalAmountWithGst),
+        };
+      }
+
+      const record = {
+        productId: String(item._id),
+        sku: String(item.sku || "").trim() || null,
+        price,
+        updatedAt: item.updatedAt,
+      };
+
+      if (hasVisibleField(visibleFields, "discount")) {
+        record.discount = {
+          type: "percentage",
+          value: Number(item.discount || 0),
+        };
+      }
+
+      return record;
+    });
 
     return res.status(200).json(withMeta(req, { success: true, data }));
   } catch (error) {
@@ -948,6 +1135,7 @@ export const adminCreatePartner = async (req, res) => {
       scopes: Array.isArray(req.body?.scopes) && req.body.scopes.length
         ? req.body.scopes
         : ["catalog.read", "inventory.read", "price.read"],
+      visibleProductFields: normalizeVisibleProductFields(req.body?.visibleProductFields),
       rateLimitPerMinute: parseNumber(req.body?.rateLimitPerMinute, 120),
       allowedOrigins: Array.isArray(req.body?.allowedOrigins) ? req.body.allowedOrigins : [],
       notes: String(req.body?.notes || "").trim(),
@@ -972,6 +1160,7 @@ export const adminCreatePartner = async (req, res) => {
           contactEmail: partner.contactEmail,
           status: partner.status,
           scopes: partner.scopes,
+          visibleProductFields: normalizeVisibleProductFields(partner.visibleProductFields),
           rateLimitPerMinute: partner.rateLimitPerMinute,
         },
         apiKey: generated.apiKey,
@@ -1015,6 +1204,7 @@ export const adminListPartners = async (_req, res) => {
           contactEmail: partner.contactEmail,
           status: partner.status,
           scopes: partner.scopes,
+          visibleProductFields: normalizeVisibleProductFields(partner.visibleProductFields),
           rateLimitPerMinute: partner.rateLimitPerMinute,
           rateLimit,
           keyPrefix: key?.keyPrefix || null,
@@ -1061,6 +1251,7 @@ export const adminExportPartnersCsv = async (_req, res) => {
       "contactEmail",
       "status",
       "scopes",
+      "visibleProductFields",
       "rateLimitPerMinute",
       "keyPrefix",
       "keyCreatedAt",
@@ -1076,6 +1267,9 @@ export const adminExportPartnersCsv = async (_req, res) => {
         partner.contactEmail || "",
         partner.status || "",
         Array.isArray(partner.scopes) ? partner.scopes.join("|") : "",
+        Array.isArray(partner.visibleProductFields)
+          ? normalizeVisibleProductFields(partner.visibleProductFields).join("|")
+          : "",
         String(partner.rateLimitPerMinute ?? ""),
         key?.keyPrefix || "",
         key?.createdAt ? new Date(key.createdAt).toISOString() : "",
@@ -1155,6 +1349,14 @@ export const adminUpdatePartner = async (req, res) => {
     if (req.body?.scopes !== undefined && Array.isArray(req.body.scopes)) {
       update.scopes = req.body.scopes;
     }
+    if (
+      req.body?.visibleProductFields !== undefined &&
+      Array.isArray(req.body.visibleProductFields)
+    ) {
+      update.visibleProductFields = normalizeVisibleProductFields(
+        req.body.visibleProductFields,
+      );
+    }
     if (req.body?.rateLimitPerMinute !== undefined) {
       update.rateLimitPerMinute = Math.min(Math.max(parseNumber(req.body.rateLimitPerMinute, 120), 10), 5000);
     }
@@ -1181,6 +1383,7 @@ export const adminUpdatePartner = async (req, res) => {
         contactEmail: partner.contactEmail,
         status: partner.status,
         scopes: partner.scopes,
+        visibleProductFields: normalizeVisibleProductFields(partner.visibleProductFields),
         rateLimitPerMinute: partner.rateLimitPerMinute,
       },
     });

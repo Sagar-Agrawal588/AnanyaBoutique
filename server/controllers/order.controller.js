@@ -1073,6 +1073,57 @@ const sendOrderConfirmationEmail = async (order) => {
       Number(order?.finalAmount || order?.totalAmt || 0),
     );
 
+    const awbNumber = String(order?.awb_number || order?.awbNumber || "").trim();
+    const trackingUrlTemplate = String(
+      process.env.XPRESSBEES_TRACKING_URL_TEMPLATE ||
+        "https://www.xpressbees.com/shipment/tracking?awb=${AWB}",
+    ).trim();
+    const trackingUrl =
+      String(order?.trackingUrl || "").trim() ||
+      (awbNumber
+        ? trackingUrlTemplate.replace("${AWB}", encodeURIComponent(awbNumber))
+        : "");
+
+    const estimatedDeliveryDate =
+      order?.deliveryDate || order?.delivery_date
+        ? new Date(order?.deliveryDate || order?.delivery_date)
+        : new Date(
+            new Date(order?.createdAt || Date.now()).getTime() +
+              7 * 24 * 60 * 60 * 1000,
+          );
+
+    const attachments = [];
+    try {
+      const [sellerDetails, productMetaById] = await Promise.all([
+        getInvoiceSellerDetails(),
+        getOrderProductMetadata(order),
+      ]);
+
+      const invoiceResult = await generateInvoicePdf({
+        order,
+        sellerDetails,
+        productMetaById,
+      });
+
+      const absolutePath =
+        invoiceResult?.absolutePath ||
+        getAbsolutePathFromStoredInvoicePath(invoiceResult?.invoicePath || "");
+      if (absolutePath) {
+        const invoiceBuffer = await fsPromises.readFile(absolutePath);
+        const invoiceFileName = `invoice-${displayOrderNumber.replace(/[^a-zA-Z0-9-_]/g, "") || rawOrderId}.pdf`;
+        attachments.push({
+          filename: invoiceFileName,
+          content: invoiceBuffer,
+          contentType: "application/pdf",
+        });
+      }
+    } catch (invoiceError) {
+      logger.warn("sendOrderConfirmationEmail", "Invoice attachment skipped", {
+        orderId: order?._id,
+        error: invoiceError?.message || String(invoiceError),
+      });
+    }
+
     const text = [
       `Order No: ${displayOrderNumber}`,
       `Order ID: ${rawOrderId || "N/A"}`,
@@ -1080,6 +1131,9 @@ const sendOrderConfirmationEmail = async (order) => {
       `Status: ${order?.order_status || "pending"}`,
       `Payment: ${order?.payment_status || "pending"}`,
       `Final Amount: ${formatInr(finalAmount)}`,
+      `Estimated Delivery: ${estimatedDeliveryDate.toLocaleDateString("en-IN")}`,
+      awbNumber ? `AWB: ${awbNumber}` : "",
+      trackingUrl ? `Track Shipment: ${trackingUrl}` : "",
       hasPaymentLink ? `Pay now: ${paymentUrl}` : "",
       `Support: ${supportContact}`,
     ].join("\n");
@@ -1102,6 +1156,9 @@ const sendOrderConfirmationEmail = async (order) => {
         tax_amount: formatInr(taxAmount),
         shipping_amount: formatInr(shippingAmount),
         final_amount: formatInr(finalAmount),
+        estimated_delivery_date: estimatedDeliveryDate.toLocaleDateString("en-IN"),
+        awb_number: awbNumber,
+        tracking_url: trackingUrl,
         site_url: siteUrl,
         payment_url: safePaymentUrl,
         payment_cta_label: paymentCtaLabel,
@@ -1111,6 +1168,7 @@ const sendOrderConfirmationEmail = async (order) => {
       },
       text,
       context: "order.confirmation",
+      attachments,
     });
 
     if (!result?.success) {

@@ -186,6 +186,7 @@ import addressRouter from "./routes/address.route.js";
 import adminAnalyticsRouter from "./routes/adminAnalytics.route.js";
 import adminAuthRouter from "./routes/adminAuth.route.js";
 import adminEmailTemplatesRouter from "./routes/adminEmailTemplates.route.js";
+import emailAutomationRouter from "./routes/emailAutomation.route.js";
 import adminMembershipRouter from "./routes/adminMembership.route.js";
 import adminOrdersRouter from "./routes/adminOrders.js";
 import adminReviewRouter from "./routes/adminReview.route.js";
@@ -231,7 +232,7 @@ import { startFrequentlyBoughtTogetherJob } from "./services/combos/frequentlyBo
 import { startExpressbeesPolling } from "./services/expressbeesPolling.service.js";
 import { startInventoryReservationExpiryJob } from "./services/inventoryReservationExpiry.service.js";
 import { startMembershipExpiryJob } from "./services/membershipExpiry.service.js";
-import { startOrderFeedbackJob } from "./services/orderFeedback.service.js";
+import { startEmailAutomationJob } from "./services/emailAutomation.service.js";
 import { startLocationLogRetentionJob } from "./services/userLocationLog.service.js";
 
 const app = express();
@@ -434,6 +435,7 @@ app.use("/api/influencers", generalLimiter, influencerRouter);
 app.use("/api/invoices", generalLimiter, invoiceRouter);
 app.use("/api/notifications", generalLimiter, notificationRouter);
 app.use("/api/newsletter", generalLimiter, newsletterRouter);
+app.use("/api/email", generalLimiter, emailAutomationRouter);
 app.use("/api/v1/partner", generalLimiter, partnerApiRouter);
 app.use("/api/settings", generalLimiter, settingsRouter);
 app.use("/api/shipping", generalLimiter, shippingRouter);
@@ -615,7 +617,7 @@ connectDb()
     }
     startInventoryReservationExpiryJob();
     startMembershipExpiryJob();
-    startOrderFeedbackJob();
+    startEmailAutomationJob();
     startFrequentlyBoughtTogetherJob();
     startComboAnalysisJob();
   })

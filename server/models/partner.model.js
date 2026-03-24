@@ -1,5 +1,18 @@
 import mongoose from "mongoose";
 
+const DEFAULT_VISIBLE_PRODUCT_FIELDS = [
+  "description",
+  "shortDescription",
+  "images",
+  "category",
+  "tags",
+  "discount",
+  "stock",
+  "shipping",
+  "hsnCode",
+  "gstBreakup",
+];
+
 const partnerSchema = new mongoose.Schema(
   {
     name: {
@@ -39,6 +52,10 @@ const partnerSchema = new mongoose.Schema(
       type: String,
       default: "",
       maxlength: 1000,
+    },
+    visibleProductFields: {
+      type: [String],
+      default: DEFAULT_VISIBLE_PRODUCT_FIELDS,
     },
   },
   {

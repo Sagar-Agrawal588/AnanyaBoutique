@@ -8,6 +8,18 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "react-hot-toast";
 
 const defaultScopes = ["catalog.read", "inventory.read", "price.read"];
+const defaultVisibleProductFields = [
+  "description",
+  "shortDescription",
+  "images",
+  "category",
+  "tags",
+  "discount",
+  "stock",
+  "shipping",
+  "hsnCode",
+  "gstBreakup",
+];
 
 const sanitizeUrl = (value) => String(value || "").trim().replace(/\/+$/, "");
 
@@ -57,6 +69,9 @@ const PartnerApiPage = () => {
   const [name, setName] = useState("");
   const [contactEmail, setContactEmail] = useState("");
   const [scopesInput, setScopesInput] = useState(defaultScopes.join(", "));
+  const [visibleFieldsInput, setVisibleFieldsInput] = useState(
+    defaultVisibleProductFields.join(", "),
+  );
   const [rateLimitPerMinute, setRateLimitPerMinute] = useState("120");
   const [createLoading, setCreateLoading] = useState(false);
   const [newlyIssuedKey, setNewlyIssuedKey] = useState("");
@@ -120,10 +135,17 @@ const PartnerApiPage = () => {
       .map((item) => item.trim())
       .filter(Boolean);
 
+  const parseVisibleFields = (value) =>
+    String(value || "")
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+
   const handleCreatePartner = async () => {
     const trimmedName = String(name || "").trim();
     const trimmedEmail = String(contactEmail || "").trim();
     const parsedScopes = parseScopes(scopesInput);
+    const parsedVisibleFields = parseVisibleFields(visibleFieldsInput);
 
     if (!trimmedName || !trimmedEmail) {
       toast.error("Name and contact email are required");
@@ -135,6 +157,11 @@ const PartnerApiPage = () => {
       return;
     }
 
+    if (parsedVisibleFields.length === 0) {
+      toast.error("Provide at least one visible product field");
+      return;
+    }
+
     setCreateLoading(true);
     const response = await postData(
       "/api/v1/partner/admin/partners",
@@ -142,6 +169,7 @@ const PartnerApiPage = () => {
         name: trimmedName,
         contactEmail: trimmedEmail,
         scopes: parsedScopes,
+        visibleProductFields: parsedVisibleFields,
         rateLimitPerMinute: Number(rateLimitPerMinute || 120),
       },
       token,
@@ -152,6 +180,7 @@ const PartnerApiPage = () => {
       setName("");
       setContactEmail("");
       setScopesInput(defaultScopes.join(", "));
+      setVisibleFieldsInput(defaultVisibleProductFields.join(", "));
       setRateLimitPerMinute("120");
       const createdApiKey = String(response?.data?.apiKey || "");
       const createdPartnerId = String(response?.data?.partner?.id || "");
@@ -206,6 +235,39 @@ const PartnerApiPage = () => {
       await loadPartners();
     } else {
       toast.error(response?.message || "Failed to update partner");
+    }
+
+    setBusyPartnerId("");
+  };
+
+  const handleUpdateVisibleFields = async (partner) => {
+    const existing = Array.isArray(partner?.visibleProductFields)
+      ? partner.visibleProductFields.join(", ")
+      : defaultVisibleProductFields.join(", ");
+    const nextValue = prompt(
+      "Update visible product fields (comma separated)",
+      existing,
+    );
+    if (nextValue === null) return;
+
+    const parsedVisibleFields = parseVisibleFields(nextValue);
+    if (parsedVisibleFields.length === 0) {
+      toast.error("Provide at least one visible product field");
+      return;
+    }
+
+    setBusyPartnerId(partner.id);
+    const response = await patchData(
+      `/api/v1/partner/admin/partners/${partner.id}`,
+      { visibleProductFields: parsedVisibleFields },
+      token,
+    );
+
+    if (response?.success) {
+      toast.success("Visible product fields updated");
+      await loadPartners();
+    } else {
+      toast.error(response?.message || "Failed to update visible product fields");
     }
 
     setBusyPartnerId("");
@@ -487,6 +549,11 @@ const PartnerApiPage = () => {
           <p>3) Send API key separately (not in public group).</p>
           <p className="mt-1 text-xs text-gray-600">One guide/PDF for all partners. Key is unique for each partner.</p>
         </div>
+        <div className="rounded-md border border-gray-200 bg-gray-50 p-3 text-xs text-gray-700">
+          <p className="font-medium text-gray-800 mb-1">Available visible product fields</p>
+          <p>{defaultVisibleProductFields.join(", ")}</p>
+          <p className="mt-1">Use <strong>deliveryState</strong> query in product/pricing APIs to get state-wise GST breakup (Rajasthan = CGST+SGST, others = IGST).</p>
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <TextField
             label="Partner Name"
@@ -506,6 +573,13 @@ const PartnerApiPage = () => {
             label="Scopes (comma separated)"
             value={scopesInput}
             onChange={(event) => setScopesInput(event.target.value)}
+            size="small"
+            fullWidth
+          />
+          <TextField
+            label="Visible Product Fields (comma separated)"
+            value={visibleFieldsInput}
+            onChange={(event) => setVisibleFieldsInput(event.target.value)}
             size="small"
             fullWidth
           />
@@ -573,6 +647,7 @@ const PartnerApiPage = () => {
                   <p className="font-semibold text-gray-800">{partner.name}</p>
                   <p className="text-sm text-gray-600 break-all">{partner.contactEmail}</p>
                   <p className="text-xs text-gray-500 mt-1">Scopes: {(partner.scopes || []).join(", ") || "none"}</p>
+                  <p className="text-xs text-gray-500 mt-1">Visible fields: {(partner.visibleProductFields || []).join(", ") || "default"}</p>
                   <p className="text-xs text-gray-500 mt-1">Key Prefix: {partner.keyPrefix || "none"}</p>
                   <p className="text-xs text-gray-500 mt-1">Status: {partner.status} • RPM: {partner.rateLimitPerMinute}</p>
                   {partner?.rateLimit ? (
@@ -607,6 +682,14 @@ const PartnerApiPage = () => {
                     disabled={busyPartnerId === partner.id}
                   >
                     {partner.status === "active" ? "Pause" : "Activate"}
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={() => handleUpdateVisibleFields(partner)}
+                    disabled={busyPartnerId === partner.id}
+                  >
+                    Edit Visible Fields
                   </Button>
                   <Button
                     size="small"
