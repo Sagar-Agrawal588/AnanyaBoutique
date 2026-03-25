@@ -1,10 +1,10 @@
 import admin from "firebase-admin";
 import { sendEmail, sendTemplatedEmail } from "../config/emailService.js";
 import { isFirebaseReady } from "../config/firebaseAdmin.js";
-import Newsletter from "../models/newsletter.model.js";
-import UserModel from "../models/user.model.js";
-import SettingsModel from "../models/settings.model.js";
 import EmailLogModel from "../models/emailLog.model.js";
+import Newsletter from "../models/newsletter.model.js";
+import SettingsModel from "../models/settings.model.js";
+import UserModel from "../models/user.model.js";
 import { logger } from "../utils/errorHandler.js";
 
 const isProduction = process.env.NODE_ENV === "production";
@@ -177,7 +177,9 @@ const renderNewsletterUnsubscribePage = ({
 </html>`;
 
 const applyUserEmailOptOut = async (email, optedOut) => {
-  const normalizedEmail = String(email || "").trim().toLowerCase();
+  const normalizedEmail = String(email || "")
+    .trim()
+    .toLowerCase();
   if (!normalizedEmail) return;
 
   await UserModel.updateMany(
@@ -745,7 +747,10 @@ export const sendNewsletterBroadcast = async (req, res) => {
       }
 
       const user = await UserModel.findOne({
-        email: { $regex: `^${email.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, $options: "i" },
+        email: {
+          $regex: `^${email.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
+          $options: "i",
+        },
       })
         .select("_id email_opt_out notificationSettings")
         .lean();
@@ -808,7 +813,10 @@ export const sendNewsletterBroadcast = async (req, res) => {
           {
             $set: {
               status: "failed",
-              error_message: String(result?.error || "Failed to send").slice(0, 1000),
+              error_message: String(result?.error || "Failed to send").slice(
+                0,
+                1000,
+              ),
             },
           },
         );
