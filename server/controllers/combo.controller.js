@@ -33,6 +33,8 @@ import { AppError, asyncHandler, sendSuccess } from "../utils/errorHandler.js";
 const round2 = (value) =>
   Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
 
+const roundCurrency = (value) => Math.max(Math.round(Number(value || 0)), 0);
+
 const toPositiveInt = (value, fallback) => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
@@ -229,6 +231,14 @@ const parseComboPayload = async (body = {}, { existingCombo = null } = {}) => {
     body?.comboPrice ?? body?.price,
     0,
   );
+  const rawComboType = normalizeComboType(
+    body?.comboType || body?.type || existingCombo?.comboType || "fixed_bundle",
+  );
+  const shouldRoundAiComboPrice =
+    rawComboType === "ai_suggested" ||
+    String(body?.source || existingCombo?.source || "")
+      .trim()
+      .toLowerCase() === "ai";
 
   let originalTotal = round2(
     manualOriginalPrice > 0
@@ -246,15 +256,19 @@ const parseComboPayload = async (body = {}, { existingCombo = null } = {}) => {
     comboPrice = originalTotal;
   }
   comboPrice = Math.max(comboPrice, 0);
+  if (shouldRoundAiComboPrice) {
+    comboPrice =
+      originalTotal > 0
+        ? Math.min(roundCurrency(comboPrice), originalTotal)
+        : roundCurrency(comboPrice);
+  }
 
   const totalSavings = round2(Math.max(originalTotal - comboPrice, 0));
   const discountPercentage =
     originalTotal > 0 ? round2((totalSavings / originalTotal) * 100) : 0;
 
   const tags = normalizeComboTags(body?.tags || []);
-  const comboType = normalizeComboType(
-    body?.comboType || body?.type || "fixed_bundle",
-  );
+  const comboType = rawComboType;
   const stockMode = String(
     body?.stockMode || body?.stock_mode || "auto",
   ).trim();

@@ -11,6 +11,7 @@
     "dev:memory": "node scripts/devServer.mjs --memory",
     "test": "node --test",
     "test:analytics-smoke": "node scripts/analyticsSmokeTest.mjs",
+    "test:promo-unsubscribe": "node scripts/testPromotionalUnsubscribeFlow.mjs",
     "setup:pubsub": "node scripts/setupPubSubInfra.mjs",
     "migrate:enterprise": "node migrations/2026-02-enterprise-upgrade.mjs",
     "migrate:inventory": "node migrations/2026-02-inventory-backfill.mjs",

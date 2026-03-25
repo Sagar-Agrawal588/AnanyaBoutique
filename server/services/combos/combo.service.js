@@ -94,6 +94,31 @@ const resolveProductPrices = (product, variant) => {
   };
 };
 
+const resolveAvailableUnitsForProduct = (product, variant) => {
+  if (!product) return 0;
+
+  const trackInventory =
+    typeof product.track_inventory === "boolean"
+      ? product.track_inventory
+      : typeof product.trackInventory === "boolean"
+        ? product.trackInventory
+        : true;
+
+  if (!trackInventory) {
+    return Number.MAX_SAFE_INTEGER;
+  }
+
+  if (variant) {
+    const variantStock = Number(variant.stock_quantity ?? variant.stock ?? 0);
+    const variantReserved = Number(variant.reserved_quantity ?? 0);
+    return Math.max(variantStock - variantReserved, 0);
+  }
+
+  const stock = Number(product.stock_quantity ?? product.stock ?? 0);
+  const reserved = Number(product.reserved_quantity ?? 0);
+  return Math.max(stock - reserved, 0);
+};
+
 export const buildComboPricing = ({ items = [], pricing = {} } = {}) => {
   const baseTotal = round2(
     items.reduce(
@@ -149,7 +174,7 @@ export const buildComboItemsSnapshot = async ({ items = [] } = {}) => {
   const productIds = normalized.map((item) => item.productId);
   const dbProducts = await ProductModel.find({ _id: { $in: productIds } })
     .select(
-      "_id name price originalPrice images thumbnail category isActive hasVariants variants",
+      "_id name price originalPrice images thumbnail category isActive hasVariants variants stock stock_quantity reserved_quantity track_inventory trackInventory",
     )
     .lean();
 
@@ -186,6 +211,7 @@ export const buildComboItemsSnapshot = async ({ items = [] } = {}) => {
     const { price, originalPrice } = resolveProductPrices(product, variant);
     const image =
       variant?.image || product.thumbnail || product.images?.[0] || "";
+    const availableQuantity = resolveAvailableUnitsForProduct(product, variant);
 
     return {
       productId: product._id,
@@ -205,6 +231,7 @@ export const buildComboItemsSnapshot = async ({ items = [] } = {}) => {
       ),
       price,
       originalPrice,
+      availableQuantity,
       image,
       categoryId: product.category || null,
     };
@@ -362,6 +389,16 @@ export const computeComboAvailability = async (combo, productCache = null) => {
       availableCombos: 0,
     }));
 
+  const itemAvailability = availabilityByItem.map((entry) => ({
+    productId: entry.productId,
+    productTitle: entry.productTitle,
+    variantId: entry.variantId,
+    variantName: entry.variantName,
+    requiredQuantity: entry.requiredQuantity,
+    availableUnits: entry.availableUnits,
+    availableCombos: entry.availableCombos,
+  }));
+
   const limitingItems = availabilityByItem
     .filter((entry) => Number.isFinite(entry.availableCombos))
     .sort(
@@ -378,7 +415,13 @@ export const computeComboAvailability = async (combo, productCache = null) => {
       availableCombos: entry.availableCombos,
     }));
 
-  return { available, stockMode: "auto", outOfStockItems, limitingItems };
+  return {
+    available,
+    stockMode: "auto",
+    outOfStockItems,
+    limitingItems,
+    itemAvailability,
+  };
 };
 
 export const allocateTotalsProportionally = (

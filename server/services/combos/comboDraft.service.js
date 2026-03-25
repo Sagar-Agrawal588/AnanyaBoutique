@@ -1,14 +1,13 @@
 import ComboDraftModel from "../../models/comboDraft.model.js";
-import ProductPairingModel from "../../models/productPairing.model.js";
 import ProductModel from "../../models/product.model.js";
-import {
-  buildComboItemsSnapshot,
-  buildComboPricing,
-} from "./combo.service.js";
+import ProductPairingModel from "../../models/productPairing.model.js";
+import { buildComboItemsSnapshot, buildComboPricing } from "./combo.service.js";
 import { generateFrequentlyBoughtTogether } from "./frequentlyBoughtTogether.service.js";
 
 const round2 = (value) =>
   Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
+
+const roundCurrency = (value) => Math.max(Math.round(Number(value || 0)), 0);
 
 const slugify = (value) =>
   String(value || "")
@@ -18,9 +17,7 @@ const slugify = (value) =>
     .replace(/(^-|-$)+/g, "");
 
 const buildPairKey = (a, b) =>
-  [String(a || ""), String(b || "")]
-    .sort()
-    .join("::");
+  [String(a || ""), String(b || "")].sort().join("::");
 
 const resolveDefaultVariant = (product) => {
   if (!product?.hasVariants || !Array.isArray(product?.variants)) return null;
@@ -90,6 +87,15 @@ const buildDraftPayload = async ({
     items: snapshots,
     pricing: { type: "percent_discount", value: discountPercent },
   });
+  const roundedComboPrice = roundCurrency(pricing.comboPrice);
+  const roundedSavings = Math.max(
+    round2(pricing.originalTotal - roundedComboPrice),
+    0,
+  );
+  const roundedDiscountPercentage =
+    pricing.originalTotal > 0
+      ? round2((roundedSavings / pricing.originalTotal) * 100)
+      : 0;
 
   const popularityScore = productOrderCounts
     ? resolvePopularityScore(productOrderCounts, primaryProduct?._id) +
@@ -113,8 +119,8 @@ const buildDraftPayload = async ({
     productsIncluded: items,
     itemsSnapshot: snapshots,
     originalTotal: pricing.originalTotal,
-    suggestedPrice: pricing.comboPrice,
-    discountPercentage: pricing.discountPercentage,
+    suggestedPrice: roundedComboPrice,
+    discountPercentage: roundedDiscountPercentage,
     pricingType: "percent_discount",
     pricingValue: discountPercent,
     aiScore,
@@ -166,13 +172,18 @@ export const generateComboDrafts = async ({
   ]);
   const uniqueProductIds = Array.from(new Set(productIds.filter(Boolean)));
   const products = uniqueProductIds.length
-    ? await ProductModel.find({ _id: { $in: uniqueProductIds }, isActive: true })
+    ? await ProductModel.find({
+        _id: { $in: uniqueProductIds },
+        isActive: true,
+      })
         .select(
           "_id name price originalPrice images thumbnail category hasVariants variants",
         )
         .lean()
     : [];
-  const productMap = new Map(products.map((product) => [String(product._id), product]));
+  const productMap = new Map(
+    products.map((product) => [String(product._id), product]),
+  );
 
   const maxPairCount = pairs.reduce(
     (max, pair) => Math.max(max, Number(pair?.pairCount || 0)),

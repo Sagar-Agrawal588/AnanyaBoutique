@@ -1,16 +1,16 @@
 import {
   initializeEmailService,
   invalidateEmailTemplateOverrideCache,
+  renderEmailTemplate,
   sendEmail as sendEmailObjectApi,
   sendTemplatedEmail,
-  renderEmailTemplate,
 } from "../services/EmailService.js";
 
 export {
   initializeEmailService,
   invalidateEmailTemplateOverrideCache,
-  sendTemplatedEmail,
   renderEmailTemplate,
+  sendTemplatedEmail,
 };
 
 // Backward-compatible and modern signatures:
@@ -35,5 +35,9 @@ export const sendEmail = async (...args) => {
     context: options?.context || "legacy",
     from: options?.from || null,
     attachments: Array.isArray(options?.attachments) ? options.attachments : [],
+    headers:
+      options?.headers && typeof options.headers === "object"
+        ? options.headers
+        : {},
   });
 };

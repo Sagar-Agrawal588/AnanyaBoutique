@@ -6,6 +6,7 @@ import {
   manualSendPromotionalEmail,
   registerToken,
   unregisterToken,
+  unsubscribePromotionalEmail,
 } from "../controllers/notification.controller.js";
 import admin from "../middlewares/admin.js";
 import auth from "../middlewares/auth.js";
@@ -36,6 +37,10 @@ router.delete("/unregister", authOptional, unregisterToken);
 // Pollable fallback feed for live offer notifications
 router.get("/offers/live-feed", authOptional, getLiveOfferFeed);
 
+// One-click unsubscribe from promotional emails (email link)
+router.get("/unsubscribe/promotional", unsubscribePromotionalEmail);
+router.post("/unsubscribe/promotional", unsubscribePromotionalEmail);
+
 // ==================== ADMIN ROUTES ====================
 
 // Get notification stats
@@ -45,6 +50,11 @@ router.get("/admin/stats", auth, admin, getNotificationStats);
 router.post("/admin/send-offer", auth, admin, manualSendOffer);
 
 // Manual send promotional email
-router.post("/admin/send-promotional-email", auth, admin, manualSendPromotionalEmail);
+router.post(
+  "/admin/send-promotional-email",
+  auth,
+  admin,
+  manualSendPromotionalEmail,
+);
 
 export default router;

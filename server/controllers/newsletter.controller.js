@@ -20,6 +20,8 @@ const ALLOWED_SOURCES = new Set([
   "popup",
   "checkout",
   "blogs",
+  "guest_order",
+  "signin_order",
   "other",
 ]);
 
@@ -79,6 +81,13 @@ const renderBroadcastHtml = (html, email) => {
     .replaceAll("{{year}}", String(new Date().getFullYear()));
 };
 
+const appendNewsletterUnsubscribeFooter = (html, email) => {
+  const unsubscribeUrl = buildNewsletterUnsubscribeUrl(email);
+  if (!unsubscribeUrl) return String(html || "");
+
+  return `${String(html || "")}\n<div style="margin-top:18px;padding-top:14px;border-top:1px solid #e2e8f0;font-family:Arial,sans-serif;color:#64748b;font-size:12px;line-height:1.5;text-align:center;">Prefer not to receive newsletter emails? <a href="${unsubscribeUrl}" style="color:#0f766e;text-decoration:underline;">Unsubscribe</a></div>`;
+};
+
 const getBroadcastAttachments = (req) => {
   const files = Array.isArray(req?.files) ? req.files : [];
 
@@ -96,7 +105,9 @@ const getBroadcastAttachments = (req) => {
 };
 
 const normalizeSource = (source) => {
-  const value = String(source || "").trim().toLowerCase();
+  const value = String(source || "")
+    .trim()
+    .toLowerCase();
   return ALLOWED_SOURCES.has(value) ? value : "other";
 };
 
@@ -109,20 +120,73 @@ const getPublicSiteUrl = () => {
   return first.replace(/\/+$/, "");
 };
 
-const appendUnsubscribeFooter = (html, email) => {
-  const siteUrl = getPublicSiteUrl();
-  const unsubscribeUrl = `${siteUrl}/api/newsletter/unsubscribe?email=${encodeURIComponent(
-    String(email || "").trim().toLowerCase(),
-  )}`;
-  return `${String(html || "")}<div style="margin-top:20px;padding-top:12px;border-top:1px solid #e5e7eb;color:#6b7280;font-size:12px;">To stop marketing emails, <a href="${unsubscribeUrl}">unsubscribe here</a>.</div>`;
+const getPublicApiUrl = () => {
+  const raw =
+    process.env.API_BASE_URL ||
+    process.env.BACKEND_URL ||
+    process.env.SERVER_URL ||
+    "https://healthy-one-gram.el.r.appspot.com";
+  return String(raw).split(",")[0].trim().replace(/\/+$/, "");
 };
+
+const buildNewsletterUnsubscribeUrl = (email, { confirm = false } = {}) => {
+  const normalizedEmail = String(email || "")
+    .trim()
+    .toLowerCase();
+  if (!normalizedEmail) return "";
+  const base = `${getPublicApiUrl()}/api/newsletter/unsubscribe?email=${encodeURIComponent(normalizedEmail)}`;
+  return confirm ? `${base}&confirm=1` : base;
+};
+
+const buildNewsletterUnsubscribeHeaders = (email) => {
+  const oneClickUrl = buildNewsletterUnsubscribeUrl(email, { confirm: true });
+  if (!oneClickUrl) return {};
+
+  return {
+    "List-Unsubscribe": `<${oneClickUrl}>`,
+    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+  };
+};
+
+const renderNewsletterUnsubscribePage = ({
+  title,
+  message,
+  showConfirm = false,
+  confirmUrl = "",
+}) => `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>${title}</title>
+  </head>
+  <body style="margin:0;background:#f7fafc;font-family:'Segoe UI',Arial,sans-serif;color:#1a202c;">
+    <div style="max-width:560px;margin:56px auto;padding:20px;">
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:24px;box-shadow:0 8px 30px rgba(15,23,42,.06);">
+        <h1 style="margin:0 0 10px;font-size:24px;line-height:1.25;color:#0f172a;">${title}</h1>
+        <p style="margin:0 0 14px;font-size:15px;line-height:1.6;color:#334155;">${message}</p>
+        ${
+          showConfirm
+            ? `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;"><a href="${confirmUrl}" style="display:inline-block;background:#111827;color:#fff;text-decoration:none;padding:10px 16px;border-radius:10px;font-weight:600;">Unsubscribe</a><a href="${getPublicSiteUrl()}" style="display:inline-block;background:#f8fafc;color:#0f172a;text-decoration:none;padding:10px 16px;border-radius:10px;border:1px solid #d1d5db;font-weight:600;">Cancel</a></div>`
+            : ""
+        }
+        <div style="margin-top:18px;padding:12px;border-radius:10px;background:#f8fafc;border:1px solid #e2e8f0;color:#475569;font-size:13px;">You can manage your preferences anytime from account settings or support.</div>
+      </div>
+    </div>
+  </body>
+</html>`;
 
 const applyUserEmailOptOut = async (email, optedOut) => {
   const normalizedEmail = String(email || "").trim().toLowerCase();
   if (!normalizedEmail) return;
 
   await UserModel.updateMany(
-    { email: { $regex: `^${normalizedEmail.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, $options: "i" } },
+    {
+      email: {
+        $regex: `^${normalizedEmail.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
+        $options: "i",
+      },
+    },
     {
       $set: {
         email_opt_out: Boolean(optedOut),
@@ -131,7 +195,6 @@ const applyUserEmailOptOut = async (email, optedOut) => {
     },
   );
 };
-
 /**
  * Generate welcome email HTML template
  * @param {string} email - Subscriber email
@@ -139,6 +202,7 @@ const applyUserEmailOptOut = async (email, optedOut) => {
  */
 const getWelcomeEmailTemplate = (email) => {
   const siteUrl = getPublicSiteUrl();
+  const unsubscribeUrl = buildNewsletterUnsubscribeUrl(email);
 
   return `
 <!DOCTYPE html>
@@ -159,6 +223,7 @@ const getWelcomeEmailTemplate = (email) => {
       <p>Thank you for subscribing with <strong>${email}</strong>.</p>
       <p>You will receive product updates, special offers, and healthy recipes.</p>
       <p><a href="${siteUrl}/products" style="display:inline-block;background:#c1591c;color:#fff;text-decoration:none;padding:10px 16px;border-radius:6px;">Explore Products</a></p>
+      <p style="margin:14px 0 0;font-size:13px;color:#6b5b4d;">Prefer fewer updates? <a href="${unsubscribeUrl}" style="color:#c1591c;text-decoration:underline;">Unsubscribe</a>.</p>
       <p style="margin-top:18px;">Regards,<br><strong>HealthyOneGram Team</strong></p>
     </div>
 
@@ -178,6 +243,7 @@ const getWelcomeEmailTemplate = (email) => {
 const sendWelcomeEmail = async (email) => {
   try {
     const siteUrl = getPublicSiteUrl();
+    const unsubscribeUrl = buildNewsletterUnsubscribeUrl(email);
     const subject = "Welcome to the HealthyOneGram Family!";
     const text = `Welcome to HealthyOneGram! Thank you for subscribing to our newsletter. You'll now receive updates about exclusive discounts, new products, and healthy recipes. Visit us at ${siteUrl}`;
 
@@ -189,30 +255,36 @@ const sendWelcomeEmail = async (email) => {
         subscriber_email: email,
         site_url: siteUrl,
         products_url: `${siteUrl}/products`,
+        unsubscribe_url: unsubscribeUrl,
         year: String(new Date().getFullYear()),
       },
       text,
       context: "newsletter.welcome",
+      headers: buildNewsletterUnsubscribeHeaders(email),
     });
 
-    const result =
-      templateResult?.success
-        ? templateResult
-        : await sendEmail({
-            to: email,
-            subject,
-            text,
-            html: getWelcomeEmailTemplate(email),
-            context: "newsletter.welcome.fallback",
-          });
+    const result = templateResult?.success
+      ? templateResult
+      : await sendEmail({
+          to: email,
+          subject,
+          text,
+          html: getWelcomeEmailTemplate(email),
+          context: "newsletter.welcome.fallback",
+          headers: buildNewsletterUnsubscribeHeaders(email),
+        });
 
     if (result.success) {
       debugLog(`Welcome email sent to: ${email}`);
     } else {
-      logger.error("newsletter.sendWelcomeEmail", "Failed to send welcome email", {
-        email,
-        error: result.error,
-      });
+      logger.error(
+        "newsletter.sendWelcomeEmail",
+        "Failed to send welcome email",
+        {
+          email,
+          error: result.error,
+        },
+      );
     }
 
     return result;
@@ -305,8 +377,7 @@ export const subscribe = async (req, res) => {
   try {
     const { email, source = "footer" } = req.body;
     const normalizedSource = normalizeSource(source || "footer");
-    const schemaSources =
-      Newsletter?.schema?.path("source")?.enumValues || [];
+    const schemaSources = Newsletter?.schema?.path("source")?.enumValues || [];
     const safeSource = schemaSources.includes(normalizedSource)
       ? normalizedSource
       : "other";
@@ -424,20 +495,62 @@ export const subscribe = async (req, res) => {
 // Unsubscribe from newsletter
 export const unsubscribe = async (req, res) => {
   try {
-    const email = req.body?.email || req.query?.email;
+    const email = String(req.body?.email || req.query?.email || "").trim();
+    const isBrowserGet = String(req.method || "").toUpperCase() === "GET";
+    const shouldConfirm = ["1", "true", "yes", "on"].includes(
+      String(req.query?.confirm || "")
+        .trim()
+        .toLowerCase(),
+    );
+
+    const sendResponse = (status, payload) => {
+      if (isBrowserGet) {
+        const success = payload?.success === true;
+        const heading = success ? "You unsubscribed" : "Unable to unsubscribe";
+        return res
+          .status(status)
+          .set("Content-Type", "text/html; charset=utf-8")
+          .send(
+            renderNewsletterUnsubscribePage({
+              title: heading,
+              message: String(payload?.message || ""),
+            }),
+          );
+      }
+
+      return res.status(status).json(payload);
+    };
 
     if (!email) {
-      return res.status(400).json({
+      return sendResponse(400, {
         success: false,
         message: "Email is required",
       });
     }
 
     const normalizedEmail = email.toLowerCase().trim();
+
+    if (isBrowserGet && !shouldConfirm) {
+      return res
+        .status(200)
+        .set("Content-Type", "text/html; charset=utf-8")
+        .send(
+          renderNewsletterUnsubscribePage({
+            title: "Unsubscribe from HealthyOneGram",
+            message:
+              "Do you want to stop receiving newsletter emails from HealthyOneGram?",
+            showConfirm: true,
+            confirmUrl: buildNewsletterUnsubscribeUrl(normalizedEmail, {
+              confirm: true,
+            }),
+          }),
+        );
+    }
+
     const subscriber = await Newsletter.findOne({ email: normalizedEmail });
 
     if (!subscriber) {
-      return res.status(404).json({
+      return sendResponse(404, {
         success: false,
         message: "Email not found in our newsletter list",
       });
@@ -451,21 +564,13 @@ export const unsubscribe = async (req, res) => {
     // Also update in Firebase
     await updateFirebaseSubscriber(normalizedEmail, false);
 
-    const isBrowserRequest = req.method === "GET";
-
-    if (isBrowserRequest) {
-      return res.status(200).send(
-        `<html><body style="font-family:Arial,sans-serif;padding:32px;color:#111827;"><h2>You have been unsubscribed</h2><p>${normalizedEmail} will no longer receive promotional/newsletter emails.</p><p>Transactional emails (order updates/invoices) will still be delivered.</p></body></html>`,
-      );
-    }
-
-    return res.status(200).json({
+    return sendResponse(200, {
       success: true,
       message: "You have been unsubscribed from our newsletter",
     });
   } catch (error) {
     console.error("Newsletter unsubscribe error:", error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Failed to unsubscribe. Please try again later.",
     });
@@ -631,7 +736,9 @@ export const sendNewsletterBroadcast = async (req, res) => {
     let failed = 0;
 
     for (const subscriber of subscribers) {
-      const email = String(subscriber?.email || "").trim().toLowerCase();
+      const email = String(subscriber?.email || "")
+        .trim()
+        .toLowerCase();
       if (!email || !isValidEmail(email)) {
         failed += 1;
         continue;
@@ -672,10 +779,14 @@ export const sendNewsletterBroadcast = async (req, res) => {
       const result = await sendEmail({
         to: email,
         subject: template.subject,
-        html: appendUnsubscribeFooter(renderBroadcastHtml(template.html, email), email),
+        html: appendNewsletterUnsubscribeFooter(
+          renderBroadcastHtml(template.html, email),
+          email,
+        ),
         text: template.subject,
         context: "newsletter.broadcast",
         attachments,
+        headers: buildNewsletterUnsubscribeHeaders(email),
       });
 
       if (result?.success) {
@@ -784,7 +895,9 @@ export const updateCampaignTemplate = async (req, res) => {
 
 export const sendCampaign = async (req, res) => {
   try {
-    const mode = String(req.body?.mode || "active").trim().toLowerCase();
+    const mode = String(req.body?.mode || "active")
+      .trim()
+      .toLowerCase();
     const storedTemplate = await getStoredNewsletterTemplate();
     const template = normalizeTemplatePayload({
       subject: req.body?.subject || storedTemplate.subject,
@@ -792,7 +905,9 @@ export const sendCampaign = async (req, res) => {
     });
 
     if (mode === "test") {
-      const testEmail = String(req.body?.testEmail || "").trim().toLowerCase();
+      const testEmail = String(req.body?.testEmail || "")
+        .trim()
+        .toLowerCase();
       if (!testEmail || !isValidEmail(testEmail)) {
         return res.status(400).json({
           success: false,
@@ -803,9 +918,13 @@ export const sendCampaign = async (req, res) => {
       const result = await sendEmail({
         to: testEmail,
         subject: template.subject,
-        html: renderBroadcastHtml(template.html, testEmail),
+        html: appendNewsletterUnsubscribeFooter(
+          renderBroadcastHtml(template.html, testEmail),
+          testEmail,
+        ),
         text: template.subject,
         context: "newsletter.campaign.test",
+        headers: buildNewsletterUnsubscribeHeaders(testEmail),
       });
 
       return res.status(result?.success ? 200 : 502).json({

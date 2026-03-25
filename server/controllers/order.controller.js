@@ -18,6 +18,7 @@ import ComboModel from "../models/combo.model.js";
 import ComboOrderModel from "../models/comboOrder.model.js";
 import CouponModel from "../models/coupon.model.js";
 import InvoiceModel from "../models/invoice.model.js";
+import NewsletterModel from "../models/newsletter.model.js";
 import OrderModel from "../models/order.model.js";
 import ProductModel from "../models/product.model.js";
 import PurchaseOrderModel from "../models/purchaseOrder.model.js";
@@ -336,6 +337,34 @@ const parseOrderSequenceNumber = (value, scopePrefix) => {
   }
   const sequence = Number(sequenceText);
   return Number.isFinite(sequence) && sequence > 0 ? sequence : null;
+};
+
+const isValidNewsletterEmail = (value) =>
+  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
+
+const captureOrderEmailInNewsletter = async ({ email, userId }) => {
+  const normalizedEmail = String(email || "")
+    .trim()
+    .toLowerCase();
+  if (!normalizedEmail || !isValidNewsletterEmail(normalizedEmail)) return;
+
+  const source = userId ? "signin_order" : "guest_order";
+  await NewsletterModel.findOneAndUpdate(
+    { email: normalizedEmail },
+    {
+      $setOnInsert: {
+        email: normalizedEmail,
+      },
+      $set: {
+        isActive: true,
+        source,
+      },
+    },
+    {
+      upsert: true,
+      setDefaultsOnInsert: true,
+    },
+  );
 };
 
 const generateOrderSeriesNumber = async (referenceDate = new Date()) => {
@@ -2207,11 +2236,20 @@ const resolveCheckoutContact = async ({
 }) => {
   const normalizedGuest = normalizeGuestDetails(guestDetails);
   let userGstNumber = "";
+  let userEmail = "";
   if (userId && !normalizedGuest.gst) {
     const userRecord = await UserModel.findById(userId)
-      .select("gstNumber")
+      .select("gstNumber email")
       .lean();
     userGstNumber = userRecord?.gstNumber || "";
+    userEmail = String(userRecord?.email || "")
+      .trim()
+      .toLowerCase();
+  } else if (userId) {
+    const userRecord = await UserModel.findById(userId).select("email").lean();
+    userEmail = String(userRecord?.email || "")
+      .trim()
+      .toLowerCase();
   }
 
   if (deliveryAddressId) {
@@ -2241,7 +2279,7 @@ const resolveCheckoutContact = async ({
       state: String(
         serializedAddress.state || normalizedGuest.state || "",
       ).trim(),
-      email: String(normalizedGuest.email || "")
+      email: String(normalizedGuest.email || userEmail || "")
         .trim()
         .toLowerCase(),
       city: String(serializedAddress.city || normalizedGuest.city || "").trim(),
@@ -2287,12 +2325,17 @@ const resolveCheckoutContact = async ({
     city: normalizedGuest.city,
     state: normalizedGuest.state,
     district: normalizedGuest.district,
-    email: normalizedGuest.email,
+    email: normalizedGuest.email || userEmail,
   });
+
+  const resolvedContactEmail = String(normalizedGuest.email || userEmail || "")
+    .trim()
+    .toLowerCase();
 
   return {
     contact: {
       ...normalizedGuest,
+      email: resolvedContactEmail,
       gst: normalizedGuest.gst || userGstNumber,
     },
     addressId: null,
@@ -2300,7 +2343,7 @@ const resolveCheckoutContact = async ({
     pincode: normalizedGuest.pincode,
     structuredAddress,
     addressSnapshot: buildOrderAddressSnapshot(structuredAddress, {
-      email: normalizedGuest.email,
+      email: resolvedContactEmail,
       source: userId ? "registered_manual" : "guest_manual",
       addressId: null,
     }),
@@ -4351,6 +4394,21 @@ export const createOrder = asyncHandler(async (req, res) => {
       await reserveComboStock(order, "ORDER_CREATE");
       await reserveInventory(order, "ORDER_CREATE");
       await order.save();
+
+      void captureOrderEmailInNewsletter({
+        email:
+          checkoutContact?.contact?.email ||
+          billingDetails?.email ||
+          guestOrderDetails?.email ||
+          "",
+        userId,
+      }).catch((captureError) => {
+        logger.warn("createOrder", "Failed to capture newsletter email", {
+          orderId: order?._id,
+          userId,
+          error: captureError?.message || String(captureError),
+        });
+      });
     } catch (inventoryError) {
       try {
         await releaseComboStock(order, "ORDER_CREATE_FAIL");
@@ -4986,6 +5044,21 @@ export const saveOrderForLater = asyncHandler(async (req, res) => {
       await reserveComboStock(savedOrder, "ORDER_SAVE");
       await reserveInventory(savedOrder, "ORDER_SAVE");
       await savedOrder.save();
+
+      void captureOrderEmailInNewsletter({
+        email:
+          checkoutContact?.contact?.email ||
+          billingDetails?.email ||
+          guestOrderDetails?.email ||
+          "",
+        userId,
+      }).catch((captureError) => {
+        logger.warn("saveOrderForLater", "Failed to capture newsletter email", {
+          orderId: savedOrder?._id,
+          userId,
+          error: captureError?.message || String(captureError),
+        });
+      });
     } catch (inventoryError) {
       try {
         await releaseComboStock(savedOrder, "ORDER_SAVE_FAIL");

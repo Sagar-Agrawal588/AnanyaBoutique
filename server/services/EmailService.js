@@ -1,9 +1,9 @@
 import fs from "fs/promises";
+import nodemailer from "nodemailer";
 import path from "path";
 import { fileURLToPath } from "url";
-import nodemailer from "nodemailer";
-import { logger } from "../utils/errorHandler.js";
 import SettingsModel from "../models/settings.model.js";
+import { logger } from "../utils/errorHandler.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -126,7 +126,10 @@ const getTemplateOverride = async (templateFile) => {
     override = null;
   }
 
-  templateOverrideCache.set(safeTemplateFile, { loadedAt: now, value: override });
+  templateOverrideCache.set(safeTemplateFile, {
+    loadedAt: now,
+    value: override,
+  });
   return override;
 };
 
@@ -184,10 +187,11 @@ const maskEmail = (value) => {
 };
 
 const isGmailHost = (host) => {
-  const normalizedHost = String(host || "").trim().toLowerCase();
+  const normalizedHost = String(host || "")
+    .trim()
+    .toLowerCase();
   return (
-    normalizedHost === "smtp.gmail.com" ||
-    normalizedHost.endsWith(".gmail.com")
+    normalizedHost === "smtp.gmail.com" || normalizedHost.endsWith(".gmail.com")
   );
 };
 
@@ -255,7 +259,7 @@ const getEmailConfig = () => {
     process.env.EMAIL_FROM_NAME || process.env.SMTP_FROM_NAME || "BuyOneGram",
   );
   const fromAddress = normalizeEnvString(
-      process.env.EMAIL_FROM_ADDRESS ||
+    process.env.EMAIL_FROM_ADDRESS ||
       process.env.SMTP_FROM ||
       process.env.EMAIL ||
       user ||
@@ -299,9 +303,9 @@ const configFingerprint = (config) =>
     config.host,
     config.port,
     config.secure ? "secure" : "insecure",
-    ...((config.authCandidates || []).map(
+    ...(config.authCandidates || []).map(
       (candidate) => `${candidate.source}:${candidate.user}`,
-    )),
+    ),
     config.fromAddress,
   ].join("|");
 
@@ -404,12 +408,16 @@ const verifyTransporter = async (config = {}) => {
           continue;
         }
 
-        logger.warn("EmailService", "Retrying SMTP verify with fallback credentials", {
-          previousUser: config.user || "",
-          previousSource: config.activeAuthSource || "",
-          fallbackUser: candidate.user,
-          fallbackSource: candidate.source,
-        });
+        logger.warn(
+          "EmailService",
+          "Retrying SMTP verify with fallback credentials",
+          {
+            previousUser: config.user || "",
+            previousSource: config.activeAuthSource || "",
+            fallbackUser: candidate.user,
+            fallbackSource: candidate.source,
+          },
+        );
 
         transporter = buildTransporter(config, candidate);
         config.user = candidate.user;
@@ -500,6 +508,7 @@ export const sendEmail = async ({
   context = "general",
   from = null,
   attachments = [],
+  headers = {},
 }) => {
   const attachmentCount = Array.isArray(attachments) ? attachments.length : 0;
 
@@ -532,6 +541,7 @@ export const sendEmail = async ({
           text,
           html,
           attachments,
+          headers,
         }),
         config.operationTimeoutMs,
         "SMTP send",
@@ -582,6 +592,7 @@ export const sendTemplatedEmail = async ({
   context = "templated",
   from = null,
   attachments = [],
+  headers = {},
 }) => {
   try {
     const safeTemplateFile = String(templateFile || "").trim();
@@ -614,6 +625,7 @@ export const sendTemplatedEmail = async ({
       context,
       from,
       attachments,
+      headers,
     });
   } catch (error) {
     logger.error("EmailService", "Template render failed", {
@@ -624,4 +636,3 @@ export const sendTemplatedEmail = async ({
     return { success: false, error: "Failed to render email template" };
   }
 };
-
