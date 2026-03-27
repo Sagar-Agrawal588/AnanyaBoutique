@@ -45,17 +45,17 @@ export const ORDER_REPORT_COLUMNS = [
   { header: "Variant Name", key: "variantName", width: 18 },
   { header: "Quantity", key: "quantity", width: 12 },
   { header: "Price", key: "price", width: 14 },
-  {
-    header: "Product Paid Amount (After Discount)",
-    key: "productPaidAmountAfterDiscount",
-    width: 30,
-  },
   { header: "Coupon Code", key: "couponCode", width: 16 },
   { header: "Coupon Discount (Rs)", key: "couponDiscount", width: 18 },
   { header: "Membership Discount (Rs)", key: "membershipDiscount", width: 22 },
   { header: "Influencer Discount (Rs)", key: "influencerDiscount", width: 22 },
   { header: "Coin Discount (Rs)", key: "coinDiscount", width: 18 },
   { header: "Total Discount (Rs)", key: "totalDiscount", width: 18 },
+  {
+    header: "Customer Paid (After Discount) (Rs)",
+    key: "productPaidAmountAfterDiscount",
+    width: 30,
+  },
   { header: "Order Status", key: "orderStatus", width: 16 },
   { header: "Customer", key: "customer", width: 24 },
   { header: "Order Date", key: "orderDate", width: 18 },
@@ -166,7 +166,8 @@ const loadTemplateMeta = async (templatePath, columnCount) => {
 
   for (let i = 1; i <= widthCount; i += 1) {
     const cell = headerRow.getCell(i);
-    headerStyles[i] = cell?.style && Object.keys(cell.style).length > 0 ? cell.style : null;
+    headerStyles[i] =
+      cell?.style && Object.keys(cell.style).length > 0 ? cell.style : null;
     const width = sheet.getColumn(i)?.width;
     columnWidths[i] = Number.isFinite(width) ? width : null;
   }
@@ -208,7 +209,10 @@ export const createOrderReportWriter = async ({
     headerRow.height = templateMeta.headerRowHeight;
   }
   if (!headerRow.values || headerRow.values.length <= 1) {
-    headerRow.values = [null, ...normalizedColumns.map((column) => column.header)];
+    headerRow.values = [
+      null,
+      ...normalizedColumns.map((column) => column.header),
+    ];
   }
 
   headerRow.eachCell((cell, colNumber) => {
