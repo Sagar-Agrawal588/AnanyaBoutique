@@ -163,6 +163,18 @@ export default function AdminSalesAnalytics({ token }) {
     },
     { confirmed: 0, rto: 0 },
   );
+  let runningConfirmed = 0;
+  let runningRto = 0;
+  const cumulativeChartData = chartData.map((point) => {
+    runningConfirmed += Number(point?.confirmed || 0);
+    runningRto += Number(point?.rto || 0);
+
+    return {
+      ...point,
+      confirmed: runningConfirmed,
+      rto: runningRto,
+    };
+  });
 
   const reportRows = Number(pagination.total || 0);
 
@@ -280,7 +292,7 @@ export default function AdminSalesAnalytics({ token }) {
         </div>
 
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-          <SalesChart data={chartData} interval={chartInterval} />
+          <SalesChart data={cumulativeChartData} interval={chartInterval} cumulative />
         </div>
 
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">

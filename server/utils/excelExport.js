@@ -45,6 +45,11 @@ export const ORDER_REPORT_COLUMNS = [
   { header: "Variant Name", key: "variantName", width: 18 },
   { header: "Quantity", key: "quantity", width: 12 },
   { header: "Price", key: "price", width: 14 },
+  {
+    header: "Product Paid Amount (After Discount)",
+    key: "productPaidAmountAfterDiscount",
+    width: 30,
+  },
   { header: "Coupon Code", key: "couponCode", width: 16 },
   { header: "Coupon Discount (Rs)", key: "couponDiscount", width: 18 },
   { header: "Membership Discount (Rs)", key: "membershipDiscount", width: 22 },

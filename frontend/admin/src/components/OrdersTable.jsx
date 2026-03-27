@@ -64,6 +64,7 @@ export default function OrdersTable({
               <th className="px-4 py-3 text-left font-semibold">Product Name</th>
               <th className="px-4 py-3 text-right font-semibold">Qty</th>
               <th className="px-4 py-3 text-right font-semibold">Price</th>
+              <th className="px-4 py-3 text-right font-semibold">Paid (After Discount)</th>
               <th className="px-4 py-3 text-left font-semibold">Order Status</th>
               <th className="px-4 py-3 text-left font-semibold">Customer</th>
               <th className="px-4 py-3 text-left font-semibold">Order Date</th>
@@ -74,7 +75,7 @@ export default function OrdersTable({
             {orders.length === 0 ? (
               <tr>
                 <td
-                  colSpan={9}
+                  colSpan={10}
                   className="px-4 py-6 text-center text-gray-500"
                 >
                   No orders match this range.
@@ -97,6 +98,9 @@ export default function OrdersTable({
                   </td>
                   <td className="px-4 py-3 text-right text-gray-700">
                     {formatCurrency(order.price)}
+                  </td>
+                  <td className="px-4 py-3 text-right text-gray-700 font-medium">
+                    {formatCurrency(order.productPaidAmountAfterDiscount)}
                   </td>
                   <td className="px-4 py-3">
                     <span

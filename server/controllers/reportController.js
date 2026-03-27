@@ -173,6 +173,33 @@ const parseNumberLike = (value) => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
+const round2 = (value) => Math.round(Number(value || 0) * 100) / 100;
+
+const resolveProductPaidAfterDiscount = (row) => {
+  const quantity = Number(row?.quantity || 0);
+  const unitPrice = Number(row?.price || 0);
+  const productSubTotalRaw = Number(row?.subTotal || 0);
+  const productSubTotal =
+    Number.isFinite(productSubTotalRaw) && productSubTotalRaw > 0
+      ? productSubTotalRaw
+      : Math.max(quantity, 0) * Math.max(unitPrice, 0);
+
+  const orderSubtotal = Number(row?.subtotal || 0);
+  const orderTotalDiscount = Number(row?.totalDiscount || 0);
+
+  if (!Number.isFinite(productSubTotal) || productSubTotal <= 0) return 0;
+  if (!Number.isFinite(orderTotalDiscount) || orderTotalDiscount <= 0) {
+    return round2(productSubTotal);
+  }
+
+  if (Number.isFinite(orderSubtotal) && orderSubtotal > 0) {
+    const allocatedDiscount = (orderTotalDiscount * productSubTotal) / orderSubtotal;
+    return round2(Math.max(productSubTotal - allocatedDiscount, 0));
+  }
+
+  return round2(Math.max(productSubTotal - orderTotalDiscount, 0));
+};
+
 const normalizeInfluencerCode = (value) => {
   const raw = String(value || "").trim().toUpperCase();
   if (!raw) return "";
@@ -286,6 +313,7 @@ const normalizeReportRow = (row) => {
   const orderDisplayId = String(
     row?.orderNumber || row?.displayOrderId || deriveLegacyDisplayOrderId(orderId) || orderId || "",
   ).trim();
+  const productPaidAmountAfterDiscount = resolveProductPaidAfterDiscount(row);
 
   return {
     orderId,
@@ -294,6 +322,7 @@ const normalizeReportRow = (row) => {
     productName: String(row?.productName || "").trim(),
     quantity: Number(row?.quantity || 0),
     price: Number(row?.price || 0),
+    productPaidAmountAfterDiscount,
     orderStatus: resolveOrderStatusLabel(row?.order_status),
     customerName: String(row?.customerName || "").trim() || "Guest",
     orderDate: row?.createdAt ? new Date(row.createdAt).toISOString() : null,
@@ -360,6 +389,9 @@ export const getOrdersReport = asyncHandler(async (req, res) => {
                 productName: "$products.productTitle",
                 quantity: "$products.quantity",
                 price: "$products.price",
+                subTotal: "$products.subTotal",
+                subtotal: "$subtotal",
+                totalDiscount: "$discount",
                 customerName: {
                   $ifNull: [
                     "$billingDetails.fullName",
@@ -750,6 +782,7 @@ export const exportOrdersReport = asyncHandler(async (req, res) => {
           variantName: String(row?.variantName || "").trim(),
           quantity: Number(row?.quantity || 0),
           price: Number(row?.price || 0),
+          productPaidAmountAfterDiscount: resolveProductPaidAfterDiscount(row),
           couponCode: String(row?.couponCode || "").trim(),
           couponDiscount: Number(row?.couponDiscount || 0),
           membershipDiscount: Number(row?.membershipDiscount || 0),
