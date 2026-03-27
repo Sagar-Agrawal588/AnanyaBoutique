@@ -47,10 +47,7 @@ const fetchSettingsPayload = async (url) => {
 
   if (!response.ok) {
     const backendMessage =
-      payload?.message ||
-      payload?.error?.message ||
-      payload?.error ||
-      null;
+      payload?.message || payload?.error?.message || payload?.error || null;
     throw new Error(
       backendMessage || `Failed to fetch settings (${response.status})`,
     );
@@ -189,7 +186,7 @@ export const SettingsProvider = ({ children }) => {
         throw new Error(data?.message || "Invalid settings response");
       }
     } catch (err) {
-      console.error("Error fetching settings:", err);
+      console.warn("Error fetching settings:", err);
       setError(err.message);
       // Keep using default settings on error
     } finally {

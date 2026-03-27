@@ -34,7 +34,7 @@ const ProductSlider = ({ title, categorySlug, isFeatured, limit = 10 }) => {
         const params = [];
 
         if (categorySlug) params.push(`category=${categorySlug}`);
-        if (isFeatured) params.push("isFeatured=true");
+        if (isFeatured) params.push("featured=true");
         params.push(`limit=${limit}`);
 
         url += params.join("&");
@@ -121,7 +121,8 @@ const ProductSlider = ({ title, categorySlug, isFeatured, limit = 10 }) => {
     );
   }
 
-  const navBtnBase = "absolute top-1/2 -translate-y-1/2 z-10 w-9 h-9 md:w-11 md:h-11 rounded-full flex items-center justify-center transition-all duration-300 cursor-pointer";
+  const navBtnBase =
+    "absolute top-1/2 -translate-y-1/2 z-10 w-9 h-9 md:w-11 md:h-11 rounded-full flex items-center justify-center transition-all duration-300 cursor-pointer";
 
   return (
     <div className="productSlider py-5 relative">

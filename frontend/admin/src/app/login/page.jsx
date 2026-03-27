@@ -57,7 +57,11 @@ const Login = () => {
       throw new Error(backendResponse?.message || "Google Sign-In failed");
     }
 
-    if (backendResponse?.data?.role !== "Admin") {
+    if (
+      String(backendResponse?.data?.role || "")
+        .trim()
+        .toLowerCase() !== "admin"
+    ) {
       throw new Error("Access denied. Admin privileges required.");
     }
 
@@ -118,12 +122,6 @@ const Login = () => {
 
     if (!email || !password) {
       setError("Please fill in all fields");
-      setIsLoading(false);
-      return;
-    }
-
-    if (String(email || "").trim().toLowerCase() !== "admin@buyonegram.com") {
-      setError("Access denied. Admin privileges required.");
       setIsLoading(false);
       return;
     }
@@ -268,7 +266,7 @@ const Login = () => {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="admin@buyonegram.com"
+                placeholder="Enter admin email"
                 className="w-full h-[45px] pl-10 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white outline-none focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all duration-200"
               />
             </div>

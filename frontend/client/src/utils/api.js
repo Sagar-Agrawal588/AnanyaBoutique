@@ -175,28 +175,65 @@ const handleApiError = (error, fallbackMessage) => {
   return { error: true, success: false, message };
 };
 
+const getApiBaseCandidates = () => {
+  const candidates = [sanitizeBaseUrl(API_BASE_URL)].filter(Boolean);
+
+  if (typeof window !== "undefined") {
+    const hostname = String(window.location.hostname || "").toLowerCase();
+    const isLocalhost = hostname === "localhost" || hostname === "127.0.0.1";
+    if (isLocalhost) {
+      candidates.push(LOCAL_API_FALLBACK);
+    }
+  }
+
+  return [...new Set(candidates)];
+};
+
 const requestWithRetry = async (config, fallbackMessage) => {
-  try {
-    const response = await axiosClient.request(config);
-    return response.data;
-  } catch (error) {
-    const originalRequest = config;
-    if (error?.response?.status === 401 && !originalRequest._retry) {
-      originalRequest._retry = true;
-      const newToken = await refreshAccessToken();
-      if (newToken) {
-        originalRequest.headers = originalRequest.headers || {};
-        originalRequest.headers.Authorization = `Bearer ${newToken}`;
-        try {
-          const retryResponse = await axiosClient.request(originalRequest);
-          return retryResponse.data;
-        } catch (retryError) {
-          return handleApiError(retryError, fallbackMessage);
+  const baseCandidates = getApiBaseCandidates();
+  let lastError = null;
+
+  for (let i = 0; i < baseCandidates.length; i += 1) {
+    const baseURL = baseCandidates[i];
+    const isLastCandidate = i === baseCandidates.length - 1;
+    const requestConfig = {
+      ...config,
+      baseURL,
+      headers: {
+        ...(config?.headers || {}),
+      },
+    };
+
+    try {
+      const response = await axiosClient.request(requestConfig);
+      return response.data;
+    } catch (error) {
+      if (error?.response?.status === 401 && !requestConfig._retry) {
+        requestConfig._retry = true;
+        const newToken = await refreshAccessToken();
+        if (newToken) {
+          requestConfig.headers.Authorization = `Bearer ${newToken}`;
+          try {
+            const retryResponse = await axiosClient.request(requestConfig);
+            return retryResponse.data;
+          } catch (retryError) {
+            error = retryError;
+          }
         }
       }
+
+      lastError = error;
+      const status = Number(error?.response?.status || 0);
+      const shouldTryNextBase = !isLastCandidate && (!status || status >= 500);
+      if (shouldTryNextBase) {
+        continue;
+      }
+
+      return handleApiError(error, fallbackMessage);
     }
-    return handleApiError(error, fallbackMessage);
   }
+
+  return handleApiError(lastError, fallbackMessage);
 };
 
 export const postData = async (url, formData) =>

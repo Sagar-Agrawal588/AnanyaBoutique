@@ -22,7 +22,9 @@ const getStoredAuthToken = () => {
   const cookieToken = cookies.get("accessToken");
   if (cookieToken) return cookieToken;
   if (typeof window === "undefined") return "";
-  return localStorage.getItem("accessToken") || localStorage.getItem("token") || "";
+  return (
+    localStorage.getItem("accessToken") || localStorage.getItem("token") || ""
+  );
 };
 
 const ensureAccessTokenCookie = (token) => {
@@ -400,8 +402,9 @@ export default function MembershipPage() {
       return;
     }
     const memberNow =
-      Boolean(membershipStatus?.isMember ?? membershipStatus?.membershipActive) &&
-      !Boolean(membershipStatus?.isExpired);
+      Boolean(
+        membershipStatus?.isMember ?? membershipStatus?.membershipActive,
+      ) && !Boolean(membershipStatus?.isExpired);
     if (memberNow) {
       return;
     }
@@ -445,15 +448,27 @@ export default function MembershipPage() {
   }
 
   const isMemberActive =
-    Boolean(
-      membershipStatus?.isMember ?? membershipStatus?.membershipActive,
-    ) && !Boolean(membershipStatus?.isExpired);
+    Boolean(membershipStatus?.isMember ?? membershipStatus?.membershipActive) &&
+    !Boolean(membershipStatus?.isExpired);
   const user = { isMember: isMemberActive };
-  const unlockedBenefits = (
+  const summaryBenefitPool = (
     pageContent?.benefits?.items?.length
       ? pageContent.benefits.items
       : DEFAULT_CONTENT.benefits.items
-  ).slice(0, 3);
+  ).filter((benefit) => {
+    const title = String(benefit?.title || "")
+      .trim()
+      .toLowerCase();
+    return title !== "earn points" && title !== "free shipping";
+  });
+  const unlockedBenefits = [
+    ...summaryBenefitPool.slice(0, 2),
+    {
+      title: "Dedicated Customer Care Service",
+      description:
+        "Get priority support from our customer care team whenever you need help.",
+    },
+  ];
   const membershipExpiryLabel = membershipStatus?.membershipExpiry
     ? new Date(membershipStatus.membershipExpiry).toLocaleDateString()
     : "";
@@ -488,9 +503,7 @@ export default function MembershipPage() {
         {/* Header Section */}
         <header className="text-center mb-12 sm:mb-16">
           {/* Crown badge */}
-          <div
-            className="mb-6 inline-flex items-center gap-2 rounded-full border border-[var(--glass-border)] bg-[var(--glass-bg)] px-4 py-2 shadow-[var(--glass-shadow)] backdrop-blur-[var(--glass-blur)]"
-          >
+          <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-[var(--glass-border)] bg-[var(--glass-bg)] px-4 py-2 shadow-[var(--glass-shadow)] backdrop-blur-[var(--glass-blur)]">
             <FaCrown className="text-[var(--glass-text)]" />
             <span className="text-sm font-semibold text-[var(--glass-text)]">
               {pageContent?.hero?.badge || "Premium Membership"}
@@ -501,7 +514,9 @@ export default function MembershipPage() {
           {/* Main title */}
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black mb-4">
             <span className={ACCENT_TEXT_CLASS}>
-              {pageContent?.hero?.title || activePlan?.name || "Buy One Gram Club"}
+              {pageContent?.hero?.title ||
+                activePlan?.name ||
+                "Buy One Gram Club"}
             </span>
             {pageContent?.hero?.titleHighlight && (
               <span className={`block ${ACCENT_TEXT_CLASS}`}>
@@ -524,7 +539,9 @@ export default function MembershipPage() {
 
           {/* Active member badge */}
           {isMemberActive && (
-            <div className={`inline-flex items-center gap-3 px-6 py-3 rounded-2xl ${ACCENT_BG_IMAGE_CLASS} text-white shadow-xl shadow-black/10`}>
+            <div
+              className={`inline-flex items-center gap-3 px-6 py-3 rounded-2xl ${ACCENT_BG_IMAGE_CLASS} text-white shadow-xl shadow-black/10`}
+            >
               <FaCheck className="text-lg" />
               <span className="font-bold">You&apos;re a Member!</span>
               <span className="text-emerald-100">
@@ -546,174 +563,185 @@ export default function MembershipPage() {
           isMember={user?.isMember}
           fallback={
             <>
-
-        {/* Benefits Section */}
-        <section className="mb-16">
-          <div className="text-center mb-10">
-            <h2 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-3">
-              <span className={ACCENT_TEXT_CLASS}>
-                {pageContent?.benefits?.title || DEFAULT_CONTENT.benefits.title}
-              </span>
-            </h2>
-            <p className="text-gray-600 max-w-xl mx-auto">
-              {pageContent?.benefits?.subtitle || DEFAULT_CONTENT.benefits.subtitle}
-            </p>
-          </div>
-
-          {/* Benefits Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6">
-            {(pageContent?.benefits?.items?.length
-              ? pageContent.benefits.items
-              : DEFAULT_CONTENT.benefits.items
-            ).map((benefit, index) => (
-              <BenefitCard
-                key={`${benefit.title}-${index}`}
-                icon={benefit.icon}
-                title={benefit.title}
-                description={benefit.description}
-                index={index}
-              />
-            ))}
-          </div>
-        </section>
-
-        {/* Pricing Section */}
-        <section id="membership-pricing" className="text-center">
-          {/* Price Card */}
-          {activePlan && (
-            <div className="inline-block mb-8">
-              <div className="relative">
-                {/* Glass card */}
-                <div className="relative rounded-3xl border border-[var(--glass-border)] bg-[var(--glass-bg)] px-12 py-8 shadow-[var(--glass-shadow)] backdrop-blur-[var(--glass-blur)]">
-                  {/* Sparkle decoration */}
-                  <IoSparkles className="absolute -top-3 -right-3 text-3xl text-amber-400 animate-pulse" />
-
-                  <div className="mb-4">
-                    <p className="text-xs uppercase tracking-[0.2em] text-gray-500">
-                      {pageContent?.pricing?.title || DEFAULT_CONTENT.pricing.title}
-                    </p>
-                    <p className="text-sm text-gray-500">
-                      {pageContent?.pricing?.subtitle || DEFAULT_CONTENT.pricing.subtitle}
-                    </p>
-                  </div>
-
-                  {/* Price */}
-                  <div className="flex items-baseline justify-center gap-1 mb-2">
-                    <span className="text-2xl font-bold text-gray-500">₹</span>
-                    <span className={`text-5xl sm:text-6xl font-black ${ACCENT_TEXT_CLASS}`}>
-                      {activePlan.price}
+              {/* Benefits Section */}
+              <section className="mb-16">
+                <div className="text-center mb-10">
+                  <h2 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-3">
+                    <span className={ACCENT_TEXT_CLASS}>
+                      {pageContent?.benefits?.title ||
+                        DEFAULT_CONTENT.benefits.title}
                     </span>
-                    {activePlan.originalPrice > activePlan.price && (
-                      <span className="text-xl text-gray-400 line-through ml-3">
-                        ₹{activePlan.originalPrice}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Duration */}
-                  <p className="text-gray-500 font-medium">
-                    for {activePlan.duration} {activePlan.durationUnit}
+                  </h2>
+                  <p className="text-gray-600 max-w-xl mx-auto">
+                    {pageContent?.benefits?.subtitle ||
+                      DEFAULT_CONTENT.benefits.subtitle}
                   </p>
-
-                  {pageContent?.pricing?.note && (
-                    <p className="text-xs text-gray-500 mt-2">
-                      {pageContent.pricing.note}
-                    </p>
-                  )}
-
-                  {/* Save badge */}
-                  {activePlan.originalPrice > activePlan.price && (
-                    <div className={`absolute -top-4 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full ${ACCENT_BG_IMAGE_CLASS} text-white text-sm font-bold shadow-lg`}>
-                      Save ₹{activePlan.originalPrice - activePlan.price}
-                    </div>
-                  )}
                 </div>
-              </div>
-            </div>
-          )}
 
-          {/* CTA Button */}
-          <div>
-            <button
-              onClick={handleSubscribe}
-              disabled={isMemberActive}
-              className={`
+                {/* Benefits Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6">
+                  {(pageContent?.benefits?.items?.length
+                    ? pageContent.benefits.items
+                    : DEFAULT_CONTENT.benefits.items
+                  ).map((benefit, index) => (
+                    <BenefitCard
+                      key={`${benefit.title}-${index}`}
+                      icon={benefit.icon}
+                      title={benefit.title}
+                      description={benefit.description}
+                      index={index}
+                    />
+                  ))}
+                </div>
+              </section>
+
+              {/* Pricing Section */}
+              <section id="membership-pricing" className="text-center">
+                {/* Price Card */}
+                {activePlan && (
+                  <div className="inline-block mb-8">
+                    <div className="relative">
+                      {/* Glass card */}
+                      <div className="relative rounded-3xl border border-[var(--glass-border)] bg-[var(--glass-bg)] px-12 py-8 shadow-[var(--glass-shadow)] backdrop-blur-[var(--glass-blur)]">
+                        {/* Sparkle decoration */}
+                        <IoSparkles className="absolute -top-3 -right-3 text-3xl text-amber-400 animate-pulse" />
+
+                        <div className="mb-4">
+                          <p className="text-xs uppercase tracking-[0.2em] text-gray-500">
+                            {pageContent?.pricing?.title ||
+                              DEFAULT_CONTENT.pricing.title}
+                          </p>
+                          <p className="text-sm text-gray-500">
+                            {pageContent?.pricing?.subtitle ||
+                              DEFAULT_CONTENT.pricing.subtitle}
+                          </p>
+                        </div>
+
+                        {/* Price */}
+                        <div className="flex items-baseline justify-center gap-1 mb-2">
+                          <span className="text-2xl font-bold text-gray-500">
+                            ₹
+                          </span>
+                          <span
+                            className={`text-5xl sm:text-6xl font-black ${ACCENT_TEXT_CLASS}`}
+                          >
+                            {activePlan.price}
+                          </span>
+                          {activePlan.originalPrice > activePlan.price && (
+                            <span className="text-xl text-gray-400 line-through ml-3">
+                              ₹{activePlan.originalPrice}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Duration */}
+                        <p className="text-gray-500 font-medium">
+                          for {activePlan.duration} {activePlan.durationUnit}
+                        </p>
+
+                        {pageContent?.pricing?.note && (
+                          <p className="text-xs text-gray-500 mt-2">
+                            {pageContent.pricing.note}
+                          </p>
+                        )}
+
+                        {/* Save badge */}
+                        {activePlan.originalPrice > activePlan.price && (
+                          <div
+                            className={`absolute -top-4 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full ${ACCENT_BG_IMAGE_CLASS} text-white text-sm font-bold shadow-lg`}
+                          >
+                            Save ₹{activePlan.originalPrice - activePlan.price}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* CTA Button */}
+                <div>
+                  <button
+                    onClick={handleSubscribe}
+                    disabled={isMemberActive}
+                    className={`
                 relative group inline-flex items-center gap-3 px-10 py-4 rounded-2xl text-white font-bold text-lg
                 transition-all duration-300 transform
-                ${isMemberActive
-                  ? `${ACCENT_BG_IMAGE_CLASS} cursor-default opacity-90`
-                  : `${ACCENT_BG_IMAGE_CLASS} hover:scale-105 hover:shadow-2xl hover:shadow-black/20 active:scale-[0.98]`
+                ${
+                  isMemberActive
+                    ? `${ACCENT_BG_IMAGE_CLASS} cursor-default opacity-90`
+                    : `${ACCENT_BG_IMAGE_CLASS} hover:scale-105 hover:shadow-2xl hover:shadow-black/20 active:scale-[0.98]`
                 }
                 shadow-xl shadow-black/15
               `}
-            >
-              {/* Button shine effect */}
-              {!isMemberActive && (
-                <div className="absolute inset-0 rounded-2xl overflow-hidden">
-                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
-                </div>
-              )}
+                  >
+                    {/* Button shine effect */}
+                    {!isMemberActive && (
+                      <div className="absolute inset-0 rounded-2xl overflow-hidden">
+                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
+                      </div>
+                    )}
 
-              <span className="relative">
-                {isMemberActive ? (
-                  <>
-                    <FaCheck className="inline mr-2" />
-                    Active Member
-                  </>
-                ) : isLoggedIn ? (
-                  <>
-                    <FaCrown className="inline mr-2" />
-                    {pageContent?.pricing?.ctaText || DEFAULT_CONTENT.pricing.ctaText}
-                  </>
-                ) : (
-                  "Login to Join"
-                )}
-              </span>
-            </button>
+                    <span className="relative">
+                      {isMemberActive ? (
+                        <>
+                          <FaCheck className="inline mr-2" />
+                          Active Member
+                        </>
+                      ) : isLoggedIn ? (
+                        <>
+                          <FaCrown className="inline mr-2" />
+                          {pageContent?.pricing?.ctaText ||
+                            DEFAULT_CONTENT.pricing.ctaText}
+                        </>
+                      ) : (
+                        "Login to Join"
+                      )}
+                    </span>
+                  </button>
 
-            <p className="text-gray-500 text-sm mt-4">
-              {isMemberActive
-                ? "Enjoy your exclusive member benefits!"
-                : isLoggedIn
-                  ? "Click above to proceed to checkout"
-                  : "Login required to activate membership"}
-            </p>
-          </div>
-        </section>
-
-        {/* CTA Section */}
-        {!isMemberActive && (
-          <section className="mt-16">
-            <div
-              className="relative overflow-hidden rounded-3xl border border-[var(--glass-border)] bg-[var(--glass-bg)] px-8 py-10 shadow-[var(--glass-shadow)] backdrop-blur-[var(--glass-blur)] sm:px-10"
-            >
-              <div className="absolute inset-0 opacity-40">
-                <div
-                  className={`absolute -top-20 -right-20 h-48 w-48 rounded-full blur-3xl ${theme.glowB}`}
-                />
-                <div
-                  className={`absolute -bottom-24 -left-24 h-56 w-56 rounded-full blur-3xl ${theme.glowA}`}
-                />
-              </div>
-              <div className="relative z-10 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-                <div>
-                  <h3 className="text-2xl sm:text-3xl font-bold text-gray-900">
-                    {pageContent?.cta?.title || DEFAULT_CONTENT.cta.title}
-                  </h3>
-                  <p className="text-gray-600 mt-2 max-w-2xl">
-                    {pageContent?.cta?.description || DEFAULT_CONTENT.cta.description}
+                  <p className="text-gray-500 text-sm mt-4">
+                    {isMemberActive
+                      ? "Enjoy your exclusive member benefits!"
+                      : isLoggedIn
+                        ? "Click above to proceed to checkout"
+                        : "Login required to activate membership"}
                   </p>
                 </div>
-                <button
-                  onClick={handleSecondaryCta}
-                  className={`inline-flex items-center justify-center px-8 py-3 rounded-2xl font-semibold text-white ${ACCENT_BG_IMAGE_CLASS} shadow-lg shadow-black/15 hover:scale-[1.02] transition-transform`}
-                >
-                  {pageContent?.cta?.buttonText || DEFAULT_CONTENT.cta.buttonText}
-                </button>
-              </div>
-            </div>
-          </section>
-        )}
+              </section>
+
+              {/* CTA Section */}
+              {!isMemberActive && (
+                <section className="mt-16">
+                  <div className="relative overflow-hidden rounded-3xl border border-[var(--glass-border)] bg-[var(--glass-bg)] px-8 py-10 shadow-[var(--glass-shadow)] backdrop-blur-[var(--glass-blur)] sm:px-10">
+                    <div className="absolute inset-0 opacity-40">
+                      <div
+                        className={`absolute -top-20 -right-20 h-48 w-48 rounded-full blur-3xl ${theme.glowB}`}
+                      />
+                      <div
+                        className={`absolute -bottom-24 -left-24 h-56 w-56 rounded-full blur-3xl ${theme.glowA}`}
+                      />
+                    </div>
+                    <div className="relative z-10 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+                      <div>
+                        <h3 className="text-2xl sm:text-3xl font-bold text-gray-900">
+                          {pageContent?.cta?.title || DEFAULT_CONTENT.cta.title}
+                        </h3>
+                        <p className="text-gray-600 mt-2 max-w-2xl">
+                          {pageContent?.cta?.description ||
+                            DEFAULT_CONTENT.cta.description}
+                        </p>
+                      </div>
+                      <button
+                        onClick={handleSecondaryCta}
+                        className={`inline-flex items-center justify-center px-8 py-3 rounded-2xl font-semibold text-white ${ACCENT_BG_IMAGE_CLASS} shadow-lg shadow-black/15 hover:scale-[1.02] transition-transform`}
+                      >
+                        {pageContent?.cta?.buttonText ||
+                          DEFAULT_CONTENT.cta.buttonText}
+                      </button>
+                    </div>
+                  </div>
+                </section>
+              )}
             </>
           }
         >
@@ -729,24 +757,33 @@ export default function MembershipPage() {
               </div>
 
               <div className="relative z-10">
-                <div className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-bold text-white shadow-lg ${ACCENT_BG_IMAGE_CLASS}`}>
+                <div
+                  className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-bold text-white shadow-lg ${ACCENT_BG_IMAGE_CLASS}`}
+                >
                   <FaCheck />
                   Active Member
                 </div>
 
                 <h2 className="mt-5 text-2xl sm:text-3xl font-bold text-gray-900">
-                  <span className={ACCENT_TEXT_CLASS}>You are an Active Member</span>
+                  <span className={ACCENT_TEXT_CLASS}>
+                    You are an Active Member
+                  </span>
                 </h2>
 
                 <p className="mt-2 text-gray-600">
                   Your membership is currently active.
-                  {membershipExpiryLabel ? ` Valid until ${membershipExpiryLabel}.` : ""}
+                  {membershipExpiryLabel
+                    ? ` Valid until ${membershipExpiryLabel}.`
+                    : ""}
                 </p>
 
                 <div className="mt-6 rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-bg)] p-5 shadow-[var(--glass-shadow)] backdrop-blur-[var(--glass-blur)]">
-                  <h3 className="text-lg font-semibold text-gray-900">Member status card</h3>
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    Member status card
+                  </h3>
                   <p className="mt-1 text-sm text-gray-600">
-                    Benefits unlocked summary and member-only access are active on your account.
+                    Benefits unlocked summary and member-only access are active
+                    on your account.
                   </p>
                 </div>
 

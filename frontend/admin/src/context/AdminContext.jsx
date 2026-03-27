@@ -153,7 +153,11 @@ export const AdminProvider = ({ children }) => {
         const normalizedAdmin = normalizeAdminPayload(data) || data;
 
         // Check if user is an admin
-        if (data.role !== "Admin") {
+        if (
+          String(data?.role || "")
+            .trim()
+            .toLowerCase() !== "admin"
+        ) {
           return {
             error: true,
             message: "Access denied. Admin privileges required.",

@@ -1,8 +1,8 @@
 import bcrypt from "bcryptjs";
 import UserModel from "../models/user.model.js";
+import { emitTrackingEvent } from "../services/analytics/trackingEmitter.service.js";
 import generateAccessToken from "../utils/generateAccessToken.js";
 import generateRefreshToken from "../utils/generateRefreshToken.js";
-import { emitTrackingEvent } from "../services/analytics/trackingEmitter.service.js";
 
 const AUTH_PERSIST_MAX_AGE = 365 * 24 * 60 * 60 * 1000; // 365 days
 const ACCESS_TOKEN_MAX_AGE = AUTH_PERSIST_MAX_AGE;
@@ -46,7 +46,10 @@ const buildCookieOptions = (maxAge) => {
   return options;
 };
 
-const normalizeEmail = (email) => String(email || "").trim().toLowerCase();
+const normalizeEmail = (email) =>
+  String(email || "")
+    .trim()
+    .toLowerCase();
 const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
 const ADMIN_PRIMARY_EMAIL = normalizeEmail(
@@ -55,6 +58,14 @@ const ADMIN_PRIMARY_EMAIL = normalizeEmail(
 
 const isAllowedAdminEmail = (email) =>
   normalizeEmail(email) === ADMIN_PRIMARY_EMAIL;
+
+const hasAdminRole = (user) =>
+  String(user?.role || "")
+    .trim()
+    .toLowerCase() === "admin";
+
+const canAccessAdminPortal = ({ email, user }) =>
+  isAllowedAdminEmail(email) || hasAdminRole(user);
 
 const resolveIsActiveMember = (user) => {
   if (!user) return false;
@@ -87,7 +98,9 @@ export const adminLoginController = async (req, res) => {
       });
     }
 
-    if (!isAllowedAdminEmail(normalizedEmail)) {
+    const user = await UserModel.findOne({ email: normalizedEmail });
+
+    if (!canAccessAdminPortal({ email: normalizedEmail, user })) {
       return res.status(403).json({
         success: false,
         error: true,
@@ -95,7 +108,6 @@ export const adminLoginController = async (req, res) => {
       });
     }
 
-    const user = await UserModel.findOne({ email: normalizedEmail });
     if (!user) {
       return res.status(403).json({
         success: false,
@@ -224,7 +236,9 @@ export const adminGoogleLoginController = async (req, res) => {
       });
     }
 
-    if (!isAllowedAdminEmail(normalizedEmail)) {
+    let user = await UserModel.findOne({ email: normalizedEmail });
+
+    if (!canAccessAdminPortal({ email: normalizedEmail, user })) {
       return res.status(403).json({
         success: false,
         error: true,
@@ -235,9 +249,8 @@ export const adminGoogleLoginController = async (req, res) => {
     const sanitizedName = String(name || "")
       .trim()
       .replace(/<[^>]*>/g, "");
-    const resolvedName = sanitizedName || normalizedEmail.split("@")[0] || "Admin";
-
-    let user = await UserModel.findOne({ email: normalizedEmail });
+    const resolvedName =
+      sanitizedName || normalizedEmail.split("@")[0] || "Admin";
 
     let isNewGoogleUser = false;
     if (!user) {

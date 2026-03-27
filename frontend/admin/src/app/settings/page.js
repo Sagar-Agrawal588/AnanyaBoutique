@@ -1,7 +1,7 @@
 "use client";
 
-import { getImageUrl } from "@/utils/imageUtils";
 import { API_BASE_URL, uploadFile } from "@/utils/api";
+import { getImageUrl } from "@/utils/imageUtils";
 
 import { useAdmin } from "@/context/AdminContext";
 import {
@@ -11,8 +11,8 @@ import {
   Divider,
   FormControl,
   FormControlLabel,
-  InputLabel,
   InputAdornment,
+  InputLabel,
   MenuItem,
   Select,
   Snackbar,
@@ -24,8 +24,8 @@ import {
   MdLocalOffer,
   MdLocalShipping,
   MdPercent,
-  MdRefresh,
   MdReceiptLong,
+  MdRefresh,
   MdSave,
   MdShoppingCart,
   MdStore,
@@ -94,10 +94,11 @@ const FLAVOUR_BUTTON_FIELDS = [
   },
 ];
 const HEX_COLOR_PATTERN = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
-const SERIES_PREFIX_PATTERN = /^[a-z0-9]{1,10}$/i;
+const SERIES_PREFIX_PATTERN = /^[a-z0-9-]{1,10}$/i;
 const FISCAL_YEAR_CODE_PATTERN = /^\d{4}$/;
 
-const isHexColor = (value) => HEX_COLOR_PATTERN.test(String(value || "").trim());
+const isHexColor = (value) =>
+  HEX_COLOR_PATTERN.test(String(value || "").trim());
 
 const resolveFiscalYearCode = (value = new Date()) => {
   const date = value instanceof Date ? value : new Date(value);
@@ -142,9 +143,10 @@ const ORDER_SETTINGS_DEFAULTS = {
 };
 
 const buildOrderSeriesPreview = (settings = {}) => {
-  const prefix = String(settings.orderSeriesPrefix || "H1G")
-    .trim()
-    .toUpperCase() || "H1G";
+  const prefix =
+    String(settings.orderSeriesPrefix || "H1G")
+      .trim()
+      .toUpperCase() || "H1G";
   const now = new Date();
   const year = now.getFullYear();
   const month = now.getMonth();
@@ -267,24 +269,32 @@ const SettingsPage = () => {
       return { valid: false, message: "CTA button text is required." };
     }
 
-    if (!value.startDate || !value.expiryDate) {
+    const hasStartDate = Boolean(value.startDate);
+    const hasExpiryDate = Boolean(value.expiryDate);
+    const requiresSchedule = Boolean(
+      value.isActive || hasStartDate || hasExpiryDate,
+    );
+
+    if (requiresSchedule && (!hasStartDate || !hasExpiryDate)) {
       return {
         valid: false,
         message: "Start date and expiry date are required.",
       };
     }
 
-    const startDate = new Date(value.startDate);
-    const expiryDate = new Date(value.expiryDate);
-    if (
-      Number.isNaN(startDate.getTime()) ||
-      Number.isNaN(expiryDate.getTime()) ||
-      expiryDate <= startDate
-    ) {
-      return {
-        valid: false,
-        message: "Expiry date must be greater than start date.",
-      };
+    if (requiresSchedule) {
+      const startDate = new Date(value.startDate);
+      const expiryDate = new Date(value.expiryDate);
+      if (
+        Number.isNaN(startDate.getTime()) ||
+        Number.isNaN(expiryDate.getTime()) ||
+        expiryDate <= startDate
+      ) {
+        return {
+          valid: false,
+          message: "Expiry date must be greater than start date.",
+        };
+      }
     }
 
     const requiresRedirect =
@@ -322,7 +332,9 @@ const SettingsPage = () => {
     if (
       String(value.couponCode || "").trim() &&
       !/^[A-Z0-9_-]{3,50}$/.test(
-        String(value.couponCode || "").trim().toUpperCase(),
+        String(value.couponCode || "")
+          .trim()
+          .toUpperCase(),
       )
     ) {
       return {
@@ -571,7 +583,9 @@ const SettingsPage = () => {
               setSiteControls((prev) => ({
                 ...prev,
                 defaultPaymentProvider:
-                  String(setting.value || "").trim().toUpperCase() === "PAYTM"
+                  String(setting.value || "")
+                    .trim()
+                    .toUpperCase() === "PAYTM"
                     ? "PAYTM"
                     : "PHONEPE",
               }));
@@ -702,7 +716,10 @@ const SettingsPage = () => {
     if (orderNumberSeries.enabled) {
       const safePrefix = String(orderNumberSeries.prefix || "").trim();
       if (!SERIES_PREFIX_PATTERN.test(safePrefix)) {
-        setToast("Order series prefix must be 1-10 letters/numbers.", "error");
+        setToast(
+          "Order series prefix must be 1-10 letters/numbers/hyphen.",
+          "error",
+        );
         return;
       }
       const safeFy = String(orderNumberSeries.fiscalYearCode || "").trim();
@@ -742,7 +759,10 @@ const SettingsPage = () => {
         saveSetting("discountSettings", discountSettings),
         saveSetting("storeInfo", storeInfo),
         saveSetting("highTrafficNotice", highTrafficNotice),
-        saveSetting("paymentGatewayEnabled", siteControls.paymentGatewayEnabled),
+        saveSetting(
+          "paymentGatewayEnabled",
+          siteControls.paymentGatewayEnabled,
+        ),
         saveSetting(
           "defaultPaymentProvider",
           String(siteControls.defaultPaymentProvider || "PHONEPE")
@@ -860,10 +880,10 @@ const SettingsPage = () => {
         </div>
         <Divider className="mb-4" />
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <FormControlLabel
-              control={
-                <Switch
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <FormControlLabel
+            control={
+              <Switch
                 checked={shippingSettings.freeShippingEnabled}
                 onChange={(e) =>
                   setShippingSettings({
@@ -1042,13 +1062,13 @@ const SettingsPage = () => {
                 ...orderSettings,
                 orderSeriesPrefix: String(e.target.value || "")
                   .toUpperCase()
-                  .replace(/[^A-Z0-9]/g, "")
+                  .replace(/[^A-Z0-9-]/g, "")
                   .slice(0, 6),
               })
             }
             size="small"
             fullWidth
-            helperText="Example: H1G"
+            helperText="Letters/numbers/hyphen. Example: H1G-"
           />
 
           <TextField
@@ -1172,12 +1192,15 @@ const SettingsPage = () => {
               onChange={(e) =>
                 setOrderNumberSeries((prev) => ({
                   ...prev,
-                  prefix: e.target.value,
+                  prefix: String(e.target.value || "")
+                    .toUpperCase()
+                    .replace(/[^A-Z0-9-]/g, "")
+                    .slice(0, 10),
                 }))
               }
               size="small"
               fullWidth
-              helperText="Letters/numbers only. Example: H1G"
+              helperText="Letters/numbers/hyphen. Example: H1G-"
               disabled={!orderNumberSeries.enabled}
             />
 
@@ -1205,9 +1228,9 @@ const SettingsPage = () => {
           const startYear = month >= 3 ? year : year - 1;
           const currentFy = resolveFiscalYearCode(now);
           const nextFy = resolveFiscalYearCode(new Date(startYear + 1, 3, 1));
-          const safePrefix = String(
-            orderNumberSeries.prefix || "H1G",
-          ).trim().toUpperCase();
+          const safePrefix = String(orderNumberSeries.prefix || "H1G")
+            .trim()
+            .toUpperCase();
           const safeFyOverride = String(
             orderNumberSeries.fiscalYearCode || "",
           ).trim();
@@ -1224,8 +1247,8 @@ const SettingsPage = () => {
               <p>
                 Current FY code:{" "}
                 <span className="font-mono font-semibold">{currentFy}</span>{" "}
-                (next:{" "}
-                <span className="font-mono font-semibold">{nextFy}</span>)
+                (next: <span className="font-mono font-semibold">{nextFy}</span>
+                )
               </p>
               <p className="mt-1">
                 Preview:{" "}
@@ -1352,9 +1375,7 @@ const SettingsPage = () => {
       <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
         <div className="flex items-center gap-3 mb-4">
           <MdWarning className="text-2xl text-red-500" />
-          <h2 className="text-lg font-semibold text-gray-800">
-            Site Controls
-          </h2>
+          <h2 className="text-lg font-semibold text-gray-800">Site Controls</h2>
         </div>
         <Divider className="mb-4" />
 
@@ -1387,38 +1408,38 @@ const SettingsPage = () => {
                 }
                 color="warning"
               />
+            }
+            label="Maintenance Mode"
+          />
+          <FormControl fullWidth size="small">
+            <InputLabel id="default-payment-provider-label">
+              Default Payment Provider
+            </InputLabel>
+            <Select
+              labelId="default-payment-provider-label"
+              value={siteControls.defaultPaymentProvider}
+              label="Default Payment Provider"
+              onChange={(e) =>
+                setSiteControls((prev) => ({
+                  ...prev,
+                  defaultPaymentProvider: String(e.target.value || "PHONEPE")
+                    .trim()
+                    .toUpperCase(),
+                }))
               }
-              label="Maintenance Mode"
-            />
-            <FormControl fullWidth size="small">
-              <InputLabel id="default-payment-provider-label">
-                Default Payment Provider
-              </InputLabel>
-              <Select
-                labelId="default-payment-provider-label"
-                value={siteControls.defaultPaymentProvider}
-                label="Default Payment Provider"
-                onChange={(e) =>
-                  setSiteControls((prev) => ({
-                    ...prev,
-                    defaultPaymentProvider: String(e.target.value || "PHONEPE")
-                      .trim()
-                      .toUpperCase(),
-                  }))
-                }
-              >
-                <MenuItem value="PHONEPE">PhonePe</MenuItem>
-                <MenuItem value="PAYTM">Paytm</MenuItem>
-              </Select>
-            </FormControl>
-          </div>
-
-          <p className="text-sm text-gray-500 mt-3">
-            Payment gateway toggle respects environment credentials. The default
-            provider is used across checkout when both gateways are available.
-            Maintenance mode disables checkout while enabled.
-          </p>
+            >
+              <MenuItem value="PHONEPE">PhonePe</MenuItem>
+              <MenuItem value="PAYTM">Paytm</MenuItem>
+            </Select>
+          </FormControl>
         </div>
+
+        <p className="text-sm text-gray-500 mt-3">
+          Payment gateway toggle respects environment credentials. The default
+          provider is used across checkout when both gateways are available.
+          Maintenance mode disables checkout while enabled.
+        </p>
+      </div>
 
       {/* Welcome Offer Popup (Coupon) */}
       <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
@@ -1507,9 +1528,8 @@ const SettingsPage = () => {
         </div>
 
         <p className="text-sm text-gray-500 mt-3">
-          This controls the coupon welcome popup shown on storefront load. It
-          is separate from Popup Management and separate from manual
-          notifications.
+          This controls the coupon welcome popup shown on storefront load. It is
+          separate from Popup Management and separate from manual notifications.
         </p>
       </div>
 
@@ -1634,7 +1654,9 @@ const SettingsPage = () => {
           </div>
 
           <FormControl size="small" fullWidth>
-            <InputLabel id="popup-redirect-type-label">Redirect Type</InputLabel>
+            <InputLabel id="popup-redirect-type-label">
+              Redirect Type
+            </InputLabel>
             <Select
               labelId="popup-redirect-type-label"
               value={popupSettings.redirectType}
@@ -1790,7 +1812,10 @@ const SettingsPage = () => {
           >
             {popupSettings.imageUrl ? (
               <img
-                src={getImageUrl(popupSettings.imageUrl, popupSettings.imageUrl)}
+                src={getImageUrl(
+                  popupSettings.imageUrl,
+                  popupSettings.imageUrl,
+                )}
                 alt="Popup preview"
                 className="w-full h-[140px] object-cover"
               />
@@ -2058,14 +2083,14 @@ const SettingsPage = () => {
                 <div
                   className="inline-flex items-center justify-center rounded-xl border px-4 py-2 text-sm font-semibold"
                   style={{
-                    backgroundColor:
-                      isHexColor(flavourButtonSettings[field.bgKey])
-                        ? flavourButtonSettings[field.bgKey]
-                        : DEFAULT_FLAVOUR_BUTTON_SETTINGS[field.bgKey],
-                    color:
-                      isHexColor(flavourButtonSettings[field.textColorKey])
-                        ? flavourButtonSettings[field.textColorKey]
-                        : DEFAULT_FLAVOUR_BUTTON_SETTINGS[field.textColorKey],
+                    backgroundColor: isHexColor(
+                      flavourButtonSettings[field.bgKey],
+                    )
+                      ? flavourButtonSettings[field.bgKey]
+                      : DEFAULT_FLAVOUR_BUTTON_SETTINGS[field.bgKey],
+                    color: isHexColor(flavourButtonSettings[field.textColorKey])
+                      ? flavourButtonSettings[field.textColorKey]
+                      : DEFAULT_FLAVOUR_BUTTON_SETTINGS[field.textColorKey],
                     borderColor: "rgba(17, 24, 39, 0.08)",
                   }}
                 >

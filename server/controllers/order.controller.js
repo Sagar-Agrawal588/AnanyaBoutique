@@ -322,7 +322,9 @@ const resolveOrderSeriesSettings = async () => {
 };
 
 const parseOrderSequenceNumber = (value, scopePrefix) => {
-  const raw = String(value || "").trim().toUpperCase();
+  const raw = String(value || "")
+    .trim()
+    .toUpperCase();
   if (!raw) return null;
   const normalizedScope = String(scopePrefix || "").toUpperCase();
   const legacyScope = normalizedScope.replace("-", "");
@@ -1102,7 +1104,9 @@ const sendOrderConfirmationEmail = async (order) => {
       Number(order?.finalAmount || order?.totalAmt || 0),
     );
 
-    const awbNumber = String(order?.awb_number || order?.awbNumber || "").trim();
+    const awbNumber = String(
+      order?.awb_number || order?.awbNumber || "",
+    ).trim();
     const trackingUrlTemplate = String(
       process.env.XPRESSBEES_TRACKING_URL_TEMPLATE ||
         "https://www.xpressbees.com/shipment/tracking?awb=${AWB}",
@@ -1185,7 +1189,8 @@ const sendOrderConfirmationEmail = async (order) => {
         tax_amount: formatInr(taxAmount),
         shipping_amount: formatInr(shippingAmount),
         final_amount: formatInr(finalAmount),
-        estimated_delivery_date: estimatedDeliveryDate.toLocaleDateString("en-IN"),
+        estimated_delivery_date:
+          estimatedDeliveryDate.toLocaleDateString("en-IN"),
         awb_number: awbNumber,
         tracking_url: trackingUrl,
         site_url: siteUrl,
@@ -2409,13 +2414,21 @@ const normalizeOrderProducts = ({ products, dbProductMap }) => {
     const subTotal = round2(price * quantity);
     const variantId = item.variantId || item.variant || null;
     const variantName = item.variantName || item.variantTitle || "";
-    const variants = Array.isArray(dbProduct?.variants) ? dbProduct.variants : [];
+    const variants = Array.isArray(dbProduct?.variants)
+      ? dbProduct.variants
+      : [];
     const selectedVariant =
-      variants.find((variant) => String(variant?._id || "") === String(variantId || "")) ||
+      variants.find(
+        (variant) => String(variant?._id || "") === String(variantId || ""),
+      ) ||
       variants.find(
         (variant) =>
-          String(variant?.name || "").trim().toLowerCase() ===
-          String(variantName || "").trim().toLowerCase(),
+          String(variant?.name || "")
+            .trim()
+            .toLowerCase() ===
+          String(variantName || "")
+            .trim()
+            .toLowerCase(),
       ) ||
       variants.find((variant) => variant?.isDefault) ||
       variants[0] ||
@@ -3279,15 +3292,41 @@ export const getAllOrders = asyncHandler(async (req, res) => {
       ORDER_STATUS.RTO,
       ORDER_STATUS.RTO_COMPLETED,
     ];
+    const paidLikeStatuses = [
+      "paid",
+      "confirmed",
+      "captured",
+      "success",
+      "successful",
+      "PAID",
+      "CONFIRMED",
+    ];
+    const pendingPaymentStatuses = ["pending", "pending_payment", "PENDING"];
+    const failedPaymentStatuses = ["failed", "FAILED"];
 
     // Filter by status
     if (normalizedStatus && normalizedStatus !== "all") {
       if (normalizedStatus === "successful") {
-        filter.order_status = { $in: successStatuses };
+        andFilters.push({
+          $or: [
+            { order_status: { $in: successStatuses } },
+            { payment_status: { $in: paidLikeStatuses } },
+          ],
+        });
       } else if (normalizedStatus === "failed") {
-        filter.order_status = { $in: failedStatuses };
+        andFilters.push({
+          $or: [
+            { order_status: { $in: failedStatuses } },
+            { payment_status: { $in: failedPaymentStatuses } },
+          ],
+        });
       } else if (normalizedStatus === "pending") {
-        filter.order_status = { $in: pendingStatuses };
+        andFilters.push({
+          $or: [
+            { order_status: { $in: pendingStatuses } },
+            { payment_status: { $in: pendingPaymentStatuses } },
+          ],
+        });
       } else {
         const normalizedOrderStatus = normalizeOrderStatus(normalizedStatus);
         if (normalizedOrderStatus === ORDER_STATUS.ACCEPTED) {
@@ -7084,7 +7123,9 @@ export const createTestOrder = asyncHandler(async (req, res) => {
           productTitle: product.name,
           variantId: null,
           variantName: "",
-          sku: String(product.sku || "").trim().toUpperCase(),
+          sku: String(product.sku || "")
+            .trim()
+            .toUpperCase(),
           hsnCode: String(product.hsnCode || "").trim(),
           quantity,
           price,
