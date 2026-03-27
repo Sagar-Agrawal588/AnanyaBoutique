@@ -18,6 +18,7 @@ import connectDb from "./config/connectDb.js";
 import "./config/dayjs.js";
 import analyticsSession from "./middlewares/analyticsSession.js";
 import createCookieCsrfGuard from "./middlewares/csrfGuard.js";
+import maintenanceModeMiddleware from "./middlewares/maintenanceMode.js";
 import {
   adminLimiter,
   analyticsLimiter,
@@ -181,16 +182,15 @@ import { initializeFirebaseAdmin } from "./config/firebaseAdmin.js";
 import { initializeSettings } from "./controllers/settings.controller.js";
 import { initSocket } from "./realtime/socket.js";
 import aboutPageRouter from "./routes/aboutPage.route.js";
-import apiDocumentRouter from "./routes/apiDocument.route.js";
 import addressRouter from "./routes/address.route.js";
 import adminAnalyticsRouter from "./routes/adminAnalytics.route.js";
 import adminAuthRouter from "./routes/adminAuth.route.js";
 import adminEmailTemplatesRouter from "./routes/adminEmailTemplates.route.js";
-import emailAutomationRouter from "./routes/emailAutomation.route.js";
 import adminMembershipRouter from "./routes/adminMembership.route.js";
 import adminOrdersRouter from "./routes/adminOrders.js";
 import adminReviewRouter from "./routes/adminReview.route.js";
 import analyticsRouter from "./routes/analytics.route.js";
+import apiDocumentRouter from "./routes/apiDocument.route.js";
 import bannerRouter from "./routes/banner.route.js";
 import blogRouter from "./routes/blog.route.js";
 import cancellationPolicyRouter from "./routes/cancellationPolicy.routes.js";
@@ -199,6 +199,7 @@ import categoryRouter from "./routes/category.route.js";
 import coinRouter from "./routes/coin.route.js";
 import comboRouter from "./routes/combo.route.js";
 import couponRouter from "./routes/coupon.route.js";
+import emailAutomationRouter from "./routes/emailAutomation.route.js";
 import homeMembershipContentRouter from "./routes/homeMembershipContent.route.js";
 import homeSlideRouter from "./routes/homeSlide.route.js";
 import influencerRouter from "./routes/influencer.route.js";
@@ -209,9 +210,9 @@ import membershipPageRouter from "./routes/membershipPage.route.js";
 import newsletterRouter from "./routes/newsletter.route.js";
 import notificationRouter from "./routes/notification.route.js";
 import orderRouter from "./routes/order.route.js";
+import partnerApiRouter from "./routes/partnerApi.route.js";
 import policyRouter from "./routes/policy.route.js";
 import popupRouter from "./routes/popup.route.js";
-import partnerApiRouter from "./routes/partnerApi.route.js";
 import productRouter from "./routes/product.route.js";
 import purchaseOrderRouter from "./routes/purchaseOrder.route.js";
 import refundRouter from "./routes/refund.route.js";
@@ -229,10 +230,10 @@ import webhookRouter from "./routes/webhook.route.js";
 import wishlistRouter from "./routes/wishlist.route.js";
 import { startComboAnalysisJob } from "./services/combos/comboAnalysis.service.js";
 import { startFrequentlyBoughtTogetherJob } from "./services/combos/frequentlyBoughtTogether.service.js";
+import { startEmailAutomationJob } from "./services/emailAutomation.service.js";
 import { startExpressbeesPolling } from "./services/expressbeesPolling.service.js";
 import { startInventoryReservationExpiryJob } from "./services/inventoryReservationExpiry.service.js";
 import { startMembershipExpiryJob } from "./services/membershipExpiry.service.js";
-import { startEmailAutomationJob } from "./services/emailAutomation.service.js";
 import { startLocationLogRetentionJob } from "./services/userLocationLog.service.js";
 
 const app = express();
@@ -400,6 +401,7 @@ app.get("/", (req, res) => {
 });
 
 // API routes with rate limiting
+app.use("/api", maintenanceModeMiddleware);
 app.use("/api/about", generalLimiter, aboutPageRouter);
 app.use("/api/api-docs", generalLimiter, apiDocumentRouter);
 app.use("/api", analyticsLimiter, trackingRouter);

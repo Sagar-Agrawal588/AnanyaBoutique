@@ -142,6 +142,15 @@ const ORDER_SETTINGS_DEFAULTS = {
   orderSeriesPadding: 4,
 };
 
+const DEFAULT_MAINTENANCE_SETTINGS = {
+  maintenanceEnabled: false,
+  maintenanceStartTime: "",
+  maintenanceEndTime: "",
+  maintenanceMessage:
+    "We are currently undergoing scheduled maintenance. Please check back soon.",
+  showCountdown: true,
+};
+
 const buildOrderSeriesPreview = (settings = {}) => {
   const prefix =
     String(settings.orderSeriesPrefix || "H1G")
@@ -208,8 +217,10 @@ const SettingsPage = () => {
   const [siteControls, setSiteControls] = useState({
     paymentGatewayEnabled: false,
     defaultPaymentProvider: "PHONEPE",
-    maintenanceMode: false,
   });
+  const [maintenanceSettings, setMaintenanceSettings] = useState(
+    DEFAULT_MAINTENANCE_SETTINGS,
+  );
   const [offerPopupSettings, setOfferPopupSettings] = useState({
     showOfferPopup: true,
     offerCouponCode: "",
@@ -591,9 +602,34 @@ const SettingsPage = () => {
               }));
               break;
             case "maintenanceMode":
-              setSiteControls((prev) => ({
+              setMaintenanceSettings((prev) => ({
                 ...prev,
-                maintenanceMode: !!setting.value,
+                maintenanceEnabled: !!setting.value,
+              }));
+              break;
+            case "maintenanceSettings":
+              setMaintenanceSettings((prev) => ({
+                ...prev,
+                ...DEFAULT_MAINTENANCE_SETTINGS,
+                ...(setting?.value && typeof setting.value === "object"
+                  ? {
+                      maintenanceEnabled: !!setting.value.maintenanceEnabled,
+                      maintenanceStartTime: toDateTimeLocal(
+                        setting.value.maintenanceStartTime,
+                      ),
+                      maintenanceEndTime: toDateTimeLocal(
+                        setting.value.maintenanceEndTime,
+                      ),
+                      maintenanceMessage: String(
+                        setting.value.maintenanceMessage ||
+                          DEFAULT_MAINTENANCE_SETTINGS.maintenanceMessage,
+                      ).trim(),
+                      showCountdown:
+                        setting.value.showCountdown === undefined
+                          ? true
+                          : !!setting.value.showCountdown,
+                    }
+                  : {}),
               }));
               break;
             case "highTrafficNotice":
@@ -729,6 +765,25 @@ const SettingsPage = () => {
       }
     }
 
+    if (
+      maintenanceSettings.maintenanceStartTime &&
+      maintenanceSettings.maintenanceEndTime
+    ) {
+      const start = new Date(maintenanceSettings.maintenanceStartTime);
+      const end = new Date(maintenanceSettings.maintenanceEndTime);
+      if (
+        Number.isNaN(start.getTime()) ||
+        Number.isNaN(end.getTime()) ||
+        end <= start
+      ) {
+        setToast(
+          "Maintenance end time must be greater than maintenance start time.",
+          "error",
+        );
+        return;
+      }
+    }
+
     setSaving(true);
     try {
       const flavourButtonSaveCalls = Object.entries(flavourButtonSettings).map(
@@ -744,6 +799,7 @@ const SettingsPage = () => {
         trafficSaved,
         paymentSaved,
         defaultPaymentProviderSaved,
+        maintenanceSettingsSaved,
         maintenanceSaved,
         showOfferPopupSaved,
         offerCouponCodeSaved,
@@ -769,7 +825,24 @@ const SettingsPage = () => {
             .trim()
             .toUpperCase(),
         ),
-        saveSetting("maintenanceMode", siteControls.maintenanceMode),
+        saveSetting("maintenanceSettings", {
+          maintenanceEnabled: !!maintenanceSettings.maintenanceEnabled,
+          maintenanceStartTime: toIsoIfPresent(
+            maintenanceSettings.maintenanceStartTime,
+          ),
+          maintenanceEndTime: toIsoIfPresent(
+            maintenanceSettings.maintenanceEndTime,
+          ),
+          maintenanceMessage: String(
+            maintenanceSettings.maintenanceMessage ||
+              DEFAULT_MAINTENANCE_SETTINGS.maintenanceMessage,
+          ).trim(),
+          showCountdown: !!maintenanceSettings.showCountdown,
+        }),
+        saveSetting(
+          "maintenanceMode",
+          !!maintenanceSettings.maintenanceEnabled,
+        ),
         saveSetting("showOfferPopup", !!offerPopupSettings.showOfferPopup),
         saveSetting(
           "offerCouponCode",
@@ -801,6 +874,7 @@ const SettingsPage = () => {
         trafficSaved,
         paymentSaved,
         defaultPaymentProviderSaved,
+        maintenanceSettingsSaved,
         maintenanceSaved,
         showOfferPopupSaved,
         offerCouponCodeSaved,
@@ -1399,17 +1473,80 @@ const SettingsPage = () => {
           <FormControlLabel
             control={
               <Switch
-                checked={siteControls.maintenanceMode}
+                checked={maintenanceSettings.maintenanceEnabled}
                 onChange={(e) =>
-                  setSiteControls({
-                    ...siteControls,
-                    maintenanceMode: e.target.checked,
-                  })
+                  setMaintenanceSettings((prev) => ({
+                    ...prev,
+                    maintenanceEnabled: e.target.checked,
+                  }))
                 }
                 color="warning"
               />
             }
             label="Maintenance Mode"
+          />
+
+          <FormControlLabel
+            control={
+              <Switch
+                checked={maintenanceSettings.showCountdown}
+                onChange={(e) =>
+                  setMaintenanceSettings((prev) => ({
+                    ...prev,
+                    showCountdown: e.target.checked,
+                  }))
+                }
+                color="warning"
+              />
+            }
+            label="Show Maintenance Countdown"
+          />
+
+          <TextField
+            label="Maintenance Start Time"
+            type="datetime-local"
+            value={maintenanceSettings.maintenanceStartTime}
+            onChange={(e) =>
+              setMaintenanceSettings((prev) => ({
+                ...prev,
+                maintenanceStartTime: e.target.value,
+              }))
+            }
+            size="small"
+            fullWidth
+            InputLabelProps={{ shrink: true }}
+            helperText="Optional. Leave empty to start maintenance immediately when enabled."
+          />
+
+          <TextField
+            label="Maintenance End Time"
+            type="datetime-local"
+            value={maintenanceSettings.maintenanceEndTime}
+            onChange={(e) =>
+              setMaintenanceSettings((prev) => ({
+                ...prev,
+                maintenanceEndTime: e.target.value,
+              }))
+            }
+            size="small"
+            fullWidth
+            InputLabelProps={{ shrink: true }}
+            helperText="Optional. If set, maintenance auto-disables after this time."
+          />
+
+          <TextField
+            label="Maintenance Message"
+            value={maintenanceSettings.maintenanceMessage}
+            onChange={(e) =>
+              setMaintenanceSettings((prev) => ({
+                ...prev,
+                maintenanceMessage: String(e.target.value || ""),
+              }))
+            }
+            size="small"
+            fullWidth
+            multiline
+            minRows={2}
           />
           <FormControl fullWidth size="small">
             <InputLabel id="default-payment-provider-label">
@@ -1437,7 +1574,8 @@ const SettingsPage = () => {
         <p className="text-sm text-gray-500 mt-3">
           Payment gateway toggle respects environment credentials. The default
           provider is used across checkout when both gateways are available.
-          Maintenance mode disables checkout while enabled.
+          Maintenance can be enabled immediately or scheduled with optional end
+          time and countdown.
         </p>
       </div>
 

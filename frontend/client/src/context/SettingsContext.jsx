@@ -89,7 +89,7 @@ const defaultSettings = {
   },
   // Store info
   storeInfo: {
-    name: "BuyOneGram",
+    name: "HealthyOneGram",
     email: "healthyonegram.com",
     phone: "+91 9876541234",
     address: "",
@@ -121,6 +121,14 @@ const defaultSettings = {
   },
   // Maintenance
   maintenanceMode: false,
+  maintenanceSettings: {
+    maintenanceEnabled: false,
+    maintenanceStartTime: null,
+    maintenanceEndTime: null,
+    maintenanceMessage:
+      "We are currently undergoing scheduled maintenance. Please check back soon.",
+    showCountdown: true,
+  },
   // Payment
   paymentGatewayEnabled: true,
   defaultPaymentProvider: "PHONEPE",
@@ -339,7 +347,11 @@ export const SettingsProvider = ({ children }) => {
     offerDiscountText: settings.offerDiscountText,
     // Other flags
     highTrafficNotice: settings.highTrafficNotice,
-    maintenanceMode: settings.maintenanceMode,
+    maintenanceMode: Boolean(
+      settings?.maintenanceSettings?.maintenanceEnabled ??
+      settings?.maintenanceMode,
+    ),
+    maintenanceSettings: settings.maintenanceSettings,
     paymentGatewayEnabled: settings.paymentGatewayEnabled,
     defaultPaymentProvider: settings.defaultPaymentProvider,
   };

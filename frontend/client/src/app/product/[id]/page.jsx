@@ -1,14 +1,14 @@
 "use client";
 
+import ComboCard from "@/components/ComboCard";
 import ProductItem from "@/components/ProductItem";
 import ShareButton from "@/components/ShareButton";
 import ProductZoom from "@/components/ProductZoom";
 import QtyBox from "@/components/QtyBox";
-import ComboCard from "@/components/ComboCard";
-import { useCart } from "@/context/CartContext";
 import { formatPrice } from "@/config/siteConfig";
-import { fetchDataFromApi } from "@/utils/api";
+import { useCart } from "@/context/CartContext";
 import { trackEvent } from "@/utils/analyticsTracker";
+import { fetchDataFromApi } from "@/utils/api";
 import { getImageUrl } from "@/utils/imageUtils";
 import { sanitizeHTML } from "@/utils/sanitize";
 import {
@@ -24,6 +24,29 @@ import { useEffect, useState } from "react";
 import { HiOutlineFire } from "react-icons/hi";
 import { IoMdCart } from "react-icons/io";
 import { MdLocalShipping, MdPolicy, MdVerified } from "react-icons/md";
+
+const isExclusiveProduct = (value) => {
+  const product = value?.product || value;
+  return (
+    product?.isExclusive === true ||
+    product?.isMembersExclusive === true ||
+    product?.membersExclusive === true
+  );
+};
+
+const isExclusiveCombo = (combo) => {
+  const audience = String(
+    combo?.audience || combo?.visibility || combo?.access || combo?.tag || "",
+  )
+    .trim()
+    .toLowerCase();
+  return (
+    combo?.isExclusive === true ||
+    combo?.isMembersExclusive === true ||
+    combo?.membersExclusive === true ||
+    audience === "members_exclusive"
+  );
+};
 
 /**
  * Product Detail Page
@@ -74,10 +97,7 @@ const ProductDetailPage = () => {
         null
       : null;
   const displaySku =
-    selectedVariant?.sku ||
-    defaultVariant?.sku ||
-    product?.sku ||
-    "";
+    selectedVariant?.sku || defaultVariant?.sku || product?.sku || "";
 
   const availableQty =
     activeStock !== null
@@ -92,7 +112,9 @@ const ProductDetailPage = () => {
           )
         : 0;
   const maxQty = availableQty > 0 ? availableQty : 1;
-  const productRating = Number(product?.adminStarRating ?? product?.rating ?? 0);
+  const productRating = Number(
+    product?.adminStarRating ?? product?.rating ?? 0,
+  );
   const customerReviewCount = customerReviews.length;
 
   const fetchProductReviews = async (productId) => {
@@ -127,7 +149,9 @@ const ProductDetailPage = () => {
         `/api/products/${productId}/frequently-bought?limit=3`,
       );
       if (response?.success && Array.isArray(response?.data)) {
-        setFrequentlyBought(response.data);
+        setFrequentlyBought(
+          response.data.filter((item) => !isExclusiveProduct(item)),
+        );
       } else {
         setFrequentlyBought([]);
       }
@@ -150,7 +174,11 @@ const ProductDetailPage = () => {
         `/api/combos/sections?productId=${productId}`,
       );
       if (response?.success) {
-        setRecommendedCombos(response?.data?.recommendedCombos || []);
+        setRecommendedCombos(
+          (response?.data?.recommendedCombos || []).filter(
+            (combo) => !isExclusiveCombo(combo),
+          ),
+        );
       } else {
         setRecommendedCombos([]);
       }
@@ -173,7 +201,9 @@ const ProductDetailPage = () => {
         const resolvedProductId = response.data?._id || response.data?.id;
         trackEvent("product_view", {
           productId: String(resolvedProductId || ""),
-          productName: String(response.data?.name || response.data?.title || ""),
+          productName: String(
+            response.data?.name || response.data?.title || "",
+          ),
           categoryId: String(
             response.data?.category?._id || response.data?.category || "",
           ),
@@ -184,11 +214,10 @@ const ProductDetailPage = () => {
         fetchRecommendedCombos(resolvedProductId);
 
         // Auto-select default variant (or first) if product has variants
-        if (
-          response.data.hasVariants &&
-          response.data.variants?.length > 0
-        ) {
-          const defaultVariant = response.data.variants.find((v) => v.isDefault) || response.data.variants[0];
+        if (response.data.hasVariants && response.data.variants?.length > 0) {
+          const defaultVariant =
+            response.data.variants.find((v) => v.isDefault) ||
+            response.data.variants[0];
           setSelectedVariant(defaultVariant);
         }
 
@@ -199,7 +228,9 @@ const ProductDetailPage = () => {
           );
           if (relatedResponse?.error !== true) {
             setRelatedProducts(
-              relatedResponse?.data || relatedResponse?.products || [],
+              (relatedResponse?.data || relatedResponse?.products || []).filter(
+                (item) => !isExclusiveProduct(item),
+              ),
             );
           }
         }
@@ -209,7 +240,9 @@ const ProductDetailPage = () => {
         trackEvent("product_view", {
           productId: String(response?._id || response?.id || ""),
           productName: String(response?.name || response?.title || ""),
-          categoryId: String(response?.category?._id || response?.category || ""),
+          categoryId: String(
+            response?.category?._id || response?.category || "",
+          ),
           price: Number(response?.price || response?.salePrice || 0),
         });
         const resolvedId = response?._id || response?.id;
@@ -257,7 +290,9 @@ const ProductDetailPage = () => {
     const recProduct = item?.product;
     if (!recProduct) return null;
     const variant = item?.variant || null;
-    const price = Number(item?.price ?? variant?.price ?? recProduct?.price ?? 0);
+    const price = Number(
+      item?.price ?? variant?.price ?? recProduct?.price ?? 0,
+    );
     const originalPrice = Number(
       item?.originalPrice ??
         variant?.originalPrice ??
@@ -493,7 +528,10 @@ const ProductDetailPage = () => {
           The product you are looking for does not exist or has been removed.
         </p>
         <Link href="/products">
-          <Button variant="contained" style={{ backgroundColor: "var(--primary)" }}>
+          <Button
+            variant="contained"
+            style={{ backgroundColor: "var(--primary)" }}
+          >
             Browse Products
           </Button>
         </Link>
@@ -601,10 +639,24 @@ const ProductDetailPage = () => {
               {/* Weight Badge (only when no variants) */}
               {!product.hasVariants && product.weight > 0 && (
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold bg-gray-100 text-gray-700 mb-3 w-fit">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l3 9a5.002 5.002 0 006.001 0M18 7l-3 9m0-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3" />
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="w-4 h-4 text-gray-500"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l3 9a5.002 5.002 0 006.001 0M18 7l-3 9m0-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3"
+                    />
                   </svg>
-                  {product.weight}{product.unit && product.unit !== "piece" ? product.unit : "g"}
+                  {product.weight}
+                  {product.unit && product.unit !== "piece"
+                    ? product.unit
+                    : "g"}
                 </span>
               )}
 
@@ -625,7 +677,10 @@ const ProductDetailPage = () => {
               {product.hasVariants && product.variants?.length > 0 && (
                 <div className="mb-5">
                   <p className="text-sm text-gray-500 mb-2">
-                    Size: <span className="font-bold text-gray-900">{selectedVariant?.name || "Select"}</span>
+                    Size:{" "}
+                    <span className="font-bold text-gray-900">
+                      {selectedVariant?.name || "Select"}
+                    </span>
                   </p>
                   <div className="flex flex-wrap gap-3">
                     {product.variants.map((variant, idx) => {
@@ -635,15 +690,25 @@ const ProductDetailPage = () => {
                           Number(variant.reserved_quantity ?? 0),
                         0,
                       );
-                      const vDiscount = variant.discountPercent ||
-                        (variant.originalPrice && variant.price && variant.originalPrice > variant.price
-                          ? Math.round(((variant.originalPrice - variant.price) / variant.originalPrice) * 100)
+                      const vDiscount =
+                        variant.discountPercent ||
+                        (variant.originalPrice &&
+                        variant.price &&
+                        variant.originalPrice > variant.price
+                          ? Math.round(
+                              ((variant.originalPrice - variant.price) /
+                                variant.originalPrice) *
+                                100,
+                            )
                           : 0);
                       return (
                         <button
                           key={variant._id || idx}
                           type="button"
-                          onClick={() => { setSelectedVariant(variant); setQuantity(1); }}
+                          onClick={() => {
+                            setSelectedVariant(variant);
+                            setQuantity(1);
+                          }}
                           className={`relative flex flex-col items-start rounded-xl border-2 px-4 py-3 min-w-[140px] transition-all duration-200 text-left ${
                             isSelected
                               ? "border-primary bg-[var(--flavor-glass)] shadow-md"
@@ -661,18 +726,25 @@ const ProductDetailPage = () => {
                               Popular
                             </span>
                           )}
-                          <span className={`text-sm font-bold ${isSelected ? "text-primary" : "text-gray-900"}`}>
+                          <span
+                            className={`text-sm font-bold ${isSelected ? "text-primary" : "text-gray-900"}`}
+                          >
                             {variant.name}
                           </span>
                           <span className="text-base font-extrabold text-gray-900 mt-1">
                             {formatPrice(Number(variant.price || 0))}
                           </span>
-                          {variant.originalPrice && variant.originalPrice > variant.price && (
-                            <span className="text-xs text-gray-400 line-through">
-                              {formatPrice(Number(variant.originalPrice || 0))}
-                            </span>
-                          )}
-                          <span className={`text-[11px] font-semibold mt-1 ${vStock > 0 ? "text-green-600" : "text-red-500"}`}>
+                          {variant.originalPrice &&
+                            variant.originalPrice > variant.price && (
+                              <span className="text-xs text-gray-400 line-through">
+                                {formatPrice(
+                                  Number(variant.originalPrice || 0),
+                                )}
+                              </span>
+                            )}
+                          <span
+                            className={`text-[11px] font-semibold mt-1 ${vStock > 0 ? "text-green-600" : "text-red-500"}`}
+                          >
                             {vStock > 0 ? "In stock" : "Out of stock"}
                           </span>
                         </button>
@@ -693,11 +765,16 @@ const ProductDetailPage = () => {
                   {formatPrice(Number(activePrice || product.salePrice || 0))}
                 </span>
                 {(activeOriginalPrice || product.regularPrice) &&
-                  (activeOriginalPrice || product.regularPrice) > (activePrice || 0) && (
-                  <span className="text-lg sm:text-xl text-gray-400 line-through">
-                    {formatPrice(Number(activeOriginalPrice || product.regularPrice || 0))}
-                  </span>
-                )}
+                  (activeOriginalPrice || product.regularPrice) >
+                    (activePrice || 0) && (
+                    <span className="text-lg sm:text-xl text-gray-400 line-through">
+                      {formatPrice(
+                        Number(
+                          activeOriginalPrice || product.regularPrice || 0,
+                        ),
+                      )}
+                    </span>
+                  )}
                 {discount > 0 && (
                   <span className="text-sm font-bold text-primary bg-[var(--flavor-glass)] px-2 py-1 rounded">
                     Save{" "}
@@ -779,32 +856,34 @@ const ProductDetailPage = () => {
 
                 <div className="flex items-center gap-3 w-full">
                   <Button
-                  variant="contained"
-                  size="large"
-                  startIcon={<IoMdCart />}
-                  onClick={handleAddToCart}
-                  data-track="product_cta_add_to_cart"
-                  data-product-id={String(productId || "")}
-                  disabled={!isInCart(product._id || product.id) && availableQty === 0}
-                  className="!flex-1"
-                  sx={{
-                    backgroundColor: isInCart(product._id || product.id)
-                      ? "#dc2626"
-                      : "var(--primary)",
-                    "&:hover": {
+                    variant="contained"
+                    size="large"
+                    startIcon={<IoMdCart />}
+                    onClick={handleAddToCart}
+                    data-track="product_cta_add_to_cart"
+                    data-product-id={String(productId || "")}
+                    disabled={
+                      !isInCart(product._id || product.id) && availableQty === 0
+                    }
+                    className="!flex-1"
+                    sx={{
                       backgroundColor: isInCart(product._id || product.id)
-                        ? "#b91c1c"
-                        : "var(--flavor-hover)",
-                    },
-                    padding: "12px 32px",
-                    borderRadius: "14px",
-                    fontWeight: "bold",
-                    textTransform: "none",
-                    fontSize: "16px",
-                    boxShadow: isInCart(product._id || product.id)
-                      ? "0 16px 30px -20px rgba(220,38,38,0.85)"
-                      : "0 16px 30px -20px rgba(var(--flavor-badge),0.85)",
-                  }}
+                        ? "#dc2626"
+                        : "var(--primary)",
+                      "&:hover": {
+                        backgroundColor: isInCart(product._id || product.id)
+                          ? "#b91c1c"
+                          : "var(--flavor-hover)",
+                      },
+                      padding: "12px 32px",
+                      borderRadius: "14px",
+                      fontWeight: "bold",
+                      textTransform: "none",
+                      fontSize: "16px",
+                      boxShadow: isInCart(product._id || product.id)
+                        ? "0 16px 30px -20px rgba(220,38,38,0.85)"
+                        : "0 16px 30px -20px rgba(var(--flavor-badge),0.85)",
+                    }}
                   >
                     {isInCart(product._id || product.id)
                       ? "Remove from Cart"
@@ -812,25 +891,25 @@ const ProductDetailPage = () => {
                   </Button>
 
                   <Button
-                  variant="contained"
-                  size="large"
-                  onClick={handleBuyNow}
-                  data-track="product_cta_buy_now"
-                  data-product-id={String(productId || "")}
-                  disabled={isBuyNowDisabled}
-                  className="!flex-1"
-                  sx={{
-                    backgroundColor: "#dc2626",
-                    color: "#fff",
-                    "&:hover": {
-                      backgroundColor: "#b91c1c",
-                    },
-                    padding: "12px 20px",
-                    borderRadius: "14px",
-                    textTransform: "none",
-                    fontWeight: 600,
-                    boxShadow: "0 16px 30px -20px rgba(220,38,38,0.7)",
-                  }}
+                    variant="contained"
+                    size="large"
+                    onClick={handleBuyNow}
+                    data-track="product_cta_buy_now"
+                    data-product-id={String(productId || "")}
+                    disabled={isBuyNowDisabled}
+                    className="!flex-1"
+                    sx={{
+                      backgroundColor: "#dc2626",
+                      color: "#fff",
+                      "&:hover": {
+                        backgroundColor: "#b91c1c",
+                      },
+                      padding: "12px 20px",
+                      borderRadius: "14px",
+                      textTransform: "none",
+                      fontWeight: 600,
+                      boxShadow: "0 16px 30px -20px rgba(220,38,38,0.7)",
+                    }}
                   >
                     Buy Now
                   </Button>
@@ -845,7 +924,9 @@ const ProductDetailPage = () => {
                     <p className="font-semibold text-gray-800 text-sm">
                       Free Delivery
                     </p>
-                    <p className="text-xs text-gray-500">On all orders (₹0 shipping)</p>
+                    <p className="text-xs text-gray-500">
+                      On all orders (₹0 shipping)
+                    </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -918,14 +999,13 @@ const ProductDetailPage = () => {
                 key={tab}
                 onClick={() => setActiveTab(tab)}
                 data-track={`product_tab_${tab}`}
-                className={`px-6 py-3 font-semibold text-sm capitalize transition-colors ${activeTab === tab
-                  ? "text-primary border-b-2 border-primary"
-                  : "text-gray-500 hover:text-gray-700"
-                  }`}
+                className={`px-6 py-3 font-semibold text-sm capitalize transition-colors ${
+                  activeTab === tab
+                    ? "text-primary border-b-2 border-primary"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
               >
-                {tab === "reviews"
-                  ? `Reviews (${customerReviewCount})`
-                  : tab}
+                {tab === "reviews" ? `Reviews (${customerReviewCount})` : tab}
               </button>
             ))}
           </div>
@@ -933,7 +1013,10 @@ const ProductDetailPage = () => {
           {/* Tab Content */}
           <div className="py-6">
             {activeTab === "description" && (
-              <div className="prose max-w-none text-gray-600" data-track-section="product_description">
+              <div
+                className="prose max-w-none text-gray-600"
+                data-track-section="product_description"
+              >
                 {product.description ? (
                   <div
                     dangerouslySetInnerHTML={{
@@ -986,7 +1069,10 @@ const ProductDetailPage = () => {
             )}
 
             {activeTab === "shipping" && (
-              <div className="text-gray-600 space-y-4" data-track-section="product_shipping">
+              <div
+                className="text-gray-600 space-y-4"
+                data-track-section="product_shipping"
+              >
                 <p>
                   <strong>Delivery:</strong> Standard delivery within 3-5
                   business days.
@@ -1005,146 +1091,151 @@ const ProductDetailPage = () => {
 
         {/* Frequently Bought Together */}
         <div className="mt-12" data-track-section="frequently_bought_together">
-            <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-              <div>
-                <h2 className="text-2xl font-bold text-gray-900">
-                  Frequently Bought Together
-                </h2>
-                <p className="text-sm text-gray-500">
-                  Popular add-ons customers purchase with this item.
-                </p>
-              </div>
-              <Button
-                variant="contained"
-                onClick={handleAddAllToCart}
-                disabled={frequentlyBought.length === 0}
-                sx={{
-                  backgroundColor: "var(--primary)",
-                  "&:hover": { backgroundColor: "var(--flavor-hover)" },
-                  borderRadius: "999px",
-                  textTransform: "none",
-                  fontWeight: 600,
-                }}
-              >
-                Add All To Cart
-              </Button>
+          <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900">
+                Frequently Bought Together
+              </h2>
+              <p className="text-sm text-gray-500">
+                Popular add-ons customers purchase with this item.
+              </p>
             </div>
+            <Button
+              variant="contained"
+              onClick={handleAddAllToCart}
+              disabled={frequentlyBought.length === 0}
+              sx={{
+                backgroundColor: "var(--primary)",
+                "&:hover": { backgroundColor: "var(--flavor-hover)" },
+                borderRadius: "999px",
+                textTransform: "none",
+                fontWeight: 600,
+              }}
+            >
+              Add All To Cart
+            </Button>
+          </div>
 
-            {fbtLoading ? (
-              <p className="text-sm text-gray-500">Loading suggestions...</p>
-            ) : frequentlyBought.length > 0 ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
-                  <div className="flex items-center gap-3">
-                    <div className="w-16 h-16 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-center p-2">
-                      <img
-                        src={getImageUrl(images?.[0])}
-                        alt={product.name || product.title}
-                        className="w-full h-full object-contain"
-                      />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-xs uppercase tracking-wider text-gray-400">
-                        This product
+          {fbtLoading ? (
+            <p className="text-sm text-gray-500">Loading suggestions...</p>
+          ) : frequentlyBought.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+                <div className="flex items-center gap-3">
+                  <div className="w-16 h-16 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-center p-2">
+                    <img
+                      src={getImageUrl(images?.[0])}
+                      alt={product.name || product.title}
+                      className="w-full h-full object-contain"
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs uppercase tracking-wider text-gray-400">
+                      This product
+                    </p>
+                    <h4 className="text-sm font-semibold text-gray-900 line-clamp-1">
+                      {product.name || product.title}
+                    </h4>
+                    {resolveVariantLabel(selectedVariant, product) && (
+                      <p className="text-xs text-gray-500">
+                        {resolveVariantLabel(selectedVariant, product)}
                       </p>
-                      <h4 className="text-sm font-semibold text-gray-900 line-clamp-1">
-                        {product.name || product.title}
-                      </h4>
-                      {resolveVariantLabel(selectedVariant, product) && (
-                        <p className="text-xs text-gray-500">
-                          {resolveVariantLabel(selectedVariant, product)}
-                        </p>
-                      )}
-                      <p className="text-sm font-bold text-primary">
-                        {formatPrice(Number(activePrice || product.price || 0))}
-                      </p>
-                    </div>
+                    )}
+                    <p className="text-sm font-bold text-primary">
+                      {formatPrice(Number(activePrice || product.price || 0))}
+                    </p>
                   </div>
                 </div>
+              </div>
 
-                {frequentlyBought.map((item) => {
-                  const recProduct = item.product || {};
-                  const variant = item.variant || null;
-                  const label = resolveVariantLabel(variant, recProduct);
-                  const price = Number(item.price || 0);
-                  const originalPrice = Number(item.originalPrice || 0);
-                  return (
-                    <div
-                      key={item.productId || recProduct._id || recProduct.id}
-                      className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-16 h-16 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-center p-2">
-                          <img
-                            src={getImageUrl(item.image || recProduct.thumbnail)}
-                            alt={recProduct.name || "Recommended product"}
-                            className="w-full h-full object-contain"
-                          />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-xs uppercase tracking-wider text-gray-400">
-                            Add-on
-                          </p>
-                          <h4 className="text-sm font-semibold text-gray-900 line-clamp-1">
-                            {recProduct.name || recProduct.title}
-                          </h4>
-                          {label && <p className="text-xs text-gray-500">{label}</p>}
-                          <div className="flex items-center gap-2">
-                            {originalPrice > price && (
-                              <span className="text-xs text-gray-400 line-through">
-                                {formatPrice(originalPrice)}
-                              </span>
-                            )}
-                            <span className="text-sm font-bold text-primary">
-                              {formatPrice(price)}
+              {frequentlyBought.map((item) => {
+                const recProduct = item.product || {};
+                const variant = item.variant || null;
+                const label = resolveVariantLabel(variant, recProduct);
+                const price = Number(item.price || 0);
+                const originalPrice = Number(item.originalPrice || 0);
+                return (
+                  <div
+                    key={item.productId || recProduct._id || recProduct.id}
+                    className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-16 h-16 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-center p-2">
+                        <img
+                          src={getImageUrl(item.image || recProduct.thumbnail)}
+                          alt={recProduct.name || "Recommended product"}
+                          className="w-full h-full object-contain"
+                        />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs uppercase tracking-wider text-gray-400">
+                          Add-on
+                        </p>
+                        <h4 className="text-sm font-semibold text-gray-900 line-clamp-1">
+                          {recProduct.name || recProduct.title}
+                        </h4>
+                        {label && (
+                          <p className="text-xs text-gray-500">{label}</p>
+                        )}
+                        <div className="flex items-center gap-2">
+                          {originalPrice > price && (
+                            <span className="text-xs text-gray-400 line-through">
+                              {formatPrice(originalPrice)}
                             </span>
-                          </div>
+                          )}
+                          <span className="text-sm font-bold text-primary">
+                            {formatPrice(price)}
+                          </span>
                         </div>
                       </div>
                     </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <p className="text-sm text-gray-500">
-                No suggestions available yet.
-              </p>
-            )}
-          </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-500">
+              No suggestions available yet.
+            </p>
+          )}
+        </div>
 
         {/* Recommended Combos */}
         <div className="mt-12" data-track-section="recommended_combos">
-            <div className="flex items-center justify-between gap-4 mb-6">
-              <div>
-                <h2 className="text-2xl font-bold text-gray-900">
-                  Recommended Combos
-                </h2>
-                <p className="text-sm text-gray-500">
-                  Bundles that include this product.
-                </p>
-              </div>
-              <Link href="/combo-deals" className="text-sm text-primary font-semibold">
-                View all combos
-              </Link>
-            </div>
-            {recommendedLoading ? (
-              <p className="text-sm text-gray-500">Loading combos...</p>
-            ) : recommendedCombos.length > 0 ? (
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                {recommendedCombos.map((combo) => (
-                  <ComboCard
-                    key={combo._id || combo.slug}
-                    combo={combo}
-                    context="product_recommended_combos"
-                  />
-                ))}
-              </div>
-            ) : (
+          <div className="flex items-center justify-between gap-4 mb-6">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900">
+                Recommended Combos
+              </h2>
               <p className="text-sm text-gray-500">
-                No recommended combos available right now.
+                Bundles that include this product.
               </p>
-            )}
+            </div>
+            <Link
+              href="/combo-deals"
+              className="text-sm text-primary font-semibold"
+            >
+              View all combos
+            </Link>
           </div>
+          {recommendedLoading ? (
+            <p className="text-sm text-gray-500">Loading combos...</p>
+          ) : recommendedCombos.length > 0 ? (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+              {recommendedCombos.map((combo) => (
+                <ComboCard
+                  key={combo._id || combo.slug}
+                  combo={combo}
+                  context="product_recommended_combos"
+                />
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-500">
+              No recommended combos available right now.
+            </p>
+          )}
+        </div>
 
         {/* Related Products */}
         {relatedProducts.length > 0 && (

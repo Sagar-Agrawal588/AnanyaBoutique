@@ -59,14 +59,6 @@ const ADMIN_PRIMARY_EMAIL = normalizeEmail(
 const isAllowedAdminEmail = (email) =>
   normalizeEmail(email) === ADMIN_PRIMARY_EMAIL;
 
-const hasAdminRole = (user) =>
-  String(user?.role || "")
-    .trim()
-    .toLowerCase() === "admin";
-
-const canAccessAdminPortal = ({ email, user }) =>
-  isAllowedAdminEmail(email) || hasAdminRole(user);
-
 const resolveIsActiveMember = (user) => {
   if (!user) return false;
   const hasMemberFlag = Boolean(user.isMember) || Boolean(user.is_member);
@@ -98,9 +90,7 @@ export const adminLoginController = async (req, res) => {
       });
     }
 
-    const user = await UserModel.findOne({ email: normalizedEmail });
-
-    if (!canAccessAdminPortal({ email: normalizedEmail, user })) {
+    if (!isAllowedAdminEmail(normalizedEmail)) {
       return res.status(403).json({
         success: false,
         error: true,
@@ -108,6 +98,7 @@ export const adminLoginController = async (req, res) => {
       });
     }
 
+    const user = await UserModel.findOne({ email: normalizedEmail });
     if (!user) {
       return res.status(403).json({
         success: false,
@@ -236,9 +227,7 @@ export const adminGoogleLoginController = async (req, res) => {
       });
     }
 
-    let user = await UserModel.findOne({ email: normalizedEmail });
-
-    if (!canAccessAdminPortal({ email: normalizedEmail, user })) {
+    if (!isAllowedAdminEmail(normalizedEmail)) {
       return res.status(403).json({
         success: false,
         error: true,
@@ -251,6 +240,8 @@ export const adminGoogleLoginController = async (req, res) => {
       .replace(/<[^>]*>/g, "");
     const resolvedName =
       sanitizedName || normalizedEmail.split("@")[0] || "Admin";
+
+    let user = await UserModel.findOne({ email: normalizedEmail });
 
     let isNewGoogleUser = false;
     if (!user) {

@@ -27,6 +27,37 @@ const isLocalhostUrl = (value) => {
   }
 };
 
+const isNetworkLevelError = (error) => {
+  if (error?.response) return false;
+  const message = String(error?.message || "").toLowerCase();
+  const code = String(error?.code || "").toLowerCase();
+  return (
+    message.includes("network error") ||
+    message.includes("failed to fetch") ||
+    code === "err_network" ||
+    code === "econnrefused"
+  );
+};
+
+const resolveAlternateLocalhostBaseUrl = (value) => {
+  try {
+    const parsed = new URL(String(value || ""));
+    const host = String(parsed.hostname || "").toLowerCase();
+    if (host !== "localhost" && host !== "127.0.0.1") return "";
+    if (parsed.port === "8000") {
+      parsed.port = "8001";
+      return parsed.toString().replace(/\/+$/, "");
+    }
+    if (parsed.port === "8001") {
+      parsed.port = "8000";
+      return parsed.toString().replace(/\/+$/, "");
+    }
+    return "";
+  } catch {
+    return "";
+  }
+};
+
 const resolveApiBaseUrl = () => {
   const envBaseUrl = sanitizeBaseUrl(process.env.NEXT_PUBLIC_API_URL);
 
@@ -182,10 +213,29 @@ const requestWithRetry = async ({
     return response.data;
   };
 
+  const retryOnAlternateLocalhost = async () => {
+    const alternateBaseUrl = resolveAlternateLocalhostBaseUrl(API_BASE_URL);
+    if (!alternateBaseUrl) return null;
+    try {
+      const response = await axiosClient.request({
+        ...requestConfig,
+        baseURL: alternateBaseUrl,
+      });
+      return response.data;
+    } catch {
+      return null;
+    }
+  };
+
   try {
     const response = await axiosClient.request(requestConfig);
     return response.data;
   } catch (error) {
+    if (isNetworkLevelError(error)) {
+      const fallbackResponse = await retryOnAlternateLocalhost();
+      if (fallbackResponse) return fallbackResponse;
+    }
+
     if (error?.response?.status === 401 && !requestConfig._retry) {
       requestConfig._retry = true;
       const newToken = await refreshAdminToken();
@@ -195,6 +245,11 @@ const requestWithRetry = async ({
           const retryResponse = await axiosClient.request(requestConfig);
           return retryResponse.data;
         } catch (retryError) {
+          if (isNetworkLevelError(retryError)) {
+            const fallbackResponse = await retryOnAlternateLocalhost();
+            if (fallbackResponse) return fallbackResponse;
+          }
+
           if (retryError?.response?.status !== 401) {
             return toErrorPayload(retryError, fallbackMessage);
           }
