@@ -223,6 +223,8 @@ const ProductItem = (props) => {
             productId={productId}
             productName={productData.name}
             variant="icon"
+            iconSizeClass="h-8 w-8"
+            iconGlyphClass="h-4 w-4"
           />
         </div>
 

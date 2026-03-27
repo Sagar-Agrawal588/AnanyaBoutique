@@ -11,6 +11,11 @@ import ProductItem from "./ProductItem";
 import "swiper/css";
 import "swiper/css/navigation";
 
+const clampSlides = (target, total) => {
+  if (!total || total <= 0) return 1;
+  return Math.max(1, Math.min(target, total));
+};
+
 const ProductSlider = ({ title, categorySlug, isFeatured, limit = 10 }) => {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -67,6 +72,53 @@ const ProductSlider = ({ title, categorySlug, isFeatured, limit = 10 }) => {
 
   if (products.length === 0) {
     return null;
+  }
+
+  const totalProducts = products.length;
+  const useStaticGrid = totalProducts <= 4;
+  const responsiveSlides = {
+    480: { slidesPerView: clampSlides(2, totalProducts) },
+    640: { slidesPerView: clampSlides(3, totalProducts) },
+    768: { slidesPerView: clampSlides(4, totalProducts) },
+    1024: { slidesPerView: clampSlides(5, totalProducts) },
+  };
+
+  if (useStaticGrid) {
+    return (
+      <div className="productSlider py-5 relative">
+        {title && (
+          <h3
+            className="text-xl font-bold mb-4 transition-colors duration-300"
+            style={{ color: flavor.color }}
+          >
+            {title}
+          </h3>
+        )}
+
+        <div
+          className="grid gap-4"
+          style={{
+            gridTemplateColumns: `repeat(${Math.max(1, totalProducts)}, minmax(0, 1fr))`,
+          }}
+        >
+          {products.map((product) => (
+            <div key={product._id} className="h-full">
+              <ProductItem
+                id={product._id}
+                name={product.name}
+                brand={product.brand || "Buy One Gram"}
+                price={product.price}
+                originalPrice={product.originalPrice}
+                discount={product.discount}
+                rating={product.rating}
+                image={product.thumbnail || product.images?.[0]}
+                product={product}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
   }
 
   const navBtnBase = "absolute top-1/2 -translate-y-1/2 z-10 w-9 h-9 md:w-11 md:h-11 rounded-full flex items-center justify-center transition-all duration-300 cursor-pointer";
@@ -127,7 +179,7 @@ const ProductSlider = ({ title, categorySlug, isFeatured, limit = 10 }) => {
       <Swiper
         modules={[Navigation, Autoplay]}
         spaceBetween={16}
-        slidesPerView={2}
+        slidesPerView={clampSlides(2, totalProducts)}
         navigation={{
           prevEl: prevRef.current,
           nextEl: nextRef.current,
@@ -138,16 +190,11 @@ const ProductSlider = ({ title, categorySlug, isFeatured, limit = 10 }) => {
         }}
         onSwiper={() => setSwiperReady(true)}
         autoplay={{ delay: 4000, disableOnInteraction: false }}
-        breakpoints={{
-          480: { slidesPerView: 2 },
-          640: { slidesPerView: 3 },
-          768: { slidesPerView: 4 },
-          1024: { slidesPerView: 5 },
-        }}
-        className="!px-1"
+        breakpoints={responsiveSlides}
+        className="px-1!"
       >
         {products.map((product) => (
-          <SwiperSlide key={product._id} className="!h-auto">
+          <SwiperSlide key={product._id} className="h-auto!">
             <div className="h-full">
               <ProductItem
                 id={product._id}

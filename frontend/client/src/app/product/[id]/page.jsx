@@ -1,6 +1,7 @@
 "use client";
 
 import ProductItem from "@/components/ProductItem";
+import ShareButton from "@/components/ShareButton";
 import ProductZoom from "@/components/ProductZoom";
 import QtyBox from "@/components/QtyBox";
 import ComboCard from "@/components/ComboCard";
@@ -563,6 +564,23 @@ const ProductDetailPage = () => {
                   {discount}% OFF
                 </span>
               )}
+              <div className="absolute top-4 right-4 z-20">
+                <ShareButton
+                  variant="icon"
+                  showLabel={false}
+                  productId={productId}
+                  productName={product.name || product.title || "Product"}
+                  productDetails={{
+                    brand: product.brand,
+                    price: Number(activePrice || product.salePrice || 0),
+                    originalPrice: Number(
+                      activeOriginalPrice || product.regularPrice || 0,
+                    ),
+                    variantName: selectedVariant?.name,
+                    sku: displaySku,
+                  }}
+                />
+              </div>
               <ProductZoom images={images} productId={productId} />
             </div>
 

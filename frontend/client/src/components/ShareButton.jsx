@@ -1,61 +1,69 @@
 "use client";
 
-import { copyToClipboard, shareToSocialMedia } from "@/utils/shareUtils";
+import {
+  copyProductDetailsToClipboard,
+  copyToClipboard,
+  shareToSocialMedia,
+  shareViaNative,
+} from "@/utils/shareUtils";
 import { useState } from "react";
 import {
-  FaFacebook,
+  FaFacebookF,
+  FaFacebookMessenger,
   FaLink,
-  FaLinkedin,
-  FaPinterest,
-  FaReddit,
-  FaTelegram,
-  FaTwitter,
+  FaLinkedinIn,
+  FaRedditAlien,
+  FaPinterestP,
+  FaSms,
+  FaSkype,
+  FaTelegramPlane,
   FaWhatsapp,
 } from "react-icons/fa";
-import { IoShareSocial } from "react-icons/io5";
-import { MdCheck, MdEmail } from "react-icons/md";
+import { FaXTwitter } from "react-icons/fa6";
+import { IoClose, IoShareSocial } from "react-icons/io5";
+import { MdCheck, MdContentCopy, MdEmail, MdOutlineIosShare } from "react-icons/md";
 
 const SOCIAL_PLATFORMS = [
   {
     key: "facebook",
     label: "Facebook",
-    icon: FaFacebook,
-    bgColor: "bg-blue-600",
+    icon: FaFacebookF,
+    bgColor: "bg-[#1877f2]",
   },
   {
     key: "twitter",
-    label: "Twitter",
-    icon: FaTwitter,
-    bgColor: "bg-blue-400",
+    label: "X",
+    icon: FaXTwitter,
+    bgColor: "bg-black",
   },
   {
     key: "whatsapp",
     label: "WhatsApp",
     icon: FaWhatsapp,
-    bgColor: "bg-green-500",
+    bgColor: "bg-[#25d366]",
   },
   {
     key: "linkedin",
     label: "LinkedIn",
-    icon: FaLinkedin,
-    bgColor: "bg-blue-700",
+    icon: FaLinkedinIn,
+    bgColor: "bg-[#0a66c2]",
   },
   {
     key: "telegram",
     label: "Telegram",
-    icon: FaTelegram,
-    bgColor: "bg-blue-500",
+    icon: FaTelegramPlane,
+    bgColor: "bg-[#229ed9]",
   },
   {
     key: "pinterest",
     label: "Pinterest",
-    icon: FaPinterest,
-    bgColor: "bg-red-600",
+    icon: FaPinterestP,
+    bgColor: "bg-[#e60023]",
   },
   {
     key: "reddit",
     label: "Reddit",
-    icon: FaReddit,
+    icon: FaRedditAlien,
     bgColor: "bg-orange-600",
   },
   {
@@ -64,19 +72,55 @@ const SOCIAL_PLATFORMS = [
     icon: MdEmail,
     bgColor: "bg-gray-600",
   },
+  {
+    key: "sms",
+    label: "SMS",
+    icon: FaSms,
+    bgColor: "bg-indigo-600",
+  },
+  {
+    key: "skype",
+    label: "Skype",
+    icon: FaSkype,
+    bgColor: "bg-sky-600",
+  },
+  {
+    key: "messenger",
+    label: "Messenger",
+    icon: FaFacebookMessenger,
+    bgColor: "bg-blue-500",
+  },
 ];
 
 const ShareButton = ({
   productId,
   productName = "Product",
+  productDetails,
   className = "",
-  showLabel = true,
-  variant = "icon", // 'icon' | 'button' | 'compact'
+  showLabel = false,
+  variant = "icon",
+  iconSizeClass = "h-11 w-11",
+  iconGlyphClass = "h-5 w-5",
 }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [copiedDetails, setCopiedDetails] = useState(false);
+
+  const resolvedDetails = {
+    productId,
+    productName,
+    ...(productDetails || {}),
+  };
+
+  const hasNativeShare =
+    typeof navigator !== "undefined" && typeof navigator.share === "function";
 
   const handleShare = (platform) => {
+    if (platform === "messenger") {
+      shareToSocialMedia("facebook", productId, productName);
+      setIsOpen(false);
+      return;
+    }
     shareToSocialMedia(platform, productId, productName);
     setIsOpen(false);
   };
@@ -84,172 +128,162 @@ const ShareButton = ({
   const handleCopyLink = async () => {
     const success = await copyToClipboard(productId, productName);
     if (success) {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2000);
     }
   };
 
-  if (variant === "compact") {
-    return (
-      <div className={`flex items-center gap-2 ${className}`}>
+  const handleCopyDetails = async () => {
+    const success = await copyProductDetailsToClipboard(resolvedDetails);
+    if (success) {
+      setCopiedDetails(true);
+      setTimeout(() => setCopiedDetails(false), 2200);
+    }
+  };
+
+  const handleNativeShare = async () => {
+    const result = await shareViaNative(resolvedDetails);
+    if (result?.ok) {
+      setIsOpen(false);
+    }
+  };
+
+  const productPrice =
+    typeof resolvedDetails.price === "number"
+      ? `Rs ${resolvedDetails.price}`
+      : null;
+
+  const renderTrigger = () => {
+    if (variant === "button") {
+      return (
         <button
-          onClick={() => setIsOpen(!isOpen)}
-          className="p-2 hover:bg-gray-100 rounded-lg transition"
-          title="Share on social media"
+          onClick={() => setIsOpen(true)}
+          className="group inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white/95 px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-[0_12px_28px_-20px_rgba(15,23,42,0.55)] transition hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white"
+          title="Share product"
         >
-          <IoShareSocial className="w-5 h-5 text-gray-700" />
+          <IoShareSocial className="h-5 w-5 text-slate-600 transition group-hover:rotate-6" />
+          {showLabel ? "Share & Copy" : null}
         </button>
+      );
+    }
 
-        {isOpen && (
-          <div className="absolute top-full mt-2 left-0 bg-white border border-gray-200 rounded-lg shadow-lg p-2 z-50 flex gap-1">
-            {SOCIAL_PLATFORMS.map(({ key, label, icon: Icon }) => (
-              <button
-                key={key}
-                onClick={() => handleShare(key)}
-                className="p-2 hover:bg-gray-100 rounded transition"
-                title={`Share on ${label}`}
-              >
-                <Icon className="w-4 h-4" />
-              </button>
-            ))}
-            <button
-              onClick={handleCopyLink}
-              className={`p-2 rounded transition ${
-                copied ? "bg-green-100" : "hover:bg-gray-100"
-              }`}
-              title="Copy link"
-            >
-              {copied ? (
-                <MdCheck className="w-4 h-4 text-green-600" />
-              ) : (
-                <FaLink className="w-4 h-4" />
-              )}
-            </button>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  if (variant === "button") {
-    return (
-      <div className={`relative ${className}`}>
+    if (variant === "compact") {
+      return (
         <button
-          onClick={() => setIsOpen(!isOpen)}
-          className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition font-medium text-sm"
+          onClick={() => setIsOpen(true)}
+          className="group rounded-full border border-slate-200 bg-white p-2.5 text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+          title="Share product"
         >
-          <IoShareSocial className="w-5 h-5" />
-          {showLabel && "Share"}
+          <IoShareSocial className="h-5 w-5 transition group-hover:rotate-6" />
         </button>
+      );
+    }
 
-        {isOpen && (
-          <div className="absolute top-full mt-2 right-0 bg-white border border-gray-200 rounded-lg shadow-xl p-3 z-50 w-56">
-            <div className="text-xs font-semibold text-gray-500 mb-2">
-              Share on Social Media
-            </div>
-            <div className="grid grid-cols-4 gap-2 mb-3">
-              {SOCIAL_PLATFORMS.map(({ key, label, icon: Icon, bgColor }) => (
-                <button
-                  key={key}
-                  onClick={() => handleShare(key)}
-                  className={`${bgColor} text-white p-2 rounded-lg hover:opacity-90 transition flex flex-col items-center gap-1`}
-                  title={`Share on ${label}`}
-                >
-                  <Icon className="w-5 h-5" />
-                  <span className="text-xs">{label}</span>
-                </button>
-              ))}
-            </div>
-
-            <div className="border-t border-gray-200 pt-3">
-              <button
-                onClick={handleCopyLink}
-                className={`w-full p-2 rounded-lg flex items-center gap-2 transition ${
-                  copied
-                    ? "bg-green-100 text-green-700"
-                    : "bg-gray-100 hover:bg-gray-200 text-gray-700"
-                }`}
-              >
-                {copied ? (
-                  <>
-                    <MdCheck className="w-5 h-5" />
-                    <span className="text-sm font-medium">Link Copied!</span>
-                  </>
-                ) : (
-                  <>
-                    <FaLink className="w-5 h-5" />
-                    <span className="text-sm font-medium">Copy Link</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {isOpen && (
-          <div
-            className="fixed inset-0 z-40"
-            onClick={() => setIsOpen(false)}
-          />
-        )}
-      </div>
-    );
-  }
-
-  // Default icon variant
-  return (
-    <div className={`relative ${className}`}>
+    return (
       <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="p-2 hover:bg-gray-100 rounded-lg transition"
+        onClick={() => setIsOpen(true)}
+        className={`group relative ${iconSizeClass} rounded-full bg-white/95 p-0 text-slate-700 shadow-[0_18px_42px_-24px_rgba(15,23,42,0.58)] ring-1 ring-slate-200/90 transition hover:-translate-y-0.5 hover:bg-white`}
         title="Share product"
       >
-        <IoShareSocial className="w-5 h-5 text-gray-700" />
+        <span className="absolute inset-0 rounded-full bg-linear-to-br from-slate-50 to-white" />
+        <IoShareSocial className={`relative mx-auto ${iconGlyphClass} transition group-hover:rotate-6`} />
       </button>
+    );
+  };
 
+  return (
+    <div className={`relative ${className}`}>
+      {renderTrigger()}
       {isOpen && (
-        <div className="absolute top-full mt-2 right-0 bg-white border border-gray-200 rounded-lg shadow-xl p-2 z-50 w-48">
-          <div className="text-xs font-semibold text-gray-500 mb-2 px-2">
-            Share Product
-          </div>
-          <div className="grid grid-cols-4 gap-1 mb-2">
-            {SOCIAL_PLATFORMS.map(({ key, label, icon: Icon, bgColor }) => (
+        <>
+          <div
+            className="fixed inset-0 z-40 bg-slate-900/35 backdrop-blur-[2px]"
+            onClick={() => setIsOpen(false)}
+          />
+
+          <div className="fixed inset-x-3 bottom-3 z-50 mx-auto w-auto max-w-155 rounded-3xl border border-slate-200/80 bg-white/95 p-4 shadow-[0_45px_90px_-44px_rgba(15,23,42,0.6)] backdrop-blur-xl sm:inset-auto sm:right-4 sm:top-20 sm:w-155 sm:bottom-auto">
+            <div className="mb-4 flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                  Share Product
+                </p>
+                <h3 className="mt-1 text-lg font-semibold leading-tight text-slate-900">
+                  {productName}
+                </h3>
+                {productPrice ? (
+                  <p className="text-sm text-slate-500">{productPrice}</p>
+                ) : null}
+              </div>
               <button
-                key={key}
-                onClick={() => handleShare(key)}
-                className={`${bgColor} text-white p-2 rounded hover:opacity-90 transition`}
-                title={label}
+                onClick={() => setIsOpen(false)}
+                className="rounded-full p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+                title="Close"
               >
-                <Icon className="w-4 h-4" />
+                <IoClose className="h-5 w-5" />
               </button>
-            ))}
+            </div>
+
+            <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {hasNativeShare ? (
+                <button
+                  onClick={handleNativeShare}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-blue-200 bg-linear-to-br from-blue-50 to-cyan-50 px-3 py-2.5 text-sm font-semibold text-blue-700 transition hover:from-blue-100 hover:to-cyan-100"
+                >
+                  <MdOutlineIosShare className="h-5 w-5" />
+                  Share To Apps
+                </button>
+              ) : null}
+
+              <button
+                onClick={handleCopyLink}
+                className={`inline-flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-semibold transition ${
+                  copiedLink
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                    : "border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
+                }`}
+              >
+                {copiedLink ? <MdCheck className="h-5 w-5" /> : <FaLink className="h-4 w-4" />}
+                {copiedLink ? "Link Copied" : "Copy Link"}
+              </button>
+
+              <button
+                onClick={handleCopyDetails}
+                className={`inline-flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-semibold transition ${
+                  copiedDetails
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                    : "border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
+                }`}
+              >
+                {copiedDetails ? <MdCheck className="h-5 w-5" /> : <MdContentCopy className="h-5 w-5" />}
+                {copiedDetails ? "Details Copied" : "Copy Details"}
+              </button>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-linear-to-b from-slate-50 to-white p-3">
+              <div className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
+                Share On Platforms
+              </div>
+
+              <div className="grid grid-cols-4 gap-2 sm:grid-cols-5">
+                {SOCIAL_PLATFORMS.map(({ key, label, icon: Icon, bgColor }) => (
+                  <button
+                    key={key}
+                    onClick={() => handleShare(key)}
+                    className="group flex flex-col items-center gap-1.5 rounded-xl border border-transparent p-2 transition hover:border-slate-200 hover:bg-white"
+                    title={`Share on ${label}`}
+                  >
+                    <span className={`${bgColor} inline-flex h-10 w-10 items-center justify-center rounded-2xl text-white shadow-[0_12px_24px_-16px_rgba(15,23,42,0.7)]`}>
+                      <Icon className="h-4 w-4" />
+                    </span>
+                    <span className="line-clamp-1 text-[11px] font-medium text-slate-600 group-hover:text-slate-800">
+                      {label}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
-
-          <button
-            onClick={handleCopyLink}
-            className={`w-full p-2 rounded flex items-center gap-2 text-sm transition ${
-              copied
-                ? "bg-green-100 text-green-700"
-                : "bg-gray-100 hover:bg-gray-200 text-gray-700"
-            }`}
-          >
-            {copied ? (
-              <>
-                <MdCheck className="w-4 h-4" />
-                Copied!
-              </>
-            ) : (
-              <>
-                <FaLink className="w-4 h-4" />
-                Copy Link
-              </>
-            )}
-          </button>
-        </div>
-      )}
-
-      {isOpen && (
-        <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
+        </>
       )}
     </div>
   );

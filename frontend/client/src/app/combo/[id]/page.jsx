@@ -237,6 +237,20 @@ const ComboDetailPage = () => {
               {discountPercent}% OFF
             </span>
           )}
+          <div className="absolute top-4 right-4 z-20">
+            <ShareButton
+              productId={comboId}
+              productName={combo?.name || "Combo Deal"}
+              productDetails={{
+                brand: combo?.brand,
+                price: comboPrice,
+                originalPrice: originalTotal,
+                sku: combo?.sku,
+              }}
+              variant="icon"
+              showLabel={false}
+            />
+          </div>
           <ProductZoom
             images={galleryImages.length > 0 ? galleryImages : [comboImage]}
             productId={String(comboId || "")}
@@ -324,14 +338,6 @@ const ComboDetailPage = () => {
             Buy Now
           </Button>
 
-          <div onClick={(e) => e.preventDefault()}>
-            <ShareButton
-              productId={comboId}
-              productName={combo?.name || "Combo Deal"}
-              variant="button"
-              showLabel={true}
-            />
-          </div>
         </div>
 
         {isOutOfStock && (
