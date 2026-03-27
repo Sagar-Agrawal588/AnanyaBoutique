@@ -116,7 +116,7 @@ const publishBatch = async ({
 };
 
 const querySessionSnapshot = async (db, sessionId) => {
-  const [rawEvents, productEvents, sessionDoc] = await Promise.all([
+  const [rawEvents, productEvents, sessionDoc, legacySessionDoc] = await Promise.all([
     db
       .collection("events_raw")
       .find({ sessionId })
@@ -144,13 +144,28 @@ const querySessionSnapshot = async (db, sessionId) => {
         },
       },
     ),
+    db.collection("user_sessions").findOne(
+      { sessionId },
+      {
+        projection: {
+          _id: 0,
+          sessionId: 1,
+          userId: 1,
+          user_id: 1,
+          startedAt: 1,
+          lastSeenAt: 1,
+          eventCount: 1,
+          pageViews: 1,
+        },
+      },
+    ),
   ]);
 
   return {
     sessionId,
     rawEvents,
     productEvents,
-    sessionDoc,
+    sessionDoc: sessionDoc || legacySessionDoc || null,
   };
 };
 
@@ -449,10 +464,14 @@ const main = async () => {
     ]);
 
     const guestPass = guestDocs.length >= guestEventIds.length;
+    const loggedInSessionUserId = String(
+      loggedInSnapshot?.sessionDoc?.userId || loggedInSnapshot?.sessionDoc?.user_id || "",
+    );
+
     const loggedInPass =
       loggedInDocs.length >= loggedInEventIds.length &&
       loggedInDocs.every((doc) => String(doc?.userId || "") === loggedInUserId) &&
-      String(loggedInSnapshot?.sessionDoc?.userId || "") === loggedInUserId;
+      loggedInSessionUserId === loggedInUserId;
 
     const summary = {
       apiBaseUrl,

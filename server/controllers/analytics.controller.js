@@ -56,10 +56,14 @@ export const trackUserActivity = async (req, res) => {
       userId: req.user || null,
     });
   } catch (error) {
-    return res.status(400).json({
+    const message = String(error?.message || "validation failed");
+    const isRateLimited = message.toLowerCase().includes("per-second event limit");
+
+    return res.status(isRateLimited ? 429 : 400).json({
       success: false,
       error: true,
-      message: `Invalid tracking payload: ${error?.message || "validation failed"}`,
+      message: `Invalid tracking payload: ${message}`,
+      ...(isRateLimited ? { code: "TRACKING_RATE_LIMITED" } : {}),
     });
   }
 

@@ -14,9 +14,12 @@ const HOVER_MIN_DURATION_MS = 300;
 const HOVER_EMIT_THROTTLE_MS = 1000;
 const RAGE_CLICK_WINDOW_MS = 2000;
 const RAGE_CLICK_THRESHOLD = 3;
+const MAX_EVENTS_PER_SECOND = Math.max(Number(process.env.NEXT_PUBLIC_ANALYTICS_MAX_EVENTS_PER_SECOND || 40), 10);
 const MAX_EVENTS_PER_BATCH = 200;
 const COMPRESS_THRESHOLD_BYTES = 48 * 1024;
 const EVENT_TYPE_PATTERN = /^[a-z][a-z0-9_]{1,63}$/;
+const DEFAULT_TARGET_TYPE = "cart";
+const CLICKABLE_SELECTOR = "[data-track],[data-track-click],[data-banner-id],[data-banner],[data-product-id],[data-product],[data-productid],button,a,[role='button'],[role='link'],[onclick]";
 const CRITICAL_EVENT_TYPES = new Set([
   "session_start",
   "page_view_started",
@@ -46,9 +49,14 @@ const trackerState = {
   sectionObservedElements: new WeakSet(),
   clickHistory: new Map(),
   hoverActive: new WeakMap(),
+  focusActive: new WeakMap(),
   hoverLastEmitByKey: new Map(),
+  eventRateWindowStartedAt: 0,
+  eventRateWindowCount: 0,
   finalizedSession: false,
 };
+
+const attachedTrackingElements = new WeakMap();
 
 const trimTrailingSlashes = (value) => String(value || "").replace(/\/+$/, "");
 
@@ -170,6 +178,11 @@ const getNow = () => Date.now();
 
 const toIso = (timeMs = getNow()) => new Date(timeMs).toISOString();
 
+const getPagePath = () => {
+  if (typeof window === "undefined") return "/";
+  return `${window.location.pathname || "/"}${window.location.search || ""}`;
+};
+
 const getPageUrl = () => (typeof window !== "undefined" ? window.location.href : "");
 
 const getReferrer = () => (typeof document !== "undefined" ? document.referrer || "" : "");
@@ -234,6 +247,16 @@ const sanitizeMetadata = (metadata) => {
   return sanitized;
 };
 
+const isButtonLikeElement = (element) => {
+  if (!element) return false;
+
+  const tagName = String(element.tagName || "").toLowerCase();
+  if (tagName === "button" || tagName === "a") return true;
+
+  const role = String(element.getAttribute?.("role") || "").toLowerCase();
+  return role === "button" || role === "link";
+};
+
 export const getAnalyticsConsent = () => {
   if (typeof window === "undefined") return "unknown";
   const stored = String(localStorage.getItem(CONSENT_STORAGE_KEY) || "")
@@ -290,13 +313,22 @@ const buildEvent = (eventType, metadata = {}, overrides = {}) => {
 
   const sessionId = trackerState.sessionId || getOrCreateLocalSessionId();
   const userId = decodeJwtUserId();
+  const sanitizedMetadata = sanitizeMetadata(metadata);
+  const targetType = resolveTargetType(normalizedType, sanitizedMetadata);
+  const targetId = resolveTargetId(sanitizedMetadata, sessionId);
 
   return {
     eventId: createId(),
     eventType: normalizedType,
+    event_name: normalizedType,
     sessionId,
+    session_id: sessionId,
     userId,
+    user_id: userId,
     timestamp: toIso(),
+    page: getPagePath(),
+    target_type: targetType,
+    target_id: targetId,
     pageUrl: String(overrides.pageUrl || getPageUrl()),
     referrer:
       overrides.referrer !== undefined
@@ -305,7 +337,7 @@ const buildEvent = (eventType, metadata = {}, overrides = {}) => {
     ipAddress: "0.0.0.0",
     deviceType: resolveDeviceType(),
     browser: resolveBrowser(),
-    metadata: sanitizeMetadata(metadata),
+    metadata: sanitizedMetadata,
   };
 };
 
@@ -408,6 +440,10 @@ const enqueue = (eventType, metadata = {}, overrides = {}) => {
   const event = buildEvent(eventType, metadata, overrides);
   if (!event) return;
 
+  if (!CRITICAL_EVENT_TYPES.has(event.eventType) && !canEnqueueEvent()) {
+    return;
+  }
+
   trackerState.queue.push(event);
 
   if (CRITICAL_EVENT_TYPES.has(event.eventType)) {
@@ -490,52 +526,208 @@ const getElementSignature = (element) => {
   return [dataTrack, tag, id, className, text].join("|");
 };
 
-const buildClickMetadata = (element) => ({
-  sectionName:
-    String(
-      element?.closest?.("[data-track-section]")?.getAttribute?.("data-track-section") ||
-        "",
+const resolveTargetType = (eventType, metadata = {}) => {
+  const normalizedEventType = String(eventType || "").trim().toLowerCase();
+  const explicit = String(metadata.target_type || metadata.targetType || "")
+    .trim()
+    .toLowerCase();
+
+  if (["product", "banner", "combo", "wishlist", "cart"].includes(explicit)) {
+    return explicit;
+  }
+
+  if (metadata.bannerId || metadata.bannerName || normalizedEventType.includes("banner")) return "banner";
+  if (metadata.comboId || normalizedEventType.includes("combo")) return "combo";
+  if (normalizedEventType.includes("wishlist")) return "wishlist";
+  if (metadata.productId || normalizedEventType.includes("product") || normalizedEventType.includes("hover")) return "product";
+  return DEFAULT_TARGET_TYPE;
+};
+
+const resolveTargetId = (metadata = {}, sessionId = "") => {
+  const candidates = [
+    metadata.target_id,
+    metadata.targetId,
+    metadata.productId,
+    metadata.bannerId,
+    metadata.comboId,
+    metadata.id,
+    metadata.trackName,
+    metadata.elementPath,
+    sessionId,
+  ];
+
+  for (const candidate of candidates) {
+    const normalized = String(candidate || "").trim();
+    if (normalized) {
+      return normalized.slice(0, 128);
+    }
+  }
+
+  return "anonymous_target";
+};
+
+const canEnqueueEvent = () => {
+  const now = getNow();
+  if (now - trackerState.eventRateWindowStartedAt >= 1000) {
+    trackerState.eventRateWindowStartedAt = now;
+    trackerState.eventRateWindowCount = 0;
+  }
+
+  if (trackerState.eventRateWindowCount >= MAX_EVENTS_PER_SECOND) {
+    return false;
+  }
+
+  trackerState.eventRateWindowCount += 1;
+  return true;
+};
+
+const getClosestDataAttrValue = (element, attributes = []) => {
+  if (!element || typeof element.closest !== "function") return "";
+
+  for (const attribute of attributes) {
+    const selector = `[${attribute}]`;
+    const owner = element.closest(selector);
+    const value = String(owner?.getAttribute?.(attribute) || "").trim();
+    if (value) return value;
+  }
+
+  return "";
+};
+
+const buildStableElementPath = (element) => {
+  if (!element || typeof element.closest !== "function") return "";
+
+  const segments = [];
+  let current = element;
+
+  while (current && current.nodeType === 1 && segments.length < 12) {
+    const tag = String(current.tagName || "").toLowerCase();
+    if (!tag) break;
+
+    const id = String(current.id || "").trim();
+    if (id) {
+      segments.unshift(`${tag}#${id.slice(0, 80)}`);
+      break;
+    }
+
+    let index = 1;
+    let sibling = current.previousElementSibling;
+    while (sibling) {
+      if (String(sibling.tagName || "").toLowerCase() === tag) {
+        index += 1;
+      }
+      sibling = sibling.previousElementSibling;
+    }
+
+    segments.unshift(`${tag}:nth-of-type(${index})`);
+    current = current.parentElement;
+  }
+
+  return segments.join(" > ").slice(0, 700);
+};
+
+const buildClickMetadata = (element, event) => {
+  const pagePath =
+    typeof window !== "undefined"
+      ? `${window.location.pathname || "/"}${window.location.search || ""}`
+      : "";
+
+  const sectionName = String(
+    element?.closest?.("[data-track-section]")?.getAttribute?.("data-track-section") || "",
+  )
+    .trim()
+    .toLowerCase();
+
+  const productId = String(
+    getClosestDataAttrValue(element, ["data-product-id", "data-product", "data-productid"]),
+  )
+    .trim()
+    .slice(0, 128);
+
+  const productName = String(
+    getClosestDataAttrValue(element, ["data-product-name", "data-productname", "data-product-title"]),
+  )
+    .trim()
+    .slice(0, 180);
+
+  const bannerId = String(
+    getClosestDataAttrValue(element, ["data-banner-id", "data-bannerid", "data-banner"]),
+  )
+    .trim()
+    .slice(0, 128);
+
+  const bannerName = String(
+    getClosestDataAttrValue(element, ["data-banner-name", "data-banner-title", "data-banner"]),
+  )
+    .trim()
+    .slice(0, 180);
+
+  const bannerPosition = String(
+    getClosestDataAttrValue(element, ["data-banner-position", "data-banner-slot", "data-position"]),
+  )
+    .trim()
+    .slice(0, 80);
+
+  const bannerCampaign = String(
+    getClosestDataAttrValue(element, ["data-banner-campaign", "data-campaign", "data-campaign-id"]),
+  )
+    .trim()
+    .slice(0, 120);
+  const explicitTargetType = String(getClosestDataAttrValue(element, ["data-track-target-type"])).trim();
+  const explicitTargetId = String(getClosestDataAttrValue(element, ["data-track-target-id"])).trim();
+
+  return {
+    sectionName: sectionName || null,
+    productId: productId || null,
+    productName: productName || null,
+    bannerId: bannerId || null,
+    bannerName: bannerName || null,
+    bannerPosition: bannerPosition || null,
+    bannerCampaign: bannerCampaign || null,
+    targetType: explicitTargetType || null,
+    targetId: explicitTargetId || null,
+    tagName: String(element?.tagName || "").toLowerCase(),
+    id: String(element?.id || "").slice(0, 120),
+    className: String(element?.className || "").slice(0, 250),
+    text: String(element?.textContent || "")
+      .trim()
+      .replace(/\s+/g, " ")
+      .slice(0, 180),
+    href: String(element?.getAttribute?.("href") || "").slice(0, 500),
+    trackName: String(
+      element?.getAttribute?.("data-track") || element?.getAttribute?.("data-track-click") || "",
     )
       .trim()
-      .toLowerCase() || null,
-  productId:
-    String(
-      element?.getAttribute?.("data-product-id") ||
-        element?.getAttribute?.("data-product") ||
-        element?.getAttribute?.("data-productid") ||
-        element?.closest?.("[data-product-id]")?.getAttribute?.("data-product-id") ||
-        element?.closest?.("[data-product]")?.getAttribute?.("data-product") ||
-        "",
-    )
-      .trim()
-      .slice(0, 128) || null,
-  tagName: String(element?.tagName || "").toLowerCase(),
-  id: String(element?.id || "").slice(0, 120),
-  className: String(element?.className || "").slice(0, 250),
-  text: String(element?.textContent || "")
-    .trim()
-    .replace(/\s+/g, " ")
-    .slice(0, 180),
-  href: String(element?.getAttribute?.("href") || "").slice(0, 500),
-  trackName: String(element?.getAttribute?.("data-track") || "")
-    .trim()
-    .toLowerCase(),
-  pageViewId: trackerState.currentPageView?.pageViewId || null,
-  pageActiveMs: Math.max(Number(trackerState.currentPageView?.activeMs || 0), 0),
-  sessionActiveMs: Math.max(Number(trackerState.sessionActiveMs || 0), 0),
-});
+      .toLowerCase(),
+    pagePath: pagePath.slice(0, 300),
+    elementPath: buildStableElementPath(element),
+    clickX: Number.isFinite(event?.clientX) ? Number(event.clientX) : null,
+    clickY: Number.isFinite(event?.clientY) ? Number(event.clientY) : null,
+    pageViewId: trackerState.currentPageView?.pageViewId || null,
+    pageActiveMs: Math.max(Number(trackerState.currentPageView?.activeMs || 0), 0),
+    sessionActiveMs: Math.max(Number(trackerState.sessionActiveMs || 0), 0),
+  };
+};
 
 const processClickTracking = (event) => {
-  const element = event.target?.closest?.("[data-track],button,a,[role='button']");
+  const element = event.target?.closest?.(CLICKABLE_SELECTOR);
   if (!element) return;
 
   markActivity("click");
 
-  const metadata = buildClickMetadata(element);
+  const metadata = buildClickMetadata(element, event);
   const explicitTrackType = String(metadata.trackName || "").trim();
+  const hasBannerIdentity = Boolean(
+    metadata.bannerId || metadata.bannerName || metadata.bannerPosition || metadata.bannerCampaign,
+  );
+  const hasProductIdentity = Boolean(metadata.productId || metadata.productName);
   const eventType = EVENT_TYPE_PATTERN.test(explicitTrackType)
     ? explicitTrackType
-    : "click_event";
+    : hasBannerIdentity
+      ? "banner_click"
+      : hasProductIdentity
+        ? "product_click"
+        : "click_event";
 
   enqueue(eventType, metadata);
 
@@ -562,7 +754,7 @@ const processClickTracking = (event) => {
 const findTrackableHoverElement = (target) => {
   if (!target || typeof target.closest !== "function") return null;
   return target.closest(
-    "[data-track-hover],[data-track-role='product-image'],[data-track-role='price'],[data-product-image],img[data-track-product],.product-image,[data-price],.price",
+    `[data-track-hover],[data-track-role='product-image'],[data-track-role='price'],[data-product-image],img[data-track-product],.product-image,[data-price],.price,${CLICKABLE_SELECTOR}`,
   );
 };
 
@@ -578,10 +770,20 @@ const onHoverStart = (event) => {
   const element = findTrackableHoverElement(event.target);
   if (!element) return;
 
+  const metadata = buildClickMetadata(element, event);
+
   trackerState.hoverActive.set(element, {
     startedAt: getNow(),
     hoverKey: getHoverKey(element),
+    metadata,
   });
+
+  if (isButtonLikeElement(element)) {
+    enqueue("button_hover_start", {
+      ...metadata,
+      hoverTarget: getHoverKey(element),
+    });
+  }
 };
 
 const onHoverEnd = (event) => {
@@ -604,11 +806,54 @@ const onHoverEnd = (event) => {
   }
 
   trackerState.hoverLastEmitByKey.set(throttleKey, endedAt);
+
+  if (isButtonLikeElement(element)) {
+    enqueue("button_hover_end", {
+      ...(session.metadata || buildClickMetadata(element, event)),
+      hoverTarget: session.hoverKey,
+      durationMs,
+    });
+
+    enqueue("button_hover_duration", {
+      ...(session.metadata || buildClickMetadata(element, event)),
+      hoverTarget: session.hoverKey,
+      durationMs,
+    });
+  }
+
   enqueue("hover_duration", {
     hoverTarget: session.hoverKey,
     durationMs,
     text: String(element.textContent || "").trim().slice(0, 180),
     pageViewId: trackerState.currentPageView?.pageViewId || null,
+  });
+};
+
+const onFocusIn = (event) => {
+  const element = event.target?.closest?.(CLICKABLE_SELECTOR);
+  if (!element || !isButtonLikeElement(element)) return;
+
+  const metadata = buildClickMetadata(element, event);
+  trackerState.focusActive.set(element, {
+    startedAt: getNow(),
+    metadata,
+  });
+
+  enqueue("button_focus", metadata);
+};
+
+const onFocusOut = (event) => {
+  const element = event.target?.closest?.(CLICKABLE_SELECTOR);
+  if (!element || !isButtonLikeElement(element)) return;
+
+  const session = trackerState.focusActive.get(element);
+  trackerState.focusActive.delete(element);
+
+  const endedAt = getNow();
+  const durationMs = session ? Math.max(endedAt - session.startedAt, 0) : null;
+  enqueue("button_blur", {
+    ...(session?.metadata || buildClickMetadata(element, event)),
+    durationMs,
   });
 };
 
@@ -867,6 +1112,8 @@ const attachEventListeners = () => {
   document.addEventListener("click", onClick, { passive: true, capture: true });
   document.addEventListener("mouseover", onHoverStart, { passive: true, capture: true });
   document.addEventListener("mouseout", onHoverEnd, { passive: true, capture: true });
+  document.addEventListener("focusin", onFocusIn, { capture: true });
+  document.addEventListener("focusout", onFocusOut, { capture: true });
   window.addEventListener("scroll", onScroll, { passive: true });
   window.addEventListener("pagehide", onPageHide);
   window.addEventListener("beforeunload", onBeforeUnload);
@@ -879,6 +1126,8 @@ const attachEventListeners = () => {
     document.removeEventListener("click", onClick, { capture: true });
     document.removeEventListener("mouseover", onHoverStart, { capture: true });
     document.removeEventListener("mouseout", onHoverEnd, { capture: true });
+    document.removeEventListener("focusin", onFocusIn, { capture: true });
+    document.removeEventListener("focusout", onFocusOut, { capture: true });
     window.removeEventListener("scroll", onScroll);
     window.removeEventListener("pagehide", onPageHide);
     window.removeEventListener("beforeunload", onBeforeUnload);
@@ -973,6 +1222,66 @@ export const handleRouteChangeTracking = (path) => {
 
 export const trackEvent = (eventType, metadata = {}, overrides = {}) => {
   enqueue(eventType, metadata, overrides);
+};
+
+export const attachTracking = (element, config = {}) => {
+  if (!element || typeof element.getAttribute !== "function") {
+    return () => {};
+  }
+
+  const previousDetach = attachedTrackingElements.get(element);
+  if (typeof previousDetach === "function") {
+    previousDetach();
+  }
+
+  const trackedAttrs = [
+    "data-track",
+    "data-track-click",
+    "data-track-hover",
+    "data-track-role",
+    "data-track-target-type",
+    "data-track-target-id",
+    "data-banner-id",
+    "data-product-id",
+  ];
+
+  const previousValues = new Map();
+  for (const name of trackedAttrs) {
+    previousValues.set(name, element.getAttribute(name));
+  }
+
+  const setOrRemove = (name, value) => {
+    const normalized = String(value || "").trim();
+    if (normalized) {
+      element.setAttribute(name, normalized);
+      return;
+    }
+    element.removeAttribute(name);
+  };
+
+  setOrRemove("data-track", config.trackName || config.eventName || "");
+  setOrRemove("data-track-click", config.trackName || config.eventName || "");
+  setOrRemove("data-track-hover", config.hoverKey || "");
+  setOrRemove("data-track-role", config.trackRole || "");
+  setOrRemove("data-track-target-type", config.targetType || "");
+  setOrRemove("data-track-target-id", config.targetId || "");
+  setOrRemove("data-banner-id", config.bannerId || "");
+  setOrRemove("data-product-id", config.productId || "");
+
+  const detach = () => {
+    for (const name of trackedAttrs) {
+      const value = previousValues.get(name);
+      if (value === null || typeof value === "undefined") {
+        element.removeAttribute(name);
+      } else {
+        element.setAttribute(name, value);
+      }
+    }
+    attachedTrackingElements.delete(element);
+  };
+
+  attachedTrackingElements.set(element, detach);
+  return detach;
 };
 
 export const markSessionStartIfNeeded = () => {

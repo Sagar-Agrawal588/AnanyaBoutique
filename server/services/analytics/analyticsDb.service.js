@@ -215,6 +215,10 @@ const collectionIndexes = {
     [{ userId: 1, timestamp: -1 }],
     [{ sessionId: 1, timestamp: -1 }],
     [{ eventType: 1, timestamp: -1 }],
+    [{ event_name: 1, timestamp: -1 }],
+    [{ target_type: 1, target_id: 1, timestamp: -1 }],
+    [{ session_id: 1, timestamp: -1 }],
+    [{ timestamp: -1 }],
   ],
   product_views: [
     [{ eventId: 1 }, { unique: true }],

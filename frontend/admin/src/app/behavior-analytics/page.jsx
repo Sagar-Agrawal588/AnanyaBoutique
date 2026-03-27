@@ -322,12 +322,28 @@ export default function BehaviorAnalyticsPage() {
     () => (Array.isArray(engagement?.attractiveButtons) ? engagement.attractiveButtons : []),
     [engagement],
   );
+  const bannerPerformance = useMemo(
+    () => (Array.isArray(engagement?.bannerPerformance) ? engagement.bannerPerformance : []),
+    [engagement],
+  );
   const topConvertingButtonsByProduct = useMemo(
     () =>
       Array.isArray(engagement?.topConvertingButtonsByProduct)
         ? engagement.topConvertingButtonsByProduct
         : [],
     [engagement],
+  );
+  const movementByEvent = useMemo(() => engagement?.movementByEvent || {}, [engagement]);
+  const movementRows = useMemo(
+    () =>
+      Object.entries(movementByEvent || {}).map(([eventName, value]) => ({
+        eventName,
+        total: toNumber(value?.total, 0),
+        guest: toNumber(value?.guest, 0),
+        loggedIn: toNumber(value?.loggedIn, 0),
+        avgDurationMs: toNumber(value?.avgDurationMs, 0),
+      })),
+    [movementByEvent],
   );
   const filteredTopConvertingButtonsByProduct = useMemo(() => {
     const minSessions = Math.max(Math.floor(toNumber(funnelMinSessionsInput, 1)), 1);
@@ -666,6 +682,24 @@ export default function BehaviorAnalyticsPage() {
           <MetricCard title="Rage Click Count" value={engagement?.rageClickCount || 0} hint="Possible UX friction." />
         </div>
 
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <MetricCard
+            title="Drop-Off Rate"
+            value={`${toNumber(engagement?.dropOffRate ?? engagement?.drop_off_rate, 0).toFixed(2)}%`}
+            hint="Sessions that did not reach purchase."
+          />
+          <MetricCard
+            title="Guest Drop-Off"
+            value={`${toNumber(engagement?.dropOffRateGuest, 0).toFixed(2)}%`}
+            hint="Guest-only session drop-off."
+          />
+          <MetricCard
+            title="Logged-In Drop-Off"
+            value={`${toNumber(engagement?.dropOffRateLoggedIn, 0).toFixed(2)}%`}
+            hint="Logged-in session drop-off."
+          />
+        </div>
+
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
           <UserTypeBehaviorCard
             title="Guest Behavior Snapshot"
@@ -713,6 +747,46 @@ export default function BehaviorAnalyticsPage() {
               <EmptyHint text="No section events captured for this range." />
             )}
           </ChartCard>
+        </div>
+
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900">Button Movement Events</h2>
+              <p className="text-sm text-gray-600 mt-1">
+                Hover and focus activity for guests and logged-in users.
+              </p>
+            </div>
+          </div>
+
+          {movementRows.length > 0 ? (
+            <div className="mt-4 overflow-auto">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="text-left text-gray-500 border-b border-gray-200">
+                    <th className="py-2 pr-3">Event</th>
+                    <th className="py-2 pr-3">Total</th>
+                    <th className="py-2 pr-3">Guest</th>
+                    <th className="py-2 pr-3">Logged In</th>
+                    <th className="py-2 pr-3">Avg Duration</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {movementRows.map((row) => (
+                    <tr key={row.eventName} className="border-b border-gray-100 text-gray-700">
+                      <td className="py-2 pr-3 font-medium">{row.eventName}</td>
+                      <td className="py-2 pr-3">{toNumber(row.total, 0)}</td>
+                      <td className="py-2 pr-3">{toNumber(row.guest, 0)}</td>
+                      <td className="py-2 pr-3">{toNumber(row.loggedIn, 0)}</td>
+                      <td className="py-2 pr-3">{formatDuration(row.avgDurationMs)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <EmptyHint text="No movement events captured for this range." />
+          )}
         </div>
 
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
@@ -796,6 +870,66 @@ export default function BehaviorAnalyticsPage() {
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
+              <h2 className="text-xl font-semibold text-gray-900">Banner Performance</h2>
+              <p className="text-sm text-gray-600 mt-1">
+                Banner click engagement split by guest and logged-in visitors.
+              </p>
+            </div>
+            <div className="text-xs text-gray-500">
+              Range: {rangeDays} days
+            </div>
+          </div>
+
+          {bannerPerformance.length > 0 ? (
+            <div className="mt-4 overflow-auto">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="text-left text-gray-500 border-b border-gray-200">
+                    <th className="py-2 pr-3">Banner</th>
+                    <th className="py-2 pr-3">Campaign / Position</th>
+                    <th className="py-2 pr-3">Interactions</th>
+                    <th className="py-2 pr-3">Clicks</th>
+                    <th className="py-2 pr-3">Rage Clicks</th>
+                    <th className="py-2 pr-3">Guest</th>
+                    <th className="py-2 pr-3">Logged In</th>
+                    <th className="py-2 pr-3">Avg Pre-Click Dwell</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {bannerPerformance.slice(0, 20).map((row) => (
+                    <tr
+                      key={`${row.bannerId || row.bannerName || "banner"}-${row.bannerPosition || ""}`}
+                      className="border-b border-gray-100 text-gray-700 align-top"
+                    >
+                      <td className="py-2 pr-3">
+                        <div className="font-semibold break-all">{row.bannerName || row.bannerId || "-"}</div>
+                        <div className="text-xs text-gray-500">ID: {row.bannerId || "-"}</div>
+                      </td>
+                      <td className="py-2 pr-3">
+                        <div className="text-xs text-gray-700 break-all">{row.bannerCampaign || "-"}</div>
+                        <div className="text-xs text-gray-500">{row.bannerPosition || "-"}</div>
+                      </td>
+                      <td className="py-2 pr-3">{toNumber(row.totalInteractions, 0)}</td>
+                      <td className="py-2 pr-3">{toNumber(row.clicks, 0)}</td>
+                      <td className="py-2 pr-3">{toNumber(row.rageClicks, 0)}</td>
+                      <td className="py-2 pr-3">{toNumber(row.guestInteractions, 0)}</td>
+                      <td className="py-2 pr-3">{toNumber(row.loggedInInteractions, 0)}</td>
+                      <td className="py-2 pr-3">{formatDuration(row.avgPreClickDwellMs || 0)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="mt-4">
+              <EmptyHint text="No banner click interactions available for this range." />
+            </div>
+          )}
+        </div>
+
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
               <h2 className="text-xl font-semibold text-gray-900">Top Converting Button By Product</h2>
               <p className="text-sm text-gray-600 mt-1">
                 Funnel by session: click to add-to-cart to checkout to purchase for each button and product.
@@ -831,7 +965,7 @@ export default function BehaviorAnalyticsPage() {
               value={funnelMinSessionsInput}
               onChange={(event) => setFunnelMinSessionsInput(event.target.value)}
               placeholder="Min clicked sessions"
-              className="border border-gray-300 rounded-lg px-3 py-2 w-[170px]"
+              className="border border-gray-300 rounded-lg px-3 py-2 w-42.5"
             />
 
             <input
@@ -982,6 +1116,7 @@ export default function BehaviorAnalyticsPage() {
                   <tr className="text-left text-gray-500 border-b border-gray-200">
                     <th className="py-2 pr-3">Session</th>
                     <th className="py-2 pr-3">User</th>
+                    <th className="py-2 pr-3">IP</th>
                     <th className="py-2 pr-3">Type</th>
                     <th className="py-2 pr-3">Intent</th>
                     <th className="py-2 pr-3">Started</th>
@@ -999,6 +1134,7 @@ export default function BehaviorAnalyticsPage() {
                       <tr key={session.sessionId} className="border-b border-gray-100 text-gray-700">
                         <td className="py-2 pr-3 break-all">{session.sessionId || "-"}</td>
                         <td className="py-2 pr-3 break-all">{session.userId || "-"}</td>
+                        <td className="py-2 pr-3 break-all text-xs">{session.ipAddress || "-"}</td>
                         <td className="py-2 pr-3">{session.userId ? "Logged In" : "Guest"}</td>
                         <td className="py-2 pr-3"><StatusPill label={intent.label} className={intent.className} /></td>
                         <td className="py-2 pr-3">{formatDateTime(session.startedAt)}</td>
@@ -1066,7 +1202,7 @@ export default function BehaviorAnalyticsPage() {
                 if (event.key === "Enter") fetchUserView();
               }}
               placeholder={lookupMode === "user" ? "Enter user ID" : "Enter session ID"}
-              className="border border-gray-300 rounded-lg px-3 py-2 w-full md:w-[380px]"
+              className="border border-gray-300 rounded-lg px-3 py-2 w-full md:w-95"
             />
 
             <button type="button" onClick={fetchUserView} disabled={userViewLoading} className="bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold disabled:opacity-60">
@@ -1081,7 +1217,7 @@ export default function BehaviorAnalyticsPage() {
                 if (event.key === "Enter") fetchProductJourney();
               }}
               placeholder="Enter product ID (Mongo _id)"
-              className="border border-gray-300 rounded-lg px-3 py-2 w-full md:w-[280px]"
+              className="border border-gray-300 rounded-lg px-3 py-2 w-full md:w-70"
             />
 
             <button type="button" onClick={fetchProductJourney} disabled={productJourneyLoading} className="bg-slate-800 text-white px-4 py-2 rounded-lg font-semibold disabled:opacity-60">

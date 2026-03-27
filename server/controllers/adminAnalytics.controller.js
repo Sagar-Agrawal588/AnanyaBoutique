@@ -12,6 +12,8 @@ import {
 const DEFAULT_RANGE_DAYS = 30;
 const ACTIVE_WINDOW_MINUTES = 5;
 const isProduction = process.env.NODE_ENV === "production";
+const CLICK_INTERACTION_EVENT_TYPES = ["click_event", "banner_click", "product_click"];
+const CLICK_INTERACTION_EVENT_REGEX = /_click$/i;
 
 const buildErrorResponse = (message, error) => ({
   success: false,
@@ -154,6 +156,7 @@ const sanitizeTimelineEvent = (event) => ({
 const sanitizeSessionSummary = (session) => ({
   sessionId: String(session?.sessionId || ""),
   userId: session?.userId || null,
+  ipAddress: String(session?.ipAddress || ""),
   startedAt: session?.startedAt || null,
   endedAt: session?.endedAt || null,
   lastSeenAt: session?.lastSeenAt || null,
@@ -618,6 +621,15 @@ const getEngagementData = async (db, from, to) => {
   const { events, sectionViews, productEvents, sessions } = await resolveCollections(db);
 
   const resolveClickTargetFromRow = (row = {}) => {
+    const bannerName = String(row?.bannerName || "")
+      .trim()
+      .replace(/\s+/g, " ")
+      .slice(0, 140);
+    if (bannerName) return `banner:${bannerName}`;
+
+    const bannerId = String(row?.bannerId || "").trim();
+    if (bannerId) return `banner#${bannerId.slice(0, 120)}`;
+
     const trackName = String(row?.trackName || "")
       .trim()
       .toLowerCase();
@@ -658,6 +670,26 @@ const getEngagementData = async (db, from, to) => {
               },
             ],
           },
+        ],
+      },
+    ],
+  };
+
+  const clickFamilyMatch = {
+    $or: [
+      { eventType: "rage_click" },
+      { eventType: { $in: CLICK_INTERACTION_EVENT_TYPES } },
+      { eventType: { $regex: CLICK_INTERACTION_EVENT_REGEX } },
+    ],
+  };
+
+  const nonRageClickExpression = {
+    $and: [
+      { $ne: ["$eventType", "rage_click"] },
+      {
+        $or: [
+          { $in: ["$eventType", CLICK_INTERACTION_EVENT_TYPES] },
+          { $regexMatch: { input: "$eventType", regex: CLICK_INTERACTION_EVENT_REGEX } },
         ],
       },
     ],
@@ -778,7 +810,7 @@ const getEngagementData = async (db, from, to) => {
                 $gte: from,
                 $lte: to,
               },
-              eventType: { $in: ["click_event", "rage_click"] },
+              ...clickFamilyMatch,
             },
           },
           {
@@ -791,6 +823,24 @@ const getEngagementData = async (db, from, to) => {
               elementId: { $ifNull: ["$metadata.id", ""] },
               className: { $ifNull: ["$metadata.className", ""] },
               tagName: { $ifNull: ["$metadata.tagName", ""] },
+              bannerId: {
+                $ifNull: ["$metadata.bannerId", { $ifNull: ["$metadata.banner_id", ""] }],
+              },
+              bannerName: {
+                $ifNull: ["$metadata.bannerName", { $ifNull: ["$metadata.banner_name", ""] }],
+              },
+              bannerPosition: {
+                $ifNull: [
+                  "$metadata.bannerPosition",
+                  { $ifNull: ["$metadata.banner_position", ""] },
+                ],
+              },
+              bannerCampaign: {
+                $ifNull: [
+                  "$metadata.bannerCampaign",
+                  { $ifNull: ["$metadata.banner_campaign", ""] },
+                ],
+              },
               sectionName: {
                 $ifNull: [
                   "$metadata.sectionName",
@@ -808,10 +858,14 @@ const getEngagementData = async (db, from, to) => {
                 elementId: "$elementId",
                 className: "$className",
                 tagName: "$tagName",
+                bannerId: "$bannerId",
+                bannerName: "$bannerName",
+                bannerPosition: "$bannerPosition",
+                bannerCampaign: "$bannerCampaign",
               },
               clickEvents: {
                 $sum: {
-                  $cond: [{ $eq: ["$eventType", "click_event"] }, 1, 0],
+                  $cond: [nonRageClickExpression, 1, 0],
                 },
               },
               rageClicks: {
@@ -883,7 +937,7 @@ const getEngagementData = async (db, from, to) => {
               },
               clickEvents: {
                 $sum: {
-                  $cond: [{ $eq: ["$eventType", "click_event"] }, 1, 0],
+                  $cond: [nonRageClickExpression, 1, 0],
                 },
               },
               rageClicks: {
@@ -970,7 +1024,16 @@ const getEngagementData = async (db, from, to) => {
                 $gte: from,
                 $lte: to,
               },
-              $or: [{ eventType: "click_event" }, { eventType: { $regex: /^product_cta_/i } }],
+              $and: [
+                { eventType: { $ne: "rage_click" } },
+                {
+                  $or: [
+                    { eventType: { $in: CLICK_INTERACTION_EVENT_TYPES } },
+                    { eventType: { $regex: CLICK_INTERACTION_EVENT_REGEX } },
+                    { eventType: { $regex: /^product_cta_/i } },
+                  ],
+                },
+              ],
             },
           },
           {
@@ -985,6 +1048,24 @@ const getEngagementData = async (db, from, to) => {
               elementId: { $ifNull: ["$metadata.id", ""] },
               className: { $ifNull: ["$metadata.className", ""] },
               tagName: { $ifNull: ["$metadata.tagName", ""] },
+              bannerId: {
+                $ifNull: ["$metadata.bannerId", { $ifNull: ["$metadata.banner_id", ""] }],
+              },
+              bannerName: {
+                $ifNull: ["$metadata.bannerName", { $ifNull: ["$metadata.banner_name", ""] }],
+              },
+              bannerPosition: {
+                $ifNull: [
+                  "$metadata.bannerPosition",
+                  { $ifNull: ["$metadata.banner_position", ""] },
+                ],
+              },
+              bannerCampaign: {
+                $ifNull: [
+                  "$metadata.bannerCampaign",
+                  { $ifNull: ["$metadata.banner_campaign", ""] },
+                ],
+              },
             },
           },
           {
@@ -1003,6 +1084,10 @@ const getEngagementData = async (db, from, to) => {
                 elementId: "$elementId",
                 className: "$className",
                 tagName: "$tagName",
+                bannerId: "$bannerId",
+                bannerName: "$bannerName",
+                bannerPosition: "$bannerPosition",
+                bannerCampaign: "$bannerCampaign",
               },
               clickEvents: { $sum: 1 },
               avgPreClickDwellMs: { $avg: "$pageActiveMs" },
@@ -1088,6 +1173,56 @@ const getEngagementData = async (db, from, to) => {
         .toArray(),
     ]);
 
+  const movementEventRows = await events
+    .aggregate([
+      {
+        $addFields: {
+          timestampDate: toDateExpression("$timestamp"),
+          userType: {
+            $cond: [
+              {
+                $eq: [{ $ifNull: ["$userId", ""] }, ""],
+              },
+              "guest",
+              "logged_in",
+            ],
+          },
+        },
+      },
+      {
+        $match: {
+          timestampDate: {
+            $gte: from,
+            $lte: to,
+          },
+          eventType: {
+            $in: [
+              "button_hover_start",
+              "button_hover_end",
+              "button_hover_duration",
+              "button_focus",
+              "button_blur",
+            ],
+          },
+        },
+      },
+      {
+        $group: {
+          _id: {
+            eventType: "$eventType",
+            userType: "$userType",
+          },
+          count: { $sum: 1 },
+          avgDurationMs: {
+            $avg: {
+              $ifNull: ["$metadata.durationMs", 0],
+            },
+          },
+        },
+      },
+    ])
+    .toArray();
+
   const userTypeMatrix = {
     guest: {
       sessions: 0,
@@ -1133,6 +1268,8 @@ const getEngagementData = async (db, from, to) => {
   const attractiveButtons = (rawClickTargets || [])
     .map((row) => {
       const target = resolveClickTargetFromRow({
+        bannerId: row?._id?.bannerId,
+        bannerName: row?._id?.bannerName,
         trackName: row?._id?.trackName,
         text: row?._id?.text,
         elementId: row?._id?.elementId,
@@ -1155,6 +1292,10 @@ const getEngagementData = async (db, from, to) => {
         clickEvents,
         rageClicks: rageClicksCount,
         avgPreClickDwellMs,
+        bannerId: String(row?._id?.bannerId || "").trim() || null,
+        bannerName: String(row?._id?.bannerName || "").trim() || null,
+        bannerPosition: String(row?._id?.bannerPosition || "").trim() || null,
+        bannerCampaign: String(row?._id?.bannerCampaign || "").trim() || null,
         guestInteractions: toFiniteNumber(row?.guestEvents, 0),
         loggedInInteractions: toFiniteNumber(row?.loggedInEvents, 0),
         topSections: Array.isArray(row?.sections)
@@ -1167,6 +1308,72 @@ const getEngagementData = async (db, from, to) => {
     })
     .filter((row) => row.totalInteractions > 0)
     .sort((a, b) => b.score - a.score)
+    .slice(0, 20);
+
+  const bannerPerformanceMap = new Map();
+  for (const row of rawClickTargets || []) {
+    const bannerId = String(row?._id?.bannerId || "").trim();
+    const bannerName = String(row?._id?.bannerName || "").trim();
+    if (!bannerId && !bannerName) continue;
+
+    const key = bannerId || bannerName.toLowerCase();
+    const existing = bannerPerformanceMap.get(key) || {
+      bannerId: bannerId || null,
+      bannerName: bannerName || null,
+      bannerPosition: String(row?._id?.bannerPosition || "").trim() || null,
+      bannerCampaign: String(row?._id?.bannerCampaign || "").trim() || null,
+      clicks: 0,
+      rageClicks: 0,
+      guestInteractions: 0,
+      loggedInInteractions: 0,
+      weightedDwellMs: 0,
+      interactionWeight: 0,
+    };
+
+    const clicks = toFiniteNumber(row?.clickEvents, 0);
+    const rageClicks = toFiniteNumber(row?.rageClicks, 0);
+    const interactions = clicks + rageClicks;
+
+    existing.bannerId = existing.bannerId || bannerId || null;
+    existing.bannerName = existing.bannerName || bannerName || null;
+    existing.bannerPosition = existing.bannerPosition || String(row?._id?.bannerPosition || "").trim() || null;
+    existing.bannerCampaign = existing.bannerCampaign || String(row?._id?.bannerCampaign || "").trim() || null;
+    existing.clicks += clicks;
+    existing.rageClicks += rageClicks;
+    existing.guestInteractions += toFiniteNumber(row?.guestEvents, 0);
+    existing.loggedInInteractions += toFiniteNumber(row?.loggedInEvents, 0);
+    existing.weightedDwellMs += toFiniteNumber(row?.avgPreClickDwellMs, 0) * interactions;
+    existing.interactionWeight += interactions;
+
+    bannerPerformanceMap.set(key, existing);
+  }
+
+  const bannerPerformance = Array.from(bannerPerformanceMap.values())
+    .map((row) => {
+      const totalInteractions = row.clicks + row.rageClicks;
+      const avgPreClickDwellMs = row.interactionWeight
+        ? row.weightedDwellMs / row.interactionWeight
+        : 0;
+
+      return {
+        bannerId: row.bannerId,
+        bannerName: row.bannerName,
+        bannerPosition: row.bannerPosition,
+        bannerCampaign: row.bannerCampaign,
+        clicks: row.clicks,
+        rageClicks: row.rageClicks,
+        totalInteractions,
+        guestInteractions: row.guestInteractions,
+        loggedInInteractions: row.loggedInInteractions,
+        avgPreClickDwellMs: Number(avgPreClickDwellMs.toFixed(2)),
+      };
+    })
+    .sort((a, b) => {
+      if (b.totalInteractions !== a.totalInteractions) {
+        return b.totalInteractions - a.totalInteractions;
+      }
+      return b.clicks - a.clicks;
+    })
     .slice(0, 20);
 
   const conversionBySessionProduct = new Map();
@@ -1191,6 +1398,8 @@ const getEngagementData = async (db, from, to) => {
     if (!sessionId || !productId) continue;
 
     const target = resolveClickTargetFromRow({
+      bannerId: row?._id?.bannerId,
+      bannerName: row?._id?.bannerName,
       trackName: row?._id?.trackName,
       text: row?._id?.text,
       elementId: row?._id?.elementId,
@@ -1289,6 +1498,46 @@ const getEngagementData = async (db, from, to) => {
     })
     .slice(0, 25);
 
+  const movementByEvent = {
+    button_hover_start: { total: 0, guest: 0, loggedIn: 0, avgDurationMs: 0 },
+    button_hover_end: { total: 0, guest: 0, loggedIn: 0, avgDurationMs: 0 },
+    button_hover_duration: { total: 0, guest: 0, loggedIn: 0, avgDurationMs: 0 },
+    button_focus: { total: 0, guest: 0, loggedIn: 0, avgDurationMs: 0 },
+    button_blur: { total: 0, guest: 0, loggedIn: 0, avgDurationMs: 0 },
+  };
+
+  for (const row of movementEventRows || []) {
+    const eventType = String(row?._id?.eventType || "").trim();
+    if (!movementByEvent[eventType]) continue;
+
+    const userType = row?._id?.userType === "logged_in" ? "loggedIn" : "guest";
+    const count = toFiniteNumber(row?.count, 0);
+    movementByEvent[eventType].total += count;
+    movementByEvent[eventType][userType] += count;
+    if (eventType === "button_hover_duration" || eventType === "button_blur") {
+      movementByEvent[eventType].avgDurationMs = Number(
+        toFiniteNumber(row?.avgDurationMs, 0).toFixed(2),
+      );
+    }
+  }
+
+  const totalSessions =
+    toFiniteNumber(userTypeMatrix.guest.sessions, 0) +
+    toFiniteNumber(userTypeMatrix.logged_in.sessions, 0);
+  const totalPurchaseSessions =
+    toFiniteNumber(userTypeMatrix.guest.purchases, 0) +
+    toFiniteNumber(userTypeMatrix.logged_in.purchases, 0);
+
+  const dropOffRate = toPercent(Math.max(totalSessions - totalPurchaseSessions, 0), totalSessions);
+  const dropOffRateGuest = toPercent(
+    Math.max(userTypeMatrix.guest.sessions - userTypeMatrix.guest.purchases, 0),
+    userTypeMatrix.guest.sessions,
+  );
+  const dropOffRateLoggedIn = toPercent(
+    Math.max(userTypeMatrix.logged_in.sessions - userTypeMatrix.logged_in.purchases, 0),
+    userTypeMatrix.logged_in.sessions,
+  );
+
   return {
     avgTimePerProductMs: Number(avgProductHoverAgg?.[0]?.avgDurationMs || 0),
     avgScrollDepth: Number(avgScrollDepthAgg?.[0]?.avgScrollDepth || 0),
@@ -1302,8 +1551,14 @@ const getEngagementData = async (db, from, to) => {
       totalDurationMs: Number(row.totalDurationMs || 0),
     })),
     attractiveButtons,
+    bannerPerformance,
     topConvertingButtonsByProduct,
     userTypeMatrix,
+    movementByEvent,
+    drop_off_rate: dropOffRate,
+    dropOffRate,
+    dropOffRateGuest,
+    dropOffRateLoggedIn,
   };
 };
 
@@ -2136,6 +2391,7 @@ export const getBehaviorSessions = async (req, res) => {
               maxScrollDepth: "$maxScrollDepthValue",
               deviceType: 1,
               browser: 1,
+              ipAddress: { $ifNull: ["$ipAddress", ""] },
               location: 1,
             },
           },

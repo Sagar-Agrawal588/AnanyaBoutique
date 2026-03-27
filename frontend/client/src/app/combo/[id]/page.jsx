@@ -5,6 +5,7 @@ import DetailPriceBlock from "@/components/productDetail/PriceBlock";
 import DetailRating from "@/components/productDetail/Rating";
 import ProductZoom from "@/components/ProductZoom";
 import QtyBox from "@/components/QtyBox";
+import ShareButton from "@/components/ShareButton";
 import { formatPrice } from "@/config/siteConfig";
 import { useCart } from "@/context/CartContext";
 import { fetchDataFromApi } from "@/utils/api";
@@ -212,7 +213,7 @@ const ComboDetailPage = () => {
         Combo Deals
       </Link>
       <span>/</span>
-      <span className="text-gray-800 font-medium truncate max-w-[200px]">
+      <span className="text-gray-800 font-medium truncate max-w-50">
         {combo?.name || "Combo"}
       </span>
     </nav>
@@ -313,6 +314,15 @@ const ComboDetailPage = () => {
           >
             Buy Now
           </Button>
+
+          <div onClick={(e) => e.preventDefault()}>
+            <ShareButton
+              productId={comboId}
+              productName={combo?.name || "Combo Deal"}
+              variant="button"
+              showLabel={true}
+            />
+          </div>
         </div>
 
         {isOutOfStock && (

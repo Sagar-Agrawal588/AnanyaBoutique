@@ -12,6 +12,10 @@ import {
 
 const MAX_STRING_FIELD_LENGTH = 2048;
 const UNKNOWN_VALUE = "unknown";
+const MAX_EVENTS_PER_SECOND = Math.max(
+  Number(process.env.TRACKING_MAX_EVENTS_PER_SECOND || 80),
+  20,
+);
 
 const locationSchema = z.object({
   country: z.string().max(128).default(UNKNOWN_VALUE),
@@ -20,10 +24,16 @@ const locationSchema = z.object({
 
 const clientEventSchema = z.object({
   eventId: z.string().min(8).max(128),
-  eventType: z.string().min(2).max(64),
+  eventType: z.string().min(2).max(64).optional(),
+  event_name: z.string().min(2).max(64).optional(),
   sessionId: z.string().min(8).max(128).optional(),
+  session_id: z.string().min(8).max(128).optional(),
   userId: z.string().max(128).nullable().optional(),
+  user_id: z.string().max(128).nullable().optional(),
   timestamp: z.string().datetime().optional(),
+  page: z.string().max(MAX_STRING_FIELD_LENGTH).optional(),
+  target_type: z.string().max(128).optional(),
+  target_id: z.string().max(256).optional(),
   pageUrl: z.string().max(MAX_STRING_FIELD_LENGTH).optional(),
   referrer: z.string().max(MAX_STRING_FIELD_LENGTH).optional(),
   ipAddress: z.string().max(128).optional(),
@@ -39,7 +49,8 @@ const clientEventSchema = z.object({
 });
 
 export const trackingBatchSchema = z.object({
-  sessionId: z.string().min(8).max(128),
+  sessionId: z.string().min(8).max(128).optional(),
+  session_id: z.string().min(8).max(128).optional(),
   consent: z.string().optional(),
   events: z
     .array(clientEventSchema)
@@ -50,9 +61,15 @@ export const trackingBatchSchema = z.object({
 export const trackingEventSchema = z.object({
   eventId: z.string().min(8).max(128),
   eventType: z.string().min(2).max(64),
+  event_name: z.string().min(2).max(64),
   userId: z.string().max(128).nullable(),
+  user_id: z.string().max(128).nullable(),
   sessionId: z.string().min(8).max(128),
+  session_id: z.string().min(8).max(128),
   timestamp: z.string().datetime(),
+  page: z.string().max(MAX_STRING_FIELD_LENGTH),
+  target_type: z.string().max(128),
+  target_id: z.string().max(256),
   ipAddress: z.string().max(128),
   userAgent: z.string().max(MAX_STRING_FIELD_LENGTH),
   deviceType: z.string().max(64),
@@ -286,6 +303,21 @@ const resolveEventType = (rawType) => {
   throw new Error(`Unsupported event type: ${candidate}`);
 };
 
+const enforcePerSecondEventLimit = (events = []) => {
+  const perSecondCounts = new Map();
+
+  for (const event of events) {
+    const parsedDate = new Date(event?.timestamp || Date.now());
+    const second = Math.floor(parsedDate.getTime() / 1000);
+    const currentCount = (perSecondCounts.get(second) || 0) + 1;
+    perSecondCounts.set(second, currentCount);
+
+    if (currentCount > MAX_EVENTS_PER_SECOND) {
+      throw new Error("Tracking payload exceeded per-second event limit");
+    }
+  }
+};
+
 export const buildTrackingEvent = ({
   req,
   event,
@@ -294,7 +326,12 @@ export const buildTrackingEvent = ({
 }) => {
   const parsedEvent = clientEventSchema.parse(event || {});
   const resolvedSessionId = toSmallString(
-    sessionId || parsedEvent.sessionId || req.analyticsSessionId || req.cookies?.hog_sid || "",
+    sessionId ||
+      parsedEvent.sessionId ||
+      parsedEvent.session_id ||
+      req.analyticsSessionId ||
+      req.cookies?.hog_sid ||
+      "",
   );
 
   if (!resolvedSessionId) {
@@ -318,10 +355,16 @@ export const buildTrackingEvent = ({
 
   const normalizedEvent = {
     eventId: toSmallString(parsedEvent.eventId),
-    eventType: resolveEventType(parsedEvent.eventType),
-    userId: userId ? toSmallString(userId) : parsedEvent.userId ? toSmallString(parsedEvent.userId) : null,
+    eventType: resolveEventType(parsedEvent.eventType || parsedEvent.event_name),
+    event_name: resolveEventType(parsedEvent.eventType || parsedEvent.event_name),
+    userId: userId ? toSmallString(userId) : parsedEvent.userId ? toSmallString(parsedEvent.userId) : parsedEvent.user_id ? toSmallString(parsedEvent.user_id) : null,
+    user_id: userId ? toSmallString(userId) : parsedEvent.userId ? toSmallString(parsedEvent.userId) : parsedEvent.user_id ? toSmallString(parsedEvent.user_id) : null,
     sessionId: resolvedSessionId,
+    session_id: resolvedSessionId,
     timestamp: toValidIsoTimestamp(parsedEvent.timestamp),
+    page: toSafeString(parsedEvent.page || sanitizeUrl(parsedEvent.pageUrl || req.headers["x-page-url"] || req.originalUrl || "") || "/", "/") || "/",
+    target_type: toSmallString(parsedEvent.target_type || parsedEvent?.metadata?.targetType || parsedEvent?.metadata?.target_type || "unknown", "unknown") || "unknown",
+    target_id: toSafeString(parsedEvent.target_id || parsedEvent?.metadata?.targetId || parsedEvent?.metadata?.target_id || resolvedSessionId || "unknown", "unknown") || "unknown",
     ipAddress:
       toSmallString(
         maskIpAddress(parsedEvent.ipAddress || extractIpAddress(req)),
@@ -391,7 +434,13 @@ export const normalizeTrackingBatchPayload = ({
   const parsedBatch = trackingBatchSchema.parse(decodedPayload);
 
   const sessionId =
-    toSmallString(parsedBatch.sessionId || req.analyticsSessionId || req.cookies?.hog_sid || "") ||
+    toSmallString(
+      parsedBatch.sessionId ||
+        parsedBatch.session_id ||
+        req.analyticsSessionId ||
+        req.cookies?.hog_sid ||
+        "",
+    ) ||
     "";
 
   if (!sessionId) {
@@ -406,6 +455,8 @@ export const normalizeTrackingBatchPayload = ({
       userId,
     }),
   );
+
+  enforcePerSecondEventLimit(events);
 
   return {
     sessionId,

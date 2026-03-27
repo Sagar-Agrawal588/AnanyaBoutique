@@ -2,6 +2,7 @@
 
 import ProductCardBadges from "@/components/productCard/ProductCardBadges";
 import ProductCardPriceBlock from "@/components/productCard/ProductCardPriceBlock";
+import ShareButton from "@/components/ShareButton";
 import { useCart } from "@/context/CartContext";
 import { FLAVORS, MyContext } from "@/context/ThemeContext";
 import { useWishlist } from "@/context/WishlistContext";
@@ -213,6 +214,18 @@ const ProductItem = (props) => {
           )}
         </button>
 
+        {/* Share Button */}
+        <div
+          onClick={(e) => e.preventDefault()}
+          className="absolute right-2 top-12 z-10"
+        >
+          <ShareButton
+            productId={productId}
+            productName={productData.name}
+            variant="icon"
+          />
+        </div>
+
         <Image
           src={getProductCardImageUrl(productData.images?.[0])}
           alt={productData.name}
@@ -227,10 +240,10 @@ const ProductItem = (props) => {
         <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">
           {productData.brand}
         </p>
-        <h3 className="line-clamp-2 min-h-[40px] text-sm font-bold text-gray-900 group-hover:text-primary transition-colors">
+        <h3 className="line-clamp-2 min-h-10 text-sm font-bold text-gray-900 group-hover:text-primary transition-colors">
           {productData.name}
         </h3>
-        <div className="mt-1 min-h-[32px]">
+        <div className="mt-1 min-h-8">
           {productData.shortDescription ? (
             <p className="line-clamp-2 text-[11px] font-medium text-gray-500">
               {productData.shortDescription}
@@ -272,10 +285,10 @@ const ProductItem = (props) => {
             disabled={isAddingToCart || (!alreadyInCart && isOutOfStock)}
             className={`flex h-10 w-10 items-center justify-center rounded-full shadow-md transition-all active:scale-90 hover:shadow-lg disabled:opacity-70 disabled:cursor-not-allowed ${
               alreadyInCart
-                ? "bg-gradient-to-r from-red-500 to-pink-500 text-white"
+                ? "bg-linear-to-r from-red-500 to-pink-500 text-white"
                 : isOutOfStock
                   ? "bg-gray-200 text-gray-400"
-                  : "bg-[var(--color-primary)]/20 text-[var(--color-primary)] border border-[var(--color-primary)]/30"
+                  : "bg-primary/20 text-primary border border-primary/30"
             }`}
           >
             {isAddingToCart ? (
