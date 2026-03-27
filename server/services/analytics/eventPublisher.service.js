@@ -3,8 +3,16 @@ import {
   DEFAULT_ANALYTICS_PUBSUB_TOPIC,
 } from "./constants.js";
 import { emitAnalyticsBatch } from "../../realtime/analyticsEvents.js";
+import {
+  hasActiveAnalyticsWorker,
+  persistTrackingBatchDirect,
+} from "./directIngestion.service.js";
 
 let pubSubClient = null;
+let workerHealthCache = {
+  checkedAt: 0,
+  isActive: false,
+};
 
 const isTruthy = (value) =>
   ["true", "1", "yes", "on"].includes(String(value || "").trim().toLowerCase());
@@ -64,6 +72,64 @@ const analyticsEnabled = () => {
     return true;
   }
   return isTruthy(process.env.ANALYTICS_PUBSUB_ENABLED);
+};
+
+const shouldUseDirectFallback = () => {
+  const explicit = String(process.env.ANALYTICS_DIRECT_INGEST_FALLBACK || "")
+    .trim()
+    .toLowerCase();
+
+  if (explicit) {
+    return ["true", "1", "yes", "on"].includes(explicit);
+  }
+
+  return process.env.NODE_ENV !== "production";
+};
+
+const shouldUseLocalDirectMode = () => {
+  const explicit = String(process.env.ANALYTICS_LOCAL_DIRECT_MODE || "")
+    .trim()
+    .toLowerCase();
+
+  if (explicit) {
+    return ["true", "1", "yes", "on"].includes(explicit);
+  }
+
+  return process.env.NODE_ENV !== "production";
+};
+
+const shouldDirectIngestWhenNoWorker = () => {
+  const explicit = String(process.env.ANALYTICS_DIRECT_INGEST_WHEN_NO_WORKER || "")
+    .trim()
+    .toLowerCase();
+
+  if (explicit) {
+    return ["true", "1", "yes", "on"].includes(explicit);
+  }
+
+  return process.env.NODE_ENV !== "production";
+};
+
+const isWorkerActiveCached = async () => {
+  const cacheTtlMs = Math.max(Number(process.env.ANALYTICS_WORKER_HEALTH_CACHE_MS || 5000), 500);
+  const now = Date.now();
+
+  if (now - workerHealthCache.checkedAt < cacheTtlMs) {
+    return workerHealthCache.isActive;
+  }
+
+  const staleThresholdMs = Math.max(
+    Number(process.env.ANALYTICS_WORKER_STALE_THRESHOLD_MS || 60_000),
+    1_000,
+  );
+
+  const isActive = await hasActiveAnalyticsWorker({ staleThresholdMs });
+  workerHealthCache = {
+    checkedAt: now,
+    isActive,
+  };
+
+  return isActive;
 };
 
 const resolveTopicName = () =>
@@ -139,7 +205,49 @@ export const publishTrackingBatch = async ({
     });
   }
 
+  if (shouldUseLocalDirectMode()) {
+    return persistTrackingBatchDirect({
+      sessionId,
+      events,
+      source,
+      consent,
+    });
+  }
+
+  if (shouldDirectIngestWhenNoWorker()) {
+    try {
+      const hasHealthyWorker = await isWorkerActiveCached();
+      if (!hasHealthyWorker) {
+        return persistTrackingBatchDirect({
+          sessionId,
+          events,
+          source,
+          consent,
+        });
+      }
+    } catch (error) {
+      console.warn(
+        "[analytics] Worker health check failed, falling back to direct ingestion:",
+        error?.message || error,
+      );
+      return persistTrackingBatchDirect({
+        sessionId,
+        events,
+        source,
+        consent,
+      });
+    }
+  }
+
   if (!analyticsEnabled()) {
+    if (shouldUseDirectFallback()) {
+      return persistTrackingBatchDirect({
+        sessionId,
+        events,
+        source,
+        consent,
+      });
+    }
     return null;
   }
 
@@ -163,7 +271,26 @@ export const publishTrackingBatch = async ({
 
   const topic = buildTopic();
   const maxAttempts = Number(process.env.ANALYTICS_PUBLISH_MAX_ATTEMPTS || 3);
-  return publishWithRetry(topic, message, Math.max(maxAttempts, 1));
+
+  try {
+    return await publishWithRetry(topic, message, Math.max(maxAttempts, 1));
+  } catch (error) {
+    if (!shouldUseDirectFallback()) {
+      throw error;
+    }
+
+    console.warn(
+      "[analytics] Pub/Sub publish failed, using direct ingestion fallback:",
+      error?.message || error,
+    );
+
+    return persistTrackingBatchDirect({
+      sessionId,
+      events,
+      source,
+      consent,
+    });
+  }
 };
 
 export const publishTrackingBatchAsync = (payload) => {
