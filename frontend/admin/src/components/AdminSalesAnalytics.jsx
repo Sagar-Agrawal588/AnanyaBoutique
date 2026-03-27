@@ -1,10 +1,10 @@
 "use client";
 
+import LoadingSpinner from "@/app/components/LoadingSpinner";
+import { API_BASE_URL, getData } from "@/utils/api";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { getData, API_BASE_URL } from "@/utils/api";
 import OrdersTable from "./OrdersTable";
 import SalesChart from "./SalesChart";
-import LoadingSpinner from "@/app/components/LoadingSpinner";
 
 const buildApiUrl = (path) => {
   const base = String(API_BASE_URL || "").replace(/\/+$/, "");
@@ -133,8 +133,7 @@ export default function AdminSalesAnalytics({ token }) {
       const disposition = response.headers.get("content-disposition") || "";
       const match = disposition.match(/filename="([^"]+)"/i);
       const filename =
-        match?.[1] ||
-        `order-report-${startDate}_to_${endDate}.xlsx`;
+        match?.[1] || `order-report-${startDate}_to_${endDate}.xlsx`;
       const blobUrl = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = blobUrl;
@@ -183,7 +182,9 @@ export default function AdminSalesAnalytics({ token }) {
       <div className="max-w-7xl mx-auto space-y-6">
         <div className="flex flex-col gap-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Sales Analytics</h1>
+            <h1 className="text-3xl font-bold text-gray-900">
+              Sales Analytics
+            </h1>
             <p className="text-sm text-gray-600">
               Monitor confirmed vs RTO orders and export detailed reports.
             </p>
@@ -278,21 +279,33 @@ export default function AdminSalesAnalytics({ token }) {
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-4">
-            <p className="text-xs font-medium text-blue-700">Confirmed (range)</p>
-            <p className="mt-1 text-2xl font-semibold text-blue-900">{chartSummary.confirmed}</p>
+            <p className="text-xs font-medium text-blue-700">
+              Confirmed (range)
+            </p>
+            <p className="mt-1 text-2xl font-semibold text-blue-900">
+              {chartSummary.confirmed}
+            </p>
           </div>
           <div className="rounded-xl border border-orange-100 bg-orange-50/60 p-4">
             <p className="text-xs font-medium text-orange-700">RTO (range)</p>
-            <p className="mt-1 text-2xl font-semibold text-orange-900">{chartSummary.rto}</p>
+            <p className="mt-1 text-2xl font-semibold text-orange-900">
+              {chartSummary.rto}
+            </p>
           </div>
           <div className="rounded-xl border border-gray-200 bg-white p-4">
             <p className="text-xs font-medium text-gray-600">Report rows</p>
-            <p className="mt-1 text-2xl font-semibold text-gray-900">{reportRows}</p>
+            <p className="mt-1 text-2xl font-semibold text-gray-900">
+              {reportRows}
+            </p>
           </div>
         </div>
 
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-          <SalesChart data={cumulativeChartData} interval={chartInterval} cumulative />
+          <SalesChart
+            data={cumulativeChartData}
+            interval={chartInterval}
+            cumulative
+          />
         </div>
 
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
