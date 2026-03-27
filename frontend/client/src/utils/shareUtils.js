@@ -27,9 +27,13 @@ export const generateShareLinks = (productId, productName = "Product") => {
   const baseUrl = getProductShareUrl(productId, productName);
 
   const getEncodedTrackedUrl = (platform) =>
-    encodeURIComponent(generateUTMLink(baseUrl, productId, productName, platform));
+    encodeURIComponent(
+      generateUTMLink(baseUrl, productId, productName, platform),
+    );
 
-  const productNameEncoded = encodeURIComponent(productName || "Check this out!");
+  const productNameEncoded = encodeURIComponent(
+    productName || "Check this out!",
+  );
 
   return {
     facebook: {
@@ -83,7 +87,11 @@ export const generateShareLinks = (productId, productName = "Product") => {
   };
 };
 
-export const shareToSocialMedia = (platform, productId, productName = "Product") => {
+export const shareToSocialMedia = (
+  platform,
+  productId,
+  productName = "Product",
+) => {
   const links = generateShareLinks(productId, productName);
   const link = links[platform];
 
@@ -106,7 +114,11 @@ export const shareToSocialMedia = (platform, productId, productName = "Product")
   const left = (window.innerWidth - width) / 2;
   const top = (window.innerHeight - height) / 2;
 
-  window.open(link.url, "_blank", `width=${width},height=${height},left=${left},top=${top}`);
+  window.open(
+    link.url,
+    "_blank",
+    `width=${width},height=${height},left=${left},top=${top}`,
+  );
 };
 
 export const copyToClipboard = async (productId, productName = "Product") => {
@@ -117,7 +129,10 @@ export const copyToClipboard = async (productId, productName = "Product") => {
     // Add UTM parameters to copied link
     baseUrl.searchParams.set("utm_source", "direct_share");
     baseUrl.searchParams.set("utm_medium", "copy_link");
-    baseUrl.searchParams.set("utm_campaign", `product_${String(productId || "")}`);
+    baseUrl.searchParams.set(
+      "utm_campaign",
+      `product_${String(productId || "")}`,
+    );
     baseUrl.searchParams.set("utm_content", productName || "product");
 
     const fullUrl = baseUrl.toString();

@@ -1,24 +1,24 @@
 "use client";
 
-import ProductDetail from "@/components/productDetail/ProductDetail";
 import DetailPriceBlock from "@/components/productDetail/PriceBlock";
+import ProductDetail from "@/components/productDetail/ProductDetail";
 import DetailRating from "@/components/productDetail/Rating";
 import ProductZoom from "@/components/ProductZoom";
 import QtyBox from "@/components/QtyBox";
 import ShareButton from "@/components/ShareButton";
 import { formatPrice } from "@/config/siteConfig";
 import { useCart } from "@/context/CartContext";
-import { fetchDataFromApi } from "@/utils/api";
 import { trackEvent } from "@/utils/analyticsTracker";
+import { fetchDataFromApi } from "@/utils/api";
 import { getImageUrl } from "@/utils/imageUtils";
 import { sanitizeHTML } from "@/utils/sanitize";
 import { Button } from "@mui/material";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { toast } from "react-hot-toast";
 import { IoMdCart } from "react-icons/io";
 import { MdLocalShipping, MdPolicy, MdVerified } from "react-icons/md";
-import { toast } from "react-hot-toast";
 
 const isObjectId = (value) => /^[0-9a-f]{24}$/i.test(String(value || ""));
 
@@ -82,16 +82,25 @@ const ComboDetailPage = () => {
     combo?.originalPrice ?? combo?.originalTotal,
     0,
   );
-  const comboPrice = toNumber(combo?.price ?? combo?.comboPrice ?? combo?.suggestedPrice, 0);
+  const comboPrice = toNumber(
+    combo?.price ?? combo?.comboPrice ?? combo?.suggestedPrice,
+    0,
+  );
   const discountPercent =
     originalTotal > 0
       ? Math.round(((originalTotal - comboPrice) / originalTotal) * 100)
       : Math.round(toNumber(combo?.discountPercentage, 0));
   const comboId = combo?._id || combo?.id || "";
-  const availableStock = toNumber(combo?.availableStock ?? combo?.stockQuantity, 0);
+  const availableStock = toNumber(
+    combo?.availableStock ?? combo?.stockQuantity,
+    0,
+  );
   const isOutOfStock = availableStock <= 0;
   const maxPerOrder = toNumber(combo?.maxPerOrder, 0);
-  const maxQty = maxPerOrder > 0 ? Math.min(maxPerOrder, Math.max(availableStock, 1)) : Math.max(availableStock, 1);
+  const maxQty =
+    maxPerOrder > 0
+      ? Math.min(maxPerOrder, Math.max(availableStock, 1))
+      : Math.max(availableStock, 1);
   const starRating = toNumber(combo?.adminStarRating ?? combo?.rating, 0);
   const reviewCount = toNumber(combo?.reviewCount, 0);
   const outOfStockItems = useMemo(() => {
@@ -327,11 +336,14 @@ const ComboDetailPage = () => {
 
         {isOutOfStock && (
           <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 mb-6">
-            <p>Out of stock because one product in this combo is unavailable.</p>
+            <p>
+              Out of stock because one product in this combo is unavailable.
+            </p>
             {outOfStockItems.slice(0, 3).map((item, index) => (
               <p key={`${item.productId}-${index}`} className="text-xs mt-1">
                 {item?.productTitle || "Product"}
-                {item?.variantName ? ` ${item.variantName}` : ""} is currently out of stock.
+                {item?.variantName ? ` ${item.variantName}` : ""} is currently
+                out of stock.
               </p>
             ))}
           </div>
@@ -341,21 +353,29 @@ const ComboDetailPage = () => {
           <div className="flex items-center gap-3">
             <MdLocalShipping className="text-2xl text-primary" />
             <div>
-              <p className="font-semibold text-gray-800 text-sm">Free Delivery</p>
-              <p className="text-xs text-gray-500">On all orders (₹0 shipping)</p>
+              <p className="font-semibold text-gray-800 text-sm">
+                Free Delivery
+              </p>
+              <p className="text-xs text-gray-500">
+                On all orders (₹0 shipping)
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-3">
             <MdVerified className="text-2xl text-primary" />
             <div>
-              <p className="font-semibold text-gray-800 text-sm">Quality Products</p>
+              <p className="font-semibold text-gray-800 text-sm">
+                Quality Products
+              </p>
               <p className="text-xs text-gray-500">Fresh & authentic items</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
             <MdPolicy className="text-2xl text-primary" />
             <div>
-              <p className="font-semibold text-gray-800 text-sm">Secure Payment</p>
+              <p className="font-semibold text-gray-800 text-sm">
+                Secure Payment
+              </p>
               <p className="text-xs text-gray-500">100% secure checkout</p>
             </div>
           </div>
@@ -401,7 +421,9 @@ const ComboDetailPage = () => {
           <div className="prose max-w-none text-gray-600">
             {combo?.description ? (
               <div
-                dangerouslySetInnerHTML={{ __html: sanitizeHTML(combo.description) }}
+                dangerouslySetInnerHTML={{
+                  __html: sanitizeHTML(combo.description),
+                }}
               />
             ) : (
               <p>{combo?.shortDescription || "No description available."}</p>
@@ -420,13 +442,15 @@ const ComboDetailPage = () => {
         {activeTab === "shipping" && (
           <div className="text-gray-600 space-y-4">
             <p>
-              <strong>Delivery:</strong> Standard delivery within 3-5 business days.
+              <strong>Delivery:</strong> Standard delivery within 3-5 business
+              days.
             </p>
             <p>
               <strong>Shipping Charges:</strong> ₹0 on all orders.
             </p>
             <p>
-              <strong>Packaging:</strong> Eco-friendly packaging to ensure product safety.
+              <strong>Packaging:</strong> Eco-friendly packaging to ensure
+              product safety.
             </p>
           </div>
         )}
@@ -438,10 +462,17 @@ const ComboDetailPage = () => {
     <div className="mt-12" data-track-section="combo_included_products">
       <div className="flex items-center justify-between gap-4 mb-6">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Products Included in this Combo</h2>
-          <p className="text-sm text-gray-500">Everything included in this combo pack.</p>
+          <h2 className="text-2xl font-bold text-gray-900">
+            Products Included in this Combo
+          </h2>
+          <p className="text-sm text-gray-500">
+            Everything included in this combo pack.
+          </p>
         </div>
-        <Link href="/combo-deals" className="text-sm text-primary font-semibold">
+        <Link
+          href="/combo-deals"
+          className="text-sm text-primary font-semibold"
+        >
           View all combos
         </Link>
       </div>
@@ -471,11 +502,16 @@ const ComboDetailPage = () => {
                       {item?.productTitle || "Product"}
                     </Link>
                     {item?.variantName ? (
-                      <p className="text-xs text-gray-500 mt-1">Variant: {item.variantName}</p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Variant: {item.variantName}
+                      </p>
                     ) : null}
-                    <p className="text-xs text-gray-500 mt-1">Qty: {item?.quantity || 1}</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Qty: {item?.quantity || 1}
+                    </p>
                     <div className="mt-2 flex items-center gap-2">
-                      {toNumber(item?.originalPrice, 0) > toNumber(item?.price, 0) ? (
+                      {toNumber(item?.originalPrice, 0) >
+                      toNumber(item?.price, 0) ? (
                         <span className="text-xs text-gray-400 line-through">
                           {formatPrice(toNumber(item?.originalPrice, 0))}
                         </span>
@@ -491,7 +527,9 @@ const ComboDetailPage = () => {
           })}
         </div>
       ) : (
-        <p className="text-sm text-gray-500">Combo items are not available right now.</p>
+        <p className="text-sm text-gray-500">
+          Combo items are not available right now.
+        </p>
       )}
     </div>
   );
@@ -512,7 +550,14 @@ const ComboDetailPage = () => {
     );
   }
 
-  return <ProductDetail breadcrumb={breadcrumb} hero={hero} tabs={tabs} sections={sections} />;
+  return (
+    <ProductDetail
+      breadcrumb={breadcrumb}
+      hero={hero}
+      tabs={tabs}
+      sections={sections}
+    />
+  );
 };
 
 export default ComboDetailPage;

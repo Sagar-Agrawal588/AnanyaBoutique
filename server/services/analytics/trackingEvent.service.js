@@ -55,7 +55,12 @@ export const trackingBatchSchema = z.object({
   events: z
     .array(clientEventSchema)
     .min(1)
-    .max(Number(process.env.TRACKING_BATCH_MAX_EVENTS || DEFAULT_TRACKING_BATCH_MAX_EVENTS)),
+    .max(
+      Number(
+        process.env.TRACKING_BATCH_MAX_EVENTS ||
+          DEFAULT_TRACKING_BATCH_MAX_EVENTS,
+      ),
+    ),
 });
 
 export const trackingEventSchema = z.object({
@@ -205,7 +210,10 @@ export const sanitizeUrl = (rawUrl) => {
     const hash = parsed.hash || "";
 
     if (/^https?:\/\//i.test(value)) {
-      return `${parsed.origin}${pathname}${search}${hash}`.slice(0, MAX_STRING_FIELD_LENGTH);
+      return `${parsed.origin}${pathname}${search}${hash}`.slice(
+        0,
+        MAX_STRING_FIELD_LENGTH,
+      );
     }
 
     return `${pathname}${search}${hash}`.slice(0, MAX_STRING_FIELD_LENGTH);
@@ -339,7 +347,8 @@ export const buildTrackingEvent = ({
   }
 
   const userAgent =
-    toSafeString(req.headers["user-agent"] || "unknown", "unknown") || "unknown";
+    toSafeString(req.headers["user-agent"] || "unknown", "unknown") ||
+    "unknown";
 
   const resolvedDeviceType =
     toSafeString(
@@ -355,16 +364,58 @@ export const buildTrackingEvent = ({
 
   const normalizedEvent = {
     eventId: toSmallString(parsedEvent.eventId),
-    eventType: resolveEventType(parsedEvent.eventType || parsedEvent.event_name),
-    event_name: resolveEventType(parsedEvent.eventType || parsedEvent.event_name),
-    userId: userId ? toSmallString(userId) : parsedEvent.userId ? toSmallString(parsedEvent.userId) : parsedEvent.user_id ? toSmallString(parsedEvent.user_id) : null,
-    user_id: userId ? toSmallString(userId) : parsedEvent.userId ? toSmallString(parsedEvent.userId) : parsedEvent.user_id ? toSmallString(parsedEvent.user_id) : null,
+    eventType: resolveEventType(
+      parsedEvent.eventType || parsedEvent.event_name,
+    ),
+    event_name: resolveEventType(
+      parsedEvent.eventType || parsedEvent.event_name,
+    ),
+    userId: userId
+      ? toSmallString(userId)
+      : parsedEvent.userId
+        ? toSmallString(parsedEvent.userId)
+        : parsedEvent.user_id
+          ? toSmallString(parsedEvent.user_id)
+          : null,
+    user_id: userId
+      ? toSmallString(userId)
+      : parsedEvent.userId
+        ? toSmallString(parsedEvent.userId)
+        : parsedEvent.user_id
+          ? toSmallString(parsedEvent.user_id)
+          : null,
     sessionId: resolvedSessionId,
     session_id: resolvedSessionId,
     timestamp: toValidIsoTimestamp(parsedEvent.timestamp),
-    page: toSafeString(parsedEvent.page || sanitizeUrl(parsedEvent.pageUrl || req.headers["x-page-url"] || req.originalUrl || "") || "/", "/") || "/",
-    target_type: toSmallString(parsedEvent.target_type || parsedEvent?.metadata?.targetType || parsedEvent?.metadata?.target_type || "unknown", "unknown") || "unknown",
-    target_id: toSafeString(parsedEvent.target_id || parsedEvent?.metadata?.targetId || parsedEvent?.metadata?.target_id || resolvedSessionId || "unknown", "unknown") || "unknown",
+    page:
+      toSafeString(
+        parsedEvent.page ||
+          sanitizeUrl(
+            parsedEvent.pageUrl ||
+              req.headers["x-page-url"] ||
+              req.originalUrl ||
+              "",
+          ) ||
+          "/",
+        "/",
+      ) || "/",
+    target_type:
+      toSmallString(
+        parsedEvent.target_type ||
+          parsedEvent?.metadata?.targetType ||
+          parsedEvent?.metadata?.target_type ||
+          "unknown",
+        "unknown",
+      ) || "unknown",
+    target_id:
+      toSafeString(
+        parsedEvent.target_id ||
+          parsedEvent?.metadata?.targetId ||
+          parsedEvent?.metadata?.target_id ||
+          resolvedSessionId ||
+          "unknown",
+        "unknown",
+      ) || "unknown",
     ipAddress:
       toSmallString(
         maskIpAddress(parsedEvent.ipAddress || extractIpAddress(req)),
@@ -374,11 +425,14 @@ export const buildTrackingEvent = ({
     deviceType: resolvedDeviceType,
     browser: resolvedBrowser,
     location: resolveLocation(req, parsedEvent.location || {}),
-    pageUrl: sanitizeUrl(parsedEvent.pageUrl || req.headers["x-page-url"] || req.originalUrl || ""),
+    pageUrl: sanitizeUrl(
+      parsedEvent.pageUrl || req.headers["x-page-url"] || req.originalUrl || "",
+    ),
     referrer: sanitizeUrl(
       parsedEvent.referrer || req.headers.referer || req.headers.referrer || "",
     ),
-    metadata: sanitizeSensitiveData(parsedEvent.metadata || {}, "metadata") || {},
+    metadata:
+      sanitizeSensitiveData(parsedEvent.metadata || {}, "metadata") || {},
   };
 
   return trackingEventSchema.parse(normalizedEvent);
@@ -390,7 +444,9 @@ export const decodeCompressedTrackingPayload = (payload = {}) => {
   }
 
   const isCompressed = Boolean(payload.compressed);
-  const encoding = String(payload.encoding || "").trim().toLowerCase();
+  const encoding = String(payload.encoding || "")
+    .trim()
+    .toLowerCase();
   const compressedPayload = payload.payload;
 
   if (!isCompressed || !compressedPayload) {
@@ -398,11 +454,15 @@ export const decodeCompressedTrackingPayload = (payload = {}) => {
   }
 
   if (encoding !== "gzip-base64") {
-    throw new Error(`Unsupported tracking payload encoding: ${encoding || "unknown"}`);
+    throw new Error(
+      `Unsupported tracking payload encoding: ${encoding || "unknown"}`,
+    );
   }
 
   const rawBuffer = Buffer.from(String(compressedPayload || ""), "base64");
-  const maxBytes = Number(process.env.TRACKING_BATCH_MAX_BYTES || DEFAULT_TRACKING_BATCH_MAX_BYTES);
+  const maxBytes = Number(
+    process.env.TRACKING_BATCH_MAX_BYTES || DEFAULT_TRACKING_BATCH_MAX_BYTES,
+  );
   if (rawBuffer.length > maxBytes * 2) {
     throw new Error("Compressed tracking payload exceeded maximum size");
   }
@@ -426,8 +486,13 @@ export const normalizeTrackingBatchPayload = ({
   userId = null,
 }) => {
   const decodedPayload = decodeCompressedTrackingPayload(payload || {});
-  const maxBytes = Number(process.env.TRACKING_BATCH_MAX_BYTES || DEFAULT_TRACKING_BATCH_MAX_BYTES);
-  const payloadBytes = Buffer.byteLength(JSON.stringify(decodedPayload || {}), "utf8");
+  const maxBytes = Number(
+    process.env.TRACKING_BATCH_MAX_BYTES || DEFAULT_TRACKING_BATCH_MAX_BYTES,
+  );
+  const payloadBytes = Buffer.byteLength(
+    JSON.stringify(decodedPayload || {}),
+    "utf8",
+  );
   if (payloadBytes > maxBytes) {
     throw new Error("Tracking payload exceeded maximum size");
   }
@@ -440,8 +505,7 @@ export const normalizeTrackingBatchPayload = ({
         req.analyticsSessionId ||
         req.cookies?.hog_sid ||
         "",
-    ) ||
-    "";
+    ) || "";
 
   if (!sessionId) {
     throw new Error("sessionId is required");

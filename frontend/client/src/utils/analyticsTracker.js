@@ -14,12 +14,16 @@ const HOVER_MIN_DURATION_MS = 300;
 const HOVER_EMIT_THROTTLE_MS = 1000;
 const RAGE_CLICK_WINDOW_MS = 2000;
 const RAGE_CLICK_THRESHOLD = 3;
-const MAX_EVENTS_PER_SECOND = Math.max(Number(process.env.NEXT_PUBLIC_ANALYTICS_MAX_EVENTS_PER_SECOND || 40), 10);
+const MAX_EVENTS_PER_SECOND = Math.max(
+  Number(process.env.NEXT_PUBLIC_ANALYTICS_MAX_EVENTS_PER_SECOND || 40),
+  10,
+);
 const MAX_EVENTS_PER_BATCH = 200;
 const COMPRESS_THRESHOLD_BYTES = 48 * 1024;
 const EVENT_TYPE_PATTERN = /^[a-z][a-z0-9_]{1,63}$/;
 const DEFAULT_TARGET_TYPE = "cart";
-const CLICKABLE_SELECTOR = "[data-track],[data-track-click],[data-banner-id],[data-banner],[data-product-id],[data-product],[data-productid],button,a,[role='button'],[role='link'],[onclick]";
+const CLICKABLE_SELECTOR =
+  "[data-track],[data-track-click],[data-banner-id],[data-banner],[data-product-id],[data-product],[data-productid],button,a,[role='button'],[role='link'],[onclick]";
 const CRITICAL_EVENT_TYPES = new Set([
   "session_start",
   "page_view_started",
@@ -82,10 +86,16 @@ const resolveConsentUrl = () => {
 };
 
 const getFlushMinMs = () =>
-  Math.max(Number(process.env.NEXT_PUBLIC_TRACK_FLUSH_MIN_MS || DEFAULT_FLUSH_MIN_MS), 1000);
+  Math.max(
+    Number(process.env.NEXT_PUBLIC_TRACK_FLUSH_MIN_MS || DEFAULT_FLUSH_MIN_MS),
+    1000,
+  );
 
 const getFlushMaxMs = () =>
-  Math.max(Number(process.env.NEXT_PUBLIC_TRACK_FLUSH_MAX_MS || DEFAULT_FLUSH_MAX_MS), getFlushMinMs());
+  Math.max(
+    Number(process.env.NEXT_PUBLIC_TRACK_FLUSH_MAX_MS || DEFAULT_FLUSH_MAX_MS),
+    getFlushMinMs(),
+  );
 
 const getRandomFlushDelay = () => {
   const min = getFlushMinMs();
@@ -95,14 +105,18 @@ const getRandomFlushDelay = () => {
 };
 
 const createId = () => {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+  if (
+    typeof crypto !== "undefined" &&
+    typeof crypto.randomUUID === "function"
+  ) {
     return crypto.randomUUID();
   }
   return `evt_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`;
 };
 
 const hasDoNotTrack = () => {
-  if (typeof navigator === "undefined" || typeof window === "undefined") return false;
+  if (typeof navigator === "undefined" || typeof window === "undefined")
+    return false;
 
   const dnt = String(
     navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack || "",
@@ -110,7 +124,9 @@ const hasDoNotTrack = () => {
     .trim()
     .toLowerCase();
 
-  return dnt === "1" || dnt === "yes" || navigator.globalPrivacyControl === true;
+  return (
+    dnt === "1" || dnt === "yes" || navigator.globalPrivacyControl === true
+  );
 };
 
 const shouldRespectDoNotTrack = () => {
@@ -129,9 +145,7 @@ const decodeJwtUserId = () => {
   if (typeof window === "undefined") return null;
 
   const token =
-    localStorage.getItem("accessToken") ||
-    localStorage.getItem("token") ||
-    "";
+    localStorage.getItem("accessToken") || localStorage.getItem("token") || "";
 
   if (!token || token.split(".").length !== 3) return null;
 
@@ -183,9 +197,11 @@ const getPagePath = () => {
   return `${window.location.pathname || "/"}${window.location.search || ""}`;
 };
 
-const getPageUrl = () => (typeof window !== "undefined" ? window.location.href : "");
+const getPageUrl = () =>
+  typeof window !== "undefined" ? window.location.href : "";
 
-const getReferrer = () => (typeof document !== "undefined" ? document.referrer || "" : "");
+const getReferrer = () =>
+  typeof document !== "undefined" ? document.referrer || "" : "";
 
 const getOrCreateLocalSessionId = () => {
   if (typeof window === "undefined") return createId();
@@ -224,7 +240,8 @@ const normalizeMetadataValue = (value) => {
   if (value === null || value === undefined) return value;
   if (typeof value === "number" || typeof value === "boolean") return value;
   if (typeof value === "string") return value.slice(0, 1024);
-  if (Array.isArray(value)) return value.slice(0, 100).map(normalizeMetadataValue);
+  if (Array.isArray(value))
+    return value.slice(0, 100).map(normalizeMetadataValue);
   if (typeof value === "object") {
     const out = {};
     for (const [key, nestedValue] of Object.entries(value).slice(0, 100)) {
@@ -364,7 +381,11 @@ const sendPayload = async (payload, useBeacon = true) => {
     }
   }
 
-  if (useBeacon && typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
+  if (
+    useBeacon &&
+    typeof navigator !== "undefined" &&
+    typeof navigator.sendBeacon === "function"
+  ) {
     const beaconBlob = new Blob([bodyPayload], { type: "application/json" });
     const sent = navigator.sendBeacon(trackUrl, beaconBlob);
     if (sent) {
@@ -486,9 +507,13 @@ const resolveScrollDepth = () => {
     documentElement.scrollHeight,
     body?.scrollHeight || 0,
   );
-  const viewportHeight = window.innerHeight || documentElement.clientHeight || 0;
+  const viewportHeight =
+    window.innerHeight || documentElement.clientHeight || 0;
   const trackableHeight = Math.max(scrollHeight - viewportHeight, 1);
-  return Math.max(0, Math.min(100, Math.round((scrollTop / trackableHeight) * 100)));
+  return Math.max(
+    0,
+    Math.min(100, Math.round((scrollTop / trackableHeight) * 100)),
+  );
 };
 
 const updateScrollTracking = () => {
@@ -522,12 +547,17 @@ const getElementSignature = (element) => {
   const tag = String(element.tagName || "").toLowerCase();
   const id = String(element.id || "").trim();
   const className = String(element.className || "").trim();
-  const text = String(element.textContent || "").trim().replace(/\s+/g, " ").slice(0, 80);
+  const text = String(element.textContent || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .slice(0, 80);
   return [dataTrack, tag, id, className, text].join("|");
 };
 
 const resolveTargetType = (eventType, metadata = {}) => {
-  const normalizedEventType = String(eventType || "").trim().toLowerCase();
+  const normalizedEventType = String(eventType || "")
+    .trim()
+    .toLowerCase();
   const explicit = String(metadata.target_type || metadata.targetType || "")
     .trim()
     .toLowerCase();
@@ -536,10 +566,20 @@ const resolveTargetType = (eventType, metadata = {}) => {
     return explicit;
   }
 
-  if (metadata.bannerId || metadata.bannerName || normalizedEventType.includes("banner")) return "banner";
+  if (
+    metadata.bannerId ||
+    metadata.bannerName ||
+    normalizedEventType.includes("banner")
+  )
+    return "banner";
   if (metadata.comboId || normalizedEventType.includes("combo")) return "combo";
   if (normalizedEventType.includes("wishlist")) return "wishlist";
-  if (metadata.productId || normalizedEventType.includes("product") || normalizedEventType.includes("hover")) return "product";
+  if (
+    metadata.productId ||
+    normalizedEventType.includes("product") ||
+    normalizedEventType.includes("hover")
+  )
+    return "product";
   return DEFAULT_TARGET_TYPE;
 };
 
@@ -633,48 +673,99 @@ const buildClickMetadata = (element, event) => {
       : "";
 
   const sectionName = String(
-    element?.closest?.("[data-track-section]")?.getAttribute?.("data-track-section") || "",
+    element
+      ?.closest?.("[data-track-section]")
+      ?.getAttribute?.("data-track-section") || "",
   )
     .trim()
     .toLowerCase();
 
   const productId = String(
-    getClosestDataAttrValue(element, ["data-product-id", "data-product", "data-productid"]),
+    getClosestDataAttrValue(element, [
+      "data-product-id",
+      "data-product",
+      "data-productid",
+    ]),
   )
     .trim()
     .slice(0, 128);
 
   const productName = String(
-    getClosestDataAttrValue(element, ["data-product-name", "data-productname", "data-product-title"]),
+    getClosestDataAttrValue(element, [
+      "data-product-name",
+      "data-productname",
+      "data-product-title",
+    ]),
   )
     .trim()
     .slice(0, 180);
 
   const bannerId = String(
-    getClosestDataAttrValue(element, ["data-banner-id", "data-bannerid", "data-banner"]),
+    getClosestDataAttrValue(element, [
+      "data-banner-id",
+      "data-bannerid",
+      "data-banner",
+    ]),
   )
     .trim()
     .slice(0, 128);
 
   const bannerName = String(
-    getClosestDataAttrValue(element, ["data-banner-name", "data-banner-title", "data-banner"]),
+    getClosestDataAttrValue(element, [
+      "data-banner-name",
+      "data-banner-title",
+      "data-banner",
+    ]),
   )
     .trim()
     .slice(0, 180);
 
   const bannerPosition = String(
-    getClosestDataAttrValue(element, ["data-banner-position", "data-banner-slot", "data-position"]),
+    getClosestDataAttrValue(element, [
+      "data-banner-position",
+      "data-banner-slot",
+      "data-position",
+    ]),
   )
     .trim()
     .slice(0, 80);
 
   const bannerCampaign = String(
-    getClosestDataAttrValue(element, ["data-banner-campaign", "data-campaign", "data-campaign-id"]),
+    getClosestDataAttrValue(element, [
+      "data-banner-campaign",
+      "data-campaign",
+      "data-campaign-id",
+    ]),
   )
     .trim()
     .slice(0, 120);
-  const explicitTargetType = String(getClosestDataAttrValue(element, ["data-track-target-type"])).trim();
-  const explicitTargetId = String(getClosestDataAttrValue(element, ["data-track-target-id"])).trim();
+  const explicitTargetType = String(
+    getClosestDataAttrValue(element, ["data-track-target-type"]),
+  ).trim();
+  const explicitTargetId = String(
+    getClosestDataAttrValue(element, ["data-track-target-id"]),
+  ).trim();
+  const derivedTargetId = String(
+    explicitTargetId ||
+      element?.getAttribute?.("data-track") ||
+      element?.id ||
+      element?.getAttribute?.("name") ||
+      element?.getAttribute?.("title") ||
+      element?.getAttribute?.("aria-label") ||
+      "",
+  )
+    .trim()
+    .slice(0, 160);
+
+  const buttonLabel = String(
+    element?.getAttribute?.("aria-label") ||
+      element?.getAttribute?.("title") ||
+      element?.textContent ||
+      "",
+  )
+    .trim()
+    .replace(/\s+/g, " ")
+    .slice(0, 180);
 
   return {
     sectionName: sectionName || null,
@@ -685,7 +776,8 @@ const buildClickMetadata = (element, event) => {
     bannerPosition: bannerPosition || null,
     bannerCampaign: bannerCampaign || null,
     targetType: explicitTargetType || null,
-    targetId: explicitTargetId || null,
+    targetId: derivedTargetId || null,
+    buttonLabel: buttonLabel || null,
     tagName: String(element?.tagName || "").toLowerCase(),
     id: String(element?.id || "").slice(0, 120),
     className: String(element?.className || "").slice(0, 250),
@@ -695,7 +787,9 @@ const buildClickMetadata = (element, event) => {
       .slice(0, 180),
     href: String(element?.getAttribute?.("href") || "").slice(0, 500),
     trackName: String(
-      element?.getAttribute?.("data-track") || element?.getAttribute?.("data-track-click") || "",
+      element?.getAttribute?.("data-track") ||
+        element?.getAttribute?.("data-track-click") ||
+        "",
     )
       .trim()
       .toLowerCase(),
@@ -704,7 +798,10 @@ const buildClickMetadata = (element, event) => {
     clickX: Number.isFinite(event?.clientX) ? Number(event.clientX) : null,
     clickY: Number.isFinite(event?.clientY) ? Number(event.clientY) : null,
     pageViewId: trackerState.currentPageView?.pageViewId || null,
-    pageActiveMs: Math.max(Number(trackerState.currentPageView?.activeMs || 0), 0),
+    pageActiveMs: Math.max(
+      Number(trackerState.currentPageView?.activeMs || 0),
+      0,
+    ),
     sessionActiveMs: Math.max(Number(trackerState.sessionActiveMs || 0), 0),
   };
 };
@@ -718,9 +815,14 @@ const processClickTracking = (event) => {
   const metadata = buildClickMetadata(element, event);
   const explicitTrackType = String(metadata.trackName || "").trim();
   const hasBannerIdentity = Boolean(
-    metadata.bannerId || metadata.bannerName || metadata.bannerPosition || metadata.bannerCampaign,
+    metadata.bannerId ||
+    metadata.bannerName ||
+    metadata.bannerPosition ||
+    metadata.bannerCampaign,
   );
-  const hasProductIdentity = Boolean(metadata.productId || metadata.productName);
+  const hasProductIdentity = Boolean(
+    metadata.productId || metadata.productName,
+  );
   const eventType = EVENT_TYPE_PATTERN.test(explicitTrackType)
     ? explicitTrackType
     : hasBannerIdentity
@@ -759,7 +861,9 @@ const findTrackableHoverElement = (target) => {
 };
 
 const getHoverKey = (element) => {
-  const explicit = String(element.getAttribute?.("data-track-hover") || "").trim();
+  const explicit = String(
+    element.getAttribute?.("data-track-hover") || "",
+  ).trim();
   if (explicit) return explicit;
   const role = String(element.getAttribute?.("data-track-role") || "").trim();
   if (role) return role;
@@ -824,7 +928,9 @@ const onHoverEnd = (event) => {
   enqueue("hover_duration", {
     hoverTarget: session.hoverKey,
     durationMs,
-    text: String(element.textContent || "").trim().slice(0, 180),
+    text: String(element.textContent || "")
+      .trim()
+      .slice(0, 180),
     pageViewId: trackerState.currentPageView?.pageViewId || null,
   });
 };
@@ -956,9 +1062,12 @@ const setupSectionTracking = () => {
     return;
   }
 
-  trackerState.sectionObserver = new IntersectionObserver(onSectionIntersection, {
-    threshold: [0.35, 0.6],
-  });
+  trackerState.sectionObserver = new IntersectionObserver(
+    onSectionIntersection,
+    {
+      threshold: [0.35, 0.6],
+    },
+  );
 
   observeTrackSections();
 
@@ -980,7 +1089,8 @@ const startHeartbeat = () => {
     const deltaMs = Math.max(now - trackerState.lastHeartbeatAt, 0);
     trackerState.lastHeartbeatAt = now;
 
-    const shouldBeIdle = document.hidden || now - trackerState.lastActivityAt >= IDLE_TIMEOUT_MS;
+    const shouldBeIdle =
+      document.hidden || now - trackerState.lastActivityAt >= IDLE_TIMEOUT_MS;
 
     if (shouldBeIdle && !trackerState.isIdle) {
       trackerState.isIdle = true;
@@ -1036,7 +1146,9 @@ const endCurrentPageView = (reason = "route_change") => {
 
 const startPageView = (path = "") => {
   const now = getNow();
-  const targetPath = String(path || (typeof window !== "undefined" ? window.location.pathname : ""));
+  const targetPath = String(
+    path || (typeof window !== "undefined" ? window.location.pathname : ""),
+  );
 
   endCurrentPageView("route_change");
 
@@ -1110,8 +1222,14 @@ const attachEventListeners = () => {
   document.addEventListener("keydown", onKeydown, { passive: true });
   document.addEventListener("touchstart", onTouchStart, { passive: true });
   document.addEventListener("click", onClick, { passive: true, capture: true });
-  document.addEventListener("mouseover", onHoverStart, { passive: true, capture: true });
-  document.addEventListener("mouseout", onHoverEnd, { passive: true, capture: true });
+  document.addEventListener("mouseover", onHoverStart, {
+    passive: true,
+    capture: true,
+  });
+  document.addEventListener("mouseout", onHoverEnd, {
+    passive: true,
+    capture: true,
+  });
   document.addEventListener("focusin", onFocusIn, { capture: true });
   document.addEventListener("focusout", onFocusOut, { capture: true });
   window.addEventListener("scroll", onScroll, { passive: true });

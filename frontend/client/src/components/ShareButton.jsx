@@ -1,19 +1,19 @@
 "use client";
 
+import { copyToClipboard, shareToSocialMedia } from "@/utils/shareUtils";
 import { useState } from "react";
-import { IoShareSocial } from "react-icons/io5";
 import {
   FaFacebook,
-  FaTwitter,
-  FaWhatsapp,
+  FaLink,
   FaLinkedin,
   FaPinterest,
-  FaTelegram,
   FaReddit,
-  FaLink,
+  FaTelegram,
+  FaTwitter,
+  FaWhatsapp,
 } from "react-icons/fa";
-import { MdEmail, MdCheck } from "react-icons/md";
-import { shareToSocialMedia, copyToClipboard } from "@/utils/shareUtils";
+import { IoShareSocial } from "react-icons/io5";
+import { MdCheck, MdEmail } from "react-icons/md";
 
 const SOCIAL_PLATFORMS = [
   {
@@ -249,10 +249,7 @@ const ShareButton = ({
       )}
 
       {isOpen && (
-        <div
-          className="fixed inset-0 z-40"
-          onClick={() => setIsOpen(false)}
-        />
+        <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
       )}
     </div>
   );

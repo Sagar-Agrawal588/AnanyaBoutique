@@ -93,9 +93,20 @@ const getStoredAdminToken = () => {
 };
 
 const setStoredAdminToken = (token) => {
-  if (typeof window === "undefined" || !token) return;
-  localStorage.setItem("adminToken", token);
-  window.dispatchEvent(new CustomEvent("adminTokenRefreshed", { detail: token }));
+  if (typeof window === "undefined") return;
+
+  if (typeof token === "string" && token.trim()) {
+    localStorage.setItem("adminToken", token);
+    window.dispatchEvent(
+      new CustomEvent("adminTokenRefreshed", { detail: token }),
+    );
+    return;
+  }
+
+  localStorage.removeItem("adminToken");
+  window.dispatchEvent(
+    new CustomEvent("adminTokenRefreshed", { detail: null }),
+  );
 };
 
 const refreshAdminToken = async () => {
@@ -113,6 +124,7 @@ const refreshAdminToken = async () => {
       setStoredAdminToken(token);
       return token;
     } catch (error) {
+      setStoredAdminToken(null);
       return null;
     } finally {
       refreshPromise = null;
@@ -157,6 +169,19 @@ const requestWithRetry = async ({
     headers: buildHeaders(token, headers),
   };
 
+  const requestWithoutAuthHeader = async () => {
+    const cookieOnlyHeaders = { ...headers };
+    delete cookieOnlyHeaders.Authorization;
+
+    const cookieRetryConfig = {
+      ...requestConfig,
+      headers: cookieOnlyHeaders,
+    };
+
+    const response = await axiosClient.request(cookieRetryConfig);
+    return response.data;
+  };
+
   try {
     const response = await axiosClient.request(requestConfig);
     return response.data;
@@ -170,8 +195,18 @@ const requestWithRetry = async ({
           const retryResponse = await axiosClient.request(requestConfig);
           return retryResponse.data;
         } catch (retryError) {
-          return toErrorPayload(retryError, fallbackMessage);
+          if (retryError?.response?.status !== 401) {
+            return toErrorPayload(retryError, fallbackMessage);
+          }
         }
+      }
+
+      // Fallback to cookie-only auth when local token is stale or refresh fails.
+      try {
+        setStoredAdminToken(null);
+        return await requestWithoutAuthHeader();
+      } catch (cookieRetryError) {
+        return toErrorPayload(cookieRetryError, fallbackMessage);
       }
     }
     return toErrorPayload(error, fallbackMessage);

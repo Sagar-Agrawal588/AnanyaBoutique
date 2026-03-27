@@ -1,7 +1,7 @@
+import { spawn } from "child_process";
+import { randomUUID } from "crypto";
 import dotenv from "dotenv";
 import jwt from "jsonwebtoken";
-import { randomUUID } from "crypto";
-import { spawn } from "child_process";
 import path from "path";
 import { fileURLToPath } from "url";
 import {
@@ -13,7 +13,10 @@ dotenv.config({ path: "./.env" });
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const normalizeUrl = (value) => String(value || "").trim().replace(/\/+$/, "");
+const normalizeUrl = (value) =>
+  String(value || "")
+    .trim()
+    .replace(/\/+$/, "");
 
 const resolveApiBaseUrl = () => {
   const explicit = normalizeUrl(process.env.TRACKING_TEST_API_URL);
@@ -31,13 +34,17 @@ const ACCESS_TOKEN_SECRET =
   "";
 
 const apiBaseUrl = resolveApiBaseUrl();
-const FETCH_TIMEOUT_MS = Number(process.env.TRACKING_TEST_HTTP_TIMEOUT_MS || 12_000);
+const FETCH_TIMEOUT_MS = Number(
+  process.env.TRACKING_TEST_HTTP_TIMEOUT_MS || 12_000,
+);
 const MANAGE_WORKER = ["true", "1", "yes", "on"].includes(
   String(process.env.TRACKING_TEST_START_WORKER || "false")
     .trim()
     .toLowerCase(),
 );
-const WORKER_BOOT_TIMEOUT_MS = Number(process.env.TRACKING_TEST_WORKER_BOOT_TIMEOUT_MS || 20_000);
+const WORKER_BOOT_TIMEOUT_MS = Number(
+  process.env.TRACKING_TEST_WORKER_BOOT_TIMEOUT_MS || 20_000,
+);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -45,7 +52,9 @@ const repoRoot = path.resolve(__dirname, "..", "..");
 const workerEntry = path.resolve(repoRoot, "analytics-worker", "index.js");
 
 const parseCookie = (setCookieHeader = "") => {
-  const first = String(setCookieHeader || "").split(";")[0].trim();
+  const first = String(setCookieHeader || "")
+    .split(";")[0]
+    .trim();
   return first || "";
 };
 
@@ -63,7 +72,9 @@ const requestSession = async ({ authToken = "" } = {}) => {
 
   const payload = await response.json();
   if (!response.ok) {
-    throw new Error(`Session endpoint failed (${response.status}): ${payload?.message || "unknown"}`);
+    throw new Error(
+      `Session endpoint failed (${response.status}): ${payload?.message || "unknown"}`,
+    );
   }
 
   return {
@@ -105,61 +116,66 @@ const publishBatch = async ({
 
   const payload = await response.json();
   if (!response.ok) {
-    throw new Error(`Track endpoint failed (${response.status}): ${payload?.message || "unknown"}`);
+    throw new Error(
+      `Track endpoint failed (${response.status}): ${payload?.message || "unknown"}`,
+    );
   }
 
   if (!payload?.data?.accepted) {
-    throw new Error(`Track endpoint accepted zero events for session ${sessionId}`);
+    throw new Error(
+      `Track endpoint accepted zero events for session ${sessionId}`,
+    );
   }
 
   return payload;
 };
 
 const querySessionSnapshot = async (db, sessionId) => {
-  const [rawEvents, productEvents, sessionDoc, legacySessionDoc] = await Promise.all([
-    db
-      .collection("events_raw")
-      .find({ sessionId })
-      .project({
-        _id: 0,
-        eventId: 1,
-        eventType: 1,
-        sessionId: 1,
-        userId: 1,
-        timestamp: 1,
-      })
-      .toArray(),
-    db.collection("product_events").countDocuments({ sessionId }),
-    db.collection("sessions").findOne(
-      { sessionId },
-      {
-        projection: {
+  const [rawEvents, productEvents, sessionDoc, legacySessionDoc] =
+    await Promise.all([
+      db
+        .collection("events_raw")
+        .find({ sessionId })
+        .project({
           _id: 0,
+          eventId: 1,
+          eventType: 1,
           sessionId: 1,
           userId: 1,
-          startedAt: 1,
-          lastSeenAt: 1,
-          eventCount: 1,
-          pageViews: 1,
+          timestamp: 1,
+        })
+        .toArray(),
+      db.collection("product_events").countDocuments({ sessionId }),
+      db.collection("sessions").findOne(
+        { sessionId },
+        {
+          projection: {
+            _id: 0,
+            sessionId: 1,
+            userId: 1,
+            startedAt: 1,
+            lastSeenAt: 1,
+            eventCount: 1,
+            pageViews: 1,
+          },
         },
-      },
-    ),
-    db.collection("user_sessions").findOne(
-      { sessionId },
-      {
-        projection: {
-          _id: 0,
-          sessionId: 1,
-          userId: 1,
-          user_id: 1,
-          startedAt: 1,
-          lastSeenAt: 1,
-          eventCount: 1,
-          pageViews: 1,
+      ),
+      db.collection("user_sessions").findOne(
+        { sessionId },
+        {
+          projection: {
+            _id: 0,
+            sessionId: 1,
+            userId: 1,
+            user_id: 1,
+            startedAt: 1,
+            lastSeenAt: 1,
+            eventCount: 1,
+            pageViews: 1,
+          },
         },
-      },
-    ),
-  ]);
+      ),
+    ]);
 
   return {
     sessionId,
@@ -384,7 +400,9 @@ const main = async () => {
 
     const activeWorker = await hasActiveWorker(db);
     if (!activeWorker && MANAGE_WORKER) {
-      console.log("[analytics-smoke-test] no active worker detected, starting managed worker");
+      console.log(
+        "[analytics-smoke-test] no active worker detected, starting managed worker",
+      );
       managedWorker = await startManagedWorker();
     } else if (!activeWorker && !MANAGE_WORKER) {
       console.warn(
@@ -412,7 +430,9 @@ const main = async () => {
 
     console.log("[analytics-smoke-test] creating logged-in token");
     if (!ACCESS_TOKEN_SECRET) {
-      throw new Error("Missing ACCESS_TOKEN_SECRET (or equivalent) for logged-in smoke test.");
+      throw new Error(
+        "Missing ACCESS_TOKEN_SECRET (or equivalent) for logged-in smoke test.",
+      );
     }
 
     const loggedInUserId = `smoke_user_${Date.now()}`;
@@ -455,8 +475,12 @@ const main = async () => {
       }),
     ]);
 
-    const guestResolvedSessionId = String(guestDocs?.[0]?.sessionId || guestSession.sessionId);
-    const loggedInResolvedSessionId = String(loggedInDocs?.[0]?.sessionId || loggedInSession.sessionId);
+    const guestResolvedSessionId = String(
+      guestDocs?.[0]?.sessionId || guestSession.sessionId,
+    );
+    const loggedInResolvedSessionId = String(
+      loggedInDocs?.[0]?.sessionId || loggedInSession.sessionId,
+    );
 
     const [guestSnapshot, loggedInSnapshot] = await Promise.all([
       querySessionSnapshot(db, guestResolvedSessionId),
@@ -465,12 +489,16 @@ const main = async () => {
 
     const guestPass = guestDocs.length >= guestEventIds.length;
     const loggedInSessionUserId = String(
-      loggedInSnapshot?.sessionDoc?.userId || loggedInSnapshot?.sessionDoc?.user_id || "",
+      loggedInSnapshot?.sessionDoc?.userId ||
+        loggedInSnapshot?.sessionDoc?.user_id ||
+        "",
     );
 
     const loggedInPass =
       loggedInDocs.length >= loggedInEventIds.length &&
-      loggedInDocs.every((doc) => String(doc?.userId || "") === loggedInUserId) &&
+      loggedInDocs.every(
+        (doc) => String(doc?.userId || "") === loggedInUserId,
+      ) &&
       loggedInSessionUserId === loggedInUserId;
 
     const summary = {

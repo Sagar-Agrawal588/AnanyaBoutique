@@ -1,8 +1,6 @@
 import { PubSub } from "@google-cloud/pubsub";
-import {
-  DEFAULT_ANALYTICS_PUBSUB_TOPIC,
-} from "./constants.js";
 import { emitAnalyticsBatch } from "../../realtime/analyticsEvents.js";
+import { DEFAULT_ANALYTICS_PUBSUB_TOPIC } from "./constants.js";
 import {
   hasActiveAnalyticsWorker,
   persistTrackingBatchDirect,
@@ -15,7 +13,11 @@ let workerHealthCache = {
 };
 
 const isTruthy = (value) =>
-  ["true", "1", "yes", "on"].includes(String(value || "").trim().toLowerCase());
+  ["true", "1", "yes", "on"].includes(
+    String(value || "")
+      .trim()
+      .toLowerCase(),
+  );
 
 const normalizeEnvValue = (value) => {
   const raw = String(value || "").trim();
@@ -31,7 +33,8 @@ const normalizeEnvValue = (value) => {
   return raw;
 };
 
-const normalizePrivateKey = (value) => normalizeEnvValue(value).replace(/\\n/g, "\n");
+const normalizePrivateKey = (value) =>
+  normalizeEnvValue(value).replace(/\\n/g, "\n");
 
 const resolveProjectId = () =>
   normalizeEnvValue(
@@ -99,7 +102,9 @@ const shouldUseLocalDirectMode = () => {
 };
 
 const shouldDirectIngestWhenNoWorker = () => {
-  const explicit = String(process.env.ANALYTICS_DIRECT_INGEST_WHEN_NO_WORKER || "")
+  const explicit = String(
+    process.env.ANALYTICS_DIRECT_INGEST_WHEN_NO_WORKER || "",
+  )
     .trim()
     .toLowerCase();
 
@@ -111,7 +116,10 @@ const shouldDirectIngestWhenNoWorker = () => {
 };
 
 const isWorkerActiveCached = async () => {
-  const cacheTtlMs = Math.max(Number(process.env.ANALYTICS_WORKER_HEALTH_CACHE_MS || 5000), 500);
+  const cacheTtlMs = Math.max(
+    Number(process.env.ANALYTICS_WORKER_HEALTH_CACHE_MS || 5000),
+    500,
+  );
   const now = Date.now();
 
   if (now - workerHealthCache.checkedAt < cacheTtlMs) {
@@ -133,8 +141,9 @@ const isWorkerActiveCached = async () => {
 };
 
 const resolveTopicName = () =>
-  String(process.env.ANALYTICS_PUBSUB_TOPIC || DEFAULT_ANALYTICS_PUBSUB_TOPIC)
-    .trim() || DEFAULT_ANALYTICS_PUBSUB_TOPIC;
+  String(
+    process.env.ANALYTICS_PUBSUB_TOPIC || DEFAULT_ANALYTICS_PUBSUB_TOPIC,
+  ).trim() || DEFAULT_ANALYTICS_PUBSUB_TOPIC;
 
 const getPubSubClient = () => {
   if (pubSubClient) {
@@ -296,9 +305,14 @@ export const publishTrackingBatch = async ({
 export const publishTrackingBatchAsync = (payload) => {
   emitAnalyticsBatch(payload || {});
   setImmediate(() => {
-    publishTrackingBatch({ ...(payload || {}), skipRealtime: true }).catch((error) => {
-      console.error("[analytics] Failed to publish tracking batch:", error?.message || error);
-    });
+    publishTrackingBatch({ ...(payload || {}), skipRealtime: true }).catch(
+      (error) => {
+        console.error(
+          "[analytics] Failed to publish tracking batch:",
+          error?.message || error,
+        );
+      },
+    );
   });
 };
 

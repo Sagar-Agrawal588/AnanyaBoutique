@@ -1,6 +1,12 @@
-import { ensureAnalyticsIndexes, getAnalyticsDb } from "./analyticsDb.service.js";
+import {
+  ensureAnalyticsIndexes,
+  getAnalyticsDb,
+} from "./analyticsDb.service.js";
 
-const RAW_EVENTS_TTL_DAYS = Math.max(Number(process.env.ANALYTICS_RAW_EVENTS_TTL_DAYS || 90), 1);
+const RAW_EVENTS_TTL_DAYS = Math.max(
+  Number(process.env.ANALYTICS_RAW_EVENTS_TTL_DAYS || 90),
+  1,
+);
 
 const toDate = (value) => {
   const parsed = new Date(value || Date.now());
@@ -17,30 +23,54 @@ const toFiniteNumber = (value, fallback = 0) => {
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
-const shouldTrackAsPageView = (eventType) => String(eventType || "").trim().toLowerCase() === "page_view_started";
+const shouldTrackAsPageView = (eventType) =>
+  String(eventType || "")
+    .trim()
+    .toLowerCase() === "page_view_started";
 
 const shouldTrackAsProductEvent = (eventType) => {
-  const normalized = String(eventType || "").trim().toLowerCase();
-  return ["product_view", "hover_duration", "product_click"].includes(normalized);
+  const normalized = String(eventType || "")
+    .trim()
+    .toLowerCase();
+  return ["product_view", "hover_duration", "product_click"].includes(
+    normalized,
+  );
 };
 
 const shouldTrackAsCartEvent = (eventType) => {
-  const normalized = String(eventType || "").trim().toLowerCase();
-  return ["add_to_cart", "remove_from_cart", "checkout_started"].includes(normalized);
+  const normalized = String(eventType || "")
+    .trim()
+    .toLowerCase();
+  return ["add_to_cart", "remove_from_cart", "checkout_started"].includes(
+    normalized,
+  );
 };
 
-const shouldTrackAsPurchase = (eventType) => String(eventType || "").trim().toLowerCase() === "purchase_completed";
+const shouldTrackAsPurchase = (eventType) =>
+  String(eventType || "")
+    .trim()
+    .toLowerCase() === "purchase_completed";
 
 const normalizeEvent = (event = {}) => {
   const timestamp = toDate(event.timestamp);
-  const eventType = toSafeString(event.eventType || event.event_name).toLowerCase();
-  const metadata = event?.metadata && typeof event.metadata === "object" ? event.metadata : {};
+  const eventType = toSafeString(
+    event.eventType || event.event_name,
+  ).toLowerCase();
+  const metadata =
+    event?.metadata && typeof event.metadata === "object" ? event.metadata : {};
 
   const productId =
-    toSafeString(metadata.productId || metadata.product_id || metadata.id || metadata?.product?._id || metadata?.product?.id) ||
-    null;
+    toSafeString(
+      metadata.productId ||
+        metadata.product_id ||
+        metadata.id ||
+        metadata?.product?._id ||
+        metadata?.product?.id,
+    ) || null;
   const productName =
-    toSafeString(metadata.productName || metadata.name || metadata?.product?.name) || null;
+    toSafeString(
+      metadata.productName || metadata.name || metadata?.product?.name,
+    ) || null;
 
   return {
     eventId: toSafeString(event.eventId),
@@ -57,7 +87,8 @@ const normalizeEvent = (event = {}) => {
     location:
       event?.location && typeof event.location === "object"
         ? {
-            country: toSafeString(event.location.country || "unknown") || "unknown",
+            country:
+              toSafeString(event.location.country || "unknown") || "unknown",
             city: toSafeString(event.location.city || "unknown") || "unknown",
           }
         : { country: "unknown", city: "unknown" },
@@ -65,7 +96,10 @@ const normalizeEvent = (event = {}) => {
     productId,
     productName,
     orderId: toSafeString(metadata.orderId || "") || null,
-    amount: toFiniteNumber(metadata.revenue ?? metadata.total ?? metadata.amount, 0),
+    amount: toFiniteNumber(
+      metadata.revenue ?? metadata.total ?? metadata.amount,
+      0,
+    ),
     quantity: toFiniteNumber(metadata.quantity, 0),
   };
 };
@@ -84,8 +118,12 @@ export const persistTrackingBatchDirect = async ({
   const db = await getAnalyticsDb();
 
   const processedAt = new Date();
-  const expireAt = new Date(processedAt.getTime() + RAW_EVENTS_TTL_DAYS * 24 * 60 * 60 * 1000);
-  const normalizedEvents = events.map((event) => normalizeEvent({ ...event, sessionId }));
+  const expireAt = new Date(
+    processedAt.getTime() + RAW_EVENTS_TTL_DAYS * 24 * 60 * 60 * 1000,
+  );
+  const normalizedEvents = events.map((event) =>
+    normalizeEvent({ ...event, sessionId }),
+  );
 
   const rawOps = normalizedEvents.map((event) => ({
     updateOne: {
@@ -122,9 +160,16 @@ export const persistTrackingBatchDirect = async ({
     ordered: false,
   });
 
-  const upsertedIndexes = new Set(Object.keys(writeResult?.upsertedIds || {}).map((key) => Number(key)));
-  const freshEvents = normalizedEvents.filter((_, index) => upsertedIndexes.has(index));
-  const duplicateEvents = Math.max(normalizedEvents.length - freshEvents.length, 0);
+  const upsertedIndexes = new Set(
+    Object.keys(writeResult?.upsertedIds || {}).map((key) => Number(key)),
+  );
+  const freshEvents = normalizedEvents.filter((_, index) =>
+    upsertedIndexes.has(index),
+  );
+  const duplicateEvents = Math.max(
+    normalizedEvents.length - freshEvents.length,
+    0,
+  );
 
   if (freshEvents.length === 0) {
     return { insertedEvents: 0, duplicateEvents, mode: "direct" };
@@ -226,9 +271,14 @@ export const persistTrackingBatchDirect = async ({
               timestamp: event.timestamp,
               orderId: event.orderId,
               amount: event.amount,
-              currency: toSafeString(event.metadata?.currency || "INR") || "INR",
-              paymentMethod: toSafeString(event.metadata?.paymentMethod || "unknown") || "unknown",
-              products: Array.isArray(event.metadata?.items) ? event.metadata.items.slice(0, 200) : [],
+              currency:
+                toSafeString(event.metadata?.currency || "INR") || "INR",
+              paymentMethod:
+                toSafeString(event.metadata?.paymentMethod || "unknown") ||
+                "unknown",
+              products: Array.isArray(event.metadata?.items)
+                ? event.metadata.items.slice(0, 200)
+                : [],
               createdAt: processedAt,
               updatedAt: processedAt,
             },
@@ -243,7 +293,9 @@ export const persistTrackingBatchDirect = async ({
     await db.collection("sessions").bulkWrite(sessionOps, { ordered: false });
   }
   if (productOps.length) {
-    await db.collection("product_events").bulkWrite(productOps, { ordered: false });
+    await db
+      .collection("product_events")
+      .bulkWrite(productOps, { ordered: false });
   }
   if (cartOps.length) {
     await db.collection("cart_events").bulkWrite(cartOps, { ordered: false });
@@ -259,11 +311,15 @@ export const persistTrackingBatchDirect = async ({
   };
 };
 
-export const hasActiveAnalyticsWorker = async ({ staleThresholdMs = 60_000 } = {}) => {
+export const hasActiveAnalyticsWorker = async ({
+  staleThresholdMs = 60_000,
+} = {}) => {
   await ensureAnalyticsIndexes();
   const db = await getAnalyticsDb();
 
-  const activeThreshold = new Date(Date.now() - Math.max(Number(staleThresholdMs) || 60_000, 1_000));
+  const activeThreshold = new Date(
+    Date.now() - Math.max(Number(staleThresholdMs) || 60_000, 1_000),
+  );
   const count = await db.collection("worker_health").countDocuments({
     updatedAt: { $gte: activeThreshold },
   });

@@ -13,12 +13,22 @@ const buildEventTypeSummary = (events = []) => {
 
 const buildEventPreview = (event) => {
   if (!event) return null;
+  const metadata =
+    event?.metadata && typeof event.metadata === "object" ? event.metadata : {};
   return {
     eventType: safeString(event?.eventType || ""),
     pageUrl: safeString(event?.pageUrl || ""),
     timestamp: event?.timestamp || null,
     sessionId: safeString(event?.sessionId || ""),
     userId: safeString(event?.userId || ""),
+    metadata: {
+      buttonLabel: safeString(metadata?.buttonLabel || ""),
+      targetId: safeString(metadata?.targetId || metadata?.target_id || ""),
+      trackName: safeString(metadata?.trackName || ""),
+      text: safeString(metadata?.text || ""),
+      id: safeString(metadata?.id || ""),
+      tagName: safeString(metadata?.tagName || ""),
+    },
   };
 };
 
@@ -32,9 +42,7 @@ export const emitAnalyticsBatch = ({
   const io = getIO();
   if (!io || !Array.isArray(events) || events.length === 0) return;
 
-  const resolvedSessionId = safeString(
-    sessionId || events[0]?.sessionId || "",
-  );
+  const resolvedSessionId = safeString(sessionId || events[0]?.sessionId || "");
   const resolvedUserId = safeString(events[0]?.userId || "");
 
   const MAX_PREVIEW_EVENTS = 20;
