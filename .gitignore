@@ -89,3 +89,8 @@ github-deployer-key.json
 server/invoices/
 test-artifacts/
 tmp/order-report-preview-*.xlsx
+
+# =====================================
+# Generated API test artifacts
+# =====================================
+server/postman/reports/
