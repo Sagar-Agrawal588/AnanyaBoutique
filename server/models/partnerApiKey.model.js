@@ -23,7 +23,7 @@ const partnerApiKeySchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["active", "revoked"],
+      enum: ["active", "paused", "revoked", "expired"],
       default: "active",
       index: true,
     },
@@ -40,6 +40,10 @@ const partnerApiKeySchema = new mongoose.Schema(
       type: String,
       default: "",
       trim: true,
+    },
+    revokedAt: {
+      type: Date,
+      default: null,
     },
   },
   {

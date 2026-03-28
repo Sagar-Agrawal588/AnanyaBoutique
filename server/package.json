@@ -10,7 +10,13 @@
     "dev:direct": "nodemon index.js",
     "dev:memory": "node scripts/devServer.mjs --memory",
     "test": "node --test",
+    "test:partner:production": "node --test tests/partner.api.production.test.js",
     "test:analytics-smoke": "node scripts/analyticsSmokeTest.mjs",
+    "test:partner:simulate": "node scripts/partnerApi/realWorldSimulation.mjs",
+    "test:partner:load": "node scripts/partnerApi/loadAndBurstTest.mjs",
+    "test:partner:external-client": "node scripts/partnerApi/externalPartnerClient.mjs",
+    "test:partner:full-e2e": "node scripts/partnerApi/fullProductionValidation.mjs",
+    "test:partner:postman": "node scripts/partnerApi/postmanNewmanAutomation.mjs",
     "test:promo-unsubscribe": "node scripts/testPromotionalUnsubscribeFlow.mjs",
     "setup:pubsub": "node scripts/setupPubSubInfra.mjs",
     "migrate:enterprise": "node migrations/2026-02-enterprise-upgrade.mjs",
@@ -37,6 +43,7 @@
     "express-rate-limit": "^8.2.1",
     "firebase-admin": "^12.7.0",
     "helmet": "^8.1.0",
+    "ioredis": "^5.10.1",
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.1.2",
     "morgan": "^1.10.1",
@@ -51,6 +58,7 @@
   },
   "devDependencies": {
     "mongodb-memory-server": "^9.2.0",
+    "newman": "^6.2.2",
     "nodemon": "^3.0.0"
   }
 }

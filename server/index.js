@@ -234,6 +234,7 @@ import { startEmailAutomationJob } from "./services/emailAutomation.service.js";
 import { startExpressbeesPolling } from "./services/expressbeesPolling.service.js";
 import { startInventoryReservationExpiryJob } from "./services/inventoryReservationExpiry.service.js";
 import { startMembershipExpiryJob } from "./services/membershipExpiry.service.js";
+import { startPartnerDynamicScalingEngine } from "./services/partnerApiDynamicScaling.service.js";
 import { startLocationLogRetentionJob } from "./services/userLocationLog.service.js";
 
 const app = express();
@@ -622,6 +623,7 @@ connectDb()
     startEmailAutomationJob();
     startFrequentlyBoughtTogetherJob();
     startComboAnalysisJob();
+    startPartnerDynamicScalingEngine();
   })
   .catch((error) => {
     console.error("Server startup failed:", error?.message || error);
