@@ -1,5 +1,5 @@
-import mongoose from "mongoose";
 import "dotenv/config";
+import mongoose from "mongoose";
 import OrderModel from "../models/order.model.js";
 
 const mongoUri = process.env.MONGODB_URI || process.env.MONGO_URI || "";
@@ -26,14 +26,20 @@ async function checkOrderData() {
     }
 
     console.log("=== ORDER DATA ===");
-    console.log(JSON.stringify({
-      _id: order._id,
-      totalAmt: order.totalAmt,
-      subtotal: order.subtotal,
-      discount: order.discount,
-      discountAmount: order.discountAmount,
-      products_count: order.products?.length,
-    }, null, 2));
+    console.log(
+      JSON.stringify(
+        {
+          _id: order._id,
+          totalAmt: order.totalAmt,
+          subtotal: order.subtotal,
+          discount: order.discount,
+          discountAmount: order.discountAmount,
+          products_count: order.products?.length,
+        },
+        null,
+        2,
+      ),
+    );
 
     console.log("\n=== PRODUCTS ===");
     order.products?.forEach((p, i) => {
@@ -44,7 +50,6 @@ async function checkOrderData() {
         subTotal: p.subTotal,
       });
     });
-
   } catch (error) {
     console.error("Error:", error.message);
   } finally {

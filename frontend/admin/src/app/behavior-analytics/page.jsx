@@ -186,6 +186,59 @@ const buildRangeQuery = (days) => {
   return { from: from.toISOString(), to: to.toISOString() };
 };
 
+const formatDateInput = (value) => {
+  if (!value) return "";
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toISOString().slice(0, 10);
+};
+
+const buildRangeFromDates = (startInput, endInput, fallbackDays = 30) => {
+  const fallback = buildRangeQuery(fallbackDays);
+  const fallbackFrom = new Date(fallback.from);
+  const fallbackTo = new Date(fallback.to);
+
+  const start = startInput ? new Date(`${startInput}T00:00:00.000Z`) : fallbackFrom;
+  const end = endInput ? new Date(`${endInput}T23:59:59.999Z`) : fallbackTo;
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) {
+    return {
+      from: fallback.from,
+      to: fallback.to,
+      days: fallbackDays,
+    };
+  }
+
+  const days =
+    Math.max(1, Math.floor((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1);
+
+  return {
+    from: start.toISOString(),
+    to: end.toISOString(),
+    days,
+  };
+};
+
+const buildYearRange = (year) => {
+  const normalizedYear = Number(year);
+  if (!Number.isFinite(normalizedYear)) {
+    const fallback = buildRangeQuery(30);
+    return {
+      startDate: formatDateInput(fallback.from),
+      endDate: formatDateInput(fallback.to),
+    };
+  }
+  return {
+    startDate: formatDateInput(new Date(Date.UTC(normalizedYear, 0, 1))),
+    endDate: formatDateInput(new Date(Date.UTC(normalizedYear, 11, 31))),
+  };
+};
+
+const buildBehaviorAllTimeRange = () => ({
+  startDate: "2015-01-01",
+  endDate: formatDateInput(new Date()),
+});
+
 const getApiErrorMessage = (response, fallback) =>
   [response?.message, response?.details].filter(Boolean).join(" - ") ||
   fallback;
@@ -345,11 +398,59 @@ const buildTimelineInsights = (timeline = [], productInteractions = []) => {
   };
 };
 
+const buildPlainLanguageSummary = ({ overview, engagement, timelineInsights }) => {
+  const conversionRate = toNumber(overview?.conversionRate, 0);
+  const bounceRate = toNumber(overview?.bounceRate, 0);
+  const rageClicks = toNumber(engagement?.rageClickCount, 0);
+  const addToCart = toNumber(timelineInsights?.addToCart, 0);
+  const checkoutStarted = toNumber(timelineInsights?.checkoutStarted, 0);
+  const purchases = toNumber(timelineInsights?.purchases, 0);
+
+  const topPage = timelineInsights?.pages?.[0]?.path || "No dominant page yet";
+  const topSection = timelineInsights?.sections?.[0]?.sectionName || "No dominant section yet";
+  const topButton = timelineInsights?.clickTargets?.[0]?.target || "No dominant button yet";
+
+  const highlights = [
+    `Top customer path: ${topPage}`,
+    `Most active section: ${topSection}`,
+    `Most clicked button: ${topButton}`,
+  ];
+
+  const recommendations = [];
+  if (bounceRate >= 55) {
+    recommendations.push("Bounce rate is high. Simplify landing content and show a stronger first CTA.");
+  }
+  if (rageClicks >= 10) {
+    recommendations.push("Rage clicks are high. Review button visibility, response speed, and click targets.");
+  }
+  if (checkoutStarted > addToCart) {
+    recommendations.push("Checkout starts exceed add-to-cart. Validate event instrumentation for cart and checkout.");
+  }
+  if (checkoutStarted > 0 && purchases === 0) {
+    recommendations.push("Customers start checkout but do not finish. Audit payment and delivery messaging on checkout.");
+  }
+  if (conversionRate < 1 && addToCart > 0) {
+    recommendations.push("Add-to-cart exists but conversion is low. Test trust badges, delivery promise, and payment clarity.");
+  }
+  if (recommendations.length === 0) {
+    recommendations.push("Current flow is stable. Focus next on improving top performing pages and buttons.");
+  }
+
+  return {
+    highlights,
+    recommendations,
+  };
+};
+
 export default function BehaviorAnalyticsPage() {
   const { token, isAuthenticated, loading: authLoading } = useAdmin();
   const router = useRouter();
 
   const [rangeDays, setRangeDays] = useState(30);
+  const defaultRange = useMemo(() => buildRangeQuery(30), []);
+  const [startDate, setStartDate] = useState(formatDateInput(defaultRange.from));
+  const [endDate, setEndDate] = useState(formatDateInput(defaultRange.to));
+  const [yearJump, setYearJump] = useState(String(new Date().getFullYear()));
   const [overview, setOverview] = useState(null);
   const [engagement, setEngagement] = useState(null);
   const [performance, setPerformance] = useState(null);
@@ -498,6 +599,64 @@ export default function BehaviorAnalyticsPage() {
     funnelMinSessionsInput,
     funnelSearchInput,
   ]);
+  const plainLanguageSummary = useMemo(
+    () => buildPlainLanguageSummary({ overview, engagement, timelineInsights }),
+    [overview, engagement, timelineInsights],
+  );
+  const selectedRange = useMemo(
+    () => buildRangeFromDates(startDate, endDate, rangeDays),
+    [startDate, endDate, rangeDays],
+  );
+  const behaviorRangePresets = useMemo(
+    () => [
+      { label: "Today", type: "days", value: 0 },
+      { label: "7D", type: "days", value: 7 },
+      { label: "30D", type: "days", value: 30 },
+      { label: "90D", type: "days", value: 90 },
+      { label: "1Y", type: "days", value: 365 },
+      { label: "2Y", type: "days", value: 730 },
+      { label: "This Year", type: "year", value: new Date().getFullYear() },
+      { label: "Last Year", type: "year", value: new Date().getFullYear() - 1 },
+      { label: "All Time", type: "allTime", value: null },
+    ],
+    [],
+  );
+  const yearOptions = useMemo(() => {
+    const years = [];
+    const currentYear = new Date().getFullYear();
+    for (let year = currentYear; year >= 2015; year -= 1) years.push(String(year));
+    return years;
+  }, []);
+
+  const applyBehaviorRange = useCallback((range) => {
+    setStartDate(range.startDate);
+    setEndDate(range.endDate);
+  }, []);
+
+  const applyBehaviorPreset = useCallback(
+    (preset) => {
+      if (!preset) return;
+      if (preset.type === "allTime") {
+        applyBehaviorRange(buildBehaviorAllTimeRange());
+        setRangeDays(3650);
+        return;
+      }
+      if (preset.type === "year") {
+        const year = String(preset.value || "");
+        setYearJump(year);
+        applyBehaviorRange(buildYearRange(year));
+        setRangeDays(365);
+        return;
+      }
+      const nextRange = buildRangeQuery(Number(preset.value || 30));
+      applyBehaviorRange({
+        startDate: formatDateInput(nextRange.from),
+        endDate: formatDateInput(nextRange.to),
+      });
+      setRangeDays(Number(preset.value || 30));
+    },
+    [applyBehaviorRange],
+  );
 
   const fetchAnalytics = useCallback(
     async ({ silent = false } = {}) => {
@@ -509,7 +668,7 @@ export default function BehaviorAnalyticsPage() {
         setRefreshing(true);
       }
 
-      const nextRange = buildRangeQuery(rangeDays);
+      const nextRange = selectedRange;
       const params = `from=${encodeURIComponent(nextRange.from)}&to=${encodeURIComponent(nextRange.to)}`;
 
       try {
@@ -564,7 +723,7 @@ export default function BehaviorAnalyticsPage() {
         setRefreshing(false);
       }
     },
-    [rangeDays, token],
+    [selectedRange, token],
   );
 
   const fetchSessionExplorer = useCallback(
@@ -575,7 +734,7 @@ export default function BehaviorAnalyticsPage() {
         setError("");
       }
 
-      const nextRange = buildRangeQuery(rangeDays);
+      const nextRange = selectedRange;
       const params = new URLSearchParams({
         from: nextRange.from,
         to: nextRange.to,
@@ -610,7 +769,7 @@ export default function BehaviorAnalyticsPage() {
       }
     },
     [
-      rangeDays,
+      selectedRange,
       sessionExplorerType,
       sessionExplorerPage,
       sessionExplorerSearch,
@@ -769,7 +928,7 @@ export default function BehaviorAnalyticsPage() {
         ? `userId=${encodeURIComponent(normalizedLookup)}`
         : `sessionId=${encodeURIComponent(normalizedLookup)}`;
 
-    const nextRange = buildRangeQuery(rangeDays);
+    const nextRange = selectedRange;
     const rangeParams = `from=${encodeURIComponent(nextRange.from)}&to=${encodeURIComponent(nextRange.to)}`;
 
     try {
@@ -802,11 +961,10 @@ export default function BehaviorAnalyticsPage() {
         <div className="flex flex-wrap justify-between items-center gap-3">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">
-              Behavior Analytics
+              Customer Behavior Insights
             </h1>
             <p className="text-sm text-gray-600 mt-1">
-              Track user behavior across sessions, pages, sections, and
-              products.
+              Understand where shoppers engage, where they drop, and what to improve next.
             </p>
             <div className="mt-3">
               <StatusPill
@@ -815,21 +973,54 @@ export default function BehaviorAnalyticsPage() {
               />
             </div>
           </div>
-          <div className="flex gap-2">
-            {RANGE_OPTIONS.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                onClick={() => setRangeDays(option.value)}
-                className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${
-                  rangeDays === option.value
-                    ? "bg-blue-600 text-white"
-                    : "bg-white text-gray-700 border border-gray-300"
-                }`}
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-wrap gap-2 justify-end">
+              {behaviorRangePresets.map((preset) => (
+                <button
+                  key={preset.label}
+                  type="button"
+                  onClick={() => applyBehaviorPreset(preset)}
+                  className="px-3 py-2 rounded-lg text-xs font-semibold transition bg-white text-gray-700 border border-gray-300 hover:bg-gray-100"
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+            <div className="flex flex-wrap items-center gap-2 justify-end">
+              <input
+                type="date"
+                value={startDate}
+                onChange={(event) => {
+                  setStartDate(event.target.value);
+                }}
+                className="border border-gray-300 rounded-lg px-2 py-1.5 text-xs"
+              />
+              <span className="text-xs text-gray-400">to</span>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(event) => {
+                  setEndDate(event.target.value);
+                }}
+                className="border border-gray-300 rounded-lg px-2 py-1.5 text-xs"
+              />
+              <select
+                value={yearJump}
+                onChange={(event) => {
+                  const year = String(event.target.value || "");
+                  setYearJump(year);
+                  applyBehaviorRange(buildYearRange(year));
+                }}
+                className="border border-gray-300 rounded-lg px-2 py-1.5 text-xs bg-white"
               >
-                {option.label}
-              </button>
-            ))}
+                {yearOptions.map((year) => (
+                  <option key={year} value={year}>
+                    {year}
+                  </option>
+                ))}
+              </select>
+              <span className="text-xs text-gray-500">{selectedRange.days} days</span>
+            </div>
           </div>
         </div>
 
@@ -839,7 +1030,7 @@ export default function BehaviorAnalyticsPage() {
 
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
           <div className="flex items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold text-gray-900">How To Use</h2>
+            <h2 className="text-lg font-semibold text-gray-900">Quick Guide</h2>
             <button
               type="button"
               onClick={() => setShowGuide((prev) => !prev)}
@@ -854,28 +1045,39 @@ export default function BehaviorAnalyticsPage() {
               <GuideCard
                 title="Overview"
                 lines={[
-                  "Sessions and active users show traffic quality.",
-                  "Bounce + conversion indicate funnel health.",
+                  "Total sessions and active users show how much quality traffic you have.",
+                  "Bounce and conversion tell you whether visitors are moving toward purchase.",
                 ]}
               />
               <GuideCard
                 title="Session Explorer"
                 lines={[
-                  "Filter All, Guest, or Logged In sessions.",
-                  "Open Session/User for full timeline drilldown.",
+                  "Filter by All, Guest, or Logged In to compare behavior quickly.",
+                  "Open any session to see the exact journey step by step.",
                 ]}
               />
               <GuideCard
-                title="Product And Section"
+                title="Pages, Buttons, Products"
                 lines={[
-                  "Use timeline insights for top pages and sections.",
-                  "Use Most Attractive Buttons to spot strongest CTAs.",
-                  "Use Top Converting Button By Product to find winning product CTA patterns.",
-                  "Load Product Journey for product-level behavior.",
+                  "Use timeline cards to find top pages and sections.",
+                  "Use top button reports to identify strongest call-to-action placements.",
+                  "Use product conversion funnel to find winning and weak product CTAs.",
+                  "Load Product Journey to understand one product end-to-end.",
                 ]}
               />
             </div>
           ) : null}
+        </div>
+
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+          <PlainLanguageCard
+            title="What Happened"
+            rows={plainLanguageSummary.highlights}
+          />
+          <PlainLanguageCard
+            title="What To Do Next"
+            rows={plainLanguageSummary.recommendations}
+          />
         </div>
 
         {error ? (
@@ -896,7 +1098,7 @@ export default function BehaviorAnalyticsPage() {
             hint="Recently active logged-in users."
           />
           <MetricCard
-            title="Avg Active Time"
+            title="Average Active Time"
             value={formatDuration(overview?.avgActiveTimeMs || 0)}
             hint="Active time, not idle open tab time."
           />
@@ -908,7 +1110,7 @@ export default function BehaviorAnalyticsPage() {
           <MetricCard
             title="Conversion Rate"
             value={`${toNumber(overview?.conversionRate, 0).toFixed(2)}%`}
-            hint="Sessions that reached purchase."
+            hint="Share of sessions that completed a purchase."
           />
           <MetricCard
             title="Revenue"
@@ -1016,10 +1218,10 @@ export default function BehaviorAnalyticsPage() {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <h2 className="text-xl font-semibold text-gray-900">
-                Most Hovered / Focused Buttons
+                Most Interacted Buttons
               </h2>
               <p className="text-sm text-gray-600 mt-1">
-                Clear target-level breakdown of where users move and focus.
+                Button-level view of where users click, hover, and focus most.
               </p>
             </div>
           </div>
@@ -1064,8 +1266,7 @@ export default function BehaviorAnalyticsPage() {
                 Live Button Activity Feed
               </h2>
               <p className="text-sm text-gray-600 mt-1">
-                Concurrent click, hover, and focus events streaming from all
-                active sessions.
+                Real-time click, hover, and focus activity from current sessions.
               </p>
             </div>
           </div>
@@ -1114,7 +1315,7 @@ export default function BehaviorAnalyticsPage() {
                 Button Movement Events
               </h2>
               <p className="text-sm text-gray-600 mt-1">
-                Hover and focus activity for guests and logged-in users.
+                Hover and focus activity split by guest and logged-in users.
               </p>
             </div>
           </div>
@@ -1161,10 +1362,10 @@ export default function BehaviorAnalyticsPage() {
                 Most Attractive Buttons
               </h2>
               <p className="text-sm text-gray-600 mt-1">
-                Ranked by clicks, rage-click pressure, and pre-click dwell time.
+                Ranked by interaction quality: clicks, rage clicks, and attention time.
               </p>
             </div>
-            <div className="text-xs text-gray-500">Range: {rangeDays} days</div>
+            <div className="text-xs text-gray-500">Range: {selectedRange.days} days</div>
           </div>
 
           {attractiveButtons.length > 0 ? (
@@ -1265,7 +1466,7 @@ export default function BehaviorAnalyticsPage() {
                 Banner click engagement split by guest and logged-in visitors.
               </p>
             </div>
-            <div className="text-xs text-gray-500">Range: {rangeDays} days</div>
+            <div className="text-xs text-gray-500">Range: {selectedRange.days} days</div>
           </div>
 
           {bannerPerformance.length > 0 ? (
@@ -1340,11 +1541,10 @@ export default function BehaviorAnalyticsPage() {
                 Top Converting Button By Product
               </h2>
               <p className="text-sm text-gray-600 mt-1">
-                Funnel by session: click to add-to-cart to checkout to purchase
-                for each button and product.
+                Product-wise funnel from click to add-to-cart to checkout to purchase.
               </p>
             </div>
-            <div className="text-xs text-gray-500">Range: {rangeDays} days</div>
+            <div className="text-xs text-gray-500">Range: {selectedRange.days} days</div>
           </div>
 
           <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -1765,30 +1965,30 @@ export default function BehaviorAnalyticsPage() {
                   value={timelineInsights.uniqueProducts}
                 />
                 <MiniMetricCard
-                  title="Add To Cart"
+                  title="Added To Cart"
                   value={timelineInsights.addToCart}
                 />
                 <MiniMetricCard
-                  title="Checkout"
+                  title="Checkout Started"
                   value={timelineInsights.checkoutStarted}
                 />
               </div>
 
               <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 mt-4">
                 <InsightCard
-                  title="Top Event Types"
+                  title="Most Common Actions"
                   rows={timelineInsights.eventTypes
                     .slice(0, 10)
                     .map((row) => `${row.eventType}: ${row.count}`)}
                 />
                 <InsightCard
-                  title="Top Pages"
+                  title="Most Visited Pages"
                   rows={timelineInsights.pages
                     .slice(0, 10)
                     .map((row) => `${row.path} (${row.events})`)}
                 />
                 <InsightCard
-                  title="Top Sections"
+                  title="Most Active Sections"
                   rows={timelineInsights.sections
                     .slice(0, 10)
                     .map(
@@ -1800,13 +2000,13 @@ export default function BehaviorAnalyticsPage() {
 
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mt-4">
                 <InsightCard
-                  title="Top Click Targets"
+                  title="Most Clicked Targets"
                   rows={timelineInsights.clickTargets
                     .slice(0, 10)
                     .map((row) => `${row.target} (${row.clicks})`)}
                 />
                 <InsightCard
-                  title="Sections By Time"
+                  title="Sections With Highest Time Spent"
                   rows={timelineInsights.sectionsByDuration
                     .slice(0, 10)
                     .map(
@@ -1894,7 +2094,7 @@ export default function BehaviorAnalyticsPage() {
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mt-4">
                 <div className="bg-gray-50 rounded-lg p-4">
                   <h3 className="font-semibold text-gray-800 mb-2">
-                    Session Summary
+                    Session Snapshot
                   </h3>
                   {userView.sessionSummary ? (
                     <div className="bg-white rounded-md border border-gray-200 p-3 text-xs text-gray-700 space-y-1">
@@ -1968,7 +2168,7 @@ export default function BehaviorAnalyticsPage() {
               <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900">
-                    Product Journey
+                    Product Interest Journey
                   </h3>
                   <p className="text-sm text-gray-600">
                     Product:{" "}
@@ -2127,6 +2327,24 @@ function GuideCard({ title, lines = [] }) {
       <div className="mt-1.5 space-y-1">
         {lines.map((line) => (
           <div key={line}>{line}</div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PlainLanguageCard({ title, rows = [] }) {
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+      <h3 className="text-base font-semibold text-gray-900">{title}</h3>
+      <div className="mt-3 space-y-2">
+        {rows.map((row) => (
+          <div
+            key={`${title}-${row}`}
+            className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700"
+          >
+            {row}
+          </div>
         ))}
       </div>
     </div>

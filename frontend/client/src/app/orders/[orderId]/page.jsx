@@ -118,6 +118,18 @@ const getStepIndex = (status) => {
   return index === -1 ? 0 : index;
 };
 
+const resolveTrackingUrl = (order = {}) => {
+  const explicitUrl = String(
+    order?.trackingUrl || order?.tracking_url || order?.shipmentTrackingUrl || "",
+  ).trim();
+  if (explicitUrl) return explicitUrl;
+
+  const awb = String(order?.awbNumber || order?.awb_number || "").trim();
+  if (!awb) return "";
+
+  return `https://www.xpressbees.com/shipment/tracking?awb=${encodeURIComponent(awb)}`;
+};
+
 /**
  * Order Details Page
  *
@@ -177,6 +189,8 @@ const OrderDetailsPage = () => {
 
   const canonicalOrderId = resolveOrderRouteId(order);
   const displayOrderId = resolveOrderDisplayId(order);
+  const awbNumber = String(order?.awbNumber || order?.awb_number || "").trim();
+  const trackingUrl = resolveTrackingUrl(order);
 
   // Fetch order details
   useEffect(() => {
@@ -315,7 +329,9 @@ const OrderDetailsPage = () => {
           order_status: payload.status || prev.order_status,
           payment_status: payload.paymentStatus || prev.payment_status,
           statusTimeline: payload.statusTimeline || prev.statusTimeline,
+          trackingUrl: payload.shipment?.trackingUrl || prev.trackingUrl,
           awb_number: payload.shipment?.awb || prev.awb_number,
+          awbNumber: payload.shipment?.awb || prev.awbNumber,
           shipment_status: payload.shipment?.status || prev.shipment_status,
           shipping_provider:
             payload.shipment?.provider || prev.shipping_provider,
@@ -1285,6 +1301,39 @@ const OrderDetailsPage = () => {
                     order.guestDetails?.email ||
                     "-"}
                 </p>
+              </div>
+            </div>
+          )}
+
+          {(awbNumber || trackingUrl) && (
+            <div className="bg-white rounded-xl shadow-sm p-5 md:p-6 mb-6">
+              <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                <MdLocalShipping className="text-orange-500" />
+                Shipment Tracking
+              </h2>
+              <div className="space-y-2 text-gray-700 text-sm">
+                <p>
+                  <span className="font-semibold text-gray-800">Courier:</span>{" "}
+                  {order?.shipping_provider || order?.courierName || "Xpressbees"}
+                </p>
+                <p>
+                  <span className="font-semibold text-gray-800">AWB:</span>{" "}
+                  {awbNumber || "N/A"}
+                </p>
+                <p>
+                  <span className="font-semibold text-gray-800">Status:</span>{" "}
+                  {order?.shipment_status || order?.shipmentStatus || "pending"}
+                </p>
+                {trackingUrl ? (
+                  <a
+                    href={trackingUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center rounded-lg bg-orange-600 px-3 py-2 font-semibold text-white hover:bg-orange-700"
+                  >
+                    Track Shipment
+                  </a>
+                ) : null}
               </div>
             </div>
           )}

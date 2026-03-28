@@ -114,6 +114,28 @@ const toSafeNumber = (value, fallback = 0) => {
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
+const formatVariantOptionLabel = (variant = {}) => {
+  const name = String(variant?.name || "").trim();
+  const sku = String(variant?.sku || "").trim();
+  const weight = Number(variant?.weight || 0);
+  const unit = String(variant?.unit || "").trim();
+
+  let weightLabel = "";
+  if (weight > 0 && unit) {
+    if (unit.toLowerCase() === "g" && weight >= 1000) {
+      weightLabel = `${Number((weight / 1000).toFixed(2))} kg`;
+    } else {
+      weightLabel = `${weight} ${unit}`;
+    }
+  }
+
+  const label = [name, weightLabel].filter(Boolean).join(" - ");
+  if (label) return label;
+  if (name) return name;
+  if (weightLabel) return weightLabel;
+  return sku || "Variant";
+};
+
 const isAiComboType = (value) =>
   String(value || "")
     .trim()
@@ -1830,7 +1852,7 @@ export default function ComboManagementPage() {
                       <MenuItem value="">Default Variant</MenuItem>
                       {variants.map((variant) => (
                         <MenuItem key={variant._id} value={variant._id}>
-                          {variant.name || variant.sku}
+                          {formatVariantOptionLabel(variant)}
                         </MenuItem>
                       ))}
                     </Select>

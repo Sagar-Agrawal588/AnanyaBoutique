@@ -105,8 +105,8 @@ const normalizeNonNegativeNumber = (value, fallback = 0) => {
 const buildActiveFilter = () => {
   const now = new Date();
   return {
-    isActive: true,
-    isVisible: true,
+    isActive: { $ne: false },
+    isVisible: { $ne: false },
     status: { $ne: "disabled" },
     $and: [
       { $or: [{ startDate: null }, { startDate: { $lte: now } }] },

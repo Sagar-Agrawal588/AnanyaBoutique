@@ -105,6 +105,18 @@ const fetchOrdersFromAltPort = async ({ url, token }) => {
   return extractOrdersPayload(payload);
 };
 
+const resolveTrackingUrl = (order = {}) => {
+  const explicitUrl = String(
+    order?.trackingUrl || order?.tracking_url || order?.shipmentTrackingUrl || "",
+  ).trim();
+  if (explicitUrl) return explicitUrl;
+
+  const awb = String(order?.awbNumber || order?.awb_number || "").trim();
+  if (!awb) return "";
+
+  return `https://www.xpressbees.com/shipment/tracking?awb=${encodeURIComponent(awb)}`;
+};
+
 const OrderRow = ({ order, index, token, onStatusUpdate }) => {
   const normalizeStatus = (status) => {
     if (!status) return "pending";
@@ -119,6 +131,7 @@ const OrderRow = ({ order, index, token, onStatusUpdate }) => {
   const [downloadingInvoice, setDownloadingInvoice] = useState(false);
   const [orderReviews, setOrderReviews] = useState([]);
   const [reviewsLoading, setReviewsLoading] = useState(false);
+  const trackingUrl = resolveTrackingUrl(order);
 
   const canDownloadInvoice =
     normalizeStatus(order?.payment_status) === "paid" ||
@@ -645,9 +658,9 @@ const OrderRow = ({ order, index, token, onStatusUpdate }) => {
                 </div>
                 <div>
                   <span className="font-semibold">Tracking URL:</span>{" "}
-                  {order?.trackingUrl ? (
+                  {trackingUrl ? (
                     <a
-                      href={order.trackingUrl}
+                      href={trackingUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-blue-600 hover:underline break-all"

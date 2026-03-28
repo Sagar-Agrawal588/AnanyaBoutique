@@ -61,6 +61,26 @@ const resolveComboGallery = (combo) => {
   return [...new Set(candidates)].slice(0, 10);
 };
 
+const formatComboVariantLabel = (item = {}) => {
+  const variantName = String(item?.variantName || "").trim();
+  const variantSku = String(item?.variantSku || "").trim();
+  const variantWeight = Number(item?.variantWeight || item?.weight || 0);
+  const variantUnit = String(item?.variantUnit || item?.unit || "").trim();
+
+  const weightLabel =
+    variantWeight > 0 && variantUnit
+      ? variantUnit.toLowerCase() === "g" && variantWeight >= 1000
+        ? `${Number((variantWeight / 1000).toFixed(2))} kg`
+        : `${variantWeight} ${variantUnit}`
+      : "";
+
+  const label = [variantName, weightLabel].filter(Boolean).join(" - ");
+  if (label) return label;
+  if (variantName) return variantName;
+  if (weightLabel) return weightLabel;
+  return variantSku;
+};
+
 const ComboDetailPage = () => {
   const { id } = useParams();
   const routeId = String(id || "").trim();
@@ -507,9 +527,9 @@ const ComboDetailPage = () => {
                     >
                       {item?.productTitle || "Product"}
                     </Link>
-                    {item?.variantName ? (
+                    {formatComboVariantLabel(item) ? (
                       <p className="text-xs text-gray-500 mt-1">
-                        Variant: {item.variantName}
+                        Variant: {formatComboVariantLabel(item)}
                       </p>
                     ) : null}
                     <p className="text-xs text-gray-500 mt-1">
