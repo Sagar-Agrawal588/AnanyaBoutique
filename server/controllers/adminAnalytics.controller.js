@@ -648,45 +648,103 @@ const getEngagementData = async (db, from, to) => {
   const { events, sectionViews, productEvents, sessions } =
     await resolveCollections(db);
 
-  const resolveClickTargetFromRow = (row = {}) => {
-    const bannerName = String(row?.bannerName || "")
+  const isRedactedLikeTarget = (value = "") =>
+    /\[\s*redacted\s*\]/i.test(String(value || ""));
+
+  const cleanTargetText = (value = "", maxLength = 140) => {
+    const normalized = String(value || "")
       .trim()
       .replace(/\s+/g, " ")
-      .slice(0, 140);
-    if (bannerName) return `banner:${bannerName}`;
+      .slice(0, maxLength);
+    if (!normalized || isRedactedLikeTarget(normalized)) {
+      return "";
+    }
+    return normalized;
+  };
 
-    const bannerId = String(row?.bannerId || "").trim();
-    if (bannerId) return `banner#${bannerId.slice(0, 120)}`;
-
-    const trackName = String(row?.trackName || "")
+  const humanizeTrackName = (value = "") => {
+    const normalized = String(value || "")
       .trim()
       .toLowerCase();
-    if (trackName) return trackName;
-    const buttonLabel = String(row?.buttonLabel || "")
-      .trim()
+
+    const labels = {
+      product_cta_add_to_cart: "Add to Cart",
+      product_cta_buy_now: "Buy Now",
+      product_cta_wishlist: "Add to Wishlist",
+      product_cta_share: "Share Product",
+      product_cta_reviews: "View Reviews",
+      product_variant_select: "Select Variant",
+      product_click: "Product Click",
+      combo_click: "Combo Click",
+      banner_click: "Banner Click",
+      search_click: "Search",
+      click_event: "General Click",
+      login: "Log In",
+      signup: "Sign Up",
+      logout: "Log Out",
+    };
+
+    if (labels[normalized]) {
+      return labels[normalized];
+    }
+
+    if (!normalized || isRedactedLikeTarget(normalized)) {
+      return "";
+    }
+
+    return normalized
+      .replace(/_/g, " ")
       .replace(/\s+/g, " ")
-      .slice(0, 140);
+      .trim()
+      .replace(/\b\w/g, (char) => char.toUpperCase())
+      .slice(0, 120);
+  };
+
+  const resolveHrefLabel = (value = "") => {
+    const href = String(value || "").trim();
+    if (!href || isRedactedLikeTarget(href)) {
+      return "";
+    }
+
+    try {
+      const parsed = new URL(href, "https://analytics.local");
+      const pathname = String(parsed.pathname || "")
+        .trim()
+        .replace(/\/+$/, "")
+        .toLowerCase();
+      if (!pathname || pathname === "/") {
+        return "Homepage Navigation";
+      }
+      return `Open ${pathname}`.slice(0, 140);
+    } catch {
+      return "";
+    }
+  };
+
+  const resolveClickTargetFromRow = (row = {}) => {
+    const bannerName = cleanTargetText(row?.bannerName, 140);
+    if (bannerName) return `banner:${bannerName}`;
+
+    const bannerId = cleanTargetText(row?.bannerId, 120);
+    if (bannerId) return `banner#${bannerId.slice(0, 120)}`;
+
+    const trackName = humanizeTrackName(row?.trackName);
+    if (trackName) return trackName;
+
+    const buttonLabel = cleanTargetText(row?.buttonLabel, 140);
     if (buttonLabel) return buttonLabel;
 
-    const targetId = String(row?.targetId || row?.target_id || "")
-      .trim()
-      .slice(0, 140);
+    const targetId = cleanTargetText(row?.targetId || row?.target_id, 140);
     if (targetId) return targetId;
 
-    const text = String(row?.text || "")
-      .trim()
-      .replace(/\s+/g, " ")
-      .slice(0, 120);
+    const hrefLabel = resolveHrefLabel(row?.href);
+    if (hrefLabel) return hrefLabel;
+
+    const text = cleanTargetText(row?.text, 120);
     if (text) return text;
 
-    const id = String(row?.elementId || "").trim();
+    const id = cleanTargetText(row?.elementId, 120);
     if (id) return `#${id}`;
-
-    const className = String(row?.className || "")
-      .trim()
-      .replace(/\s+/g, ".")
-      .replace(/^\.+/, "");
-    if (className) return `.${className.slice(0, 100)}`;
 
     const tagName = String(row?.tagName || "")
       .trim()
@@ -900,6 +958,7 @@ const getEngagementData = async (db, from, to) => {
               ],
             },
             text: { $ifNull: ["$metadata.text", ""] },
+            href: { $ifNull: ["$metadata.href", ""] },
             elementId: { $ifNull: ["$metadata.id", ""] },
             className: { $ifNull: ["$metadata.className", ""] },
             tagName: { $ifNull: ["$metadata.tagName", ""] },
@@ -943,6 +1002,7 @@ const getEngagementData = async (db, from, to) => {
               buttonLabel: "$buttonLabel",
               targetId: "$targetId",
               text: "$text",
+              href: "$href",
               elementId: "$elementId",
               className: "$className",
               tagName: "$tagName",
@@ -1163,6 +1223,7 @@ const getEngagementData = async (db, from, to) => {
               ],
             },
             text: { $ifNull: ["$metadata.text", ""] },
+            href: { $ifNull: ["$metadata.href", ""] },
             elementId: { $ifNull: ["$metadata.id", ""] },
             className: { $ifNull: ["$metadata.className", ""] },
             tagName: { $ifNull: ["$metadata.tagName", ""] },
@@ -1207,6 +1268,7 @@ const getEngagementData = async (db, from, to) => {
               buttonLabel: "$buttonLabel",
               targetId: "$targetId",
               text: "$text",
+              href: "$href",
               elementId: "$elementId",
               className: "$className",
               tagName: "$tagName",
@@ -1507,6 +1569,7 @@ const getEngagementData = async (db, from, to) => {
         buttonLabel: row?._id?.buttonLabel,
         targetId: row?._id?.targetId,
         text: row?._id?.text,
+        href: row?._id?.href,
         elementId: row?._id?.elementId,
         className: row?._id?.className,
         tagName: row?._id?.tagName,
@@ -1656,6 +1719,7 @@ const getEngagementData = async (db, from, to) => {
       buttonLabel: row?._id?.buttonLabel,
       targetId: row?._id?.targetId,
       text: row?._id?.text,
+      href: row?._id?.href,
       elementId: row?._id?.elementId,
       className: row?._id?.className,
       tagName: row?._id?.tagName,

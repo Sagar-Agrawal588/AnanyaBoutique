@@ -48,6 +48,31 @@ const isExclusiveCombo = (combo) => {
   );
 };
 
+const formatVariantWeight = (variant = {}) => {
+  const weight = Number(variant?.weight || 0);
+  const unit = String(variant?.unit || "").trim();
+  if (!weight || !unit) return "";
+
+  if (unit.toLowerCase() === "g" && weight >= 1000) {
+    const kg = Number((weight / 1000).toFixed(2));
+    return `${kg} kg`;
+  }
+  return `${weight} ${unit}`;
+};
+
+const formatVariantLabel = (variant = {}) => {
+  const baseName = String(variant?.name || "").trim();
+  const weightLabel = formatVariantWeight(variant);
+  const skuLabel = String(variant?.sku || "").trim();
+
+  const fullName = [baseName, weightLabel].filter(Boolean).join(" - ");
+  if (fullName) return fullName;
+  if (weightLabel) return weightLabel;
+  if (baseName) return baseName;
+  if (skuLabel) return skuLabel;
+  return "Variant";
+};
+
 /**
  * Product Detail Page
  *
@@ -679,9 +704,46 @@ const ProductDetailPage = () => {
                   <p className="text-sm text-gray-500 mb-2">
                     Size:{" "}
                     <span className="font-bold text-gray-900">
-                      {selectedVariant?.name || "Select"}
+                      {formatVariantLabel(selectedVariant) || "Select"}
                     </span>
                   </p>
+                  <div className="mb-3">
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">
+                      Quick select
+                    </label>
+                    <select
+                      value={String(selectedVariant?._id || "")}
+                      onChange={(event) => {
+                        const picked = (product?.variants || []).find(
+                          (variant) =>
+                            String(variant?._id || "") ===
+                            String(event.target.value || ""),
+                        );
+                        if (!picked) return;
+                        setSelectedVariant(picked);
+                        setQuantity(1);
+                      }}
+                      className="w-full sm:w-85 border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400"
+                    >
+                      {(product?.variants || []).map((variant, idx) => {
+                        const vStock = Math.max(
+                          Number(variant.stock_quantity ?? variant.stock ?? 0) -
+                            Number(variant.reserved_quantity ?? 0),
+                          0,
+                        );
+                        return (
+                          <option
+                            key={variant._id || idx}
+                            value={String(variant._id || "")}
+                            disabled={vStock === 0}
+                          >
+                            {formatVariantLabel(variant)}
+                            {vStock === 0 ? " (Out of stock)" : ""}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
                   <div className="flex flex-wrap gap-3">
                     {product.variants.map((variant, idx) => {
                       const isSelected = selectedVariant?._id === variant._id;
@@ -729,7 +791,7 @@ const ProductDetailPage = () => {
                           <span
                             className={`text-sm font-bold ${isSelected ? "text-primary" : "text-gray-900"}`}
                           >
-                            {variant.name}
+                            {formatVariantLabel(variant)}
                           </span>
                           <span className="text-base font-extrabold text-gray-900 mt-1">
                             {formatPrice(Number(variant.price || 0))}

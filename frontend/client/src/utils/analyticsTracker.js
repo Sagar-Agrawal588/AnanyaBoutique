@@ -23,7 +23,7 @@ const COMPRESS_THRESHOLD_BYTES = 48 * 1024;
 const EVENT_TYPE_PATTERN = /^[a-z][a-z0-9_]{1,63}$/;
 const DEFAULT_TARGET_TYPE = "cart";
 const CLICKABLE_SELECTOR =
-  "[data-track],[data-track-click],[data-banner-id],[data-banner],[data-product-id],[data-product],[data-productid],button,a,[role='button'],[role='link'],[onclick]";
+  "[data-track],[data-track-click],[data-banner-id],[data-banner],[data-product-id],[data-product],[data-productid],button,a,input[type='button'],input[type='submit'],input[type='reset'],summary,[role='button'],[role='link'],[onclick]";
 const CRITICAL_EVENT_TYPES = new Set([
   "session_start",
   "page_view_started",
@@ -634,6 +634,136 @@ const getClosestDataAttrValue = (element, attributes = []) => {
   return "";
 };
 
+const normalizeInlineText = (value = "", maxLength = 180) =>
+  String(value || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .slice(0, maxLength);
+
+const toSlugToken = (value = "", maxLength = 80) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, maxLength);
+
+const isRedactedLikeValue = (value = "") =>
+  /\[\s*redacted\s*\]/i.test(String(value || ""));
+
+const resolveHrefPath = (hrefValue = "") => {
+  const raw = String(hrefValue || "").trim();
+  if (!raw) return "";
+
+  try {
+    const parsed = new URL(raw, "https://tracking.local");
+    return String(parsed.pathname || "").trim().toLowerCase();
+  } catch {
+    return raw.split("?")[0].split("#")[0].trim().toLowerCase();
+  }
+};
+
+const inferTrackNameFromMetadata = ({
+  explicitTrackName,
+  hasBannerIdentity,
+  hasProductIdentity,
+  buttonLabel,
+  text,
+  hrefPath,
+  id,
+  className,
+} = {}) => {
+  const explicit = String(explicitTrackName || "")
+    .trim()
+    .toLowerCase();
+  if (EVENT_TYPE_PATTERN.test(explicit)) {
+    return explicit;
+  }
+
+  if (hasBannerIdentity) {
+    return "banner_click";
+  }
+
+  const probe = [buttonLabel, text, hrefPath, id, className]
+    .map((value) => String(value || "").toLowerCase())
+    .join(" ");
+
+  if (hasProductIdentity) {
+    if (/\badd\s*to\s*cart\b|\baddtocart\b|\bquick\s*add\b/.test(probe)) {
+      return "product_cta_add_to_cart";
+    }
+    if (/\bbuy\s*now\b|\bcheckout\b|\bplace\s*order\b/.test(probe)) {
+      return "product_cta_buy_now";
+    }
+    if (/\bwishlist\b|\bfavorite\b|\bfavourite\b/.test(probe)) {
+      return "product_cta_wishlist";
+    }
+    if (/\bshare\b|\bcopy\s*link\b/.test(probe)) {
+      return "product_cta_share";
+    }
+    if (/\breview\b|\brating\b/.test(probe)) {
+      return "product_cta_reviews";
+    }
+    if (/\bvariant\b|\bweight\b|\bsize\b|\bflavor\b|\bflavour\b/.test(probe)) {
+      return "product_variant_select";
+    }
+    return "product_click";
+  }
+
+  if (/\bcombo\b/.test(probe)) return "combo_click";
+  if (/\bsearch\b/.test(probe)) return "search_click";
+  if (/\blog\s*in\b|\bsign\s*in\b/.test(probe)) return "login";
+  if (/\bsign\s*up\b|\bregister\b|\bcreate\s*account\b/.test(probe))
+    return "signup";
+  if (/\blog\s*out\b|\bsign\s*out\b/.test(probe)) return "logout";
+
+  return "";
+};
+
+const deriveStableTargetId = ({
+  explicitTargetId,
+  trackName,
+  productId,
+  bannerId,
+  id,
+  buttonLabel,
+  href,
+  sectionName,
+  pagePath,
+  elementPath,
+} = {}) => {
+  const hrefPath = resolveHrefPath(href);
+  const idToken = toSlugToken(id, 100);
+  const labelToken = toSlugToken(buttonLabel, 80);
+  const sectionToken = toSlugToken(sectionName, 60);
+  const pageToken = toSlugToken(pagePath, 80);
+  const pathToken = toSlugToken(hrefPath, 80);
+
+  const candidates = [
+    explicitTargetId,
+    trackName,
+    productId,
+    bannerId,
+    idToken,
+    labelToken && sectionToken ? `${sectionToken}_${labelToken}` : "",
+    labelToken,
+    pathToken ? `path_${pathToken}` : "",
+    sectionToken,
+    pageToken,
+    elementPath,
+  ];
+
+  for (const candidate of candidates) {
+    const normalized = String(candidate || "").trim();
+    if (!normalized || isRedactedLikeValue(normalized)) {
+      continue;
+    }
+    return normalized.slice(0, 160);
+  }
+
+  return "anonymous_target";
+};
+
 const buildStableElementPath = (element) => {
   if (!element || typeof element.closest !== "function") return "";
 
@@ -745,27 +875,59 @@ const buildClickMetadata = (element, event) => {
   const explicitTargetId = String(
     getClosestDataAttrValue(element, ["data-track-target-id"]),
   ).trim();
-  const derivedTargetId = String(
-    explicitTargetId ||
-      element?.getAttribute?.("data-track") ||
-      element?.id ||
-      element?.getAttribute?.("name") ||
-      element?.getAttribute?.("title") ||
-      element?.getAttribute?.("aria-label") ||
+  const explicitTrackName = String(
+    element?.getAttribute?.("data-track") ||
+      element?.getAttribute?.("data-track-click") ||
       "",
   )
     .trim()
-    .slice(0, 160);
+    .toLowerCase();
 
-  const buttonLabel = String(
+  const buttonLabel = normalizeInlineText(
     element?.getAttribute?.("aria-label") ||
       element?.getAttribute?.("title") ||
+      element?.getAttribute?.("value") ||
       element?.textContent ||
+      element?.getAttribute?.("alt") ||
       "",
-  )
-    .trim()
-    .replace(/\s+/g, " ")
-    .slice(0, 180);
+  );
+
+  const tagName = String(element?.tagName || "").toLowerCase();
+  const id = String(element?.id || "").slice(0, 120);
+  const className = String(element?.className || "").slice(0, 250);
+  const text = normalizeInlineText(String(element?.textContent || ""));
+  const href = String(element?.getAttribute?.("href") || "").slice(0, 500);
+  const pagePathValue = pagePath.slice(0, 300);
+  const elementPath = buildStableElementPath(element);
+
+  const hasBannerIdentity = Boolean(
+    bannerId || bannerName || bannerPosition || bannerCampaign,
+  );
+  const hasProductIdentity = Boolean(productId || productName);
+
+  const inferredTrackName = inferTrackNameFromMetadata({
+    explicitTrackName,
+    hasBannerIdentity,
+    hasProductIdentity,
+    buttonLabel,
+    text,
+    hrefPath: resolveHrefPath(href),
+    id,
+    className,
+  });
+
+  const derivedTargetId = deriveStableTargetId({
+    explicitTargetId,
+    trackName: inferredTrackName,
+    productId,
+    bannerId,
+    id,
+    buttonLabel,
+    href,
+    sectionName,
+    pagePath: pagePathValue,
+    elementPath,
+  });
 
   return {
     sectionName: sectionName || null,
@@ -778,23 +940,14 @@ const buildClickMetadata = (element, event) => {
     targetType: explicitTargetType || null,
     targetId: derivedTargetId || null,
     buttonLabel: buttonLabel || null,
-    tagName: String(element?.tagName || "").toLowerCase(),
-    id: String(element?.id || "").slice(0, 120),
-    className: String(element?.className || "").slice(0, 250),
-    text: String(element?.textContent || "")
-      .trim()
-      .replace(/\s+/g, " ")
-      .slice(0, 180),
-    href: String(element?.getAttribute?.("href") || "").slice(0, 500),
-    trackName: String(
-      element?.getAttribute?.("data-track") ||
-        element?.getAttribute?.("data-track-click") ||
-        "",
-    )
-      .trim()
-      .toLowerCase(),
-    pagePath: pagePath.slice(0, 300),
-    elementPath: buildStableElementPath(element),
+    tagName,
+    id,
+    className,
+    text,
+    href,
+    trackName: inferredTrackName,
+    pagePath: pagePathValue,
+    elementPath,
     clickX: Number.isFinite(event?.clientX) ? Number(event.clientX) : null,
     clickY: Number.isFinite(event?.clientY) ? Number(event.clientY) : null,
     pageViewId: trackerState.currentPageView?.pageViewId || null,

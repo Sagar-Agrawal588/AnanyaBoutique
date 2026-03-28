@@ -95,6 +95,16 @@ const buildDefaultRange = () => {
   };
 };
 
+const buildRangeFromDays = (days) => {
+  const end = new Date();
+  const start = new Date();
+  start.setDate(end.getDate() - Math.max(Number(days || 0), 0));
+  return {
+    startDate: formatDateInput(start),
+    endDate: formatDateInput(end),
+  };
+};
+
 export default function AdminSalesAnalytics({ token }) {
   const defaults = useMemo(() => buildDefaultRange(), []);
   const [startDate, setStartDate] = useState(defaults.startDate);
@@ -114,6 +124,27 @@ export default function AdminSalesAnalytics({ token }) {
   const [exporting, setExporting] = useState(false);
   const [includeRto, setIncludeRto] = useState(false);
   const [error, setError] = useState("");
+
+  const dateRangePresets = useMemo(
+    () => [
+      { label: "Today", days: 0 },
+      { label: "Last 7D", days: 7 },
+      { label: "Last 30D", days: 30 },
+      { label: "Last 90D", days: 90 },
+    ],
+    [],
+  );
+
+  const applyDateRange = (range) => {
+    setStartDate(range.startDate);
+    setEndDate(range.endDate);
+    setPage(1);
+  };
+
+  const applyPresetRange = (preset) => {
+    if (!preset) return;
+    applyDateRange(buildRangeFromDays(preset.days));
+  };
 
   const queryString = useMemo(() => {
     const params = new URLSearchParams();
@@ -274,33 +305,43 @@ export default function AdminSalesAnalytics({ token }) {
             </p>
           </div>
           <div className="flex flex-wrap items-end gap-3">
-            <div className="flex min-w-42.5 flex-col">
-              <label className="text-xs font-medium text-gray-600 mb-1">
-                Start Date
+            <div className="flex min-w-95 flex-col gap-2">
+              <label className="text-xs font-medium text-gray-600">
+                Date Range
               </label>
-              <input
-                type="date"
-                value={startDate}
-                onChange={(event) => {
-                  setStartDate(event.target.value);
-                  setPage(1);
-                }}
-                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400"
-              />
-            </div>
-            <div className="flex min-w-42.5 flex-col">
-              <label className="text-xs font-medium text-gray-600 mb-1">
-                End Date
-              </label>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(event) => {
-                  setEndDate(event.target.value);
-                  setPage(1);
-                }}
-                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400"
-              />
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(event) => {
+                    setStartDate(event.target.value);
+                    setPage(1);
+                  }}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400"
+                />
+                <span className="text-gray-400 text-sm">to</span>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(event) => {
+                    setEndDate(event.target.value);
+                    setPage(1);
+                  }}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400"
+                />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {dateRangePresets.map((preset) => (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    onClick={() => applyPresetRange(preset)}
+                    className="rounded-full border border-gray-300 bg-white px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-100"
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
             </div>
             <div className="flex min-w-60 flex-col">
               <label className="text-xs font-medium text-gray-600 mb-1">

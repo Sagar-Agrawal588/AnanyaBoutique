@@ -3,13 +3,13 @@
 import ProductItem from "@/components/ProductItem";
 import { fetchDataFromApi } from "@/utils/api";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { FiSearch } from "react-icons/fi";
 
 const ProductsGridSkeleton = () => (
     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
         {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
-            <div key={i} className="aspect-[3/4] bg-gray-100 animate-pulse rounded-3xl" />
+            <div key={i} className="aspect-3/4 bg-gray-100 animate-pulse rounded-3xl" />
         ))}
     </div>
 );
@@ -17,8 +17,13 @@ const ProductsGridSkeleton = () => (
 function ProductsPageContent() {
     const [products, setProducts] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [fetchError, setFetchError] = useState("");
+    const [page, setPage] = useState(1);
+    const [pages, setPages] = useState(1);
+    const [totalProducts, setTotalProducts] = useState(0);
     const searchParams = useSearchParams();
     const router = useRouter();
+    const loaderRef = useRef(null);
 
     // Get search term from URL
     const urlSearchTerm = searchParams.get("search") || searchParams.get("q") || "";
@@ -94,33 +99,99 @@ function ProductsPageContent() {
         return () => clearTimeout(timeoutId);
     }, [searchTerm, searchParams, router, urlSearchTerm]);
 
+    const queryString = useMemo(() => {
+        const queryParams = new URLSearchParams();
+        if (urlSearchTerm) queryParams.set("search", urlSearchTerm);
+        if (urlCategory) queryParams.set("category", urlCategory);
+        if (urlBestSeller) queryParams.set("bestSeller", "true");
+        if (urlNewArrivals) queryParams.set("newArrivals", "true");
+        if (urlPriceDrop) queryParams.set("priceDrop", "true");
+        if (urlMinDiscount) queryParams.set("minDiscount", urlMinDiscount);
+        queryParams.set("separateVariants", "true");
+        queryParams.set("includeCombos", "true");
+        queryParams.set("limit", "24");
+        queryParams.set("page", String(page));
+        return queryParams.toString();
+    }, [
+        page,
+        urlSearchTerm,
+        urlCategory,
+        urlBestSeller,
+        urlNewArrivals,
+        urlPriceDrop,
+        urlMinDiscount,
+    ]);
+
     useEffect(() => {
         const loadProducts = async () => {
-            setLoading(true);
+            if (page === 1) setLoading(true);
+            setFetchError("");
             try {
-                const queryParams = new URLSearchParams();
-                if (urlSearchTerm) queryParams.set("search", urlSearchTerm);
-                if (urlCategory) queryParams.set("category", urlCategory);
-                if (urlBestSeller) queryParams.set("bestSeller", "true");
-                if (urlNewArrivals) queryParams.set("newArrivals", "true");
-                if (urlPriceDrop) queryParams.set("priceDrop", "true");
-                if (urlMinDiscount) queryParams.set("minDiscount", urlMinDiscount);
-                const queryString = queryParams.toString();
                 const query = queryString ? `?${queryString}` : "";
                 const res = await fetchDataFromApi(`/api/products${query}`);
+                if (res?.error) {
+                    throw new Error(res?.message || "Failed to load products");
+                }
 
                 // Handle various API response structures (arrays, nested products, nested data)
                 const productsData = Array.isArray(res) ? res : (res?.products || res?.data || res?.items || []);
                 // Safety guard: even if API payload changes, keep exclusive items out of public products page.
-                setProducts(productsData.filter((product) => product?.isExclusive !== true));
+                const normalized = productsData.filter((product) => product?.isExclusive !== true);
+
+                setProducts((prev) => {
+                    const merged = page === 1 ? normalized : [...prev, ...normalized];
+                    const seen = new Set();
+                    return merged.filter((product) => {
+                        const id = String(product?._id || product?.id || product?.slug || "").trim();
+                        if (!id || seen.has(id)) return false;
+                        seen.add(id);
+                        return true;
+                    });
+                });
+
+                setTotalProducts(Number(res?.totalProducts || normalized.length));
+                setPages(Math.max(Number(res?.totalPages || 1), 1));
             } catch (error) {
                 console.error("Error loading products:", error);
+                if (page === 1) {
+                    setProducts([]);
+                    setPages(1);
+                    setTotalProducts(0);
+                }
+                setFetchError(
+                    error?.message ||
+                        "Unable to load products right now. Please check API server connectivity.",
+                );
             } finally {
-                setLoading(false);
+                if (page === 1) setLoading(false);
             }
         };
         loadProducts();
+    }, [page, queryString]);
+
+    useEffect(() => {
+        setPage(1);
+        setPages(1);
+        setProducts([]);
+        setTotalProducts(0);
     }, [urlSearchTerm, urlCategory, urlBestSeller, urlNewArrivals, urlPriceDrop, urlMinDiscount]);
+
+    useEffect(() => {
+        if (!loaderRef.current) return;
+        const observer = new IntersectionObserver(
+            (entries) => {
+                if (!entries[0].isIntersecting) return;
+                if (loading) return;
+                if (fetchError) return;
+                if (page >= pages) return;
+                setPage((prev) => prev + 1);
+            },
+            { rootMargin: "220px" },
+        );
+
+        observer.observe(loaderRef.current);
+        return () => observer.disconnect();
+    }, [loading, fetchError, page, pages]);
 
     const handleSearchSubmit = (event) => {
         event.preventDefault();
@@ -165,11 +236,34 @@ function ProductsPageContent() {
                 {/* Products Grid */}
                 {loading ? (
                     <ProductsGridSkeleton />
+                ) : fetchError ? (
+                    <div className="text-center py-20 bg-red-50/80 backdrop-blur-xl rounded-[40px] border border-red-200">
+                        <h3 className="text-xl font-bold text-red-800 mb-2">Unable to load products</h3>
+                        <p className="text-red-700">{fetchError}</p>
+                        <p className="text-red-600 text-sm mt-2">Start backend API on localhost:8001 or localhost:8000.</p>
+                    </div>
                 ) : products.length > 0 ? (
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 md:gap-8">
-                        {products.map((product) => (
-                            <ProductItem key={product._id} product={product} />
-                        ))}
+                    <div className="space-y-6">
+                        <p className="text-sm text-gray-500">
+                            Showing {products.length} of {totalProducts || products.length} products
+                        </p>
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 md:gap-8">
+                            {products.map((product) => (
+                                <ProductItem key={product._id} product={product} />
+                            ))}
+                        </div>
+                        <div ref={loaderRef} />
+                        {page < pages ? (
+                            <div className="text-center">
+                                <button
+                                    type="button"
+                                    onClick={() => setPage((prev) => prev + 1)}
+                                    className="rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100"
+                                >
+                                    Load more products
+                                </button>
+                            </div>
+                        ) : null}
                     </div>
                 ) : (
                     <div className="text-center py-20 bg-white/30 backdrop-blur-xl rounded-[40px] border border-dashed border-gray-200">

@@ -532,6 +532,16 @@ const ShippingAdminPage = () => {
           >
             Track
           </Button>
+          {String(trackAwb || "").trim() ? (
+            <a
+              href={`https://www.xpressbees.com/shipment/tracking?awb=${encodeURIComponent(String(trackAwb || "").trim())}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex mt-3 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-100"
+            >
+              Open Direct Tracking URL
+            </a>
+          ) : null}
           {trackResponse && (
             <pre className="mt-4 bg-gray-50 border rounded-lg p-3 text-xs overflow-auto">
 {JSON.stringify(trackResponse, null, 2)}

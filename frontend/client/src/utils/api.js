@@ -6,7 +6,7 @@ const HEALTHY_ONE_GRAM_HOSTS = new Set([
   "www.healthyonegram.com",
 ]);
 
-const LOCAL_API_FALLBACK = "http://localhost:8000";
+const LOCAL_API_FALLBACKS = ["http://localhost:8001", "http://localhost:8000"];
 
 const sanitizeBaseUrl = (value) =>
   String(value || "")
@@ -28,6 +28,9 @@ const isLocalhostUrl = (value) => {
   }
 };
 
+const normalizeLocalFallbacks = () =>
+  LOCAL_API_FALLBACKS.map(sanitizeBaseUrl).filter(Boolean);
+
 const resolveApiBaseUrl = () => {
   const envCandidates = [
     process.env.NEXT_PUBLIC_APP_API_URL,
@@ -47,7 +50,7 @@ const resolveApiBaseUrl = () => {
       if (envBaseUrl && isLocalhostUrl(envBaseUrl)) {
         return envBaseUrl;
       }
-      return LOCAL_API_FALLBACK;
+      return normalizeLocalFallbacks()[0] || "http://localhost:8001";
     }
 
     if (HEALTHY_ONE_GRAM_HOSTS.has(hostname)) {
@@ -58,7 +61,7 @@ const resolveApiBaseUrl = () => {
       return envBaseUrl;
     }
 
-    return origin || LOCAL_API_FALLBACK;
+    return origin || normalizeLocalFallbacks()[0] || "http://localhost:8001";
   }
 
   if (envBaseUrl) {
@@ -69,7 +72,7 @@ const resolveApiBaseUrl = () => {
     return "https://healthyonegram.com";
   }
 
-  return LOCAL_API_FALLBACK;
+  return normalizeLocalFallbacks()[0] || "http://localhost:8001";
 };
 
 export const API_BASE_URL = resolveApiBaseUrl();
@@ -182,7 +185,7 @@ const getApiBaseCandidates = () => {
     const hostname = String(window.location.hostname || "").toLowerCase();
     const isLocalhost = hostname === "localhost" || hostname === "127.0.0.1";
     if (isLocalhost) {
-      candidates.push(LOCAL_API_FALLBACK);
+      candidates.push(...normalizeLocalFallbacks());
     }
   }
 

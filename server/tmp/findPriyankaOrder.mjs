@@ -1,5 +1,5 @@
-import mongoose from "mongoose";
 import "dotenv/config";
+import mongoose from "mongoose";
 import OrderModel from "../models/order.model.js";
 
 const mongoUri = process.env.MONGODB_URI || process.env.MONGO_URI || "";
@@ -18,7 +18,12 @@ async function findPriyankaOrder() {
     const orders = await OrderModel.find({
       $or: [
         { "billingDetails.fullName": { $regex: "PRIYANKA", $options: "i" } },
-        { "deliveryAddressSnapshot.order_name": { $regex: "PRIYANKA", $options: "i" } },
+        {
+          "deliveryAddressSnapshot.order_name": {
+            $regex: "PRIYANKA",
+            $options: "i",
+          },
+        },
         { "guestDetails.fullName": { $regex: "PRIYANKA", $options: "i" } },
       ],
       payment_status: { $in: ["paid", "confirmed", "PAID", "CONFIRMED"] },
@@ -39,22 +44,27 @@ async function findPriyankaOrder() {
         order.guestDetails?.fullName ||
         "Unknown";
 
-      console.log(JSON.stringify({
-        orderId: order._id,
-        orderNumber: order.orderNumber,
-        customerName,
-        totalAmt: order.totalAmt,
-        subtotal: order.subtotal,
-        discount: order.discount,
-        products: order.products?.map((p) => ({
-          title: p.productTitle.slice(0, 30),
-          qty: p.quantity,
-          price: p.price,
-          subTotal: p.subTotal,
-        })),
-      }, null, 2));
+      console.log(
+        JSON.stringify(
+          {
+            orderId: order._id,
+            orderNumber: order.orderNumber,
+            customerName,
+            totalAmt: order.totalAmt,
+            subtotal: order.subtotal,
+            discount: order.discount,
+            products: order.products?.map((p) => ({
+              title: p.productTitle.slice(0, 30),
+              qty: p.quantity,
+              price: p.price,
+              subTotal: p.subTotal,
+            })),
+          },
+          null,
+          2,
+        ),
+      );
     });
-
   } catch (error) {
     console.error("Error:", error.message);
   } finally {

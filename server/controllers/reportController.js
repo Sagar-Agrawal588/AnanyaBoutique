@@ -426,7 +426,9 @@ export const getOrdersReport = asyncHandler(async (req, res) => {
                     { $max: [{ $add: ["$totalAmt", "$discount"] }, 0] },
                   ],
                 },
-                calculatedOrderSubtotal: { $max: [{ $add: ["$totalAmt", "$discount"] }, 0] },
+                calculatedOrderSubtotal: {
+                  $max: [{ $add: ["$totalAmt", "$discount"] }, 0],
+                },
                 totalDiscount: { $max: ["$discount", 0] },
                 customerName: {
                   $ifNull: [
@@ -752,7 +754,9 @@ export const exportOrdersReport = asyncHandler(async (req, res) => {
               { $max: [{ $add: ["$totalAmt", "$discount"] }, 0] },
             ],
           },
-          calculatedOrderSubtotal: { $max: [{ $add: ["$totalAmt", "$discount"] }, 0] },
+          calculatedOrderSubtotal: {
+            $max: [{ $add: ["$totalAmt", "$discount"] }, 0],
+          },
           gst: 1,
           productDoc: 1,
         },
