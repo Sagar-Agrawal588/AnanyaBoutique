@@ -11,6 +11,73 @@ import { toast } from "react-hot-toast";
 
 const WishlistContext = createContext();
 const API_URL = API_BASE_URL;
+const LOCAL_API_FALLBACKS = ["http://localhost:8000", "http://localhost:8001"];
+
+const sanitizeBaseUrl = (value) =>
+  String(value || "")
+    .trim()
+    .replace(/^['"]|['"]$/g, "")
+    .replace(/\/+$/, "");
+
+const normalizeApiPath = (path) => {
+  const normalized = String(path || "").startsWith("/")
+    ? String(path)
+    : `/${String(path || "")}`;
+  const baseHasApiSuffix = /\/api$/i.test(sanitizeBaseUrl(API_URL));
+  if (!baseHasApiSuffix) return normalized;
+  if (/^\/api(\/|$)/i.test(normalized)) {
+    return normalized.replace(/^\/api/i, "");
+  }
+  return normalized;
+};
+
+const getApiBaseCandidates = () => {
+  const candidates = [sanitizeBaseUrl(API_URL)].filter(Boolean);
+
+  if (typeof window !== "undefined") {
+    const hostname = String(window.location.hostname || "").toLowerCase();
+    if (hostname === "localhost" || hostname === "127.0.0.1") {
+      candidates.push(...LOCAL_API_FALLBACKS.map(sanitizeBaseUrl));
+    }
+  }
+
+  return [...new Set(candidates.filter(Boolean))];
+};
+
+const fetchWithApiFallback = async (path, options = {}) => {
+  const normalizedPath = normalizeApiPath(path);
+  const bases = getApiBaseCandidates();
+
+  let lastError = null;
+  let lastResponse = null;
+
+  for (let i = 0; i < bases.length; i += 1) {
+    const base = bases[i];
+    const target = `${base}${normalizedPath}`;
+    const isLastCandidate = i === bases.length - 1;
+
+    try {
+      const response = await fetch(target, options);
+      if (response.ok) return response;
+
+      lastResponse = response;
+      const shouldTryNextBase = !isLastCandidate && response.status >= 500;
+      if (!shouldTryNextBase) {
+        return response;
+      }
+    } catch (error) {
+      lastError = error;
+      if (isLastCandidate) {
+        throw error;
+      }
+    }
+  }
+
+  if (lastResponse) return lastResponse;
+  if (lastError) throw lastError;
+
+  throw new Error("Failed to reach wishlist API");
+};
 
 const resolveWishlistItemType = (value) =>
   String(value || "product")
@@ -175,7 +242,7 @@ export const WishlistProvider = ({ children }) => {
         return;
       }
 
-      const res = await fetch(`${API_URL}/api/wishlist`, {
+      const res = await fetchWithApiFallback("/api/wishlist", {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
@@ -279,7 +346,7 @@ export const WishlistProvider = ({ children }) => {
     }
 
     try {
-      const res = await fetch(`${API_URL}/api/wishlist/add`, {
+      const res = await fetchWithApiFallback("/api/wishlist/add", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -355,8 +422,8 @@ export const WishlistProvider = ({ children }) => {
         params.set("variantId", String(variantId));
       }
       const query = params.toString() ? `?${params.toString()}` : "";
-      const res = await fetch(
-        `${API_URL}/api/wishlist/remove/${itemId}${query}`,
+      const res = await fetchWithApiFallback(
+        `/api/wishlist/remove/${itemId}${query}`,
         {
           method: "DELETE",
           headers: {
@@ -444,7 +511,7 @@ export const WishlistProvider = ({ children }) => {
     const token = getToken();
 
     if (token) {
-      await fetch(`${API_URL}/api/wishlist/clear`, {
+      await fetchWithApiFallback("/api/wishlist/clear", {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
         credentials: "include",

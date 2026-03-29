@@ -15,8 +15,8 @@ import {
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "react-hot-toast";
-import { MdLocalShipping, MdOutlineTrackChanges } from "react-icons/md";
 import { FaBoxOpen, FaFilePdf, FaRegTimesCircle } from "react-icons/fa";
+import { MdLocalShipping, MdOutlineTrackChanges } from "react-icons/md";
 
 const API_URL = API_BASE_URL;
 
@@ -143,7 +143,8 @@ const ShippingAdminPage = () => {
         return;
       }
       setLoadingAction(true);
-      const suffix = includeOrderSync && trackOrderId ? `?orderId=${trackOrderId}` : "";
+      const suffix =
+        includeOrderSync && trackOrderId ? `?orderId=${trackOrderId}` : "";
       const response = await request(
         `/api/shipping/xpressbees/track/${trackAwb}${suffix}`,
         "GET",
@@ -232,14 +233,10 @@ const ShippingAdminPage = () => {
       }
 
       setLoadingAction(true);
-      const response = await request(
-        "/api/shipping/xpressbees/book",
-        "POST",
-        {
-          orderId: includeOrderSync ? bookOrderId : null,
-          shipment: shipmentPayload,
-        },
-      );
+      const response = await request("/api/shipping/xpressbees/book", "POST", {
+        orderId: includeOrderSync ? bookOrderId : null,
+        shipment: shipmentPayload,
+      });
       setBookResponse(response);
       toast.success("Shipment booked");
     } catch (error) {
@@ -372,7 +369,10 @@ const ShippingAdminPage = () => {
                         setNumericServiceabilityField("weight", e.target.value)
                       }
                       size="small"
-                      inputProps={{ inputMode: "numeric", style: { textAlign: "center" } }}
+                      inputProps={{
+                        inputMode: "numeric",
+                        style: { textAlign: "center" },
+                      }}
                       fullWidth
                     />
                     <Button
@@ -405,7 +405,10 @@ const ShippingAdminPage = () => {
                         setNumericServiceabilityField("length", e.target.value)
                       }
                       size="small"
-                      inputProps={{ inputMode: "numeric", style: { textAlign: "center" } }}
+                      inputProps={{
+                        inputMode: "numeric",
+                        style: { textAlign: "center" },
+                      }}
                       fullWidth
                     />
                     <Button
@@ -438,7 +441,10 @@ const ShippingAdminPage = () => {
                         setNumericServiceabilityField("breadth", e.target.value)
                       }
                       size="small"
-                      inputProps={{ inputMode: "numeric", style: { textAlign: "center" } }}
+                      inputProps={{
+                        inputMode: "numeric",
+                        style: { textAlign: "center" },
+                      }}
                       fullWidth
                     />
                     <Button
@@ -471,7 +477,10 @@ const ShippingAdminPage = () => {
                         setNumericServiceabilityField("height", e.target.value)
                       }
                       size="small"
-                      inputProps={{ inputMode: "numeric", style: { textAlign: "center" } }}
+                      inputProps={{
+                        inputMode: "numeric",
+                        style: { textAlign: "center" },
+                      }}
                       fullWidth
                     />
                     <Button
@@ -489,16 +498,24 @@ const ShippingAdminPage = () => {
           </div>
           <Button
             variant="contained"
-            sx={{ mt: 3, bgcolor: "#059669", "&:hover": { bgcolor: "#047857" } }}
+            sx={{
+              mt: 3,
+              bgcolor: "#059669",
+              "&:hover": { bgcolor: "#047857" },
+            }}
             className="w-full sm:w-auto"
             onClick={handleServiceability}
             disabled={loadingAction}
           >
-            {loadingAction ? <CircularProgress size={20} color="inherit" /> : "Check Serviceability"}
+            {loadingAction ? (
+              <CircularProgress size={20} color="inherit" />
+            ) : (
+              "Check Serviceability"
+            )}
           </Button>
           {serviceabilityResponse && (
             <pre className="mt-4 bg-gray-50 border rounded-lg p-3 text-xs overflow-auto">
-{JSON.stringify(serviceabilityResponse, null, 2)}
+              {JSON.stringify(serviceabilityResponse, null, 2)}
             </pre>
           )}
         </div>
@@ -534,7 +551,7 @@ const ShippingAdminPage = () => {
           </Button>
           {String(trackAwb || "").trim() ? (
             <a
-              href={`https://www.xpressbees.com/shipment/tracking?awb=${encodeURIComponent(String(trackAwb || "").trim())}`}
+              href={`https://www.xpressbees.com/shipment/tracking?awbNo=${encodeURIComponent(String(trackAwb || "").trim())}`}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex mt-3 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-100"
@@ -544,7 +561,7 @@ const ShippingAdminPage = () => {
           ) : null}
           {trackResponse && (
             <pre className="mt-4 bg-gray-50 border rounded-lg p-3 text-xs overflow-auto">
-{JSON.stringify(trackResponse, null, 2)}
+              {JSON.stringify(trackResponse, null, 2)}
             </pre>
           )}
         </div>
@@ -581,7 +598,7 @@ const ShippingAdminPage = () => {
           </Button>
           {cancelResponse && (
             <pre className="mt-4 bg-gray-50 border rounded-lg p-3 text-xs overflow-auto">
-{JSON.stringify(cancelResponse, null, 2)}
+              {JSON.stringify(cancelResponse, null, 2)}
             </pre>
           )}
         </div>
@@ -617,7 +634,7 @@ const ShippingAdminPage = () => {
           </Button>
           {manifestResponse && (
             <pre className="mt-4 bg-gray-50 border rounded-lg p-3 text-xs overflow-auto">
-{JSON.stringify(manifestResponse, null, 2)}
+              {JSON.stringify(manifestResponse, null, 2)}
             </pre>
           )}
         </div>
@@ -651,7 +668,11 @@ const ShippingAdminPage = () => {
           />
           <Button
             variant="contained"
-            sx={{ mt: 3, bgcolor: "#059669", "&:hover": { bgcolor: "#047857" } }}
+            sx={{
+              mt: 3,
+              bgcolor: "#059669",
+              "&:hover": { bgcolor: "#047857" },
+            }}
             onClick={handleBookShipment}
             disabled={loadingAction}
           >
@@ -659,7 +680,7 @@ const ShippingAdminPage = () => {
           </Button>
           {bookResponse && (
             <pre className="mt-4 bg-gray-50 border rounded-lg p-3 text-xs overflow-auto">
-{JSON.stringify(bookResponse, null, 2)}
+              {JSON.stringify(bookResponse, null, 2)}
             </pre>
           )}
         </div>

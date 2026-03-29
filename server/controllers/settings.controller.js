@@ -99,8 +99,19 @@ export const getPublicSettings = async (req, res) => {
     ];
 
     const settings = await SettingsModel.find({
-      key: { $in: publicKeys },
-      isActive: true,
+      $or: [
+        {
+          key: {
+            $in: publicKeys.filter(
+              (key) => !FLAVOUR_BUTTON_SETTING_KEYS.includes(key),
+            ),
+          },
+          isActive: true,
+        },
+        {
+          key: { $in: FLAVOUR_BUTTON_SETTING_KEYS },
+        },
+      ],
     }).select("key value -_id");
 
     // Convert to object for easier client-side use
@@ -384,6 +395,12 @@ export const updateSetting = async (req, res) => {
         }
         req.body.value = normalizedColor;
       }
+    }
+
+    if (FLAVOUR_BUTTON_SETTING_KEYS.includes(key)) {
+      // Flavour button settings are public storefront controls and should
+      // always stay active so client consumers receive updated values.
+      req.body.isActive = true;
     }
 
     const updateData = {

@@ -2,9 +2,9 @@
 
 import ComboCard from "@/components/ComboCard";
 import ProductItem from "@/components/ProductItem";
-import ShareButton from "@/components/ShareButton";
 import ProductZoom from "@/components/ProductZoom";
 import QtyBox from "@/components/QtyBox";
+import ShareButton from "@/components/ShareButton";
 import { formatPrice } from "@/config/siteConfig";
 import { useCart } from "@/context/CartContext";
 import { trackEvent } from "@/utils/analyticsTracker";
@@ -64,6 +64,22 @@ const formatVariantLabel = (variant = {}) => {
   const baseName = String(variant?.name || "").trim();
   const weightLabel = formatVariantWeight(variant);
   const skuLabel = String(variant?.sku || "").trim();
+
+  const normalizeLabelToken = (value) =>
+    String(value || "")
+      .toLowerCase()
+      .replace(/\s+/g, "")
+      .replace(/[^a-z0-9]/g, "");
+
+  const baseToken = normalizeLabelToken(baseName);
+  const weightToken = normalizeLabelToken(weightLabel);
+
+  // Avoid duplicate labels such as "500g - 500 g" or "1kg - 1 kg".
+  if (baseName && weightLabel && baseToken && weightToken) {
+    if (baseToken.includes(weightToken) || weightToken.includes(baseToken)) {
+      return baseName;
+    }
+  }
 
   const fullName = [baseName, weightLabel].filter(Boolean).join(" - ");
   if (fullName) return fullName;
@@ -707,43 +723,6 @@ const ProductDetailPage = () => {
                       {formatVariantLabel(selectedVariant) || "Select"}
                     </span>
                   </p>
-                  <div className="mb-3">
-                    <label className="block text-xs font-semibold text-gray-600 mb-1">
-                      Quick select
-                    </label>
-                    <select
-                      value={String(selectedVariant?._id || "")}
-                      onChange={(event) => {
-                        const picked = (product?.variants || []).find(
-                          (variant) =>
-                            String(variant?._id || "") ===
-                            String(event.target.value || ""),
-                        );
-                        if (!picked) return;
-                        setSelectedVariant(picked);
-                        setQuantity(1);
-                      }}
-                      className="w-full sm:w-85 border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400"
-                    >
-                      {(product?.variants || []).map((variant, idx) => {
-                        const vStock = Math.max(
-                          Number(variant.stock_quantity ?? variant.stock ?? 0) -
-                            Number(variant.reserved_quantity ?? 0),
-                          0,
-                        );
-                        return (
-                          <option
-                            key={variant._id || idx}
-                            value={String(variant._id || "")}
-                            disabled={vStock === 0}
-                          >
-                            {formatVariantLabel(variant)}
-                            {vStock === 0 ? " (Out of stock)" : ""}
-                          </option>
-                        );
-                      })}
-                    </select>
-                  </div>
                   <div className="flex flex-wrap gap-3">
                     {product.variants.map((variant, idx) => {
                       const isSelected = selectedVariant?._id === variant._id;

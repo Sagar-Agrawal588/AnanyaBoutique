@@ -1,8 +1,8 @@
 import mongoose from "mongoose";
+import { checkExclusiveAccess } from "../middlewares/membershipGuard.js";
 import CategoryModel from "../models/category.model.js";
 import ComboModel from "../models/combo.model.js";
 import ProductModel from "../models/product.model.js";
-import { checkExclusiveAccess } from "../middlewares/membershipGuard.js";
 import {
   getCartUpsellProductSuggestion,
   getFrequentlyBoughtTogether,
@@ -62,8 +62,7 @@ const buildVariantInventoryTotals = (variants = []) => ({
     0,
   ),
   reserved: variants.reduce(
-    (sum, variant) =>
-      sum + normalizeStockValue(variant?.reserved_quantity, 0),
+    (sum, variant) => sum + normalizeStockValue(variant?.reserved_quantity, 0),
     0,
   ),
 });
@@ -79,12 +78,16 @@ const formatVariantWeightLabel = (variant = {}) => {
 };
 
 const resolveComboCardImage = (combo = {}) =>
+  (Array.isArray(combo?.images) ? combo.images[0] : "") ||
   combo?.comboThumbnail ||
   combo?.combo_thumbnail ||
   combo?.thumbnail ||
   combo?.image ||
   (Array.isArray(combo?.comboImages) ? combo.comboImages[0] : "") ||
   (Array.isArray(combo?.combo_images) ? combo.combo_images[0] : "") ||
+  (Array.isArray(combo?.items)
+    ? combo.items.map((item) => String(item?.image || "").trim()).find(Boolean)
+    : "") ||
   "";
 
 /**
@@ -127,8 +130,14 @@ export const getProducts = async (req, res) => {
       includeCombos,
     } = req.query;
 
-    const shouldSeparateVariants = String(separateVariants || "").trim().toLowerCase() === "true";
-    const shouldIncludeCombos = String(includeCombos || "").trim().toLowerCase() === "true";
+    const shouldSeparateVariants =
+      String(separateVariants || "")
+        .trim()
+        .toLowerCase() === "true";
+    const shouldIncludeCombos =
+      String(includeCombos || "")
+        .trim()
+        .toLowerCase() === "true";
 
     const canViewExclusive = req?.userIsAdmin === true;
 
@@ -405,10 +414,18 @@ export const getProducts = async (req, res) => {
 
       const expandedProducts = [];
       for (const product of productsRaw) {
-        const variants = Array.isArray(product?.variants) ? product.variants : [];
-        if (shouldSeparateVariants && product?.hasVariants && variants.length > 0) {
+        const variants = Array.isArray(product?.variants)
+          ? product.variants
+          : [];
+        if (
+          shouldSeparateVariants &&
+          product?.hasVariants &&
+          variants.length > 0
+        ) {
           variants.forEach((variant, index) => {
-            const variantLabel = String(variant?.name || "").trim() || formatVariantWeightLabel(variant);
+            const variantLabel =
+              String(variant?.name || "").trim() ||
+              formatVariantWeightLabel(variant);
             expandedProducts.push({
               ...product,
               _id: `${String(product?._id || "")}-${String(variant?._id || index)}`,
@@ -420,15 +437,28 @@ export const getProducts = async (req, res) => {
                 : String(product?.name || "Product"),
               price: Number(variant?.price ?? product?.price ?? 0),
               originalPrice: Number(
-                variant?.originalPrice ?? product?.originalPrice ?? product?.oldPrice ?? 0,
+                variant?.originalPrice ??
+                  product?.originalPrice ??
+                  product?.oldPrice ??
+                  0,
               ),
-              discount: Number(variant?.discountPercent ?? product?.discount ?? 0),
+              discount: Number(
+                variant?.discountPercent ?? product?.discount ?? 0,
+              ),
               weight: Number(variant?.weight ?? product?.weight ?? 0),
               unit: String(variant?.unit || product?.unit || "g"),
               sku: String(variant?.sku || product?.sku || ""),
-              stock: Number(variant?.stock_quantity ?? variant?.stock ?? product?.stock ?? 0),
+              stock: Number(
+                variant?.stock_quantity ??
+                  variant?.stock ??
+                  product?.stock ??
+                  0,
+              ),
               stock_quantity: Number(
-                variant?.stock_quantity ?? variant?.stock ?? product?.stock_quantity ?? 0,
+                variant?.stock_quantity ??
+                  variant?.stock ??
+                  product?.stock_quantity ??
+                  0,
               ),
               hasVariants: false,
               variants: [],
@@ -441,10 +471,15 @@ export const getProducts = async (req, res) => {
 
       let comboCards = [];
       if (shouldIncludeCombos) {
+        const now = new Date();
         const comboFilter = {
           isActive: { $ne: false },
           isVisible: { $ne: false },
           status: { $ne: "disabled" },
+          $and: [
+            { $or: [{ startDate: null }, { startDate: { $lte: now } }] },
+            { $or: [{ endDate: null }, { endDate: { $gte: now } }] },
+          ],
         };
 
         if (search && String(search).trim()) {
@@ -455,7 +490,7 @@ export const getProducts = async (req, res) => {
         }
 
         const combosRaw = await ComboModel.find(comboFilter)
-          .sort(sortOptions)
+          .sort({ priority: -1, totalSavings: -1, createdAt: -1 })
           .lean();
 
         comboCards = combosRaw.map((combo) => {
@@ -467,14 +502,19 @@ export const getProducts = async (req, res) => {
           );
           const comboDiscount =
             Number(combo?.discountPercentage ?? 0) > 0
-              ? Number(combo?.discountPercentage)
+              ? Math.ceil(Number(combo?.discountPercentage))
               : comboOriginalPrice > comboPrice && comboOriginalPrice > 0
-                ? Math.round(((comboOriginalPrice - comboPrice) / comboOriginalPrice) * 100)
+                ? Math.ceil(
+                    ((comboOriginalPrice - comboPrice) / comboOriginalPrice) *
+                      100,
+                  )
                 : 0;
 
           return {
-            _id: `combo-${String(combo?._id || "")}`,
+            _id: combo?._id || null,
+            id: combo?._id || null,
             comboId: combo?._id || null,
+            slug: String(combo?.slug || "").trim(),
             itemType: "combo",
             name: String(combo?.name || "Combo Deal"),
             shortDescription: String(combo?.shortDescription || ""),
@@ -486,9 +526,13 @@ export const getProducts = async (req, res) => {
             image: resolveComboCardImage(combo),
             rating: Number(combo?.adminStarRating ?? combo?.rating ?? 0),
             reviewCount: Number(combo?.reviewCount || 0),
-            availableStock: Number(combo?.availableStock ?? combo?.stockQuantity ?? 0),
+            availableStock: Number(
+              combo?.availableStock ?? combo?.stockQuantity ?? 0,
+            ),
             stock: Number(combo?.availableStock ?? combo?.stockQuantity ?? 0),
-            stock_quantity: Number(combo?.availableStock ?? combo?.stockQuantity ?? 0),
+            stock_quantity: Number(
+              combo?.availableStock ?? combo?.stockQuantity ?? 0,
+            ),
             createdAt: combo?.createdAt,
             updatedAt: combo?.updatedAt,
             isActive: combo?.isActive !== false,
@@ -575,10 +619,10 @@ export const getProductById = async (req, res) => {
         .populate("subCategory", "name slug")
         .populate("reviews.user", "name avatar");
     } else {
-        product = await ProductModel.findOne({
-          slug: id,
-          isActive: { $ne: false },
-        })
+      product = await ProductModel.findOne({
+        slug: id,
+        isActive: { $ne: false },
+      })
         .populate("category", "name slug")
         .populate("subCategory", "name slug")
         .populate("reviews.user", "name avatar");
@@ -624,7 +668,7 @@ export const getFeaturedProducts = async (req, res) => {
     const canViewExclusive = req?.userIsAdmin === true;
 
     const filter = {
-        isActive: { $ne: false },
+      isActive: { $ne: false },
       isFeatured: true,
       ...(canViewExclusive ? {} : { isExclusive: { $ne: true } }),
     };
@@ -669,7 +713,7 @@ export const getExclusiveProducts = async (req, res) => {
     const skip = (safePage - 1) * safeLimit;
 
     const filter = {
-        isActive: { $ne: false },
+      isActive: { $ne: false },
       isExclusive: true,
     };
 
@@ -743,7 +787,7 @@ export const getRelatedProducts = async (req, res) => {
     const relatedFilter = {
       _id: { $ne: id },
       category: product.category,
-        isActive: { $ne: false },
+      isActive: { $ne: false },
       ...(canViewExclusive ? {} : { isExclusive: { $ne: true } }),
     };
 
@@ -943,9 +987,15 @@ export const createProduct = async (req, res) => {
 
     // Validate variants if present
     let processedVariants = variants || [];
-    if (hasVariants && Array.isArray(processedVariants) && processedVariants.length > 0) {
+    if (
+      hasVariants &&
+      Array.isArray(processedVariants) &&
+      processedVariants.length > 0
+    ) {
       // Check for duplicate weights
-      const weightKeys = processedVariants.map((v) => `${v.weight || 0}-${v.unit || "g"}`);
+      const weightKeys = processedVariants.map(
+        (v) => `${v.weight || 0}-${v.unit || "g"}`,
+      );
       const uniqueWeights = new Set(weightKeys);
       if (uniqueWeights.size !== weightKeys.length) {
         return res.status(400).json({
@@ -965,8 +1015,13 @@ export const createProduct = async (req, res) => {
           0,
         );
         const discountPercent =
-          variantOriginalPrice && variantPrice !== null && variantOriginalPrice > variantPrice
-            ? Math.round(((variantOriginalPrice - variantPrice) / variantOriginalPrice) * 100)
+          variantOriginalPrice &&
+          variantPrice !== null &&
+          variantOriginalPrice > variantPrice
+            ? Math.round(
+                ((variantOriginalPrice - variantPrice) / variantOriginalPrice) *
+                  100,
+              )
             : 0;
         return {
           ...variant,
@@ -983,7 +1038,9 @@ export const createProduct = async (req, res) => {
       if (defaults.length === 0) {
         processedVariants[0].isDefault = true;
       } else if (defaults.length > 1) {
-        processedVariants.forEach((v, i) => { v.isDefault = i === processedVariants.indexOf(defaults[0]); });
+        processedVariants.forEach((v, i) => {
+          v.isDefault = i === processedVariants.indexOf(defaults[0]);
+        });
       }
     }
 
@@ -1150,9 +1207,15 @@ export const updateProduct = async (req, res) => {
     }
 
     // Validate variants if being updated
-    if (updateData.hasVariants && Array.isArray(updateData.variants) && updateData.variants.length > 0) {
+    if (
+      updateData.hasVariants &&
+      Array.isArray(updateData.variants) &&
+      updateData.variants.length > 0
+    ) {
       // Check for duplicate weights
-      const weightKeys = updateData.variants.map((v) => `${v.weight || 0}-${v.unit || "g"}`);
+      const weightKeys = updateData.variants.map(
+        (v) => `${v.weight || 0}-${v.unit || "g"}`,
+      );
       const uniqueWeights = new Set(weightKeys);
       if (uniqueWeights.size !== weightKeys.length) {
         return res.status(400).json({
@@ -1162,7 +1225,10 @@ export const updateProduct = async (req, res) => {
         });
       }
       const existingVariantMap = new Map(
-        (product.variants || []).map((variant) => [String(variant?._id || ""), variant]),
+        (product.variants || []).map((variant) => [
+          String(variant?._id || ""),
+          variant,
+        ]),
       );
       updateData.variants = updateData.variants.map((variant) => {
         const variantPrice = roundWholeNumber(variant.price);
@@ -1170,14 +1236,21 @@ export const updateProduct = async (req, res) => {
           variant.originalPrice === undefined || variant.originalPrice === null
             ? undefined
             : roundWholeNumber(variant.originalPrice);
-        const existingVariant = existingVariantMap.get(String(variant?._id || ""));
+        const existingVariant = existingVariantMap.get(
+          String(variant?._id || ""),
+        );
         const variantStock = normalizeStockValue(
           variant.stock ?? variant.stock_quantity,
           existingVariant?.stock_quantity ?? existingVariant?.stock ?? 0,
         );
         const discountPercent =
-          variantOriginalPrice && variantPrice !== null && variantOriginalPrice > variantPrice
-            ? Math.round(((variantOriginalPrice - variantPrice) / variantOriginalPrice) * 100)
+          variantOriginalPrice &&
+          variantPrice !== null &&
+          variantOriginalPrice > variantPrice
+            ? Math.round(
+                ((variantOriginalPrice - variantPrice) / variantOriginalPrice) *
+                  100,
+              )
             : 0;
         return {
           ...variant,
@@ -1208,7 +1281,9 @@ export const updateProduct = async (req, res) => {
       Array.isArray(updateData.variants) &&
       updateData.variants.length > 0
     ) {
-      const variantInventoryTotals = buildVariantInventoryTotals(updateData.variants);
+      const variantInventoryTotals = buildVariantInventoryTotals(
+        updateData.variants,
+      );
       updateData.stock = variantInventoryTotals.stock;
       updateData.stock_quantity = variantInventoryTotals.stock;
       updateData.reserved_quantity = variantInventoryTotals.reserved;

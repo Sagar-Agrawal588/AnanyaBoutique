@@ -1,6 +1,6 @@
 "use client";
 
-import { API_BASE_URL, uploadFile } from "@/utils/api";
+import { getData, putData, uploadFile } from "@/utils/api";
 import { getImageUrl } from "@/utils/imageUtils";
 
 import { useAdmin } from "@/context/AdminContext";
@@ -32,7 +32,6 @@ import {
   MdWarning,
 } from "react-icons/md";
 
-const API_URL = API_BASE_URL;
 const POPUP_REDIRECT_TYPES = {
   product: "product",
   category: "category",
@@ -372,14 +371,7 @@ const SettingsPage = () => {
   const fetchPopupResources = useCallback(
     async (adminToken) => {
       try {
-        const popupResponse = await fetch(`${API_URL}/api/admin/popup`, {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${adminToken}`,
-          },
-          credentials: "include",
-        });
-        const popupData = await popupResponse.json();
+        const popupData = await getData("/api/admin/popup", adminToken);
         if (popupData?.success && popupData?.data) {
           setPopupSettings(mapPopupPayloadToState(popupData.data));
         }
@@ -389,23 +381,12 @@ const SettingsPage = () => {
 
       try {
         const [productResponse, categoryResponse] = await Promise.all([
-          fetch(`${API_URL}/api/products?limit=250&sortBy=name&order=asc`, {
-            method: "GET",
-            credentials: "include",
-          }),
-          fetch(`${API_URL}/api/categories?flat=true&active=true`, {
-            method: "GET",
-            credentials: "include",
-          }),
+          getData("/api/products?limit=250&sortBy=name&order=asc", adminToken),
+          getData("/api/categories?flat=true&active=true", adminToken),
         ]);
 
-        const [productData, categoryData] = await Promise.all([
-          productResponse.json(),
-          categoryResponse.json(),
-        ]);
-
-        if (productData?.success && Array.isArray(productData?.data)) {
-          const productOptions = productData.data
+        if (productResponse?.success && Array.isArray(productResponse?.data)) {
+          const productOptions = productResponse.data
             .filter((product) => product?._id)
             .map((product) => ({
               value: product._id,
@@ -414,8 +395,11 @@ const SettingsPage = () => {
           setPopupProducts(productOptions);
         }
 
-        if (categoryData?.success && Array.isArray(categoryData?.data)) {
-          const categoryOptions = categoryData.data
+        if (
+          categoryResponse?.success &&
+          Array.isArray(categoryResponse?.data)
+        ) {
+          const categoryOptions = categoryResponse.data
             .filter((category) => category?.slug)
             .map((category) => ({
               value: category.slug,
@@ -440,14 +424,9 @@ const SettingsPage = () => {
         };
       }
 
-      const response = await fetch(`${API_URL}/api/admin/popup`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${adminToken}`,
-        },
-        credentials: "include",
-        body: JSON.stringify({
+      const data = await putData(
+        "/api/admin/popup",
+        {
           title: String(value.title || "").trim(),
           description: String(value.description || "").trim(),
           imageUrl: String(value.imageUrl || "").trim(),
@@ -462,10 +441,10 @@ const SettingsPage = () => {
           couponCode: String(value.couponCode || "")
             .trim()
             .toUpperCase(),
-        }),
-      });
+        },
+        adminToken,
+      );
 
-      const data = await response.json();
       if (data?.success && data?.data) {
         setPopupSettings(mapPopupPayloadToState(data.data));
         return { success: true, message: data?.message || "Popup saved." };
@@ -523,15 +502,7 @@ const SettingsPage = () => {
         return;
       }
 
-      const response = await fetch(`${API_URL}/api/settings/admin/all`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${adminToken}`,
-        },
-        credentials: "include",
-      });
-
-      const data = await response.json();
+      const data = await getData("/api/settings/admin/all", adminToken);
 
       if (data.success && data.data) {
         // Map settings by key
@@ -692,18 +663,12 @@ const SettingsPage = () => {
   const saveSetting = async (key, value) => {
     try {
       const adminToken = token || localStorage.getItem("adminToken");
-      const response = await fetch(`${API_URL}/api/settings/admin/${key}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${adminToken}`,
-        },
-        credentials: "include",
-        body: JSON.stringify({ value }),
-      });
-
-      const data = await response.json();
-      return data.success;
+      const response = await putData(
+        `/api/settings/admin/${key}`,
+        { value },
+        adminToken,
+      );
+      return Boolean(response?.success);
     } catch (error) {
       console.error(`Error saving ${key}:`, error);
       return false;

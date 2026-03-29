@@ -93,8 +93,11 @@ const ProductItem = (props) => {
           )
         : 0)
     : productData.discount;
+  const normalizedDisplayDiscount = isComboItem
+    ? Math.ceil(Number(displayDiscount || 0))
+    : Number(displayDiscount || 0);
   const showDiscountBadge =
-    Number(displayDiscount) > 0 && !productData.isBestSeller;
+    Number(normalizedDisplayDiscount) > 0 && !productData.isBestSeller;
   const displayWeight = defaultVariant
     ? defaultVariant.weight
     : productData.weight;
@@ -198,7 +201,7 @@ const ProductItem = (props) => {
         <ProductCardBadges
           isBestSeller={Boolean(productData.isBestSeller)}
           showDiscountBadge={showDiscountBadge}
-          discountLabel={`${displayDiscount}% OFF`}
+          discountLabel={`${normalizedDisplayDiscount}% OFF`}
           isExclusive={isExclusiveProduct}
         />
 

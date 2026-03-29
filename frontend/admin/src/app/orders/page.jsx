@@ -93,28 +93,65 @@ const fetchOrdersFromAltPort = async ({ url, token }) => {
     token ||
     (typeof window !== "undefined" ? localStorage.getItem("adminToken") : null);
 
-  const response = await fetch(`${altBase}${url}`, {
-    method: "GET",
-    headers: {
-      ...(resolvedToken ? { Authorization: `Bearer ${resolvedToken}` } : {}),
-    },
-  });
+  try {
+    const response = await fetch(`${altBase}${url}`, {
+      method: "GET",
+      headers: {
+        ...(resolvedToken ? { Authorization: `Bearer ${resolvedToken}` } : {}),
+      },
+    });
 
-  if (!response.ok) return null;
-  const payload = await response.json().catch(() => null);
-  return extractOrdersPayload(payload);
+    if (!response.ok) return null;
+    const payload = await response.json().catch(() => null);
+    return extractOrdersPayload(payload);
+  } catch {
+    // Alternate port probing is best-effort only.
+    return null;
+  }
 };
 
 const resolveTrackingUrl = (order = {}) => {
   const explicitUrl = String(
-    order?.trackingUrl || order?.tracking_url || order?.shipmentTrackingUrl || "",
+    order?.trackingUrl ||
+      order?.tracking_url ||
+      order?.shipmentTrackingUrl ||
+      "",
   ).trim();
-  if (explicitUrl) return explicitUrl;
+  const awb = String(
+    order?.awbNo ||
+      order?.awb_no ||
+      order?.awbNumber ||
+      order?.awb_number ||
+      order?.shipment?.awbNo ||
+      order?.shipment?.awb_no ||
+      order?.shipment?.awb_number ||
+      order?.shipment?.awb ||
+      order?.shipping?.awbNo ||
+      order?.shipping?.awb_no ||
+      order?.shipping?.awb_number ||
+      order?.shipping?.awb ||
+      "",
+  ).trim();
 
-  const awb = String(order?.awbNumber || order?.awb_number || "").trim();
-  if (!awb) return "";
+  if (!explicitUrl) {
+    if (!awb) return "";
+    return `https://www.xpressbees.com/shipment/tracking?awbNo=${encodeURIComponent(awb)}`;
+  }
 
-  return `https://www.xpressbees.com/shipment/tracking?awb=${encodeURIComponent(awb)}`;
+  if (!awb) return explicitUrl;
+
+  try {
+    const parsed = new URL(explicitUrl);
+    const host = String(parsed.hostname || "").toLowerCase();
+    const isXpressbees = host.includes("xpressbees.com");
+    if (!isXpressbees) return explicitUrl;
+
+    parsed.searchParams.delete("awb");
+    parsed.searchParams.set("awbNo", awb);
+    return parsed.toString();
+  } catch {
+    return explicitUrl;
+  }
 };
 
 const OrderRow = ({ order, index, token, onStatusUpdate }) => {

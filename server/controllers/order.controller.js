@@ -1105,16 +1105,58 @@ const sendOrderConfirmationEmail = async (order) => {
     );
 
     const awbNumber = String(
-      order?.awb_number || order?.awbNumber || "",
+      order?.awbNo ||
+        order?.awb_no ||
+        order?.awb_number ||
+        order?.awbNumber ||
+        order?.shipment?.awb ||
+        order?.shipping?.awb ||
+        "",
     ).trim();
+    const applyAwbToXpressbeesUrl = (rawUrl, awb) => {
+      const normalizedUrl = String(rawUrl || "").trim();
+      const normalizedAwb = String(awb || "").trim();
+      if (!normalizedUrl || !normalizedAwb) return normalizedUrl;
+
+      try {
+        const parsed = new URL(normalizedUrl);
+        const host = String(parsed.hostname || "").toLowerCase();
+        if (!host.includes("xpressbees.com")) {
+          return normalizedUrl;
+        }
+
+        parsed.searchParams.delete("awb");
+        parsed.searchParams.set("awbNo", normalizedAwb);
+        return parsed.toString();
+      } catch {
+        return normalizedUrl;
+      }
+    };
     const trackingUrlTemplate = String(
       process.env.XPRESSBEES_TRACKING_URL_TEMPLATE ||
-        "https://www.xpressbees.com/shipment/tracking?awb=${AWB}",
+        "https://www.xpressbees.com/shipment/tracking?awbNo=${AWB}",
     ).trim();
+    const normalizedTrackingTemplate = trackingUrlTemplate.replace(
+      /([?&])awb=\$\{AWB\}/i,
+      "$1awbNo=${AWB}",
+    );
+    const templateWithAwbPlaceholder = normalizedTrackingTemplate.includes(
+      "${AWB}",
+    )
+      ? normalizedTrackingTemplate
+      : trackingUrlTemplate.includes("?")
+        ? `${normalizedTrackingTemplate}&awbNo=${AWB}`
+        : `${normalizedTrackingTemplate}?awbNo=${AWB}`;
     const trackingUrl =
-      String(order?.trackingUrl || "").trim() ||
+      applyAwbToXpressbeesUrl(
+        String(order?.trackingUrl || "").trim(),
+        awbNumber,
+      ) ||
       (awbNumber
-        ? trackingUrlTemplate.replace("${AWB}", encodeURIComponent(awbNumber))
+        ? templateWithAwbPlaceholder.replace(
+            "${AWB}",
+            encodeURIComponent(awbNumber),
+          )
         : "");
 
     const estimatedDeliveryDate =

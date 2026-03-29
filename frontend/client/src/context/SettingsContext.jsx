@@ -11,6 +11,27 @@ const API_URL = String(API_BASE_URL || "")
   .replace(/\/+$/, "")
   .replace(/\/api$/i, "");
 
+const LOCAL_SETTINGS_API_FALLBACKS = [
+  "http://localhost:8001",
+  "http://localhost:8000",
+];
+
+const sanitizeBaseUrl = (value) =>
+  String(value || "")
+    .trim()
+    .replace(/^['"]|['"]$/g, "")
+    .replace(/\/+$/, "");
+
+const isLocalhostUrl = (value) => {
+  try {
+    const parsed = new URL(String(value || ""));
+    const hostname = String(parsed.hostname || "").toLowerCase();
+    return hostname === "localhost" || hostname === "127.0.0.1";
+  } catch {
+    return false;
+  }
+};
+
 const buildApiUrlCandidates = (path) => {
   const normalizedPath = String(path || "").startsWith("/")
     ? String(path)
@@ -23,6 +44,26 @@ const buildApiUrlCandidates = (path) => {
   if (API_URL) {
     candidates.push(`${API_URL}${apiPath}`);
   }
+
+  if (typeof window !== "undefined") {
+    const hostname = String(window.location.hostname || "").toLowerCase();
+    const isLocalhostHost = hostname === "localhost" || hostname === "127.0.0.1";
+
+    if (isLocalhostHost) {
+      const fallbackBases = LOCAL_SETTINGS_API_FALLBACKS.map(sanitizeBaseUrl).filter(Boolean);
+
+      if (isLocalhostUrl(API_URL)) {
+        candidates.push(
+          ...fallbackBases.filter(
+            (base) => sanitizeBaseUrl(base) !== sanitizeBaseUrl(API_URL),
+          ).map((base) => `${base}${apiPath}`),
+        );
+      } else {
+        candidates.push(...fallbackBases.map((base) => `${base}${apiPath}`));
+      }
+    }
+  }
+
   candidates.push(apiPath);
 
   return [...new Set(candidates)];
