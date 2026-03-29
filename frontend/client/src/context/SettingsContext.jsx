@@ -47,16 +47,20 @@ const buildApiUrlCandidates = (path) => {
 
   if (typeof window !== "undefined") {
     const hostname = String(window.location.hostname || "").toLowerCase();
-    const isLocalhostHost = hostname === "localhost" || hostname === "127.0.0.1";
+    const isLocalhostHost =
+      hostname === "localhost" || hostname === "127.0.0.1";
 
     if (isLocalhostHost) {
-      const fallbackBases = LOCAL_SETTINGS_API_FALLBACKS.map(sanitizeBaseUrl).filter(Boolean);
+      const fallbackBases =
+        LOCAL_SETTINGS_API_FALLBACKS.map(sanitizeBaseUrl).filter(Boolean);
 
       if (isLocalhostUrl(API_URL)) {
         candidates.push(
-          ...fallbackBases.filter(
-            (base) => sanitizeBaseUrl(base) !== sanitizeBaseUrl(API_URL),
-          ).map((base) => `${base}${apiPath}`),
+          ...fallbackBases
+            .filter(
+              (base) => sanitizeBaseUrl(base) !== sanitizeBaseUrl(API_URL),
+            )
+            .map((base) => `${base}${apiPath}`),
         );
       } else {
         candidates.push(...fallbackBases.map((base) => `${base}${apiPath}`));
