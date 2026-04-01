@@ -517,6 +517,7 @@ export const buildComboOrderSnapshot = (combo, quantity = 1) => {
     comboSlug: combo.slug || "",
     comboSku: String(combo.sku || "").trim(),
     comboType: combo.comboType || "",
+    stockMode: combo.stockMode || "manual",
     thumbnail: comboImage,
     image: comboImage,
     quantity: comboQty,
@@ -604,6 +605,13 @@ export const reserveComboStock = async (order, source = "ORDER_CREATE") => {
       const comboId = combo?.comboId || combo?._id;
       if (!comboId) continue;
       const quantity = Math.max(Number(combo?.quantity || 1), 1);
+      const comboStockMode = String(combo?.stockMode || "")
+        .trim()
+        .toLowerCase();
+
+      if (comboStockMode && comboStockMode !== "manual") {
+        continue;
+      }
 
       const filter = {
         _id: comboId,
@@ -623,9 +631,23 @@ export const reserveComboStock = async (order, source = "ORDER_CREATE") => {
       if (result.modifiedCount === 1) {
         applied.push({ comboId, quantity });
       } else {
+        const comboRecord = await ComboModel.findById(comboId)
+          .select("stockMode stockQuantity reservedQuantity")
+          .lean();
+
+        if (String(comboRecord?.stockMode || "").toLowerCase() !== "manual") {
+          continue;
+        }
+
         throw new AppError("INSUFFICIENT_STOCK", {
           comboId,
           source,
+          requested: quantity,
+          available: Math.max(
+            Number(comboRecord?.stockQuantity || 0) -
+              Number(comboRecord?.reservedQuantity || 0),
+            0,
+          ),
         });
       }
     }
