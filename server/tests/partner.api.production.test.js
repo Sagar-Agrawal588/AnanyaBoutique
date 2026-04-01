@@ -76,29 +76,33 @@ const seedCatalog = async () => {
 };
 
 const createPartnerViaAdmin = async ({
+  name,
   scopes = ["catalog.read", "inventory.read", "pricing.read", "gst.read"],
   rpm = 120,
   daily = 20000,
+  visibleProductFields,
 } = {}) => {
   const payload = {
-    name: `Partner-${Date.now()}`,
+    name: String(name || `Partner-${Date.now()}`),
     companyName: "QA Labs",
     contactEmail: `qa-${Date.now()}@example.com`,
     scopes,
     rateLimitPerMinute: rpm,
     dailyRequestLimit: daily,
-    visibleProductFields: [
-      "description",
-      "shortDescription",
-      "images",
-      "category",
-      "tags",
-      "discount",
-      "stock",
-      "shipping",
-      "hsnCode",
-      "gstBreakup",
-    ],
+    visibleProductFields: Array.isArray(visibleProductFields)
+      ? visibleProductFields
+      : [
+          "description",
+          "shortDescription",
+          "images",
+          "category",
+          "tags",
+          "discount",
+          "stock",
+          "shipping",
+          "hsnCode",
+          "gstBreakup",
+        ],
   };
 
   const { response, payload: body } = await adminRequest("/api/v1/partner/admin/partners", {
@@ -200,6 +204,51 @@ test("functional: valid API key can read products, inventory, pricing, gst", asy
   });
   assert.equal(gst.response.status, 200);
   assert.equal(gst.payload?.data?.mode, "CGST_SGST");
+});
+
+test("admin settings: visibleProductFields controls what partners receive", async () => {
+  const { apiKey } = await createPartnerViaAdmin({
+    name: "Utkarsh Partner Demo",
+    scopes: ["catalog.read"],
+    visibleProductFields: ["stock", "gstBreakup"],
+  });
+
+  const products = await requestJson("/api/v1/partner/products?limit=5&deliveryState=Rajasthan", {
+    headers: { "x-api-key": apiKey },
+  });
+
+  assert.equal(products.response.status, 200);
+  assert.equal(products.payload?.success, true);
+
+  const item = Array.isArray(products.payload?.data) ? products.payload.data[0] : null;
+  assert.ok(item);
+
+  assert.ok(item.stock);
+  assert.ok(item.price?.gstBreakup);
+
+  assert.equal(item.description, undefined);
+  assert.equal(item.shortDescription, undefined);
+  assert.equal(item.images, undefined);
+  assert.equal(item.category, undefined);
+  assert.equal(item.tags, undefined);
+  assert.equal(item.discount, undefined);
+  assert.equal(item.shipping, undefined);
+  assert.equal(item.hsnCode, undefined);
+});
+
+test("docs: guide.pdf returns a PDF payload", async () => {
+  const response = await fetch(`${baseUrl}/api/v1/partner/guide.pdf`);
+
+  assert.equal(response.status, 200);
+  assert.ok(String(response.headers.get("content-type") || "").includes("application/pdf"));
+  assert.ok(
+    String(response.headers.get("content-disposition") || "")
+      .toLowerCase()
+      .includes("healthyonegram-partner-api-guide.pdf"),
+  );
+
+  const buffer = await response.arrayBuffer();
+  assert.ok(buffer.byteLength > 100);
 });
 
 test("functional: invalid or tampered API key returns auth errors", async () => {

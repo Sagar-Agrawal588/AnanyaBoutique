@@ -43,7 +43,7 @@ const resolveShareApiBase = () => {
 
   const current = sanitizeUrl(API_BASE_URL);
   if (!current) return "";
-  if (isLocalUrl(current)) return "https://healthyonegram.com/api";
+  if (isLocalUrl(current)) return ensureApiBasePath(current);
   return /\/api$/i.test(current) ? current : `${current}/api`;
 };
 

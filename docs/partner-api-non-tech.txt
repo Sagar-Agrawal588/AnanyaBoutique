@@ -1,0 +1,121 @@
+Partner API (Non-Technical Guide)
+================================
+
+What this is
+------------
+The Partner API lets approved partners (B2B customers, resellers, marketplaces, etc.) securely pull selected data from HealthyOneGram/BuyOneGram using an API key.
+
+Simple way to think about it:
+- We create a partner profile
+- We decide what they can access
+- We give them a secret key that only works for those allowed endpoints/data
+
+
+Who uses it
+-----------
+- Admin team: creates partners, decides access, issues/rotates API keys, monitors usage
+- Partner's developer/tech team: uses the API key to call the endpoints and receive the data
+
+
+Key concepts
+------------
+1) Partner record
+   Each partner has a profile in Admin (name, email, company, status).
+
+2) API key (secret)
+   - The API key is like a password for the Partner API.
+   - It is shown only once at creation/rotation, so it must be copied and stored safely.
+   - If the key is leaked, rotate it immediately.
+
+3) Scopes (what they are allowed to access)
+   Scopes are permission switches selected in Admin. The API blocks anything not granted.
+
+   Common scopes:
+   - catalog.read: products, categories, tags
+   - inventory.read: inventory data
+   - pricing.read: pricing data (with tax values)
+   - gst.read: GST calculation helper
+   - combos.read: combo offers
+
+4) Visible Product Fields (what data is included)
+   You can choose exactly which product details the partner receives. Anything not selected is not sent.
+
+   Examples:
+   - If you disable images, partners will not receive product images.
+   - If you allow only stock, partners will only get stock info (plus basic required fields like product id/name/price).
+
+
+What partners can do (high level)
+---------------------------------
+With a valid API key (and the right scopes), partners can call:
+- Health check
+- Products list / product details
+- Inventory list
+- Pricing + GST breakup
+- Combo offers (if enabled)
+
+
+How to set it up in Admin (step-by-step)
+----------------------------------------
+Step 1: Create (or update) partner and issue API key
+1. Log in to Admin
+2. Open Admin -> Partner API
+3. Go to Create Partner
+4. Fill partner info (example name: "Utkarsh Partner Demo")
+5. Select:
+   - Scopes (what they can access)
+   - Visible Product Fields (what data they will receive)
+   - Rate limits (recommended)
+6. Click Create
+7. Copy the API key immediately (it will not be shown again)
+
+Step 2: Share documentation link with the partner
+The guide is public (no key needed) and explains what endpoints exist and how auth works:
+- Guide page: /api/v1/partner/guide
+- Guide PDF: /api/v1/partner/guide.pdf
+
+ Examples:
+ - Live: https://healthyonegram.com/api/v1/partner/guide
+ - Local: http://localhost:8000/api/v1/partner/guide
+
+
+How to verify its working (simple checklist)
+--------------------------------------------
+A) The guide loads
+   Open the guide page and guide PDF. If they load, the documentation endpoints are working.
+
+B) The key works
+   Have QA/partner test:
+   1. Call the health endpoint first (fastest check)
+   2. Call products endpoint
+   3. Confirm the response only includes the fields you allowed in Admin
+
+   If the partner tries an endpoint without the right scope, they should get a "not allowed" response. That is expected.
+
+
+Common errors (what they mean)
+------------------------------
+401 Unauthorized / Missing key
+  The request did not include the API key, or the key is wrong.
+
+403 Key revoked / paused
+  The key has been disabled (revoked/paused) in Admin.
+
+403 Insufficient scope
+  Admin did not grant the scope needed for that endpoint.
+
+429 Rate limit exceeded
+  The partner is sending too many requests too quickly. Increase limits or ask them to slow down/cache.
+
+
+Separate feature: API PDFs (upload your own PDFs)
+-------------------------------------------------
+Admin -> API PDFs lets admins upload and manage PDF documents (public/private + share links). This is separate from Partner API keys.
+
+
+Security rules (important)
+--------------------------
+- Treat API keys like passwords: never share in screenshots or public chat.
+- Rotate keys immediately if leaked.
+- Share keys only through secure channels (password manager, encrypted message).
+- Keep scopes and visible fields minimal (only what is needed).
