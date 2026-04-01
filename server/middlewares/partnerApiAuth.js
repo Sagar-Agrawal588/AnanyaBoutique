@@ -661,6 +661,10 @@ export const partnerRuntimeLimiter = async (req, res, next) => {
               ]);
 
               res.setHeader("Retry-After", String(retryAfterSeconds));
+              res.setHeader("X-RateLimit-Limit", String(limit));
+              res.setHeader("RateLimit-Limit", `${limit};w=60`);
+              res.setHeader("X-RateLimit-Reset", String(retryAfterSeconds));
+              res.setHeader("RateLimit-Reset", String(retryAfterSeconds));
               res.setHeader("X-RateLimit-Remaining", String(Math.floor(secondTry.tokensRemaining)));
               res.setHeader("RateLimit-Remaining", String(Math.floor(secondTry.tokensRemaining)));
               res.setHeader("X-DailyLimit-Limit", String(dailyLimit));
@@ -699,6 +703,10 @@ export const partnerRuntimeLimiter = async (req, res, next) => {
             ]);
 
             res.setHeader("Retry-After", String(retryAfterSeconds));
+            res.setHeader("X-RateLimit-Limit", String(limit));
+            res.setHeader("RateLimit-Limit", `${limit};w=60`);
+            res.setHeader("X-RateLimit-Reset", String(retryAfterSeconds));
+            res.setHeader("RateLimit-Reset", String(retryAfterSeconds));
             res.setHeader("X-RateLimit-Remaining", String(Math.floor(tokenResult.tokensRemaining)));
             res.setHeader("RateLimit-Remaining", String(Math.floor(tokenResult.tokensRemaining)));
             res.setHeader("X-DailyLimit-Limit", String(dailyLimit));
@@ -883,6 +891,10 @@ export const partnerRuntimeLimiter = async (req, res, next) => {
         if (!retry.allowed) {
           const retryAfterSeconds = Math.max(1, Math.ceil(retry.waitMs / 1000));
           res.setHeader("Retry-After", String(retryAfterSeconds));
+          res.setHeader("X-RateLimit-Limit", String(limit));
+          res.setHeader("RateLimit-Limit", `${limit};w=60`);
+          res.setHeader("X-RateLimit-Reset", String(retryAfterSeconds));
+          res.setHeader("RateLimit-Reset", String(retryAfterSeconds));
           res.setHeader("X-RateLimit-Remaining", String(Math.floor(retry.tokensRemaining)));
           res.setHeader("RateLimit-Remaining", String(Math.floor(retry.tokensRemaining)));
           res.setHeader("X-DailyLimit-Limit", String(dailyLimit));
@@ -912,6 +924,10 @@ export const partnerRuntimeLimiter = async (req, res, next) => {
       } else {
         const retryAfterSeconds = Math.max(1, Math.ceil(waitMs / 1000));
         res.setHeader("Retry-After", String(retryAfterSeconds));
+        res.setHeader("X-RateLimit-Limit", String(limit));
+        res.setHeader("RateLimit-Limit", `${limit};w=60`);
+        res.setHeader("X-RateLimit-Reset", String(retryAfterSeconds));
+        res.setHeader("RateLimit-Reset", String(retryAfterSeconds));
         res.setHeader("X-RateLimit-Remaining", String(Math.floor(bucket.tokensRemaining)));
         res.setHeader("RateLimit-Remaining", String(Math.floor(bucket.tokensRemaining)));
         res.setHeader("X-DailyLimit-Limit", String(dailyLimit));
