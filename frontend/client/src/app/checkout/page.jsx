@@ -201,6 +201,31 @@ const Checkout = () => {
               Number(product?.reserved_quantity ?? 0),
             0,
           );
+
+    const rawVariantId =
+      item?.variant?._id ||
+      item?.variantId ||
+      item?.variant ||
+      product?.variantId ||
+      product?.selectedVariant?._id ||
+      item?.selectedVariant?._id ||
+      null;
+
+    const variantId = (() => {
+      if (rawVariantId === undefined || rawVariantId === null) return null;
+      const normalized = String(rawVariantId).trim();
+      if (!normalized || normalized === "undefined" || normalized === "null") {
+        return null;
+      }
+      return normalized;
+    })();
+
+    const variantName = String(
+      item?.variantName ||
+        item?.selectedVariant?.name ||
+        product?.selectedVariant?.name ||
+        "",
+    ).trim();
     return {
       id: product?._id || product?.id || item._id || item.id,
       name: product?.name || item.name || item.title || "Product",
@@ -214,6 +239,8 @@ const Checkout = () => {
       quantity: item.quantity || 1,
       demandStatus: product?.demandStatus || item.demandStatus || "NORMAL",
       availableQuantity,
+      variantId,
+      variantName,
       itemType: "product",
     };
   };
@@ -1049,6 +1076,8 @@ const Checkout = () => {
         return {
           productId: data.id,
           productTitle: data.name,
+          variantId: data.variantId || null,
+          variantName: data.variantName || "",
           quantity: data.quantity,
           price: data.price,
           image: data.image,
@@ -2078,7 +2107,7 @@ const Checkout = () => {
                     const data = getItemData(item);
                     return (
                       <div
-                        key={data.id || index}
+                        key={`${data.itemType}::${data.id || index}::${String(data?.variantId || "")}::${index}`}
                         className="flex gap-4 p-4 rounded-3xl bg-white border border-gray-50 items-center"
                       >
                         <div className="w-20 h-20 rounded-2xl bg-gray-50 flex items-center justify-center p-2 shrink-0">
@@ -2092,6 +2121,12 @@ const Checkout = () => {
                           <h3 className="font-bold text-gray-900 truncate">
                             {data.name}
                           </h3>
+                          {data.itemType === "product" &&
+                            String(data?.variantName || "").trim() && (
+                              <p className="text-xs text-gray-500 mt-1">
+                                {String(data.variantName).trim()}
+                              </p>
+                            )}
                           {data.demandStatus === "HIGH" && (
                             <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full mt-1">
                               <HiOutlineFire /> High Demand

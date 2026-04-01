@@ -843,6 +843,16 @@ const OrderDetailsPage = () => {
   const orderTotals = calculateOrderTotals(
     buildSavedOrderCalculationInput(order, { payableShipping: 0 }),
   );
+  const orderCombos = Array.isArray(order?.combos) ? order.combos : [];
+  const orderProducts = Array.isArray(order?.products) ? order.products : [];
+  const hasOrderCombos = orderCombos.length > 0;
+  const standaloneProducts = orderProducts.filter(
+    (item) => !String(item?.comboId || "").trim(),
+  );
+  const displayedProducts = hasOrderCombos ? standaloneProducts : orderProducts;
+  const displayItemCount = hasOrderCombos
+    ? standaloneProducts.length + orderCombos.length
+    : orderProducts.length;
   const normalizedOrderStatus = normalizeStatus(order?.order_status);
   const hasDeliveredTimelineStatus = Array.isArray(order?.statusTimeline)
     ? order.statusTimeline.some((entry) => {
@@ -893,6 +903,48 @@ const OrderDetailsPage = () => {
       productTitle: product?.productTitle || "Product",
     });
     setReviewForm({ rating: 5, comment: "" });
+  };
+
+  const renderReviewCta = (item) => {
+    const productId = getItemProductId(item);
+    const existingReview = productId ? getReviewByProductId(productId) : null;
+
+    if (existingReview) {
+      return (
+        <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
+          <p className="text-xs font-semibold text-emerald-700">
+            Your Review • {Number(existingReview.rating || 0).toFixed(1)}★
+          </p>
+          <p className="text-xs text-emerald-800 mt-1 break-words">
+            {existingReview.comment}
+          </p>
+        </div>
+      );
+    }
+
+    if (!isReviewEligibleOrder || !productId) return null;
+
+    return (
+      <Button
+        onClick={() => openReviewDialog(item)}
+        size="small"
+        variant="outlined"
+        sx={{
+          mt: 1.5,
+          borderColor: "#ea580c",
+          color: "#ea580c",
+          textTransform: "none",
+          fontWeight: 600,
+          borderRadius: "999px",
+          "&:hover": {
+            borderColor: "#c2410c",
+            backgroundColor: "#fff7ed",
+          },
+        }}
+      >
+        Write Review
+      </Button>
+    );
   };
 
   const closeReviewDialog = (force = false) => {
@@ -1188,12 +1240,73 @@ const OrderDetailsPage = () => {
           <div className="bg-white rounded-xl shadow-sm p-5 md:p-6 mb-6">
             <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
               <FiPackage className="text-orange-500" />
-              Items ({order.products?.length || 0})
+              Items ({displayItemCount})
             </h2>
             <div className="space-y-4">
-              {order.products?.map((item, index) => (
+              {orderCombos.map((combo, index) => {
+                const quantity = Math.max(Number(combo?.quantity || 1), 1);
+                const unitPrice = Math.max(Number(combo?.comboPrice || 0), 0);
+                const lineTotal = unitPrice * quantity;
+                const savingsPerCombo = Math.max(Number(combo?.savings || 0), 0);
+                const savingsTotal = savingsPerCombo * quantity;
+                const comboItems = Array.isArray(combo?.items) ? combo.items : [];
+                const comboTitle = combo?.comboName || "Combo Bundle";
+                const comboImage =
+                  combo?.thumbnail || combo?.image || "/placeholder.png";
+
+                const includesPreview = comboItems
+                  .slice(0, 2)
+                  .map((entry) =>
+                    [
+                      String(entry?.productTitle || "").trim(),
+                      String(entry?.variantName || "").trim(),
+                    ]
+                      .filter(Boolean)
+                      .join(" • "),
+                  )
+                  .filter(Boolean)
+                  .join(", ");
+                const remainingCount = Math.max(comboItems.length - 2, 0);
+
+                return (
+                  <div
+                    key={`combo-${combo?.comboId || index}`}
+                    className="flex items-center gap-4 pb-4 border-b border-gray-100 last:border-0 last:pb-0"
+                  >
+                    <img
+                      src={comboImage}
+                      alt={comboTitle}
+                      className="w-20 h-20 object-cover rounded-lg bg-gray-100"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-medium text-gray-800 truncate">
+                        {comboTitle}
+                      </h3>
+                      {comboItems.length > 0 && (
+                        <p className="text-gray-500 text-xs mt-1 truncate">
+                          Includes: {includesPreview}
+                          {remainingCount > 0 ? ` +${remainingCount} more` : ""}
+                        </p>
+                      )}
+                      <p className="text-gray-500 text-sm">
+                        Qty: {quantity} × ₹{unitPrice.toFixed(2)}
+                      </p>
+                      {savingsTotal > 0 && (
+                        <p className="text-emerald-700 text-xs mt-1 font-semibold">
+                          You save ₹{savingsTotal.toFixed(2)}
+                        </p>
+                      )}
+                    </div>
+                    <span className="font-semibold text-gray-800">
+                      ₹{lineTotal.toFixed(2)}
+                    </span>
+                  </div>
+                );
+              })}
+
+              {displayedProducts.map((item, index) => (
                 <div
-                  key={item.productId || index}
+                  key={`${getItemProductId(item)}::${String(item?.variantId || "")}::${String(item?.comboId || "")}::${index}`}
                   className="flex items-center gap-4 pb-4 border-b border-gray-100 last:border-0 last:pb-0"
                 >
                   <img
@@ -1205,53 +1318,15 @@ const OrderDetailsPage = () => {
                     <h3 className="font-medium text-gray-800 truncate">
                       {item.productTitle}
                     </h3>
+                    {String(item?.variantName || "").trim() && (
+                      <p className="text-gray-500 text-xs mt-1">
+                        {String(item.variantName).trim()}
+                      </p>
+                    )}
                     <p className="text-gray-500 text-sm">
                       Qty: {item.quantity} × ₹{item.price?.toFixed(2)}
                     </p>
-                    {(() => {
-                      const productId = getItemProductId(item);
-                      const existingReview = productId
-                        ? getReviewByProductId(productId)
-                        : null;
-
-                      if (existingReview) {
-                        return (
-                          <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
-                            <p className="text-xs font-semibold text-emerald-700">
-                              Your Review •{" "}
-                              {Number(existingReview.rating || 0).toFixed(1)}★
-                            </p>
-                            <p className="text-xs text-emerald-800 mt-1 break-words">
-                              {existingReview.comment}
-                            </p>
-                          </div>
-                        );
-                      }
-
-                      if (!isReviewEligibleOrder || !productId) return null;
-
-                      return (
-                        <Button
-                          onClick={() => openReviewDialog(item)}
-                          size="small"
-                          variant="outlined"
-                          sx={{
-                            mt: 1.5,
-                            borderColor: "#ea580c",
-                            color: "#ea580c",
-                            textTransform: "none",
-                            fontWeight: 600,
-                            borderRadius: "999px",
-                            "&:hover": {
-                              borderColor: "#c2410c",
-                              backgroundColor: "#fff7ed",
-                            },
-                          }}
-                        >
-                          Write Review
-                        </Button>
-                      );
-                    })()}
+                    {renderReviewCta(item)}
                   </div>
                   <span className="font-semibold text-gray-800">
                     ₹

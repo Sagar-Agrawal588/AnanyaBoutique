@@ -2588,29 +2588,80 @@ const normalizeOrderProducts = ({ products, dbProductMap }) => {
     }
 
     const quantity = Math.max(Number(item.quantity || 1), 1);
-    const price = round2(Number(dbProduct.price || 0));
-    const subTotal = round2(price * quantity);
-    const variantId = item.variantId || item.variant || null;
-    const variantName = item.variantName || item.variantTitle || "";
+
+    const rawVariantId = item.variantId ?? item.variant ?? null;
+    const rawVariantName = item.variantName ?? item.variantTitle ?? "";
+    const normalizedVariantId = (() => {
+      if (rawVariantId === undefined || rawVariantId === null) return null;
+      const normalized = String(rawVariantId).trim();
+      if (!normalized || normalized === "undefined" || normalized === "null") {
+        return null;
+      }
+      return normalized;
+    })();
+    const normalizedVariantName = String(rawVariantName || "").trim();
+
     const variants = Array.isArray(dbProduct?.variants)
       ? dbProduct.variants
       : [];
-    const selectedVariant =
-      variants.find(
-        (variant) => String(variant?._id || "") === String(variantId || ""),
-      ) ||
-      variants.find(
-        (variant) =>
-          String(variant?.name || "")
-            .trim()
-            .toLowerCase() ===
-          String(variantName || "")
-            .trim()
-            .toLowerCase(),
-      ) ||
-      variants.find((variant) => variant?.isDefault) ||
-      variants[0] ||
-      null;
+
+    let selectedVariant = null;
+    if (variants.length > 0) {
+      if (normalizedVariantId) {
+        selectedVariant =
+          variants.find(
+            (variant) =>
+              String(variant?._id || "") === String(normalizedVariantId),
+          ) || null;
+      }
+
+      if (!selectedVariant && normalizedVariantName) {
+        const needle = normalizedVariantName.toLowerCase();
+        selectedVariant =
+          variants.find(
+            (variant) =>
+              String(variant?.name || "").trim().toLowerCase() === needle,
+          ) || null;
+      }
+
+      if (
+        !selectedVariant &&
+        (normalizedVariantId || normalizedVariantName) &&
+        variants.length > 0
+      ) {
+        throw new AppError("INVALID_INPUT", {
+          field: normalizedVariantId ? "variantId" : "variantName",
+          value: normalizedVariantId || normalizedVariantName,
+          productId,
+        });
+      }
+
+      if (!selectedVariant) {
+        selectedVariant =
+          variants.find((variant) => variant?.isDefault) || variants[0] || null;
+      }
+    }
+
+    const resolvedVariantId = selectedVariant?._id
+      ? String(selectedVariant._id)
+      : normalizedVariantId
+        ? String(normalizedVariantId)
+        : null;
+    const resolvedVariantName = String(
+      selectedVariant?.name || normalizedVariantName || "",
+    ).trim();
+
+    const resolvedPrice = (() => {
+      const candidate = selectedVariant?.price;
+      if (candidate !== undefined && candidate !== null && candidate !== "") {
+        const parsed = Number(candidate);
+        if (Number.isFinite(parsed)) {
+          return round2(parsed);
+        }
+      }
+      return round2(Number(dbProduct.price || 0));
+    })();
+    const subTotal = round2(resolvedPrice * quantity);
 
     const resolvedSku = String(
       selectedVariant?.sku || dbProduct?.sku || item?.sku || "",
@@ -2624,13 +2675,18 @@ const normalizeOrderProducts = ({ products, dbProductMap }) => {
     return {
       productId,
       productTitle: item.productTitle || dbProduct.name || "Product",
-      variantId: variantId ? String(variantId) : null,
-      variantName: variantName ? String(variantName) : "",
+      variantId: resolvedVariantId,
+      variantName: resolvedVariantName,
       sku: resolvedSku,
       hsnCode: resolvedHsn,
       quantity,
-      price,
-      image: item.image || dbProduct.images?.[0] || dbProduct.thumbnail || "",
+      price: resolvedPrice,
+      image:
+        item.image ||
+        selectedVariant?.image ||
+        dbProduct.images?.[0] ||
+        dbProduct.thumbnail ||
+        "",
       subTotal,
     };
   });

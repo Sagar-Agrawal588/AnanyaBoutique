@@ -1362,4 +1362,8 @@ export const cleanupRateLimitMap = () => {
 };
 
 // Cleanup every 10 minutes
-setInterval(cleanupRateLimitMap, 10 * 60 * 1000);
+const rateLimitCleanupInterval = setInterval(
+  cleanupRateLimitMap,
+  10 * 60 * 1000,
+);
+rateLimitCleanupInterval.unref?.();
