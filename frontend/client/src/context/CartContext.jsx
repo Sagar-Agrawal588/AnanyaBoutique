@@ -127,6 +127,22 @@ const resolveComboPrice = (value) =>
       0,
   );
 
+const resolveProductId = (value) => {
+  if (!value) return "";
+
+  const candidate =
+    value.parentProductId ||
+    value.productId ||
+    value.product?._id ||
+    value.product?.id ||
+    value.product ||
+    value._id ||
+    value.id ||
+    "";
+
+  return String(candidate || "").trim();
+};
+
 const buildComboCartPayload = (combo, quantity = 1) => {
   const comboId = resolveComboId(combo);
   const name = resolveComboLabel(combo) || "Combo Bundle";
@@ -345,14 +361,7 @@ export const CartProvider = ({ children }) => {
         toast.error("Combo is unavailable right now.");
         return { success: false, message: "Combo unavailable" };
       }
-
-      if (
-        isComboRequest &&
-        (!comboPayload?.items || comboPayload.items.length === 0)
-      ) {
-        toast.error("Combo items are unavailable right now.");
-        return { success: false, message: "Combo unavailable" };
-      }
+      const resolvedProductId = !isComboRequest ? resolveProductId(product) : "";
 
       const headers = {
         "Content-Type": "application/json",
@@ -373,7 +382,7 @@ export const CartProvider = ({ children }) => {
           isComboRequest
             ? comboPayload
             : {
-                productId: product._id || product.id,
+                productId: resolvedProductId,
                 quantity,
                 price: product.price,
                 originalPrice: product.originalPrice || product.oldPrice,
@@ -412,8 +421,9 @@ export const CartProvider = ({ children }) => {
             quantity: Number(quantity || 1),
           });
         } else {
+          const trackedProductId = resolveProductId(product);
           trackEvent("add_to_cart", {
-            productId: String(product._id || product.id || ""),
+            productId: String(trackedProductId || ""),
             quantity: Number(quantity || 1),
             price: Number(product.price || 0),
             variantId: String(
@@ -455,8 +465,9 @@ export const CartProvider = ({ children }) => {
         }
 
         addToCartLocal(product, quantity);
+        const trackedProductId = resolveProductId(product);
         trackEvent("add_to_cart", {
-          productId: String(product._id || product.id || ""),
+          productId: String(trackedProductId || ""),
           quantity: Number(quantity || 1),
           price: Number(product.price || 0),
           variantId: String(
@@ -476,8 +487,9 @@ export const CartProvider = ({ children }) => {
         return { success: false, message: "Combo add failed" };
       }
       addToCartLocal(product, quantity);
+      const trackedProductId = resolveProductId(product);
       trackEvent("add_to_cart", {
-        productId: String(product._id || product.id || ""),
+        productId: String(trackedProductId || ""),
         quantity: Number(quantity || 1),
         price: Number(product.price || 0),
         variantId: String(
@@ -521,15 +533,14 @@ export const CartProvider = ({ children }) => {
   const addToCartLocal = (product, quantity = 1) => {
     // Check stock if available in product object
     const stock = product.stock !== undefined ? product.stock : Infinity;
+    const resolvedProductId = resolveProductId(product);
 
     // If we're adding NEW item, check if quantum <= stock
     // If we're updating existing, check if (existing + quantity) <= stock
 
     const existingIndex = cartItems.findIndex((item) => {
-      const itemId =
-        item.product?._id || item.product?.id || item.product || item.id;
-      const productId = product._id || product.id;
-      return String(itemId) === String(productId);
+      const itemId = resolveProductId(item);
+      return String(itemId) === String(resolvedProductId);
     });
 
     let newItems;
@@ -552,7 +563,8 @@ export const CartProvider = ({ children }) => {
           // Standardize structure
           product: product, // Store full object if possible or ID.
           productData: product,
-          _id: product._id || product.id,
+          _id: resolvedProductId,
+          parentProductId: resolvedProductId,
           quantity,
           price: product.price,
           originalPrice: product.originalPrice || product.oldPrice,
@@ -663,9 +675,7 @@ export const CartProvider = ({ children }) => {
   const updateQuantityLocal = (productId, quantity, variantId = null) => {
     setCartItems((prev) => {
       const newItems = prev.map((item) =>
-        String(
-          item.product?._id || item.product?.id || item.product || item.id,
-        ) === String(productId) &&
+        String(resolveProductId(item)) === String(productId) &&
         String(resolveVariantId(item) || "") === String(variantId || "")
           ? { ...item, quantity }
           : item,
@@ -687,12 +697,7 @@ export const CartProvider = ({ children }) => {
         resolveVariantId(
           cartItems.find(
             (item) =>
-              String(
-                item.product?._id ||
-                  item.product?.id ||
-                  item.product ||
-                  item.id,
-              ) === String(productId),
+              String(resolveProductId(item)) === String(productId),
           ),
         ))
       : null;
@@ -795,7 +800,7 @@ export const CartProvider = ({ children }) => {
         }
 
         const itemProductId = String(
-          item.product?._id || item.product?.id || item.product || item.id,
+          resolveProductId(item),
         );
         const itemVariantId = resolveVariantId(item);
         const isSameProduct = itemProductId === String(productId);
@@ -846,24 +851,22 @@ export const CartProvider = ({ children }) => {
   };
 
   // Check if product is in cart
-  const isInCart = (productId) => {
+  const isInCart = (productId, variantId = null) => {
     return cartItems.some(
       (item) =>
         !isComboCartItem(item) &&
-        String(
-          item.product?._id || item.product?.id || item.product || item.id,
-        ) === String(productId),
+        String(resolveProductId(item)) === String(productId) &&
+        String(resolveVariantId(item) || "") === String(variantId || ""),
     );
   };
 
   // Get item quantity in cart
-  const getItemQuantity = (productId) => {
+  const getItemQuantity = (productId, variantId = null) => {
     const item = cartItems.find(
       (item) =>
         !isComboCartItem(item) &&
-        String(
-          item.product?._id || item.product?.id || item.product || item.id,
-        ) === String(productId),
+        String(resolveProductId(item)) === String(productId) &&
+        String(resolveVariantId(item) || "") === String(variantId || ""),
     );
     return item?.quantity || 0;
   };

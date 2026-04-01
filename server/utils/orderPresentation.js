@@ -44,9 +44,22 @@ const deriveSubtotalFromProducts = (order) => {
 };
 
 export const getOrderDisplayId = (orderOrId) => {
+  if (orderOrId && typeof orderOrId === "object") {
+    const explicitDisplayId = String(
+      orderOrId.displayOrderId ||
+        orderOrId.orderNumber ||
+        orderOrId.order_id ||
+        orderOrId.orderId ||
+        "",
+    ).trim();
+    if (explicitDisplayId) {
+      return explicitDisplayId.toUpperCase();
+    }
+  }
+
   const orderId = extractOrderId(orderOrId);
   if (!orderId) return "";
-  return String(orderId).slice(0, 8).toUpperCase();
+  return String(orderId).slice(-8).toUpperCase();
 };
 
 export const resolveOrderDisplayTotal = (order = {}) => {

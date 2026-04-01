@@ -3,6 +3,7 @@ import { checkExclusiveAccess } from "../middlewares/membershipGuard.js";
 import CategoryModel from "../models/category.model.js";
 import ComboModel from "../models/combo.model.js";
 import ProductModel from "../models/product.model.js";
+import { attachComboAvailability } from "../services/combos/combo.service.js";
 import {
   getCartUpsellProductSuggestion,
   getFrequentlyBoughtTogether,
@@ -492,8 +493,9 @@ export const getProducts = async (req, res) => {
         const combosRaw = await ComboModel.find(comboFilter)
           .sort({ priority: -1, totalSavings: -1, createdAt: -1 })
           .lean();
+        const combosWithAvailability = await attachComboAvailability(combosRaw);
 
-        comboCards = combosRaw.map((combo) => {
+        comboCards = combosWithAvailability.map((combo) => {
           const comboPrice = Number(
             combo?.price ?? combo?.comboPrice ?? combo?.finalPrice ?? 0,
           );
@@ -524,6 +526,17 @@ export const getProducts = async (req, res) => {
             discount: comboDiscount,
             images: [resolveComboCardImage(combo)].filter(Boolean),
             image: resolveComboCardImage(combo),
+            comboType: String(combo?.comboType || "").trim(),
+            comboThumbnail: String(
+              combo?.comboThumbnail || combo?.thumbnail || "",
+            ).trim(),
+            thumbnail: String(
+              combo?.thumbnail || combo?.comboThumbnail || "",
+            ).trim(),
+            comboImages: Array.isArray(combo?.comboImages)
+              ? combo.comboImages
+              : [],
+            items: Array.isArray(combo?.items) ? combo.items : [],
             rating: Number(combo?.adminStarRating ?? combo?.rating ?? 0),
             reviewCount: Number(combo?.reviewCount || 0),
             availableStock: Number(

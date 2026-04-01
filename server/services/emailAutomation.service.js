@@ -98,7 +98,7 @@ const resolveDisplayOrderNumber = (order) => {
   const fromOrder = String(order?.orderNumber || order?.displayOrderId || "").trim();
   if (fromOrder) return fromOrder;
   const id = String(order?._id || "").trim();
-  return id ? `BOG-${id.slice(-8).toUpperCase()}` : "N/A";
+  return id ? id.slice(-8).toUpperCase() : "N/A";
 };
 
 const resolveOrderItemsText = (order) => {

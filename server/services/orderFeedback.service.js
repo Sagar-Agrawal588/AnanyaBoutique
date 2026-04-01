@@ -51,7 +51,7 @@ const resolveDisplayOrderId = (order) => {
   const rawDisplay = String(order?.displayOrderId || "").trim();
   if (rawDisplay) return rawDisplay;
   const fallback = String(order?._id || "").trim().slice(-8).toUpperCase();
-  return fallback ? `BOG-${fallback}` : "N/A";
+  return fallback || "N/A";
 };
 
 const resolveDeliveredAt = (order) => {

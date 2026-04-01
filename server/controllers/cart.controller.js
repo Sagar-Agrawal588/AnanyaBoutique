@@ -57,6 +57,46 @@ const normalizeVariantId = (variantId) => {
   return String(variantId).trim();
 };
 
+const resolveRequestedProductIdentity = (productId, variantId = null) => {
+  const rawProductId = String(productId || "").trim();
+  const normalizedVariantId = normalizeVariantId(variantId);
+
+  if (!rawProductId) {
+    return {
+      productId: "",
+      variantId: normalizedVariantId,
+      fromCompositeId: false,
+    };
+  }
+
+  if (isValidObjectId(rawProductId)) {
+    return {
+      productId: rawProductId,
+      variantId: normalizedVariantId,
+      fromCompositeId: false,
+    };
+  }
+
+  const parts = rawProductId.split("-").map((part) => String(part || "").trim());
+  const parentProductId = parts[0] || "";
+  const embeddedVariantId = parts[1] || "";
+
+  if (!isValidObjectId(parentProductId)) {
+    return {
+      productId: rawProductId,
+      variantId: normalizedVariantId,
+      fromCompositeId: false,
+    };
+  }
+
+  return {
+    productId: parentProductId,
+    variantId:
+      normalizedVariantId || (isValidObjectId(embeddedVariantId) ? embeddedVariantId : null),
+    fromCompositeId: true,
+  };
+};
+
 const isSameVariant = (itemVariant, targetVariant) =>
   String(itemVariant || "") === String(targetVariant || "");
 
@@ -256,8 +296,12 @@ export const addToCart = async (req, res) => {
   try {
     const { userId, sessionId } = getActorIdentifiers(req);
     const itemType = resolveItemTypeFromRequest(req);
-    const productId = String(req.body?.productId || "").trim();
-    const variantId = normalizeVariantId(req.body?.variantId);
+    const productIdentity = resolveRequestedProductIdentity(
+      req.body?.productId,
+      req.body?.variantId,
+    );
+    const productId = productIdentity.productId;
+    const variantId = productIdentity.variantId;
     const variantName = String(req.body?.variantName || "")
       .trim()
       .slice(0, 120);

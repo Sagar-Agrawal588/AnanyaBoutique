@@ -47,14 +47,17 @@ const ProductItem = (props) => {
   const context = useContext(MyContext);
   const flavor = context?.flavor || FLAVORS.creamy;
 
-  const productId = id || _id || product?._id || product?.id;
   const resolvedItemType = String(
     itemType || product?.itemType || "product",
   ).toLowerCase();
   const isComboItem = resolvedItemType === "combo";
+  const productCardId = isComboItem
+    ? id || _id || product?.comboId || product?._id || product?.id
+    : product?.parentProductId || id || _id || product?._id || product?.id;
+  const productVariantId = product?.variantId || null;
   const alreadyInCart = isComboItem
-    ? isComboInCart(productId)
-    : isInCart(productId);
+    ? isComboInCart(productCardId)
+    : isInCart(productCardId, productVariantId);
 
   const productData = product || {
     _id: id || _id || product?.id || 1,
@@ -110,8 +113,8 @@ const ProductItem = (props) => {
   const wishlistVariantId = defaultVariant?._id || null;
   const wishlistItemType = isComboItem ? "combo" : "product";
   const isWishlisted = isInWishlist(
-    productId,
-    wishlistVariantId,
+    productCardId,
+    productVariantId || wishlistVariantId,
     wishlistItemType,
   );
 
@@ -120,7 +123,7 @@ const ProductItem = (props) => {
     e.stopPropagation();
     await toggleWishlist(productData, {
       itemType: wishlistItemType,
-      variantId: wishlistVariantId,
+      variantId: productVariantId || wishlistVariantId,
       variantName: defaultVariant?.name || "",
       quantity: 1,
     });
@@ -135,9 +138,9 @@ const ProductItem = (props) => {
       setIsAddingToCart(true);
       try {
         if (isComboItem) {
-          await removeComboFromCart(productId);
+          await removeComboFromCart(productCardId);
         } else {
-          await removeFromCart(productId);
+          await removeFromCart(productCardId, productVariantId);
         }
       } catch (error) {
         console.error(error);
@@ -153,6 +156,7 @@ const ProductItem = (props) => {
           const cartPayload = defaultVariant
             ? {
                 ...productData,
+                parentProductId: productCardId,
                 price: defaultVariant.price,
                 originalPrice:
                   defaultVariant.originalPrice || productData.originalPrice,
@@ -166,7 +170,10 @@ const ProductItem = (props) => {
                 },
                 variantId: defaultVariant._id,
               }
-            : productData;
+            : {
+                ...productData,
+                parentProductId: productCardId,
+              };
           await addToCart(cartPayload, 1);
         }
       } catch (error) {
@@ -193,7 +200,7 @@ const ProductItem = (props) => {
 
   return (
     <Link
-      href={isComboItem ? `/combo/${productId}` : `/product/${productId}`}
+      href={isComboItem ? `/combo/${productCardId}` : `/product/${productCardId}`}
       className="group relative flex h-full w-full flex-col rounded-3xl bg-white p-3 transition-all hover:shadow-xl hover:-translate-y-1 border border-gray-100"
     >
       {/* Image Container */}
@@ -223,7 +230,7 @@ const ProductItem = (props) => {
           className="absolute right-2 top-12 z-10"
         >
           <ShareButton
-            productId={productId}
+            productId={productCardId}
             productName={productData.name}
             variant="icon"
             iconSizeClass="h-8 w-8"

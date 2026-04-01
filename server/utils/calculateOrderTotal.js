@@ -19,7 +19,7 @@ const resolveOrderDisplayId = (order = {}) => {
 
   const mongoId = String(order?._id || "").trim();
   if (!mongoId) return "N/A";
-  return `BOG-${mongoId.slice(-8).toUpperCase()}`;
+  return mongoId.slice(-8).toUpperCase();
 };
 
 const toCanonicalShipmentStatus = (order = {}) => {
