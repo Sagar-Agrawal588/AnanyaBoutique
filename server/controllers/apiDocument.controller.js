@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import ApiDocument from "../models/apiDocument.model.js";
+import { UPLOAD_ROOT } from "../middlewares/upload.js";
 
 const toSlug = (value = "") =>
   String(value || "")
@@ -191,7 +192,7 @@ export const deleteApiDocument = async (req, res) => {
       });
     }
 
-    const uploadRoot = path.resolve(process.cwd(), "uploads", "api-docs");
+    const uploadRoot = path.resolve(UPLOAD_ROOT, "api-docs");
     const filePath = path.resolve(uploadRoot, String(doc.storageFileName || ""));
 
     try {
