@@ -1,10 +1,6 @@
 import { v4 as uuidv4 } from "uuid";
-import {
-  DEFAULT_ANALYTICS_CONSENT_COOKIE,
-} from "../services/analytics/constants.js";
-import {
-  publishTrackingBatchAsync,
-} from "../services/analytics/eventPublisher.service.js";
+import { DEFAULT_ANALYTICS_CONSENT_COOKIE } from "../services/analytics/constants.js";
+import { publishTrackingBatchAsync } from "../services/analytics/eventPublisher.service.js";
 import {
   isTrackingSuppressed,
   normalizeTrackingBatchPayload,
@@ -25,7 +21,9 @@ const normalizeConsent = (value) => {
 };
 
 const resolveRequestId = (req) =>
-  String(req.headers["x-request-id"] || req.headers["x-correlation-id"] || uuidv4())
+  String(
+    req.headers["x-request-id"] || req.headers["x-correlation-id"] || uuidv4(),
+  )
     .trim()
     .slice(0, 128);
 
@@ -56,10 +54,16 @@ export const trackUserActivity = async (req, res) => {
       userId: req.user || null,
     });
   } catch (error) {
-    return res.status(400).json({
+    const message = String(error?.message || "validation failed");
+    const isRateLimited = message
+      .toLowerCase()
+      .includes("per-second event limit");
+
+    return res.status(isRateLimited ? 429 : 400).json({
       success: false,
       error: true,
-      message: `Invalid tracking payload: ${error?.message || "validation failed"}`,
+      message: `Invalid tracking payload: ${message}`,
+      ...(isRateLimited ? { code: "TRACKING_RATE_LIMITED" } : {}),
     });
   }
 
@@ -87,7 +91,9 @@ export const trackUserActivity = async (req, res) => {
 };
 
 export const updateTrackingConsent = async (req, res) => {
-  const consent = normalizeConsent(req.body?.consent || req.query?.consent || "");
+  const consent = normalizeConsent(
+    req.body?.consent || req.query?.consent || "",
+  );
 
   if (consent === "unknown") {
     return res.status(400).json({
@@ -121,7 +127,9 @@ export const getTrackingSession = async (req, res) => {
     data: {
       sessionId: req.analyticsSessionId || null,
       trackingSuppressed: isTrackingSuppressed(req),
-      consent: normalizeConsent(req.cookies?.[DEFAULT_ANALYTICS_CONSENT_COOKIE] || ""),
+      consent: normalizeConsent(
+        req.cookies?.[DEFAULT_ANALYTICS_CONSENT_COOKIE] || "",
+      ),
     },
   });
 };

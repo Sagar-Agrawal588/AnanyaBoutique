@@ -33,7 +33,9 @@ const newsletterAttachmentUpload = multer({
 
 // Public routes
 router.post("/subscribe", newsletterController.subscribe);
+router.get("/unsubscribe", newsletterController.unsubscribe);
 router.post("/unsubscribe", newsletterController.unsubscribe);
+router.get("/unsubscribe", newsletterController.unsubscribe);
 
 // Admin routes
 router.get("/subscribers", auth, admin, newsletterController.getAllSubscribers);

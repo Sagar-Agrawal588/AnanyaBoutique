@@ -810,6 +810,12 @@ shipment_status: {
       index: true,
     },
 
+    delivery_date: {
+      type: Date,
+      default: null,
+      index: true,
+    },
+
     feedbackEmailSentAt: {
       type: Date,
       default: null,
@@ -820,6 +826,21 @@ shipment_status: {
       default: null,
     },
     feedbackEmailFailureCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    retentionEmailSentAt: {
+      type: Date,
+      default: null,
+      index: true,
+    },
+    retentionEmailLastAttemptAt: {
+      type: Date,
+      default: null,
+    },
+    retentionEmailFailureCount: {
       type: Number,
       default: 0,
       min: 0,
@@ -863,6 +884,13 @@ orderSchema.index({ trackingSessionId: 1, createdAt: -1 }, { sparse: true });
 
 // Normalize legacy payment_status before validation
 orderSchema.pre("validate", async function () {
+  if (this.deliveryDate && !this.delivery_date) {
+    this.delivery_date = this.deliveryDate;
+  }
+  if (this.delivery_date && !this.deliveryDate) {
+    this.deliveryDate = this.delivery_date;
+  }
+
   if (this.payment_status === "confirmed") {
     this.payment_status = "paid";
   }

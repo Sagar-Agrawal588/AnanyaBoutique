@@ -11,6 +11,27 @@ const API_URL = String(API_BASE_URL || "")
   .replace(/\/+$/, "")
   .replace(/\/api$/i, "");
 
+const LOCAL_SETTINGS_API_FALLBACKS = [
+  "http://localhost:8001",
+  "http://localhost:8000",
+];
+
+const sanitizeBaseUrl = (value) =>
+  String(value || "")
+    .trim()
+    .replace(/^['"]|['"]$/g, "")
+    .replace(/\/+$/, "");
+
+const isLocalhostUrl = (value) => {
+  try {
+    const parsed = new URL(String(value || ""));
+    const hostname = String(parsed.hostname || "").toLowerCase();
+    return hostname === "localhost" || hostname === "127.0.0.1";
+  } catch {
+    return false;
+  }
+};
+
 const buildApiUrlCandidates = (path) => {
   const normalizedPath = String(path || "").startsWith("/")
     ? String(path)
@@ -23,6 +44,26 @@ const buildApiUrlCandidates = (path) => {
   if (API_URL) {
     candidates.push(`${API_URL}${apiPath}`);
   }
+
+  if (typeof window !== "undefined") {
+    const hostname = String(window.location.hostname || "").toLowerCase();
+    const isLocalhostHost = hostname === "localhost" || hostname === "127.0.0.1";
+
+    if (isLocalhostHost) {
+      const fallbackBases = LOCAL_SETTINGS_API_FALLBACKS.map(sanitizeBaseUrl).filter(Boolean);
+
+      if (isLocalhostUrl(API_URL)) {
+        candidates.push(
+          ...fallbackBases.filter(
+            (base) => sanitizeBaseUrl(base) !== sanitizeBaseUrl(API_URL),
+          ).map((base) => `${base}${apiPath}`),
+        );
+      } else {
+        candidates.push(...fallbackBases.map((base) => `${base}${apiPath}`));
+      }
+    }
+  }
+
   candidates.push(apiPath);
 
   return [...new Set(candidates)];
@@ -47,10 +88,7 @@ const fetchSettingsPayload = async (url) => {
 
   if (!response.ok) {
     const backendMessage =
-      payload?.message ||
-      payload?.error?.message ||
-      payload?.error ||
-      null;
+      payload?.message || payload?.error?.message || payload?.error || null;
     throw new Error(
       backendMessage || `Failed to fetch settings (${response.status})`,
     );
@@ -92,7 +130,7 @@ const defaultSettings = {
   },
   // Store info
   storeInfo: {
-    name: "BuyOneGram",
+    name: "HealthyOneGram",
     email: "healthyonegram.com",
     phone: "+91 9876541234",
     address: "",
@@ -124,6 +162,14 @@ const defaultSettings = {
   },
   // Maintenance
   maintenanceMode: false,
+  maintenanceSettings: {
+    maintenanceEnabled: false,
+    maintenanceStartTime: null,
+    maintenanceEndTime: null,
+    maintenanceMessage:
+      "We are currently undergoing scheduled maintenance. Please check back soon.",
+    showCountdown: true,
+  },
   // Payment
   paymentGatewayEnabled: true,
   defaultPaymentProvider: "PHONEPE",
@@ -189,7 +235,7 @@ export const SettingsProvider = ({ children }) => {
         throw new Error(data?.message || "Invalid settings response");
       }
     } catch (err) {
-      console.error("Error fetching settings:", err);
+      console.warn("Error fetching settings:", err);
       setError(err.message);
       // Keep using default settings on error
     } finally {
@@ -342,7 +388,11 @@ export const SettingsProvider = ({ children }) => {
     offerDiscountText: settings.offerDiscountText,
     // Other flags
     highTrafficNotice: settings.highTrafficNotice,
-    maintenanceMode: settings.maintenanceMode,
+    maintenanceMode: Boolean(
+      settings?.maintenanceSettings?.maintenanceEnabled ??
+      settings?.maintenanceMode,
+    ),
+    maintenanceSettings: settings.maintenanceSettings,
     paymentGatewayEnabled: settings.paymentGatewayEnabled,
     defaultPaymentProvider: settings.defaultPaymentProvider,
   };

@@ -44,6 +44,26 @@ const isTouchLikePointer = (pointerType) =>
 const hasPointerEvents = () =>
   typeof window !== "undefined" && typeof window.PointerEvent !== "undefined";
 
+const getWheelDeltaY = (event) => {
+  const primaryDelta = Number(event?.deltaY);
+  if (Number.isFinite(primaryDelta) && primaryDelta !== 0) {
+    return primaryDelta;
+  }
+
+  const legacyWheelDelta = Number(event?.nativeEvent?.wheelDelta);
+  if (Number.isFinite(legacyWheelDelta) && legacyWheelDelta !== 0) {
+    // Legacy mouse wheels expose inverted sign via wheelDelta.
+    return -legacyWheelDelta;
+  }
+
+  const legacyDetail = Number(event?.nativeEvent?.detail);
+  if (Number.isFinite(legacyDetail) && legacyDetail !== 0) {
+    return legacyDetail;
+  }
+
+  return 0;
+};
+
 export default function ZoomableImage({
   src,
   alt = "Zoomable product image",
@@ -110,8 +130,17 @@ export default function ZoomableImage({
     if (!image) return;
 
     const current = transformRef.current;
-    const safeScale = clamp(Number(current.scale || minScale), minScale, maxScale);
-    const clamped = clampTranslation(metricsRef.current, safeScale, current.x, current.y);
+    const safeScale = clamp(
+      Number(current.scale || minScale),
+      minScale,
+      maxScale,
+    );
+    const clamped = clampTranslation(
+      metricsRef.current,
+      safeScale,
+      current.x,
+      current.y,
+    );
 
     transformRef.current = {
       scale: safeScale,
@@ -131,7 +160,8 @@ export default function ZoomableImage({
 
   const scheduleApply = useCallback(
     (animate = false) => {
-      animateNextFrameRef.current = animateNextFrameRef.current || Boolean(animate);
+      animateNextFrameRef.current =
+        animateNextFrameRef.current || Boolean(animate);
       if (frameRef.current) return;
       frameRef.current = requestAnimationFrame(applyTransform);
     },
@@ -178,7 +208,11 @@ export default function ZoomableImage({
       if (!metrics || !point) return;
 
       const current = transformRef.current;
-      const nextScale = clamp(Number(targetScale || current.scale), minScale, maxScale);
+      const nextScale = clamp(
+        Number(targetScale || current.scale),
+        minScale,
+        maxScale,
+      );
       if (!Number.isFinite(nextScale)) return;
 
       const centerX = metrics.containerWidth / 2;
@@ -206,17 +240,20 @@ export default function ZoomableImage({
     [maxScale, minScale, scheduleApply],
   );
 
-  const beginPanFromPointer = useCallback((pointer) => {
-    gestureRef.current.mode = "pan";
-    gestureRef.current.pan = {
-      pointerId: pointer.pointerId,
-      startX: pointer.x,
-      startY: pointer.y,
-      startTranslateX: transformRef.current.x,
-      startTranslateY: transformRef.current.y,
-    };
-    syncCursor();
-  }, [syncCursor]);
+  const beginPanFromPointer = useCallback(
+    (pointer) => {
+      gestureRef.current.mode = "pan";
+      gestureRef.current.pan = {
+        pointerId: pointer.pointerId,
+        startX: pointer.x,
+        startY: pointer.y,
+        startTranslateX: transformRef.current.x,
+        startTranslateY: transformRef.current.y,
+      };
+      syncCursor();
+    },
+    [syncCursor],
+  );
 
   const beginPinch = useCallback(() => {
     const entries = Array.from(pointersRef.current.values());
@@ -306,7 +343,8 @@ export default function ZoomableImage({
         const second = entries[1];
         const midpoint = getMidpoint(first, second);
         const distance = Math.max(getDistance(first, second), 1);
-        const distanceRatio = distance / Math.max(Number(pinch.startDistance || 1), 1);
+        const distanceRatio =
+          distance / Math.max(Number(pinch.startDistance || 1), 1);
         const nextScale = clamp(
           Number(pinch.startScale || minScale) * distanceRatio,
           minScale,
@@ -360,7 +398,10 @@ export default function ZoomableImage({
 
       if (remainingEntries.length >= 2) {
         beginPinch();
-      } else if (remainingEntries.length === 1 && transformRef.current.scale > minScale) {
+      } else if (
+        remainingEntries.length === 1 &&
+        transformRef.current.scale > minScale
+      ) {
         beginPanFromPointer(remainingEntries[0]);
       } else {
         gestureRef.current.mode = "idle";
@@ -370,7 +411,10 @@ export default function ZoomableImage({
       }
 
       if (isTouchLikePointer(pointer.pointerType)) {
-        const tapDistance = Math.hypot(pointer.x - pointer.startX, pointer.y - pointer.startY);
+        const tapDistance = Math.hypot(
+          pointer.x - pointer.startX,
+          pointer.y - pointer.startY,
+        );
         const now = Date.now();
         if (tapDistance <= TAP_MOVE_TOLERANCE) {
           const sinceLastTap = now - gestureRef.current.lastTapAt;
@@ -379,7 +423,10 @@ export default function ZoomableImage({
             pointer.y - gestureRef.current.lastTapY,
           );
 
-          if (sinceLastTap <= DOUBLE_TAP_MS && betweenTapDistance <= DOUBLE_TAP_DISTANCE) {
+          if (
+            sinceLastTap <= DOUBLE_TAP_MS &&
+            betweenTapDistance <= DOUBLE_TAP_DISTANCE
+          ) {
             gestureRef.current.lastTapAt = 0;
             resetTransform(true);
             return;
@@ -399,6 +446,9 @@ export default function ZoomableImage({
       if (!src) return;
       event.preventDefault();
 
+      const deltaY = getWheelDeltaY(event);
+      if (!deltaY) return;
+
       const container = containerRef.current;
       if (!container) return;
       const rect = container.getBoundingClientRect();
@@ -408,7 +458,7 @@ export default function ZoomableImage({
         y: event.clientY - rect.top,
       };
 
-      const zoomFactor = event.deltaY < 0 ? 1.12 : 0.88;
+      const zoomFactor = deltaY < 0 ? 1.12 : 0.88;
       setScaleAtPoint(transformRef.current.scale * zoomFactor, pointer, false);
     },
     [setScaleAtPoint, src],

@@ -26,7 +26,9 @@ const resolveAnalyticsMongoUri = () => {
     return analyticsUri;
   }
 
-  const mainUri = normalizeEnvValue(process.env.MONGO_URI || process.env.MONGODB_URI);
+  const mainUri = normalizeEnvValue(
+    process.env.MONGO_URI || process.env.MONGODB_URI,
+  );
   if (!mainUri) {
     throw new Error(
       "Analytics DB URI missing. Set ANALYTICS_MONGO_URI or MONGO_URI/MONGODB_URI.",
@@ -46,7 +48,9 @@ const deriveDbNameFromMongoUri = (uri) => {
       : value.replace(/^mongodb:\/\//i, "http://");
 
     const parsed = new URL(normalized);
-    const dbName = String(parsed.pathname || "").replace(/^\/+/, "").trim();
+    const dbName = String(parsed.pathname || "")
+      .replace(/^\/+/, "")
+      .trim();
     return dbName || "";
   } catch {
     return "";
@@ -60,7 +64,9 @@ const resolveDbName = () => {
   }
 
   const analyticsUri = normalizeEnvValue(process.env.ANALYTICS_MONGO_URI);
-  const mainUri = normalizeEnvValue(process.env.MONGO_URI || process.env.MONGODB_URI);
+  const mainUri = normalizeEnvValue(
+    process.env.MONGO_URI || process.env.MONGODB_URI,
+  );
   const derived = deriveDbNameFromMongoUri(analyticsUri || mainUri);
 
   // Fallback to the primary app database name when analytics DB name is not explicitly set.
@@ -81,14 +87,27 @@ const buildConnectionOptions = () => ({
   minPoolSize: toPositiveInt(process.env.ANALYTICS_DB_MIN_POOL_SIZE, 3),
   serverSelectionTimeoutMS: toPositiveInt(
     process.env.ANALYTICS_DB_SERVER_SELECTION_TIMEOUT_MS,
-    5000,
+    12000,
+  ),
+  retryReads: true,
+  retryWrites: true,
+  readPreference: String(
+    process.env.ANALYTICS_DB_READ_PREFERENCE || "primaryPreferred",
+  ).trim(),
+  maxIdleTimeMS: toPositiveInt(
+    process.env.ANALYTICS_DB_MAX_IDLE_TIME_MS,
+    60000,
   ),
 });
 
 const isAuthorizationError = (error) => {
   const code = Number(error?.code);
   const message = String(error?.message || "").toLowerCase();
-  return code === 13 || message.includes("not authorized") || message.includes("auth");
+  return (
+    code === 13 ||
+    message.includes("not authorized") ||
+    message.includes("auth")
+  );
 };
 
 const ensureConnected = async () => {
@@ -116,13 +135,18 @@ const ensureConnected = async () => {
         }
 
         const retryOptions = { ...options, dbName: derivedDbName };
-        connection = await mongoose.createConnection(uri, retryOptions).asPromise();
+        connection = await mongoose
+          .createConnection(uri, retryOptions)
+          .asPromise();
       }
 
       analyticsConnection = connection;
 
       connection.on("error", (error) => {
-        console.error("[analytics-db] connection error:", error?.message || error);
+        console.error(
+          "[analytics-db] connection error:",
+          error?.message || error,
+        );
       });
 
       return analyticsConnection;
@@ -134,7 +158,10 @@ const ensureConnected = async () => {
   return connectPromise;
 };
 
-const rawEventsTtlDays = toPositiveInt(process.env.ANALYTICS_RAW_EVENTS_TTL_DAYS, 90);
+const rawEventsTtlDays = toPositiveInt(
+  process.env.ANALYTICS_RAW_EVENTS_TTL_DAYS,
+  90,
+);
 
 const collectionIndexes = {
   // Required behavior analytics collections
@@ -198,10 +225,7 @@ const collectionIndexes = {
     [{ userId: 1, timestamp: -1 }],
     [{ sessionId: 1, timestamp: -1 }],
   ],
-  worker_health: [
-    [{ workerId: 1 }, { unique: true }],
-    [{ updatedAt: -1 }],
-  ],
+  worker_health: [[{ workerId: 1 }, { unique: true }], [{ updatedAt: -1 }]],
 
   // Legacy collection compatibility
   user_sessions: [
@@ -215,6 +239,10 @@ const collectionIndexes = {
     [{ userId: 1, timestamp: -1 }],
     [{ sessionId: 1, timestamp: -1 }],
     [{ eventType: 1, timestamp: -1 }],
+    [{ event_name: 1, timestamp: -1 }],
+    [{ target_type: 1, target_id: 1, timestamp: -1 }],
+    [{ session_id: 1, timestamp: -1 }],
+    [{ timestamp: -1 }],
   ],
   product_views: [
     [{ eventId: 1 }, { unique: true }],
@@ -249,7 +277,9 @@ export const ensureAnalyticsIndexes = async () => {
     const connection = await ensureConnected();
     const db = connection.db;
 
-    for (const [collectionName, definitions] of Object.entries(collectionIndexes)) {
+    for (const [collectionName, definitions] of Object.entries(
+      collectionIndexes,
+    )) {
       const collection = db.collection(collectionName);
       for (const [keys, options = {}] of definitions) {
         try {
@@ -274,7 +304,9 @@ export const ensureAnalyticsIndexes = async () => {
           { expiresAt: { $exists: false } },
           {
             $set: {
-              expiresAt: new Date(Date.now() + rawEventsTtlDays * 24 * 60 * 60 * 1000),
+              expiresAt: new Date(
+                Date.now() + rawEventsTtlDays * 24 * 60 * 60 * 1000,
+              ),
             },
           },
         );

@@ -36,7 +36,6 @@ const comboItemSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Product",
       required: true,
-      index: true,
     },
     productTitle: {
       type: String,

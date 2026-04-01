@@ -2,28 +2,28 @@
  * Automated Shipping Service
  * Handles automatic Xpressbees shipment creation after payment confirmation.
  */
-import OrderModel from "../models/order.model.js";
 import { sendEmail } from "../config/emailService.js";
+import OrderModel from "../models/order.model.js";
 import { emitOrderStatusUpdate } from "../realtime/orderEvents.js";
-import { bookShipment, checkServiceability } from "./xpressbees.service.js";
-import { syncOrderToFirestore } from "../utils/orderFirestoreSync.js";
-import {
-  buildShippingLabelData,
-  buildXpressbeesShipmentPayload,
-  generateShippingLabelPdf,
-} from "../utils/shippingLabel.js";
-import {
-  applyOrderStatusTransition,
-  mapExpressbeesToShipmentStatus,
-  ORDER_STATUS,
-} from "../utils/orderStatus.js";
-import { logger } from "../utils/errorHandler.js";
 import {
   buildOrderAddressSnapshot,
   normalizeStructuredAddress,
   serializeAddressDocument,
   snapshotToDisplayAddress,
 } from "../utils/addressUtils.js";
+import { logger } from "../utils/errorHandler.js";
+import { syncOrderToFirestore } from "../utils/orderFirestoreSync.js";
+import {
+  applyOrderStatusTransition,
+  mapExpressbeesToShipmentStatus,
+  ORDER_STATUS,
+} from "../utils/orderStatus.js";
+import {
+  buildShippingLabelData,
+  buildXpressbeesShipmentPayload,
+  generateShippingLabelPdf,
+} from "../utils/shippingLabel.js";
+import { bookShipment, checkServiceability } from "./xpressbees.service.js";
 
 const DEFAULT_PRODUCT_WEIGHT_GRAMS = 500;
 const DEFAULT_PACKAGE_DIMENSION_CM = 10;
@@ -37,7 +37,9 @@ const toSafeNumber = (value, fallback = 0) => {
 };
 
 const normalizeWeightUnit = (unit) => {
-  const normalized = String(unit || "g").trim().toLowerCase();
+  const normalized = String(unit || "g")
+    .trim()
+    .toLowerCase();
   if (!normalized) return "g";
   if (["kg", "kilogram", "kilograms"].includes(normalized)) return "kg";
   if (["g", "gm", "gram", "grams"].includes(normalized)) return "g";
@@ -55,7 +57,9 @@ const convertWeightToGrams = (weight, unit = "g") => {
 };
 
 const parseWeightFromText = (value) => {
-  const text = String(value || "").trim().toLowerCase();
+  const text = String(value || "")
+    .trim()
+    .toLowerCase();
   if (!text) return 0;
 
   const match = text.match(/(\d+(?:\.\d+)?)\s*(kg|g)\b/);
@@ -67,10 +71,7 @@ const parseWeightFromText = (value) => {
 };
 
 const resolveOrderItemWeightGrams = (item) => {
-  const explicitWeight = convertWeightToGrams(
-    item?.weightGrams,
-    "g",
-  );
+  const explicitWeight = convertWeightToGrams(item?.weightGrams, "g");
   if (explicitWeight > 0) return explicitWeight;
 
   const legacyWeight = convertWeightToGrams(item?.weight, item?.unit || "g");
@@ -129,7 +130,10 @@ const normalizePhone = (value) => {
   return digits.slice(-10);
 };
 
-const normalizePincode = (value) => String(value || "").replace(/\D/g, "").slice(0, 6);
+const normalizePincode = (value) =>
+  String(value || "")
+    .replace(/\D/g, "")
+    .slice(0, 6);
 
 const normalizeText = (value, fallback = "") => {
   const normalized = String(value || "").trim();
@@ -246,7 +250,9 @@ const resolveAddress = (order) => {
     delivery?.address_line2 || delivery?.landmark || "",
   );
   const city = normalizeText(delivery?.city || "");
-  const state = normalizeText(delivery?.state || billing?.state || guest?.state || "");
+  const state = normalizeText(
+    delivery?.state || billing?.state || guest?.state || "",
+  );
   const pincode = normalizePincode(
     delivery?.pincode || billing?.pincode || guest?.pincode || "",
   );
@@ -300,14 +306,18 @@ const buildOrderItems = (order) => {
       qty: Math.max(toSafeNumber(item?.quantity, 1), 1),
       price: Math.max(toSafeNumber(item?.price, 0), 0),
       sku: normalizeText(
-        item?.productId || item?.variantId || `SKU-${String(index + 1).padStart(3, "0")}`,
+        item?.productId ||
+          item?.variantId ||
+          `SKU-${String(index + 1).padStart(3, "0")}`,
       ),
     }))
     .filter((item) => item.qty > 0);
 };
 
 const mapCanonicalShipmentStatus = (value) => {
-  const raw = String(value || "").trim().toLowerCase();
+  const raw = String(value || "")
+    .trim()
+    .toLowerCase();
   if (!raw) return "pending";
 
   if (raw.includes("pickup")) return "pickup_scheduled";
@@ -324,7 +334,8 @@ const mapCanonicalShipmentStatus = (value) => {
   if (raw.includes("deliver")) return "delivered";
   if (raw.includes("rto")) return "rto";
   if (raw.includes("cancel")) return "cancelled";
-  if (raw.includes("book") || raw.includes("created")) return "shipment_created";
+  if (raw.includes("book") || raw.includes("created"))
+    return "shipment_created";
 
   const mappedLegacy = mapExpressbeesToShipmentStatus(value);
   if (mappedLegacy === "delivered") return "delivered";
@@ -361,9 +372,43 @@ const buildTrackingUrl = (awb) => {
   const explicit = normalizeText(process.env.XPRESSBEES_TRACKING_BASE_URL, "");
   if (!awb) return null;
   if (!explicit) {
-    return `https://www.xpressbees.com/track/${encodeURIComponent(String(awb))}`;
+    return `https://www.xpressbees.com/shipment/tracking?awbNo=${encodeURIComponent(String(awb))}`;
   }
-  return `${explicit.replace(/\/+$/, "")}/${encodeURIComponent(String(awb))}`;
+
+  const normalizedBase = explicit.replace(/\/+$/, "");
+  try {
+    const parsed = new URL(normalizedBase);
+    parsed.searchParams.delete("awb");
+    parsed.searchParams.set("awbNo", String(awb));
+    return parsed.toString();
+  } catch {
+    if (normalizedBase.includes("${AWB}")) {
+      return normalizedBase.replace("${AWB}", encodeURIComponent(String(awb)));
+    }
+    if (normalizedBase.includes("?")) {
+      return `${normalizedBase}&awbNo=${encodeURIComponent(String(awb))}`;
+    }
+    return `${normalizedBase}?awbNo=${encodeURIComponent(String(awb))}`;
+  }
+};
+
+const normalizeXpressbeesTrackingUrl = (rawUrl, awb) => {
+  const normalizedUrl = normalizeText(rawUrl, "");
+  const normalizedAwb = normalizeText(awb, "");
+  if (!normalizedUrl || !normalizedAwb) return normalizedUrl || null;
+
+  try {
+    const parsed = new URL(normalizedUrl);
+    const host = String(parsed.hostname || "").toLowerCase();
+    if (!host.includes("xpressbees.com")) {
+      return normalizedUrl;
+    }
+    parsed.searchParams.delete("awb");
+    parsed.searchParams.set("awbNo", normalizedAwb);
+    return parsed.toString();
+  } catch {
+    return normalizedUrl;
+  }
 };
 
 const resolveAdminAlertRecipients = () => {
@@ -376,11 +421,19 @@ const resolveAdminAlertRecipients = () => {
   );
   return raw
     .split(",")
-    .map((email) => String(email || "").trim().toLowerCase())
+    .map((email) =>
+      String(email || "")
+        .trim()
+        .toLowerCase(),
+    )
     .filter(Boolean);
 };
 
-const notifyAdminsForShipmentFailure = async ({ order, reason, attemptCount }) => {
+const notifyAdminsForShipmentFailure = async ({
+  order,
+  reason,
+  attemptCount,
+}) => {
   const recipients = resolveAdminAlertRecipients();
   if (recipients.length === 0) {
     return false;
@@ -412,13 +465,27 @@ const notifyAdminsForShipmentFailure = async ({ order, reason, attemptCount }) =
 const parseShipmentResponse = (response) => {
   const data = response?.data || {};
   const awb =
-    data?.awb_number || data?.awb || data?.waybill || data?.tracking_number || null;
+    data?.awb_number ||
+    data?.awb ||
+    data?.waybill ||
+    data?.tracking_number ||
+    null;
   const shipmentId =
-    data?.shipment_id || data?.shipmentId || data?.id || data?.reference_id || null;
+    data?.shipment_id ||
+    data?.shipmentId ||
+    data?.id ||
+    data?.reference_id ||
+    null;
   const manifestId = data?.manifest_id || data?.manifestId || null;
   const trackingUrl =
-    data?.tracking_url || data?.trackingUrl || buildTrackingUrl(awb) || null;
-  const rawStatus = data?.status || data?.status_code || response?.status || "booked";
+    normalizeXpressbeesTrackingUrl(
+      data?.tracking_url || data?.trackingUrl || "",
+      awb,
+    ) ||
+    buildTrackingUrl(awb) ||
+    null;
+  const rawStatus =
+    data?.status || data?.status_code || response?.status || "booked";
   const canonicalStatus = mapCanonicalShipmentStatus(rawStatus);
   const legacyStatus = mapLegacyShipmentStatus(canonicalStatus);
 
@@ -470,7 +537,9 @@ const buildShipmentPayload = (order, prepared) => {
     Number(order?.finalAmount || order?.totalAmt || order?.subtotal || 0),
   );
   const paymentType =
-    String(order?.payment_status || "").toLowerCase() === "paid" ? "prepaid" : "cod";
+    String(order?.payment_status || "").toLowerCase() === "paid"
+      ? "prepaid"
+      : "cod";
   const rawOrderProducts = Array.isArray(order?.products) ? order.products : [];
   const totalWeightGrams = rawOrderProducts.reduce(
     (sum, item) =>
@@ -485,7 +554,9 @@ const buildShipmentPayload = (order, prepared) => {
   const packageWeight = resolvePackageWeightForCarrier(billedWeightGrams);
 
   const resolvedSnapshot =
-    order?.deliveryAddressSnapshot || ensureOrderSnapshotForShipping(order) || {};
+    order?.deliveryAddressSnapshot ||
+    ensureOrderSnapshotForShipping(order) ||
+    {};
   const consignee = buildXpressbeesShipmentPayload(resolvedSnapshot);
   const fallbackAddress = resolveAddress(order);
   if (!consignee.name && fallbackAddress.name) {
@@ -570,7 +641,9 @@ const normalizeServiceabilityOptions = (response) => {
         null;
       return {
         id: id ? String(id).trim() : "",
-        name: normalizeText(entry?.name || entry?.courier_name || entry?.courierName || ""),
+        name: normalizeText(
+          entry?.name || entry?.courier_name || entry?.courierName || "",
+        ),
         totalCharges: toSafeNumber(
           entry?.total_charges ??
             entry?.totalCharges ??
@@ -603,7 +676,10 @@ const selectBestCourierOption = (options, weightGrams) => {
 
   return candidates.reduce((best, current) => {
     if (!best) return current;
-    const bestCharge = toSafeNumber(best.totalCharges, Number.POSITIVE_INFINITY);
+    const bestCharge = toSafeNumber(
+      best.totalCharges,
+      Number.POSITIVE_INFINITY,
+    );
     const currentCharge = toSafeNumber(
       current.totalCharges,
       Number.POSITIVE_INFINITY,
@@ -646,7 +722,10 @@ const resolveCourierFromServiceability = async ({
     order_amount: toSafeNumber(payload?.order_amount, 0),
     weight: Math.max(toSafeNumber(billedWeightGrams, 0), 1),
     length: toSafeNumber(payload?.package_length, DEFAULT_PACKAGE_DIMENSION_CM),
-    breadth: toSafeNumber(payload?.package_breadth, DEFAULT_PACKAGE_DIMENSION_CM),
+    breadth: toSafeNumber(
+      payload?.package_breadth,
+      DEFAULT_PACKAGE_DIMENSION_CM,
+    ),
     height: toSafeNumber(payload?.package_height, DEFAULT_PACKAGE_DIMENSION_CM),
   };
 
@@ -704,9 +783,13 @@ const updateOrderAfterShipmentSuccess = async ({
   order.shipmentFailureCount = 0;
   order.shipmentLastError = "";
   order.shipping_label =
-    responsePayload?.data?.label || responsePayload?.data?.label_url || order.shipping_label;
+    responsePayload?.data?.label ||
+    responsePayload?.data?.label_url ||
+    order.shipping_label;
   order.shipping_manifest =
-    responsePayload?.data?.manifest || responsePayload?.data?.manifest_url || order.shipping_manifest;
+    responsePayload?.data?.manifest ||
+    responsePayload?.data?.manifest_url ||
+    order.shipping_manifest;
   try {
     const localLabel = await generateShippingLabelPdf({
       order,
@@ -728,27 +811,41 @@ const updateOrderAfterShipmentSuccess = async ({
   await order.save();
 
   syncOrderToFirestore(order, "update").catch((err) =>
-    logger.error("autoShipping", "Failed to sync order after shipment booking", {
-      orderId: order._id,
-      error: err.message,
-    }),
+    logger.error(
+      "autoShipping",
+      "Failed to sync order after shipment booking",
+      {
+        orderId: order._id,
+        error: err.message,
+      },
+    ),
   );
   emitOrderStatusUpdate(order, source);
 };
 
-const updateOrderAfterShipmentFailure = async ({ order, reason, source, attemptCount }) => {
+const updateOrderAfterShipmentFailure = async ({
+  order,
+  reason,
+  source,
+  attemptCount,
+}) => {
   order.shipment_status = "failed";
   order.shipmentStatus = "failed";
-  order.shipmentFailureCount = Math.max(Number(order.shipmentFailureCount || 0), 0) + 1;
+  order.shipmentFailureCount =
+    Math.max(Number(order.shipmentFailureCount || 0), 0) + 1;
   order.shipmentLastError = String(reason || "").slice(0, 500);
   order.updatedAt = new Date();
   await order.save();
 
   syncOrderToFirestore(order, "update").catch((err) =>
-    logger.error("autoShipping", "Failed to sync order after shipment failure", {
-      orderId: order._id,
-      error: err.message,
-    }),
+    logger.error(
+      "autoShipping",
+      "Failed to sync order after shipment failure",
+      {
+        orderId: order._id,
+        error: err.message,
+      },
+    ),
   );
   emitOrderStatusUpdate(order, source);
 

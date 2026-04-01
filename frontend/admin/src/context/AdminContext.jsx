@@ -132,9 +132,11 @@ export const AdminProvider = ({ children }) => {
   useEffect(() => {
     const handleTokenRefreshed = (event) => {
       const nextToken = event?.detail;
-      if (nextToken && typeof nextToken === "string") {
+      if (typeof nextToken === "string" && nextToken.trim()) {
         setToken(nextToken);
+        return;
       }
+      setToken(null);
     };
 
     window.addEventListener("adminTokenRefreshed", handleTokenRefreshed);
@@ -142,7 +144,7 @@ export const AdminProvider = ({ children }) => {
       window.removeEventListener("adminTokenRefreshed", handleTokenRefreshed);
   }, []);
 
-    const login = async (email, password) => {
+  const login = async (email, password) => {
     try {
       const response = await postData("/api/admin/login", { email, password });
 
@@ -151,7 +153,11 @@ export const AdminProvider = ({ children }) => {
         const normalizedAdmin = normalizeAdminPayload(data) || data;
 
         // Check if user is an admin
-        if (data.role !== "Admin") {
+        if (
+          String(data?.role || "")
+            .trim()
+            .toLowerCase() !== "admin"
+        ) {
           return {
             error: true,
             message: "Access denied. Admin privileges required.",

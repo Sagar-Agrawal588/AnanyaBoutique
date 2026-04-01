@@ -5,6 +5,7 @@ import { Button } from "@mui/material";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { FiX } from "react-icons/fi";
 import { IoIosLogOut } from "react-icons/io";
 import { IoBagCheckOutline } from "react-icons/io5";
 import { LiaImageSolid } from "react-icons/lia";
@@ -27,7 +28,6 @@ import { PiImageSquare } from "react-icons/pi";
 import { RiCoupon2Line, RiVipCrownLine } from "react-icons/ri";
 import { RxDashboard } from "react-icons/rx";
 import { TbBrandProducthunt, TbShare, TbUsers } from "react-icons/tb";
-import { FiX } from "react-icons/fi";
 
 const Sidebar = ({ isOpen = false, onClose }) => {
   const { logout, admin, token } = useAdmin();
@@ -75,6 +75,11 @@ const Sidebar = ({ isOpen = false, onClose }) => {
       href: "/",
     },
     {
+      name: "Behavior",
+      icon: <MdInsights size={22} />,
+      href: "/behavior-analytics",
+    },
+    {
       name: "Analytics",
       icon: <MdInsights size={22} />,
       href: "/analytics",
@@ -83,11 +88,6 @@ const Sidebar = ({ isOpen = false, onClose }) => {
       name: "Sales Analytics",
       icon: <MdInsights size={22} />,
       href: "/sales-analytics",
-    },
-    {
-      name: "Behavior",
-      icon: <MdInsights size={22} />,
-      href: "/behavior-analytics",
     },
     {
       name: "Home Slides",

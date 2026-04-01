@@ -1,8 +1,8 @@
 "use client";
-import { API_BASE_URL } from "@/utils/api";
 import AccountSidebar from "@/components/AccountSiderbar";
 import { MyContext } from "@/context/ThemeProvider";
 import { useShippingDisplayCharge } from "@/hooks/useShippingDisplayCharge";
+import { API_BASE_URL } from "@/utils/api";
 import {
   buildSavedOrderCalculationInput,
   calculateOrderTotals,
@@ -26,6 +26,77 @@ import { toast } from "react-hot-toast";
 const API_URL = API_BASE_URL.endsWith("/api")
   ? API_BASE_URL
   : `${API_BASE_URL}/api`;
+const LOCAL_API_FALLBACKS = ["http://localhost:8000", "http://localhost:8001"];
+
+const sanitizeBaseUrl = (value) =>
+  String(value || "")
+    .trim()
+    .replace(/^['"]|['"]$/g, "")
+    .replace(/\/+$/, "");
+
+const normalizeApiPath = (path) => {
+  const normalized = String(path || "").startsWith("/")
+    ? String(path)
+    : `/${String(path || "")}`;
+
+  return normalized.startsWith("/api/") ? normalized : `/api${normalized}`;
+};
+
+const composeApiUrl = (base, path) => {
+  const normalizedBase = sanitizeBaseUrl(base);
+  const normalizedPath = normalizeApiPath(path);
+
+  if (/\/api$/i.test(normalizedBase) && /^\/api(\/|$)/i.test(normalizedPath)) {
+    return `${normalizedBase}${normalizedPath.replace(/^\/api/i, "")}`;
+  }
+
+  return `${normalizedBase}${normalizedPath}`;
+};
+
+const getApiBaseCandidates = () => {
+  const candidates = [sanitizeBaseUrl(API_BASE_URL)].filter(Boolean);
+
+  if (typeof window !== "undefined") {
+    const host = String(window.location.hostname || "").toLowerCase();
+    if (host === "localhost" || host === "127.0.0.1") {
+      candidates.push(...LOCAL_API_FALLBACKS.map(sanitizeBaseUrl));
+    }
+  }
+
+  return [...new Set(candidates.filter(Boolean))];
+};
+
+const fetchWithApiFallback = async (path, options = {}) => {
+  const bases = getApiBaseCandidates();
+  let lastNetworkError = null;
+  let lastResponse = null;
+
+  for (let i = 0; i < bases.length; i += 1) {
+    const isLast = i === bases.length - 1;
+    const url = composeApiUrl(bases[i], path);
+
+    try {
+      const response = await fetch(url, options);
+      if (response.ok) return response;
+
+      lastResponse = response;
+      const shouldTryNext =
+        !isLast && (response.status === 404 || response.status >= 500);
+      if (!shouldTryNext) {
+        return response;
+      }
+    } catch (error) {
+      lastNetworkError = error;
+      if (isLast) {
+        throw error;
+      }
+    }
+  }
+
+  if (lastResponse) return lastResponse;
+  if (lastNetworkError) throw lastNetworkError;
+  throw new Error("Failed to reach orders API");
+};
 
 const getCookieToken = () => {
   if (typeof document === "undefined") return null;
@@ -76,7 +147,7 @@ const Orders = () => {
         }
 
         // Fetch orders from API
-        let response = await fetch(`${API_URL}/orders/my-orders`, {
+        let response = await fetchWithApiFallback("/orders/my-orders", {
           method: "GET",
           headers: {
             "Content-Type": "application/json",
@@ -88,7 +159,7 @@ const Orders = () => {
         if (response.status === 401) {
           // Attempt refresh token flow (cookie-based) before failing
           try {
-            const refresh = await fetch(`${API_URL}/user/refresh-token`, {
+            const refresh = await fetchWithApiFallback("/user/refresh-token", {
               method: "POST",
               credentials: "include",
             });
@@ -98,7 +169,7 @@ const Orders = () => {
               if (newToken) {
                 localStorage.setItem("accessToken", newToken);
                 token = newToken;
-                response = await fetch(`${API_URL}/orders/my-orders`, {
+                response = await fetchWithApiFallback("/orders/my-orders", {
                   method: "GET",
                   headers: {
                     "Content-Type": "application/json",
@@ -129,7 +200,7 @@ const Orders = () => {
           setOrders(fetchedOrders);
 
           try {
-            const reviewResponse = await fetch(`${API_URL}/reviews/my`, {
+            const reviewResponse = await fetchWithApiFallback("/reviews/my", {
               method: "GET",
               headers: {
                 "Content-Type": "application/json",
@@ -190,10 +261,7 @@ const Orders = () => {
 
   const resolveDisplayOrderId = (order) => {
     const explicitId =
-      order?.displayOrderId ||
-      order?.orderNumber ||
-      order?.order_id ||
-      "";
+      order?.displayOrderId || order?.orderNumber || order?.order_id || "";
     if (String(explicitId || "").trim()) {
       return String(explicitId).trim().toUpperCase();
     }
@@ -709,7 +777,9 @@ const Orders = () => {
                           <div className="text-xs text-gray-600 space-y-1">
                             <p>
                               Transaction ID:{" "}
-                              <span className="font-mono">{order.paymentId || "N/A"}</span>
+                              <span className="font-mono">
+                                {order.paymentId || "N/A"}
+                              </span>
                             </p>
                           </div>
                         </div>
@@ -720,25 +790,29 @@ const Orders = () => {
                         {(() => {
                           const routeOrderId = resolveOrderRouteId(order);
                           return (
-                        <Link
-                          href={routeOrderId ? `/orders/${routeOrderId}` : "/my-orders"}
-                          className="inline-flex items-center px-4 py-2 bg-orange-600 text-white text-sm font-medium rounded-lg hover:bg-orange-700 transition-colors"
-                        >
-                          View Order Details
-                          <svg
-                            className="ml-2 w-4 h-4"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M9 5l7 7-7 7"
-                            />
-                          </svg>
-                        </Link>
+                            <Link
+                              href={
+                                routeOrderId
+                                  ? `/orders/${routeOrderId}`
+                                  : "/my-orders"
+                              }
+                              className="inline-flex items-center px-4 py-2 bg-orange-600 text-white text-sm font-medium rounded-lg hover:bg-orange-700 transition-colors"
+                            >
+                              View Order Details
+                              <svg
+                                className="ml-2 w-4 h-4"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M9 5l7 7-7 7"
+                                />
+                              </svg>
+                            </Link>
                           );
                         })()}
                       </div>
@@ -817,4 +891,3 @@ const Orders = () => {
   );
 };
 export default Orders;
-

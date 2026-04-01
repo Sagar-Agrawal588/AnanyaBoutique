@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 const STORAGE_KEY = "hog_admin_live_refresh_ms";
-const DEFAULT_REFRESH_MS = 1000;
-const ALLOWED_REFRESH_MS = [1000, 5000, 10000];
+const DEFAULT_REFRESH_MS = 5000;
+const ALLOWED_REFRESH_MS = [5000, 10000, 30000];
 
 const normalizeInterval = (value) => {
   const parsed = Number(value);
@@ -14,9 +14,9 @@ const normalizeInterval = (value) => {
 };
 
 export const LIVE_REFRESH_OPTIONS = [
-  { label: "1s", value: 1000 },
   { label: "5s", value: 5000 },
   { label: "10s", value: 10000 },
+  { label: "30s", value: 30000 },
 ];
 
 export const getStoredLiveRefreshInterval = () => {

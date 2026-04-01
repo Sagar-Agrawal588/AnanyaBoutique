@@ -4,10 +4,23 @@ import mongoose from "mongoose";
 import path from "node:path";
 import PDFDocument from "pdfkit";
 import Category from "../models/category.model.js";
+import Combo from "../models/combo.model.js";
 import Partner from "../models/partner.model.js";
 import PartnerApiKey from "../models/partnerApiKey.model.js";
+import PartnerApiRequestLog from "../models/partnerApiRequestLog.model.js";
 import Product from "../models/product.model.js";
-import { getPartnerRateLimitSnapshot } from "../middlewares/partnerApiAuth.js";
+import { getPartnerLiveSnapshot } from "../middlewares/partnerApiActivity.js";
+import { getRedisClient } from "../config/redisClient.js";
+import {
+  getPartnerDailyLimitSnapshot,
+  getPartnerRateLimitSnapshot,
+} from "../middlewares/partnerApiAuth.js";
+import {
+  applyPartnerDynamicAdminOverride,
+  getPartnerDynamicLimitSnapshot,
+  getPartnerDynamicScalingEvents,
+} from "../services/partnerApiDynamicScaling.service.js";
+import { splitGstInclusiveAmount } from "../services/tax.service.js";
 
 const SITE_URL =
   String(process.env.NEXT_PUBLIC_SITE_URL || process.env.CLIENT_URL || "https://healthyonegram.com")
@@ -68,6 +81,255 @@ const parseNumber = (value, fallback) => {
   return Number.isFinite(number) ? number : fallback;
 };
 
+const clampNumber = (value, min, max, fallback) =>
+  Math.min(max, Math.max(min, parseNumber(value, fallback)));
+
+const parseFloatInRange = (value, min, max, fallback) => {
+  const parsed = Number.parseFloat(String(value ?? "").trim());
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
+};
+
+const toSafeDate = (value) => {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const startOfUtcDay = (date = new Date()) =>
+  new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 0, 0, 0, 0));
+
+const resolveAnalyticsRange = ({ range, startDate, endDate }) => {
+  const now = new Date();
+  const selectedRange = String(range || "24h").trim().toLowerCase();
+
+  if (selectedRange === "custom") {
+    const customStart = toSafeDate(startDate);
+    const customEnd = toSafeDate(endDate);
+    if (!customStart || !customEnd || customStart >= customEnd) {
+      const fallbackStart = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      return {
+        key: "24h",
+        from: fallbackStart,
+        to: now,
+        granularity: "hour",
+      };
+    }
+
+    const durationMs = customEnd.getTime() - customStart.getTime();
+    return {
+      key: "custom",
+      from: customStart,
+      to: customEnd,
+      granularity: durationMs > 72 * 60 * 60 * 1000 ? "day" : "hour",
+    };
+  }
+
+  if (selectedRange === "7d") {
+    return {
+      key: "7d",
+      from: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000),
+      to: now,
+      granularity: "day",
+    };
+  }
+
+  return {
+    key: "24h",
+    from: new Date(now.getTime() - 24 * 60 * 60 * 1000),
+    to: now,
+    granularity: "hour",
+  };
+};
+
+const getAnalyticsRedisKeys = (keyPrefix) => ({
+  rpm: `partner:${keyPrefix}:rpm`,
+  usageDaily: `partner:${keyPrefix}:usage:daily`,
+});
+
+const ANALYTICS_DEFAULT_ERROR_RATE_THRESHOLD = 5;
+const ANALYTICS_DEFAULT_SPIKE_MULTIPLIER = 2.5;
+const ANALYTICS_DEFAULT_SPIKE_MIN_REQUESTS = 50;
+
+const toFloatInRange = (value, fallback, min, max) => {
+  const parsed = Number.parseFloat(String(value ?? "").trim());
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
+};
+
+const csvEscape = (value) => {
+  const text = String(value ?? "");
+  if (!/[",\n\r]/.test(text)) return text;
+  return `"${text.replace(/"/g, '""')}"`;
+};
+
+const normalizeDynamicTier = (value, fallback = "custom") => {
+  const tier = String(value || fallback).trim().toLowerCase();
+  return ["free", "growth", "pro", "enterprise", "custom"].includes(tier)
+    ? tier
+    : fallback;
+};
+
+const toPartnerDynamicPatch = (input = {}, currentPartner = null) => {
+  const patch = {};
+
+  const baseRate = currentPartner?.rateLimitPlan?.baseRPM || currentPartner?.rateLimitPerMinute || 120;
+  const currentDaily = currentPartner?.rateLimitPlan?.dailyLimit || currentPartner?.dailyRequestLimit || 20000;
+
+  if (input?.tier !== undefined) {
+    patch["rateLimitPlan.tier"] = normalizeDynamicTier(
+      input.tier,
+      currentPartner?.rateLimitPlan?.tier || "custom",
+    );
+  }
+  if (input?.baseRPM !== undefined) {
+    patch["rateLimitPlan.baseRPM"] = clampNumber(input.baseRPM, 10, 50000, baseRate);
+  }
+  if (input?.burstRPM !== undefined) {
+    const floor = patch["rateLimitPlan.baseRPM"] || baseRate;
+    patch["rateLimitPlan.burstRPM"] = clampNumber(input.burstRPM, floor, 50000, Math.round(floor * 1.8));
+  }
+  if (input?.dailyLimit !== undefined) {
+    patch["rateLimitPlan.dailyLimit"] = clampNumber(input.dailyLimit, 100, 10000000, currentDaily);
+  }
+  if (input?.minDynamicRPM !== undefined) {
+    patch["rateLimitPlan.minDynamicRPM"] = clampNumber(input.minDynamicRPM, 10, 50000, Math.floor(baseRate * 0.5));
+  }
+  if (input?.maxDynamicRPM !== undefined) {
+    patch["rateLimitPlan.maxDynamicRPM"] = clampNumber(input.maxDynamicRPM, 10, 50000, Math.max(baseRate, 4000));
+  }
+  if (input?.scalingEnabled !== undefined) {
+    patch["rateLimitPlan.scalingEnabled"] = Boolean(parseBoolean(input.scalingEnabled, true));
+  }
+
+  if (input?.lockScaling !== undefined) {
+    patch["dynamicControls.lockScaling"] = Boolean(parseBoolean(input.lockScaling, false));
+  }
+  if (input?.manualOverrideRPM !== undefined) {
+    const override = parseNumber(input.manualOverrideRPM, 0);
+    patch["dynamicControls.manualOverrideRPM"] = override > 0
+      ? clampNumber(override, 10, 50000, baseRate)
+      : null;
+  }
+  if (input?.manualOverrideDailyLimit !== undefined) {
+    const overrideDaily = parseNumber(input.manualOverrideDailyLimit, 0);
+    patch["dynamicControls.manualOverrideDailyLimit"] = overrideDaily > 0
+      ? clampNumber(overrideDaily, 100, 10000000, currentDaily)
+      : null;
+  }
+  if (input?.qualityScore !== undefined) {
+    patch["dynamicControls.qualityScore"] = parseFloatInRange(
+      input.qualityScore,
+      0.5,
+      1.5,
+      currentPartner?.dynamicControls?.qualityScore || 1,
+    );
+  }
+  if (input?.safeModeForced !== undefined) {
+    patch["dynamicControls.safeModeForced"] = Boolean(parseBoolean(input.safeModeForced, false));
+  }
+
+  return patch;
+};
+
+const ALLOWED_VISIBLE_PRODUCT_FIELDS = Object.freeze([
+  "description",
+  "shortDescription",
+  "images",
+  "category",
+  "tags",
+  "discount",
+  "stock",
+  "shipping",
+  "hsnCode",
+  "gstBreakup",
+]);
+
+const DEFAULT_VISIBLE_PRODUCT_FIELDS = Object.freeze([
+  "description",
+  "shortDescription",
+  "images",
+  "category",
+  "tags",
+  "discount",
+  "stock",
+  "shipping",
+  "hsnCode",
+  "gstBreakup",
+]);
+
+const ALLOWED_SCOPES = Object.freeze([
+  "catalog.read",
+  "inventory.read",
+  "pricing.read",
+  "gst.read",
+  "combos.read",
+]);
+
+const SCOPE_ALIASES = Object.freeze({
+  "price.read": "pricing.read",
+});
+
+const normalizeScopes = (rawScopes) => {
+  const source = Array.isArray(rawScopes) ? rawScopes : [];
+  const normalized = source
+    .map((scope) => String(scope || "").trim().toLowerCase())
+    .map((scope) => SCOPE_ALIASES[scope] || scope)
+    .filter((scope) => ALLOWED_SCOPES.includes(scope));
+
+  if (normalized.length > 0) {
+    return Array.from(new Set(normalized));
+  }
+
+  return ["catalog.read", "inventory.read", "pricing.read", "gst.read"];
+};
+
+const normalizeVisibleProductFields = (rawFields) => {
+  const incoming = Array.isArray(rawFields) ? rawFields : DEFAULT_VISIBLE_PRODUCT_FIELDS;
+  const normalized = incoming
+    .map((field) => String(field || "").trim())
+    .filter((field) => ALLOWED_VISIBLE_PRODUCT_FIELDS.includes(field));
+
+  return normalized.length > 0
+    ? Array.from(new Set(normalized))
+    : [...DEFAULT_VISIBLE_PRODUCT_FIELDS];
+};
+
+const hasVisibleField = (visibleFields, fieldName) =>
+  normalizeVisibleProductFields(visibleFields).includes(fieldName);
+
+const normalizeTaxState = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+
+const buildPriceTaxBreakup = (inclusiveAmount, stateForTax) => {
+  const summary = splitGstInclusiveAmount(inclusiveAmount, 5, stateForTax || "");
+  const normalizedState = normalizeTaxState(stateForTax);
+  const isRajasthan = normalizedState === "rajasthan";
+
+  const taxPaise = Math.round(Number(summary.tax || 0) * 100);
+  if (isRajasthan) {
+    const half = Math.floor(taxPaise / 2);
+    const remaining = taxPaise - half;
+    return {
+      ...summary,
+      mode: "CGST_SGST",
+      cgst: half / 100,
+      sgst: remaining / 100,
+      igst: 0,
+    };
+  }
+
+  return {
+    ...summary,
+    mode: "IGST",
+    cgst: 0,
+    sgst: 0,
+    igst: taxPaise / 100,
+  };
+};
+
 const escapeRegex = (value = "") =>
   String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -87,47 +349,108 @@ const getAvailableStock = (product) => {
   return Math.max(directAvailable, 0);
 };
 
-const mapPartnerProduct = (product) => {
+const mapPartnerProduct = (product, options = {}) => {
+  const visibleFields = normalizeVisibleProductFields(options.visibleFields);
+  const stateForTax = String(options.stateForTax || "").trim();
   const availableQuantity = getAvailableStock(product);
   const discountedAmount = Number(product?.price || 0);
   const originalAmount = Number(product?.originalPrice || discountedAmount || 0);
   const discountValue = Number(product?.discount || 0);
 
-  return {
+  const discountedTax = buildPriceTaxBreakup(discountedAmount, stateForTax);
+  const originalTax = buildPriceTaxBreakup(originalAmount, stateForTax);
+
+  const payload = {
     id: String(product._id),
     sku: String(product.sku || "").trim() || null,
     name: product.name,
-    description: product.description || "",
-    shortDescription: product.shortDescription || "",
-    images: Array.isArray(product.images) ? product.images.filter(Boolean) : [],
     productUrl: `${SITE_URL}/product/${String(product._id)}`,
-    category: product.category
+    hsnCode: String(product?.hsnCode || "").trim() || null,
+    price: {
+      amount: discountedAmount,
+      currency: "INR",
+      originalAmount,
+      taxableAmount: Number(discountedTax.taxableAmount || 0),
+      gstAmount: Number(discountedTax.tax || 0),
+      amountWithGst: Number(discountedTax.grossAmount || discountedAmount),
+    },
+    updatedAt: product.updatedAt,
+  };
+
+  if (hasVisibleField(visibleFields, "description")) {
+    payload.description = product.description || "";
+  }
+
+  if (hasVisibleField(visibleFields, "shortDescription")) {
+    payload.shortDescription = product.shortDescription || "";
+  }
+
+  if (hasVisibleField(visibleFields, "images")) {
+    payload.images = Array.isArray(product.images) ? product.images.filter(Boolean) : [];
+  }
+
+  if (hasVisibleField(visibleFields, "category")) {
+    payload.category = product.category
       ? {
           id: String(product.category._id || ""),
           name: product.category.name || "",
           slug: product.category.slug || "",
         }
-      : null,
-    tags: Array.isArray(product.tags) ? product.tags : [],
-    price: {
-      amount: discountedAmount,
-      currency: "INR",
-      originalAmount,
-    },
-    discount: {
+      : null;
+  }
+
+  if (hasVisibleField(visibleFields, "tags")) {
+    payload.tags = Array.isArray(product.tags) ? product.tags : [];
+  }
+
+  if (hasVisibleField(visibleFields, "discount")) {
+    payload.discount = {
       type: "percentage",
       value: discountValue,
-    },
-    stock: {
+    };
+  }
+
+  if (hasVisibleField(visibleFields, "stock")) {
+    payload.stock = {
       status: availableQuantity > 0 ? "in_stock" : "out_of_stock",
       availableQuantity,
-    },
-    shipping: {
+    };
+  }
+
+  if (hasVisibleField(visibleFields, "shipping")) {
+    payload.shipping = {
       freeShipping: discountedAmount >= 499,
       estimatedDispatchDays: availableQuantity > 0 ? 1 : 3,
-    },
-    updatedAt: product.updatedAt,
-  };
+    };
+  }
+
+  if (hasVisibleField(visibleFields, "gstBreakup")) {
+    payload.price.gstBreakup = {
+      state: stateForTax || "",
+      mode: discountedTax.mode,
+      rate: Number(discountedTax.rate || 5),
+      cgst: Number(discountedTax.cgst || 0),
+      sgst: Number(discountedTax.sgst || 0),
+      igst: Number(discountedTax.igst || 0),
+    };
+    payload.price.originalGstBreakup = {
+      state: stateForTax || "",
+      mode: originalTax.mode,
+      rate: Number(originalTax.rate || 5),
+      cgst: Number(originalTax.cgst || 0),
+      sgst: Number(originalTax.sgst || 0),
+      igst: Number(originalTax.igst || 0),
+      taxableAmount: Number(originalTax.taxableAmount || 0),
+      gstAmount: Number(originalTax.tax || 0),
+      amountWithGst: Number(originalTax.grossAmount || originalAmount),
+    };
+  }
+
+  if (!hasVisibleField(visibleFields, "hsnCode")) {
+    delete payload.hsnCode;
+  }
+
+  return payload;
 };
 
 const withMeta = (req, payload) => ({
@@ -192,16 +515,16 @@ const getPartnerGuideDetails = (req) => {
     {
       method: "GET",
       path: "/products",
-      fullUrl: `${baseUrl}/products?limit=20&page=1`,
+      fullUrl: `${baseUrl}/products?limit=20&page=1&deliveryState=Rajasthan`,
       scope: "catalog.read",
-      description: "List products",
+      description: "List products (includes GST breakup by deliveryState)",
     },
     {
       method: "GET",
       path: "/products/:productId",
-      fullUrl: `${baseUrl}/products/PRODUCT_ID_OR_SLUG`,
+      fullUrl: `${baseUrl}/products/PRODUCT_ID_OR_SLUG?deliveryState=Rajasthan`,
       scope: "catalog.read",
-      description: "Get one product",
+      description: "Get one product (includes GST breakup by deliveryState)",
     },
     {
       method: "GET",
@@ -213,9 +536,23 @@ const getPartnerGuideDetails = (req) => {
     {
       method: "GET",
       path: "/pricing",
-      fullUrl: `${baseUrl}/pricing`,
-      scope: "price.read",
-      description: "Current prices and discounts",
+      fullUrl: `${baseUrl}/pricing?deliveryState=Rajasthan`,
+      scope: "pricing.read",
+      description: "Current prices with GST/taxable breakup by deliveryState",
+    },
+    {
+      method: "GET",
+      path: "/gst",
+      fullUrl: `${baseUrl}/gst?amount=599&deliveryState=Rajasthan`,
+      scope: "gst.read",
+      description: "GST-only breakdown helper",
+    },
+    {
+      method: "GET",
+      path: "/combos",
+      fullUrl: `${baseUrl}/combos?limit=20&page=1`,
+      scope: "combos.read",
+      description: "Partner-visible combo offers",
     },
     {
       method: "GET",
@@ -600,6 +937,8 @@ export const getPartnerApiGuidePdf = async (req, res) => {
 
 export const getPartnerProducts = async (req, res) => {
   try {
+    const deliveryState = String(req.query.deliveryState || req.query.state || "").trim();
+    const visibleFields = normalizeVisibleProductFields(req.partner?.visibleProductFields);
     const page = Math.max(parseNumber(req.query.page, 1), 1);
     const limit = Math.min(Math.max(parseNumber(req.query.limit, 20), 1), 100);
     const skip = (page - 1) * limit;
@@ -663,7 +1002,12 @@ export const getPartnerProducts = async (req, res) => {
       Product.countDocuments(query),
     ]);
 
-    const data = items.map(mapPartnerProduct);
+    const data = items.map((item) =>
+      mapPartnerProduct(item, {
+        stateForTax: deliveryState,
+        visibleFields,
+      }),
+    );
     const body = withMeta(req, {
       success: true,
       data,
@@ -695,6 +1039,8 @@ export const getPartnerProducts = async (req, res) => {
 
 export const getPartnerProductById = async (req, res) => {
   try {
+    const deliveryState = String(req.query.deliveryState || req.query.state || "").trim();
+    const visibleFields = normalizeVisibleProductFields(req.partner?.visibleProductFields);
     const id = String(req.params.productId || "").trim();
     const query = { isActive: true };
     if (mongoose.Types.ObjectId.isValid(id)) {
@@ -722,7 +1068,10 @@ export const getPartnerProductById = async (req, res) => {
 
     const body = withMeta(req, {
       success: true,
-      data: mapPartnerProduct(product),
+      data: mapPartnerProduct(product, {
+        stateForTax: deliveryState,
+        visibleFields,
+      }),
     });
 
     if (setEtagAndHandle304(req, res, body)) return;
@@ -822,6 +1171,8 @@ export const getPartnerInventory = async (req, res) => {
 
 export const getPartnerPricing = async (req, res) => {
   try {
+    const deliveryState = String(req.query.deliveryState || req.query.state || "").trim();
+    const visibleFields = normalizeVisibleProductFields(req.partner?.visibleProductFields);
     const query = { isActive: true };
 
     const productId = String(req.query.productId || "").trim();
@@ -844,20 +1195,58 @@ export const getPartnerPricing = async (req, res) => {
       .limit(200)
       .lean();
 
-    const data = items.map((item) => ({
-      productId: String(item._id),
-      sku: String(item.sku || "").trim() || null,
-      price: {
-        amount: Number(item.price || 0),
+    const data = items.map((item) => {
+      const amountWithGst = Number(item.price || 0);
+      const originalAmountWithGst = Number(item.originalPrice || item.price || 0);
+      const discountedTax = buildPriceTaxBreakup(amountWithGst, deliveryState);
+      const originalTax = buildPriceTaxBreakup(originalAmountWithGst, deliveryState);
+      const price = {
+        amount: amountWithGst,
         currency: "INR",
-        originalAmount: Number(item.originalPrice || item.price || 0),
-      },
-      discount: {
-        type: "percentage",
-        value: Number(item.discount || 0),
-      },
-      updatedAt: item.updatedAt,
-    }));
+        originalAmount: originalAmountWithGst,
+        taxableAmount: Number(discountedTax.taxableAmount || 0),
+        gstAmount: Number(discountedTax.tax || 0),
+        amountWithGst: Number(discountedTax.grossAmount || amountWithGst),
+      };
+
+      if (hasVisibleField(visibleFields, "gstBreakup")) {
+        price.gstBreakup = {
+          state: deliveryState || "",
+          mode: discountedTax.mode,
+          rate: Number(discountedTax.rate || 5),
+          cgst: Number(discountedTax.cgst || 0),
+          sgst: Number(discountedTax.sgst || 0),
+          igst: Number(discountedTax.igst || 0),
+        };
+        price.originalGstBreakup = {
+          state: deliveryState || "",
+          mode: originalTax.mode,
+          rate: Number(originalTax.rate || 5),
+          cgst: Number(originalTax.cgst || 0),
+          sgst: Number(originalTax.sgst || 0),
+          igst: Number(originalTax.igst || 0),
+          taxableAmount: Number(originalTax.taxableAmount || 0),
+          gstAmount: Number(originalTax.tax || 0),
+          amountWithGst: Number(originalTax.grossAmount || originalAmountWithGst),
+        };
+      }
+
+      const record = {
+        productId: String(item._id),
+        sku: String(item.sku || "").trim() || null,
+        price,
+        updatedAt: item.updatedAt,
+      };
+
+      if (hasVisibleField(visibleFields, "discount")) {
+        record.discount = {
+          type: "percentage",
+          value: Number(item.discount || 0),
+        };
+      }
+
+      return record;
+    });
 
     return res.status(200).json(withMeta(req, { success: true, data }));
   } catch (error) {
@@ -868,6 +1257,118 @@ export const getPartnerPricing = async (req, res) => {
         error: {
           code: "INTERNAL_ERROR",
           message: "Failed to fetch pricing",
+          details: null,
+        },
+      }),
+    );
+  }
+};
+
+export const getPartnerGst = async (req, res) => {
+  try {
+    const deliveryState = String(req.query.deliveryState || req.query.state || "").trim();
+    const amount = Number(req.query.amount || 0);
+    if (!Number.isFinite(amount) || amount < 0) {
+      return res.status(400).json(
+        withMeta(req, {
+          success: false,
+          error: {
+            code: "INVALID_INPUT",
+            message: "amount must be a valid non-negative number",
+            details: null,
+          },
+        }),
+      );
+    }
+
+    const gst = buildPriceTaxBreakup(amount, deliveryState);
+    return res.status(200).json(
+      withMeta(req, {
+        success: true,
+        data: {
+          amount,
+          currency: "INR",
+          state: deliveryState || "",
+          mode: gst.mode,
+          rate: Number(gst.rate || 5),
+          taxableAmount: Number(gst.taxableAmount || 0),
+          gstAmount: Number(gst.tax || 0),
+          amountWithGst: Number(gst.grossAmount || amount),
+          cgst: Number(gst.cgst || 0),
+          sgst: Number(gst.sgst || 0),
+          igst: Number(gst.igst || 0),
+        },
+      }),
+    );
+  } catch (error) {
+    console.error("getPartnerGst error:", error);
+    return res.status(500).json(
+      withMeta(req, {
+        success: false,
+        error: {
+          code: "INTERNAL_ERROR",
+          message: "Failed to fetch GST details",
+          details: null,
+        },
+      }),
+    );
+  }
+};
+
+export const getPartnerCombos = async (req, res) => {
+  try {
+    const page = Math.max(parseNumber(req.query.page, 1), 1);
+    const limit = Math.min(Math.max(parseNumber(req.query.limit, 20), 1), 100);
+    const skip = (page - 1) * limit;
+
+    const query = {
+      isActive: true,
+      isVisible: true,
+    };
+
+    const [combos, total] = await Promise.all([
+      Combo.find(query)
+        .select("_id slug name shortDescription image comboPrice originalPrice discountPercentage updatedAt")
+        .sort({ updatedAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Combo.countDocuments(query),
+    ]);
+
+    return res.status(200).json(
+      withMeta(req, {
+        success: true,
+        data: combos.map((combo) => ({
+          id: String(combo._id),
+          slug: String(combo.slug || "").trim() || null,
+          name: combo.name,
+          shortDescription: combo.shortDescription || "",
+          image: combo.image || "",
+          price: {
+            amount: Number(combo.comboPrice || combo.originalPrice || 0),
+            currency: "INR",
+            originalAmount: Number(combo.originalPrice || combo.comboPrice || 0),
+            discountPercent: Number(combo.discountPercentage || 0),
+          },
+          updatedAt: combo.updatedAt,
+        })),
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.max(Math.ceil(total / limit), 1),
+        },
+      }),
+    );
+  } catch (error) {
+    console.error("getPartnerCombos error:", error);
+    return res.status(500).json(
+      withMeta(req, {
+        success: false,
+        error: {
+          code: "INTERNAL_ERROR",
+          message: "Failed to fetch combos",
           details: null,
         },
       }),
@@ -932,7 +1433,11 @@ export const getPartnerTags = async (req, res) => {
 export const adminCreatePartner = async (req, res) => {
   try {
     const name = String(req.body?.name || "").trim();
+    const companyName = String(req.body?.companyName || "").trim();
     const contactEmail = String(req.body?.contactEmail || "").trim().toLowerCase();
+    const rateLimitPerMinute = parseNumber(req.body?.rateLimitPerMinute, 120);
+    const dailyRequestLimit = parseNumber(req.body?.dailyRequestLimit, 20000);
+    const dailyTokenLimit = parseNumber(req.body?.dailyTokenLimit, 0);
 
     if (!name || !contactEmail) {
       return res.status(400).json({
@@ -941,14 +1446,74 @@ export const adminCreatePartner = async (req, res) => {
       });
     }
 
+    if (rateLimitPerMinute < 10 || rateLimitPerMinute > 5000) {
+      return res.status(400).json({
+        success: false,
+        message: "rateLimitPerMinute must be between 10 and 5000",
+      });
+    }
+
+    if (dailyRequestLimit < 100 || dailyRequestLimit > 5000000) {
+      return res.status(400).json({
+        success: false,
+        message: "dailyRequestLimit must be between 100 and 5000000",
+      });
+    }
+
+    if (dailyTokenLimit < 0 || dailyTokenLimit > 50000000) {
+      return res.status(400).json({
+        success: false,
+        message: "dailyTokenLimit must be between 0 and 50000000",
+      });
+    }
+
+    const dynamicPatch = toPartnerDynamicPatch({
+      tier: req.body?.tier,
+      baseRPM: req.body?.baseRPM ?? rateLimitPerMinute,
+      burstRPM: req.body?.burstRPM,
+      dailyLimit: req.body?.dailyLimit ?? dailyRequestLimit,
+      minDynamicRPM: req.body?.minDynamicRPM,
+      maxDynamicRPM: req.body?.maxDynamicRPM,
+      scalingEnabled: req.body?.scalingEnabled,
+      lockScaling: req.body?.lockScaling,
+      manualOverrideRPM: req.body?.manualOverrideRPM,
+      manualOverrideDailyLimit: req.body?.manualOverrideDailyLimit,
+      qualityScore: req.body?.qualityScore,
+      safeModeForced: req.body?.safeModeForced,
+    });
+
+    const rateLimitPlan = {
+      tier: dynamicPatch["rateLimitPlan.tier"] || "custom",
+      baseRPM: dynamicPatch["rateLimitPlan.baseRPM"] || rateLimitPerMinute,
+      burstRPM: dynamicPatch["rateLimitPlan.burstRPM"] || Math.round(rateLimitPerMinute * 1.8),
+      dailyLimit: dynamicPatch["rateLimitPlan.dailyLimit"] || dailyRequestLimit,
+      minDynamicRPM: dynamicPatch["rateLimitPlan.minDynamicRPM"] || Math.max(10, Math.floor(rateLimitPerMinute * 0.5)),
+      maxDynamicRPM: dynamicPatch["rateLimitPlan.maxDynamicRPM"] || Math.max(rateLimitPerMinute, 4000),
+      scalingEnabled: dynamicPatch["rateLimitPlan.scalingEnabled"] !== undefined
+        ? Boolean(dynamicPatch["rateLimitPlan.scalingEnabled"])
+        : true,
+    };
+
+    const dynamicControls = {
+      lockScaling: Boolean(dynamicPatch["dynamicControls.lockScaling"]),
+      manualOverrideRPM: dynamicPatch["dynamicControls.manualOverrideRPM"] ?? null,
+      manualOverrideDailyLimit: dynamicPatch["dynamicControls.manualOverrideDailyLimit"] ?? null,
+      qualityScore: dynamicPatch["dynamicControls.qualityScore"] || 1,
+      safeModeForced: Boolean(dynamicPatch["dynamicControls.safeModeForced"]),
+    };
+
     const partner = await Partner.create({
       name,
+      companyName,
       contactEmail,
       status: "active",
-      scopes: Array.isArray(req.body?.scopes) && req.body.scopes.length
-        ? req.body.scopes
-        : ["catalog.read", "inventory.read", "price.read"],
-      rateLimitPerMinute: parseNumber(req.body?.rateLimitPerMinute, 120),
+      scopes: normalizeScopes(req.body?.scopes),
+      visibleProductFields: normalizeVisibleProductFields(req.body?.visibleProductFields),
+      rateLimitPerMinute,
+      dailyRequestLimit,
+      dailyTokenLimit,
+      rateLimitPlan,
+      dynamicControls,
       allowedOrigins: Array.isArray(req.body?.allowedOrigins) ? req.body.allowedOrigins : [],
       notes: String(req.body?.notes || "").trim(),
     });
@@ -962,6 +1527,17 @@ export const adminCreatePartner = async (req, res) => {
       expiresAt: null,
     });
 
+    const dynamic = await getPartnerDynamicLimitSnapshot({
+      partner,
+      keyPrefix: generated.keyPrefix,
+    });
+
+    await applyPartnerDynamicAdminOverride({
+      partner,
+      keyPrefix: generated.keyPrefix,
+      reason: "partner_created",
+    });
+
     return res.status(201).json({
       success: true,
       message: "Partner created",
@@ -969,10 +1545,15 @@ export const adminCreatePartner = async (req, res) => {
         partner: {
           id: String(partner._id),
           name: partner.name,
+          companyName: partner.companyName || "",
           contactEmail: partner.contactEmail,
           status: partner.status,
           scopes: partner.scopes,
+          visibleProductFields: normalizeVisibleProductFields(partner.visibleProductFields),
           rateLimitPerMinute: partner.rateLimitPerMinute,
+          dailyRequestLimit: partner.dailyRequestLimit,
+          dailyTokenLimit: partner.dailyTokenLimit,
+          dynamic,
         },
         apiKey: generated.apiKey,
       },
@@ -1000,29 +1581,55 @@ export const adminListPartners = async (_req, res) => {
 
     const keyByPartner = new Map(keys.map((item) => [String(item.partnerId), item]));
 
-    return res.status(200).json({
-      success: true,
-      data: partners.map((partner) => {
+    const data = await Promise.all(
+      partners.map(async (partner) => {
         const key = keyByPartner.get(String(partner._id));
-        const rateLimit = getPartnerRateLimitSnapshot({
-          partnerId: String(partner._id),
-          keyPrefix: key?.keyPrefix || "",
-          configuredRateLimitPerMinute: partner.rateLimitPerMinute,
-        });
+        const [dynamic, rateLimit, dailyUsage] = await Promise.all([
+          getPartnerDynamicLimitSnapshot({
+            partner,
+            keyPrefix: key?.keyPrefix || "",
+          }),
+          getPartnerRateLimitSnapshot({
+            partnerId: String(partner._id),
+            keyPrefix: key?.keyPrefix || "",
+            configuredRateLimitPerMinute: partner.rateLimitPerMinute,
+            partner,
+          }),
+          getPartnerDailyLimitSnapshot({
+            partnerId: String(partner._id),
+            keyPrefix: key?.keyPrefix || "",
+            configuredDailyRequestLimit: partner.dailyRequestLimit,
+            partner,
+          }),
+        ]);
+
         return {
           id: String(partner._id),
           name: partner.name,
+          companyName: partner.companyName || "",
           contactEmail: partner.contactEmail,
           status: partner.status,
-          scopes: partner.scopes,
+          scopes: normalizeScopes(partner.scopes),
+          visibleProductFields: normalizeVisibleProductFields(partner.visibleProductFields),
           rateLimitPerMinute: partner.rateLimitPerMinute,
+          dailyRequestLimit: partner.dailyRequestLimit,
+          dailyTokenLimit: partner.dailyTokenLimit,
+          dynamic,
           rateLimit,
+          dailyUsage,
           keyPrefix: key?.keyPrefix || null,
           keyCreatedAt: key?.createdAt || null,
           keyLastUsedAt: key?.lastUsedAt || null,
+          lastUsedAt: partner.lastUsedAt || key?.lastUsedAt || null,
+          notes: partner.notes || "",
           createdAt: partner.createdAt,
         };
       }),
+    );
+
+    return res.status(200).json({
+      success: true,
+      data,
     });
   } catch (error) {
     console.error("adminListPartners error:", error);
@@ -1058,10 +1665,24 @@ export const adminExportPartnersCsv = async (_req, res) => {
     const headers = [
       "partnerId",
       "name",
+      "companyName",
       "contactEmail",
       "status",
       "scopes",
+      "visibleProductFields",
       "rateLimitPerMinute",
+      "dailyRequestLimit",
+      "dailyTokenLimit",
+      "planTier",
+      "baseRPM",
+      "burstRPM",
+      "planDailyLimit",
+      "scalingEnabled",
+      "lockScaling",
+      "manualOverrideRPM",
+      "manualOverrideDailyLimit",
+      "qualityScore",
+      "safeModeForced",
       "keyPrefix",
       "keyCreatedAt",
       "keyLastUsedAt",
@@ -1073,10 +1694,26 @@ export const adminExportPartnersCsv = async (_req, res) => {
       return [
         String(partner._id),
         partner.name || "",
+        partner.companyName || "",
         partner.contactEmail || "",
         partner.status || "",
         Array.isArray(partner.scopes) ? partner.scopes.join("|") : "",
+        Array.isArray(partner.visibleProductFields)
+          ? normalizeVisibleProductFields(partner.visibleProductFields).join("|")
+          : "",
         String(partner.rateLimitPerMinute ?? ""),
+        String(partner.dailyRequestLimit ?? ""),
+        String(partner.dailyTokenLimit ?? ""),
+        String(partner.rateLimitPlan?.tier || "custom"),
+        String(partner.rateLimitPlan?.baseRPM ?? partner.rateLimitPerMinute ?? ""),
+        String(partner.rateLimitPlan?.burstRPM ?? ""),
+        String(partner.rateLimitPlan?.dailyLimit ?? partner.dailyRequestLimit ?? ""),
+        String(partner.rateLimitPlan?.scalingEnabled !== false),
+        String(Boolean(partner.dynamicControls?.lockScaling)),
+        String(partner.dynamicControls?.manualOverrideRPM ?? ""),
+        String(partner.dynamicControls?.manualOverrideDailyLimit ?? ""),
+        String(partner.dynamicControls?.qualityScore ?? ""),
+        String(Boolean(partner.dynamicControls?.safeModeForced)),
         key?.keyPrefix || "",
         key?.createdAt ? new Date(key.createdAt).toISOString() : "",
         key?.lastUsedAt ? new Date(key.lastUsedAt).toISOString() : "",
@@ -1110,7 +1747,7 @@ export const adminRotatePartnerKey = async (req, res) => {
 
     await PartnerApiKey.updateMany(
       { partnerId: partner._id, status: "active" },
-      { $set: { status: "revoked" } },
+      { $set: { status: "revoked", revokedAt: new Date() } },
     );
 
     const generated = createApiKey();
@@ -1143,23 +1780,78 @@ export const adminUpdatePartner = async (req, res) => {
   try {
     const partnerId = String(req.params?.partnerId || "").trim();
 
+    const existingPartner = await Partner.findById(partnerId).lean();
+    if (!existingPartner) {
+      return res.status(404).json({ success: false, message: "Partner not found" });
+    }
+
     const update = {};
     if (req.body?.name !== undefined) update.name = String(req.body.name || "").trim();
+    if (req.body?.companyName !== undefined) {
+      update.companyName = String(req.body.companyName || "").trim();
+    }
     if (req.body?.contactEmail !== undefined) {
       update.contactEmail = String(req.body.contactEmail || "").trim().toLowerCase();
     }
     if (req.body?.status !== undefined) {
       const status = String(req.body.status || "").trim().toLowerCase();
-      if (["active", "paused"].includes(status)) update.status = status;
+      if (["active", "paused", "revoked"].includes(status)) update.status = status;
     }
     if (req.body?.scopes !== undefined && Array.isArray(req.body.scopes)) {
-      update.scopes = req.body.scopes;
+      update.scopes = normalizeScopes(req.body.scopes);
+    }
+    if (
+      req.body?.visibleProductFields !== undefined &&
+      Array.isArray(req.body.visibleProductFields)
+    ) {
+      update.visibleProductFields = normalizeVisibleProductFields(
+        req.body.visibleProductFields,
+      );
     }
     if (req.body?.rateLimitPerMinute !== undefined) {
       update.rateLimitPerMinute = Math.min(Math.max(parseNumber(req.body.rateLimitPerMinute, 120), 10), 5000);
     }
+    if (req.body?.dailyRequestLimit !== undefined) {
+      update.dailyRequestLimit = Math.min(
+        Math.max(parseNumber(req.body.dailyRequestLimit, 20000), 100),
+        5000000,
+      );
+    }
+    if (req.body?.dailyTokenLimit !== undefined) {
+      update.dailyTokenLimit = Math.min(
+        Math.max(parseNumber(req.body.dailyTokenLimit, 0), 0),
+        50000000,
+      );
+    }
     if (req.body?.allowedOrigins !== undefined && Array.isArray(req.body.allowedOrigins)) {
       update.allowedOrigins = req.body.allowedOrigins;
+    }
+
+    const dynamicPatch = toPartnerDynamicPatch(
+      {
+        tier: req.body?.tier,
+        baseRPM: req.body?.baseRPM,
+        burstRPM: req.body?.burstRPM,
+        dailyLimit: req.body?.dailyLimit,
+        minDynamicRPM: req.body?.minDynamicRPM,
+        maxDynamicRPM: req.body?.maxDynamicRPM,
+        scalingEnabled: req.body?.scalingEnabled,
+        lockScaling: req.body?.lockScaling,
+        manualOverrideRPM: req.body?.manualOverrideRPM,
+        manualOverrideDailyLimit: req.body?.manualOverrideDailyLimit,
+        qualityScore: req.body?.qualityScore,
+        safeModeForced: req.body?.safeModeForced,
+      },
+      existingPartner,
+    );
+
+    Object.assign(update, dynamicPatch);
+
+    if (update["rateLimitPlan.baseRPM"] !== undefined) {
+      update.rateLimitPerMinute = update["rateLimitPlan.baseRPM"];
+    }
+    if (update["rateLimitPlan.dailyLimit"] !== undefined) {
+      update.dailyRequestLimit = update["rateLimitPlan.dailyLimit"];
     }
 
     const partner = await Partner.findByIdAndUpdate(
@@ -1168,8 +1860,46 @@ export const adminUpdatePartner = async (req, res) => {
       { new: true },
     ).lean();
 
-    if (!partner) {
-      return res.status(404).json({ success: false, message: "Partner not found" });
+    if (update.status === "paused") {
+      await PartnerApiKey.updateMany(
+        { partnerId, status: "active" },
+        { $set: { status: "paused" } },
+      );
+    }
+
+    if (update.status === "active") {
+      await PartnerApiKey.updateMany(
+        { partnerId, status: "paused" },
+        { $set: { status: "active" } },
+      );
+    }
+
+    if (update.status === "revoked") {
+      await PartnerApiKey.updateMany(
+        { partnerId, status: { $in: ["active", "paused"] } },
+        { $set: { status: "revoked", revokedAt: new Date(), expiresAt: new Date() } },
+      );
+    }
+
+    const activeKey = await PartnerApiKey.findOne({
+      partnerId,
+      status: "active",
+    })
+      .select("keyPrefix")
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const dynamic = await getPartnerDynamicLimitSnapshot({
+      partner,
+      keyPrefix: activeKey?.keyPrefix || "",
+    });
+
+    if (Object.keys(dynamicPatch).length > 0) {
+      await applyPartnerDynamicAdminOverride({
+        partner,
+        keyPrefix: activeKey?.keyPrefix || "",
+        reason: "partner_updated",
+      });
     }
 
     return res.status(200).json({
@@ -1178,10 +1908,15 @@ export const adminUpdatePartner = async (req, res) => {
       data: {
         id: String(partner._id),
         name: partner.name,
+        companyName: partner.companyName || "",
         contactEmail: partner.contactEmail,
         status: partner.status,
-        scopes: partner.scopes,
+        scopes: normalizeScopes(partner.scopes),
+        visibleProductFields: normalizeVisibleProductFields(partner.visibleProductFields),
         rateLimitPerMinute: partner.rateLimitPerMinute,
+        dailyRequestLimit: partner.dailyRequestLimit,
+        dailyTokenLimit: partner.dailyTokenLimit,
+        dynamic,
       },
     });
   } catch (error) {
@@ -1223,6 +1958,916 @@ export const adminDeletePartner = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Failed to delete partner",
+    });
+  }
+};
+
+export const adminRevokePartnerKey = async (req, res) => {
+  try {
+    const partnerId = String(req.params?.partnerId || "").trim();
+    const partner = await Partner.findById(partnerId).lean();
+    if (!partner) {
+      return res.status(404).json({ success: false, message: "Partner not found" });
+    }
+
+    const result = await PartnerApiKey.updateMany(
+      { partnerId, status: { $in: ["active", "paused"] } },
+      {
+        $set: {
+          status: "revoked",
+          revokedAt: new Date(),
+          expiresAt: new Date(),
+        },
+      },
+    );
+
+    await Partner.updateOne(
+      { _id: partnerId },
+      { $set: { status: "revoked" } },
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Partner key revoked",
+      data: {
+        partnerId,
+        revokedKeys: Number(result.modifiedCount || 0),
+      },
+    });
+  } catch (error) {
+    console.error("adminRevokePartnerKey error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to revoke partner key",
+    });
+  }
+};
+
+export const adminGetPartnerOverview = async (_req, res) => {
+  try {
+    const [
+      partners,
+      activeKeys,
+      totalLogsLast24h,
+      errorLogsLast24h,
+      lockedScalingPartners,
+      manualOverridePartners,
+      safeModeForcedPartners,
+    ] = await Promise.all([
+      Partner.countDocuments({}),
+      PartnerApiKey.countDocuments({ status: "active" }),
+      PartnerApiRequestLog.countDocuments({
+        createdAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+      }),
+      PartnerApiRequestLog.countDocuments({
+        createdAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+        statusCode: { $gte: 400 },
+      }),
+      Partner.countDocuments({ "dynamicControls.lockScaling": true }),
+      Partner.countDocuments({ "dynamicControls.manualOverrideRPM": { $ne: null } }),
+      Partner.countDocuments({ "dynamicControls.safeModeForced": true }),
+    ]);
+
+    const live = getPartnerLiveSnapshot({ limit: 20 });
+    return res.status(200).json({
+      success: true,
+      data: {
+        totals: {
+          partners,
+          activeKeys,
+          requestsLast24h: totalLogsLast24h,
+          errorRateLast24h: totalLogsLast24h > 0
+            ? Number(((errorLogsLast24h / totalLogsLast24h) * 100).toFixed(2))
+            : 0,
+          lockedScalingPartners,
+          manualOverridePartners,
+          safeModeForcedPartners,
+        },
+        live,
+      },
+    });
+  } catch (error) {
+    console.error("adminGetPartnerOverview error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to load partner overview",
+    });
+  }
+};
+
+export const adminGetPartnerAnalytics = async (req, res) => {
+  try {
+    const format = String(req.query?.format || "json").trim().toLowerCase();
+    const errorRateThreshold = toFloatInRange(
+      req.query?.errorRateThreshold,
+      ANALYTICS_DEFAULT_ERROR_RATE_THRESHOLD,
+      0.1,
+      100,
+    );
+    const trafficSpikeMultiplier = toFloatInRange(
+      req.query?.trafficSpikeMultiplier,
+      ANALYTICS_DEFAULT_SPIKE_MULTIPLIER,
+      1.1,
+      20,
+    );
+    const trafficSpikeMinRequests = Math.max(
+      1,
+      parseNumber(req.query?.trafficSpikeMinRequests, ANALYTICS_DEFAULT_SPIKE_MIN_REQUESTS),
+    );
+
+    const partnerIdRaw = String(req.query?.partnerId || "").trim();
+    const hasPartnerFilter = partnerIdRaw && mongoose.Types.ObjectId.isValid(partnerIdRaw);
+    const selectedPartnerId = hasPartnerFilter ? partnerIdRaw : "";
+    const range = resolveAnalyticsRange({
+      range: req.query?.range,
+      startDate: req.query?.startDate,
+      endDate: req.query?.endDate,
+    });
+
+    const partnerQuery = selectedPartnerId ? { _id: selectedPartnerId } : {};
+    const partners = await Partner.find(partnerQuery)
+      .select("name status lastUsedAt rateLimitPerMinute dailyRequestLimit rateLimitPlan dynamicControls")
+      .sort({ name: 1 })
+      .lean();
+
+    const partnerIds = partners.map((partner) => String(partner._id));
+    if (!partnerIds.length) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          summary: {
+            totalRequestsToday: 0,
+            totalErrorsToday: 0,
+            averageErrorRate: 0,
+            liveRequestsPerMinute: 0,
+            activePartners: 0,
+            lastActivityAt: null,
+          },
+          partnerStats: [],
+          charts: {
+            requestsOverTime: [],
+            topEndpoints: [],
+          },
+          alerts: [],
+          filters: {
+            applied: {
+              partnerId: selectedPartnerId || "",
+              range: range.key,
+              startDate: range.from.toISOString(),
+              endDate: range.to.toISOString(),
+            },
+            partners: [],
+            ranges: ["24h", "7d", "custom"],
+            thresholds: {
+              errorRateThreshold,
+              trafficSpikeMultiplier,
+              trafficSpikeMinRequests,
+            },
+          },
+        },
+      });
+    }
+
+    const partnerIdSet = new Set(partnerIds);
+    const keys = await PartnerApiKey.find({ partnerId: { $in: partnerIds } })
+      .select("partnerId keyPrefix lastUsedAt")
+      .lean();
+
+    const keysByPartner = new Map();
+    for (const keyRow of keys) {
+      const id = String(keyRow.partnerId || "");
+      if (!id) continue;
+      const list = keysByPartner.get(id) || [];
+      list.push(keyRow);
+      keysByPartner.set(id, list);
+    }
+
+    const partnerStatsMap = new Map(
+      partners.map((partner) => [
+        String(partner._id),
+        {
+          partnerId: String(partner._id),
+          partnerName: partner.name,
+          status: partner.status,
+          totalRequestsToday: 0,
+          requestsPerMinuteLive: 0,
+          errorsToday: 0,
+          errorRate: 0,
+          lastActiveAt: partner.lastUsedAt || null,
+          isRedisBacked: false,
+          dynamicCurrentRPM: 0,
+          dynamicPolicy: "unknown",
+          dynamicLockScaling: Boolean(partner?.dynamicControls?.lockScaling),
+          dynamicOverrideRPM: Number(partner?.dynamicControls?.manualOverrideRPM || 0),
+          alerts: {
+            highErrorRate: false,
+            trafficSpike: false,
+          },
+        },
+      ]),
+    );
+
+    await Promise.all(
+      partners.map(async (partner) => {
+        const partnerId = String(partner._id || "");
+        const stat = partnerStatsMap.get(partnerId);
+        if (!stat) return;
+
+        const activeKeysForPartner = keysByPartner.get(partnerId) || [];
+        const keyPrefix = String(activeKeysForPartner?.[0]?.keyPrefix || "");
+        const dynamic = await getPartnerDynamicLimitSnapshot({ partner, keyPrefix });
+
+        stat.dynamicCurrentRPM = Number(dynamic?.effectiveRPM || 0);
+        stat.dynamicPolicy = String(dynamic?.state?.policy || "unknown");
+      }),
+    );
+
+    const redis = getRedisClient();
+    if (redis && keys.length) {
+      try {
+        const pipeline = redis.multi();
+        for (const keyRow of keys) {
+          const keyPrefix = String(keyRow.keyPrefix || "").trim();
+          if (!keyPrefix) continue;
+          const redisKeys = getAnalyticsRedisKeys(keyPrefix);
+          pipeline.get(redisKeys.rpm);
+          pipeline.hget(redisKeys.usageDaily, "total");
+          pipeline.hget(redisKeys.usageDaily, "errors");
+        }
+
+        const redisRows = await pipeline.exec();
+        let idx = 0;
+        for (const keyRow of keys) {
+          const keyPrefix = String(keyRow.keyPrefix || "").trim();
+          if (!keyPrefix) continue;
+          const partnerId = String(keyRow.partnerId || "");
+          const stat = partnerStatsMap.get(partnerId);
+          if (!stat) {
+            idx += 3;
+            continue;
+          }
+
+          const rpmRaw = redisRows[idx++]?.[1];
+          const totalRaw = redisRows[idx++]?.[1];
+          const errorsRaw = redisRows[idx++]?.[1];
+
+          stat.requestsPerMinuteLive += Math.max(Number(rpmRaw || 0), 0);
+          stat.totalRequestsToday += Math.max(Number(totalRaw || 0), 0);
+          stat.errorsToday += Math.max(Number(errorsRaw || 0), 0);
+          stat.isRedisBacked = true;
+
+          const keyLastUsed = toSafeDate(keyRow.lastUsedAt);
+          const currentLast = toSafeDate(stat.lastActiveAt);
+          if (keyLastUsed && (!currentLast || keyLastUsed > currentLast)) {
+            stat.lastActiveAt = keyLastUsed.toISOString();
+          }
+        }
+      } catch (error) {
+        console.warn("adminGetPartnerAnalytics redis aggregation fallback:", error?.message || error);
+      }
+    }
+
+    const todayStart = startOfUtcDay(new Date());
+
+    const [todayByPartner, rangeSeries, topEndpoints, rangeCountsByPartner] = await Promise.all([
+      PartnerApiRequestLog.aggregate([
+        {
+          $match: {
+            createdAt: { $gte: todayStart },
+            ...(selectedPartnerId
+              ? { partnerId: new mongoose.Types.ObjectId(selectedPartnerId) }
+              : { partnerId: { $in: partnerIds.map((id) => new mongoose.Types.ObjectId(id)) } }),
+          },
+        },
+        {
+          $group: {
+            _id: "$partnerId",
+            requests: { $sum: 1 },
+            errors: {
+              $sum: {
+                $cond: [{ $gte: ["$statusCode", 400] }, 1, 0],
+              },
+            },
+            lastActiveAt: { $max: "$createdAt" },
+          },
+        },
+      ]),
+      PartnerApiRequestLog.aggregate([
+        {
+          $match: {
+            createdAt: { $gte: range.from, $lte: range.to },
+            ...(selectedPartnerId
+              ? { partnerId: new mongoose.Types.ObjectId(selectedPartnerId) }
+              : { partnerId: { $in: partnerIds.map((id) => new mongoose.Types.ObjectId(id)) } }),
+          },
+        },
+        {
+          $group: {
+            _id: {
+              bucket: {
+                $dateToString: {
+                  format: range.granularity === "day" ? "%Y-%m-%d" : "%m-%d %H:00",
+                  date: "$createdAt",
+                },
+              },
+            },
+            requests: { $sum: 1 },
+            errors: {
+              $sum: {
+                $cond: [{ $gte: ["$statusCode", 400] }, 1, 0],
+              },
+            },
+          },
+        },
+        { $sort: { "_id.bucket": 1 } },
+      ]),
+      PartnerApiRequestLog.aggregate([
+        {
+          $match: {
+            createdAt: { $gte: range.from, $lte: range.to },
+            ...(selectedPartnerId
+              ? { partnerId: new mongoose.Types.ObjectId(selectedPartnerId) }
+              : { partnerId: { $in: partnerIds.map((id) => new mongoose.Types.ObjectId(id)) } }),
+          },
+        },
+        {
+          $group: {
+            _id: "$endpoint",
+            requests: { $sum: 1 },
+            errors: {
+              $sum: {
+                $cond: [{ $gte: ["$statusCode", 400] }, 1, 0],
+              },
+            },
+          },
+        },
+        { $sort: { requests: -1 } },
+        { $limit: 8 },
+      ]),
+      PartnerApiRequestLog.aggregate([
+        {
+          $match: {
+            createdAt: { $gte: range.from, $lte: range.to },
+            ...(selectedPartnerId
+              ? { partnerId: new mongoose.Types.ObjectId(selectedPartnerId) }
+              : { partnerId: { $in: partnerIds.map((id) => new mongoose.Types.ObjectId(id)) } }),
+          },
+        },
+        {
+          $group: {
+            _id: "$partnerId",
+            requests: { $sum: 1 },
+            errors: {
+              $sum: {
+                $cond: [{ $gte: ["$statusCode", 400] }, 1, 0],
+              },
+            },
+            lastActiveAt: { $max: "$createdAt" },
+          },
+        },
+      ]),
+    ]);
+
+    for (const row of todayByPartner) {
+      const partnerId = String(row?._id || "");
+      const stat = partnerStatsMap.get(partnerId);
+      if (!stat) continue;
+
+      if (!stat.isRedisBacked) {
+        stat.totalRequestsToday = Math.max(Number(row.requests || 0), 0);
+        stat.errorsToday = Math.max(Number(row.errors || 0), 0);
+      }
+
+      const lastActiveAt = toSafeDate(row.lastActiveAt);
+      const currentLast = toSafeDate(stat.lastActiveAt);
+      if (lastActiveAt && (!currentLast || lastActiveAt > currentLast)) {
+        stat.lastActiveAt = lastActiveAt.toISOString();
+      }
+    }
+
+    const rangeCountMap = new Map(
+      rangeCountsByPartner.map((row) => [String(row?._id || ""), row]),
+    );
+
+    const partnerStats = Array.from(partnerStatsMap.values())
+      .map((stat) => {
+        const rangeCounts = rangeCountMap.get(stat.partnerId);
+        const rangeRequests = Math.max(Number(rangeCounts?.requests || 0), 0);
+        const rangeErrors = Math.max(Number(rangeCounts?.errors || 0), 0);
+        const effectiveRequests = stat.totalRequestsToday > 0 ? stat.totalRequestsToday : rangeRequests;
+        const effectiveErrors = stat.errorsToday > 0 ? stat.errorsToday : rangeErrors;
+        const errorRate = effectiveRequests > 0
+          ? Number(((effectiveErrors / effectiveRequests) * 100).toFixed(2))
+          : 0;
+
+        const currentLast = toSafeDate(stat.lastActiveAt);
+        const rangeLast = toSafeDate(rangeCounts?.lastActiveAt);
+        if (rangeLast && (!currentLast || rangeLast > currentLast)) {
+          stat.lastActiveAt = rangeLast.toISOString();
+        }
+
+        const highErrorRate = errorRate >= errorRateThreshold;
+
+        return {
+          ...stat,
+          totalRequestsToday: effectiveRequests,
+          errorsToday: effectiveErrors,
+          errorRate,
+          alerts: {
+            highErrorRate,
+            trafficSpike: false,
+          },
+        };
+      })
+      .sort((a, b) => b.totalRequestsToday - a.totalRequestsToday);
+
+    const requestsOverTime = rangeSeries.map((row) => {
+      const requests = Math.max(Number(row.requests || 0), 0);
+      const errors = Math.max(Number(row.errors || 0), 0);
+      return {
+        label: row._id.bucket,
+        requests,
+        errors,
+      };
+    });
+
+    const topEndpointRows = topEndpoints.map((row) => {
+      const requests = Math.max(Number(row.requests || 0), 0);
+      const errors = Math.max(Number(row.errors || 0), 0);
+      return {
+        endpoint: String(row._id || "/"),
+        requests,
+        errors,
+        errorRate: requests > 0 ? Number(((errors / requests) * 100).toFixed(2)) : 0,
+      };
+    });
+
+    const globalAlerts = [];
+    const latestBucket = requestsOverTime[requestsOverTime.length - 1];
+    const previousBuckets = requestsOverTime.slice(0, -1);
+    const previousAverage = previousBuckets.length
+      ? previousBuckets.reduce((sum, row) => sum + row.requests, 0) / previousBuckets.length
+      : 0;
+    const hasTrafficSpike = Boolean(
+      latestBucket
+      && previousAverage > 0
+      && latestBucket.requests >= Math.max(
+        trafficSpikeMinRequests,
+        Math.ceil(previousAverage * trafficSpikeMultiplier),
+      ),
+    );
+
+    if (hasTrafficSpike) {
+      globalAlerts.push({
+        type: "traffic_spike",
+        severity: "warning",
+        message: `Traffic spike detected: ${latestBucket.requests} requests in latest bucket vs avg ${Math.round(previousAverage)}.`,
+      });
+    }
+
+    const highErrorPartners = partnerStats.filter((item) => item.alerts.highErrorRate);
+    if (highErrorPartners.length) {
+      globalAlerts.push({
+        type: "high_error_rate",
+        severity: "critical",
+        message: `${highErrorPartners.length} partner(s) above error-rate threshold (>=${errorRateThreshold}%).`,
+      });
+    }
+
+    const partnerStatsWithSpike = partnerStats.map((stat) => ({
+      ...stat,
+      alerts: {
+        ...stat.alerts,
+        trafficSpike: hasTrafficSpike && stat.requestsPerMinuteLive > 0,
+      },
+    }));
+
+    const totalRequestsToday = partnerStatsWithSpike.reduce(
+      (sum, stat) => sum + Number(stat.totalRequestsToday || 0),
+      0,
+    );
+    const totalErrorsToday = partnerStatsWithSpike.reduce(
+      (sum, stat) => sum + Number(stat.errorsToday || 0),
+      0,
+    );
+    const liveRequestsPerMinute = partnerStatsWithSpike.reduce(
+      (sum, stat) => sum + Number(stat.requestsPerMinuteLive || 0),
+      0,
+    );
+    const averageErrorRate = totalRequestsToday > 0
+      ? Number(((totalErrorsToday / totalRequestsToday) * 100).toFixed(2))
+      : 0;
+
+    const responsePayload = {
+      summary: {
+        totalRequestsToday,
+        totalErrorsToday,
+        averageErrorRate,
+        liveRequestsPerMinute,
+        activePartners: partnerStatsWithSpike.filter((item) => item.status === "active").length,
+        lastActivityAt: partnerStatsWithSpike
+          .map((item) => toSafeDate(item.lastActiveAt))
+          .filter(Boolean)
+          .sort((a, b) => b.getTime() - a.getTime())?.[0]?.toISOString() || null,
+      },
+      partnerStats: partnerStatsWithSpike,
+      charts: {
+        requestsOverTime,
+        topEndpoints: topEndpointRows,
+      },
+      alerts: globalAlerts,
+      filters: {
+        applied: {
+          partnerId: selectedPartnerId || "",
+          range: range.key,
+          startDate: range.from.toISOString(),
+          endDate: range.to.toISOString(),
+        },
+        partners: partners.map((partner) => ({
+          id: String(partner._id),
+          name: partner.name,
+          status: partner.status,
+        })),
+        ranges: ["24h", "7d", "custom"],
+        thresholds: {
+          errorRateThreshold,
+          trafficSpikeMultiplier,
+          trafficSpikeMinRequests,
+        },
+      },
+    };
+
+    if (format === "csv") {
+      const headers = [
+        "partnerId",
+        "partnerName",
+        "status",
+        "totalRequestsToday",
+        "requestsPerMinuteLive",
+        "errorsToday",
+        "errorRate",
+        "lastActiveAt",
+        "highErrorRate",
+        "trafficSpike",
+      ];
+
+      const rows = partnerStatsWithSpike.map((item) => [
+        item.partnerId,
+        item.partnerName,
+        item.status,
+        item.totalRequestsToday,
+        item.requestsPerMinuteLive,
+        item.errorsToday,
+        item.errorRate,
+        item.lastActiveAt || "",
+        item.alerts?.highErrorRate ? "yes" : "no",
+        item.alerts?.trafficSpike ? "yes" : "no",
+      ]);
+
+      const csv = [headers, ...rows]
+        .map((row) => row.map((cell) => csvEscape(cell)).join(","))
+        .join("\n");
+
+      const stamp = new Date().toISOString().slice(0, 10);
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename=partner-analytics-${stamp}.csv`);
+      return res.status(200).send(csv);
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: responsePayload,
+    });
+  } catch (error) {
+    console.error("adminGetPartnerAnalytics error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to load partner analytics",
+    });
+  }
+};
+
+export const adminGetPartnerDetail = async (req, res) => {
+  try {
+    const partnerId = String(req.params?.partnerId || "").trim();
+    const partner = await Partner.findById(partnerId).lean();
+    if (!partner) {
+      return res.status(404).json({ success: false, message: "Partner not found" });
+    }
+
+    const activeKey = await PartnerApiKey.findOne({
+      partnerId,
+      status: "active",
+    })
+      .select("keyPrefix createdAt lastUsedAt lastUsedIp")
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const [usage24h, usage7d, latestLogs] = await Promise.all([
+      PartnerApiRequestLog.aggregate([
+        {
+          $match: {
+            partnerId: new mongoose.Types.ObjectId(partnerId),
+            createdAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+          },
+        },
+        {
+          $group: {
+            _id: {
+              hour: { $dateToString: { format: "%Y-%m-%d %H:00", date: "$createdAt" } },
+            },
+            count: { $sum: 1 },
+            errors: {
+              $sum: {
+                $cond: [{ $gte: ["$statusCode", 400] }, 1, 0],
+              },
+            },
+          },
+        },
+        { $sort: { "_id.hour": 1 } },
+      ]),
+      PartnerApiRequestLog.aggregate([
+        {
+          $match: {
+            partnerId: new mongoose.Types.ObjectId(partnerId),
+            createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
+          },
+        },
+        {
+          $group: {
+            _id: {
+              day: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
+            },
+            count: { $sum: 1 },
+            errors: {
+              $sum: {
+                $cond: [{ $gte: ["$statusCode", 400] }, 1, 0],
+              },
+            },
+          },
+        },
+        { $sort: { "_id.day": 1 } },
+      ]),
+      PartnerApiRequestLog.find({ partnerId })
+        .select("method endpoint statusCode ipAddress location responseTimeMs createdAt errorCode")
+        .sort({ createdAt: -1 })
+        .limit(20)
+        .lean(),
+    ]);
+
+    const [dynamic, rateLimit, dailyUsage, dynamicEvents] = await Promise.all([
+      getPartnerDynamicLimitSnapshot({
+        partner,
+        keyPrefix: activeKey?.keyPrefix || "",
+      }),
+      getPartnerRateLimitSnapshot({
+        partnerId,
+        keyPrefix: activeKey?.keyPrefix || "",
+        configuredRateLimitPerMinute: partner.rateLimitPerMinute,
+        partner,
+      }),
+      getPartnerDailyLimitSnapshot({
+        partnerId,
+        keyPrefix: activeKey?.keyPrefix || "",
+        configuredDailyRequestLimit: partner.dailyRequestLimit,
+        partner,
+      }),
+      getPartnerDynamicScalingEvents({
+        partnerId,
+        keyPrefix: activeKey?.keyPrefix || "",
+        limit: 20,
+      }),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        partner: {
+          id: String(partner._id),
+          name: partner.name,
+          companyName: partner.companyName || "",
+          contactEmail: partner.contactEmail,
+          status: partner.status,
+          scopes: normalizeScopes(partner.scopes),
+          rateLimitPerMinute: partner.rateLimitPerMinute,
+          dailyRequestLimit: partner.dailyRequestLimit,
+          dailyTokenLimit: partner.dailyTokenLimit,
+          dynamic,
+          visibleProductFields: normalizeVisibleProductFields(partner.visibleProductFields),
+          notes: partner.notes || "",
+          createdAt: partner.createdAt,
+          lastUsedAt: partner.lastUsedAt || activeKey?.lastUsedAt || null,
+        },
+        activeKey: activeKey || null,
+        usage: {
+          rateLimit,
+          dailyUsage,
+          series24h: usage24h.map((item) => ({
+            label: item._id.hour,
+            requests: item.count,
+            errors: item.errors,
+          })),
+          series7d: usage7d.map((item) => ({
+            label: item._id.day,
+            requests: item.count,
+            errors: item.errors,
+          })),
+        },
+        logs: latestLogs,
+        dynamicEvents,
+      },
+    });
+  } catch (error) {
+    console.error("adminGetPartnerDetail error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to load partner details",
+    });
+  }
+};
+
+export const adminGetPartnerDynamicState = async (req, res) => {
+  try {
+    const partnerId = String(req.params?.partnerId || "").trim();
+    const partner = await Partner.findById(partnerId).lean();
+    if (!partner) {
+      return res.status(404).json({ success: false, message: "Partner not found" });
+    }
+
+    const activeKey = await PartnerApiKey.findOne({ partnerId, status: "active" })
+      .select("keyPrefix")
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const keyPrefix = String(activeKey?.keyPrefix || "");
+    const [dynamic, events] = await Promise.all([
+      getPartnerDynamicLimitSnapshot({ partner, keyPrefix }),
+      getPartnerDynamicScalingEvents({ partnerId, keyPrefix, limit: 40 }),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        partnerId,
+        keyPrefix,
+        dynamic,
+        events,
+      },
+    });
+  } catch (error) {
+    console.error("adminGetPartnerDynamicState error:", error);
+    return res.status(500).json({ success: false, message: "Failed to load dynamic limiter state" });
+  }
+};
+
+export const adminUpdatePartnerDynamicState = async (req, res) => {
+  try {
+    const partnerId = String(req.params?.partnerId || "").trim();
+    const partner = await Partner.findById(partnerId);
+    if (!partner) {
+      return res.status(404).json({ success: false, message: "Partner not found" });
+    }
+
+    const dynamicPatch = toPartnerDynamicPatch(req.body || {}, partner);
+    if (!Object.keys(dynamicPatch).length) {
+      return res.status(400).json({
+        success: false,
+        message: "No dynamic limiter fields were provided",
+      });
+    }
+
+    await Partner.updateOne({ _id: partner._id }, { $set: dynamicPatch });
+    const updatedPartner = await Partner.findById(partnerId).lean();
+
+    const activeKey = await PartnerApiKey.findOne({ partnerId, status: "active" })
+      .select("keyPrefix")
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const keyPrefix = String(activeKey?.keyPrefix || "");
+    await applyPartnerDynamicAdminOverride({
+      partner: updatedPartner,
+      keyPrefix,
+      reason: "dynamic_state_updated",
+    });
+
+    const [dynamic, events] = await Promise.all([
+      getPartnerDynamicLimitSnapshot({ partner: updatedPartner, keyPrefix }),
+      getPartnerDynamicScalingEvents({ partnerId, keyPrefix, limit: 20 }),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      message: "Dynamic limiter settings updated",
+      data: {
+        partnerId,
+        keyPrefix,
+        dynamic,
+        events,
+      },
+    });
+  } catch (error) {
+    console.error("adminUpdatePartnerDynamicState error:", error);
+    return res.status(500).json({ success: false, message: "Failed to update dynamic limiter state" });
+  }
+};
+
+export const adminGetPartnerLogs = async (req, res) => {
+  try {
+    const partnerId = String(req.query?.partnerId || "").trim();
+    const statusCode = parseNumber(req.query?.statusCode, null);
+    const endpoint = String(req.query?.endpoint || "").trim();
+    const page = Math.max(parseNumber(req.query?.page, 1), 1);
+    const limit = Math.min(Math.max(parseNumber(req.query?.limit, 50), 1), 200);
+    const skip = (page - 1) * limit;
+
+    const query = {};
+    if (partnerId && mongoose.Types.ObjectId.isValid(partnerId)) {
+      query.partnerId = partnerId;
+    }
+    if (Number.isFinite(statusCode)) {
+      query.statusCode = statusCode;
+    }
+    if (endpoint) {
+      query.endpoint = new RegExp(escapeRegex(endpoint), "i");
+    }
+
+    const [rows, total] = await Promise.all([
+      PartnerApiRequestLog.find(query)
+        .select("partnerId keyPrefix method endpoint statusCode ipAddress location responseTimeMs createdAt errorCode")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      PartnerApiRequestLog.countDocuments(query),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      data: rows,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.max(Math.ceil(total / limit), 1),
+      },
+    });
+  } catch (error) {
+    console.error("adminGetPartnerLogs error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to load partner logs",
+    });
+  }
+};
+
+export const adminGetPartnerLiveMonitoring = async (req, res) => {
+  try {
+    const limit = Math.min(Math.max(parseNumber(req.query?.limit, 30), 1), 100);
+    const partnerId = String(req.query?.partnerId || "").trim();
+    const live = getPartnerLiveSnapshot({ limit });
+
+    const recentErrors = await PartnerApiRequestLog.find({
+      createdAt: { $gte: new Date(Date.now() - 60 * 60 * 1000) },
+      statusCode: { $gte: 400 },
+    })
+      .select("partnerId keyPrefix method endpoint statusCode createdAt errorCode")
+      .sort({ createdAt: -1 })
+      .limit(30)
+      .lean();
+
+    let dynamic = null;
+    let dynamicEvents = [];
+    if (partnerId && mongoose.Types.ObjectId.isValid(partnerId)) {
+      const partner = await Partner.findById(partnerId).lean();
+      if (partner) {
+        const activeKey = await PartnerApiKey.findOne({ partnerId, status: "active" })
+          .select("keyPrefix")
+          .sort({ createdAt: -1 })
+          .lean();
+
+        const keyPrefix = String(activeKey?.keyPrefix || "");
+        [dynamic, dynamicEvents] = await Promise.all([
+          getPartnerDynamicLimitSnapshot({ partner, keyPrefix }),
+          getPartnerDynamicScalingEvents({ partnerId, keyPrefix, limit: 20 }),
+        ]);
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        ...live,
+        recentErrors,
+        dynamic,
+        dynamicEvents,
+      },
+    });
+  } catch (error) {
+    console.error("adminGetPartnerLiveMonitoring error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to load live monitoring",
     });
   }
 };

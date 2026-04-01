@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
-import OrderModel from "../models/order.model.js";
 import InfluencerModel from "../models/influencer.model.js";
+import OrderModel from "../models/order.model.js";
 import SettingsModel from "../models/settings.model.js";
 import {
   AppError,
@@ -10,7 +10,6 @@ import {
   sendError,
   sendSuccess,
 } from "../utils/errorHandler.js";
-import { normalizeOrderStatus, ORDER_STATUS } from "../utils/orderStatus.js";
 import {
   createOrderReportWriter,
   ORDER_REPORT_COLUMNS,
@@ -18,6 +17,7 @@ import {
   PRICING_ENGINE_DEFAULTS,
   resolvePricingEngineTemplatePath,
 } from "../utils/excelExport.js";
+import { normalizeOrderStatus, ORDER_STATUS } from "../utils/orderStatus.js";
 
 const REPORT_DEFAULT_LIMIT = 20;
 const REPORT_MAX_LIMIT = 100;
@@ -111,7 +111,10 @@ const resolveOrderStatusLabel = (status) => {
   const normalized = normalizeOrderStatus(status);
   if (!normalized) return "Pending";
   if (normalized === ORDER_STATUS.CANCELLED) return "Cancelled";
-  if (normalized === ORDER_STATUS.RTO || normalized === ORDER_STATUS.RTO_COMPLETED) {
+  if (
+    normalized === ORDER_STATUS.RTO ||
+    normalized === ORDER_STATUS.RTO_COMPLETED
+  ) {
     return "RTO";
   }
   if (
@@ -173,8 +176,52 @@ const parseNumberLike = (value) => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
+const round2 = (value) => Math.round(Number(value || 0) * 100) / 100;
+
+const resolveProductPaidAfterDiscount = (row) => {
+  const quantity = Number(row?.quantity || 0);
+  const unitPrice = Number(row?.price || 0);
+  const productSubTotalRaw = Number(row?.subTotal || 0);
+  const productSubTotal =
+    Number.isFinite(productSubTotalRaw) && productSubTotalRaw > 0
+      ? productSubTotalRaw
+      : Math.max(quantity, 0) * Math.max(unitPrice, 0);
+
+  const orderSubtotal = Number(row?.subtotal || 0);
+  const orderTotalDiscount = Number(row?.totalDiscount || 0);
+
+  if (!Number.isFinite(productSubTotal) || productSubTotal <= 0) return 0;
+  if (!Number.isFinite(orderTotalDiscount) || orderTotalDiscount <= 0) {
+    return round2(productSubTotal);
+  }
+
+  // Only use proportional allocation if orderSubtotal is valid and >= productSubTotal
+  if (
+    Number.isFinite(orderSubtotal) &&
+    orderSubtotal > 0 &&
+    orderSubtotal >= productSubTotal * 0.95 // Allow 5% variance
+  ) {
+    const allocatedDiscount =
+      (orderTotalDiscount * productSubTotal) / orderSubtotal;
+    return round2(Math.max(productSubTotal - allocatedDiscount, 0));
+  }
+
+  // Fallback: if orderSubtotal is missing or invalid, use totalAmt + discount
+  const calculatedOrderSubtotal = Number(row?.calculatedOrderSubtotal || 0);
+  if (Number.isFinite(calculatedOrderSubtotal) && calculatedOrderSubtotal > 0) {
+    const allocatedDiscount =
+      (orderTotalDiscount * productSubTotal) / calculatedOrderSubtotal;
+    return round2(Math.max(productSubTotal - allocatedDiscount, 0));
+  }
+
+  // Final fallback: divide discount equally or subtract directly
+  return round2(Math.max(productSubTotal - orderTotalDiscount, 0));
+};
+
 const normalizeInfluencerCode = (value) => {
-  const raw = String(value || "").trim().toUpperCase();
+  const raw = String(value || "")
+    .trim()
+    .toUpperCase();
   if (!raw) return "";
   const normalized = raw.replace(/[^A-Z0-9_-]/g, "");
   return normalized.slice(0, 30);
@@ -199,7 +246,9 @@ const pickMostCommonInfluencerCode = (counts) => {
 const computeInfluencerPercent = (type, value, baseAmount) => {
   const numericValue = Number(value || 0);
   if (!Number.isFinite(numericValue) || numericValue <= 0) return 0;
-  const normalizedType = String(type || "").trim().toUpperCase();
+  const normalizedType = String(type || "")
+    .trim()
+    .toUpperCase();
   if (normalizedType === "PERCENT") return numericValue;
   if (normalizedType === "FLAT") {
     const base = Number(baseAmount || 0);
@@ -284,8 +333,13 @@ const buildSearchMatch = (searchTerm) => {
 const normalizeReportRow = (row) => {
   const orderId = String(row?.orderId || row?._id || "").trim();
   const orderDisplayId = String(
-    row?.orderNumber || row?.displayOrderId || deriveLegacyDisplayOrderId(orderId) || orderId || "",
+    row?.orderNumber ||
+      row?.displayOrderId ||
+      deriveLegacyDisplayOrderId(orderId) ||
+      orderId ||
+      "",
   ).trim();
+  const productPaidAmountAfterDiscount = resolveProductPaidAfterDiscount(row);
 
   return {
     orderId,
@@ -294,11 +348,15 @@ const normalizeReportRow = (row) => {
     productName: String(row?.productName || "").trim(),
     quantity: Number(row?.quantity || 0),
     price: Number(row?.price || 0),
+    productPaidAmountAfterDiscount,
     orderStatus: resolveOrderStatusLabel(row?.order_status),
     customerName: String(row?.customerName || "").trim() || "Guest",
     orderDate: row?.createdAt ? new Date(row.createdAt).toISOString() : null,
     deliveryStatus: String(
-      row?.deliveryStatus || row?.shipmentStatus || row?.shipment_status || "pending",
+      row?.deliveryStatus ||
+        row?.shipmentStatus ||
+        row?.shipment_status ||
+        "pending",
     ).trim(),
   };
 };
@@ -360,6 +418,18 @@ export const getOrdersReport = asyncHandler(async (req, res) => {
                 productName: "$products.productTitle",
                 quantity: "$products.quantity",
                 price: "$products.price",
+                subTotal: "$products.subTotal",
+                subtotal: {
+                  $cond: [
+                    { $gt: ["$subtotal", 0] },
+                    "$subtotal",
+                    { $max: [{ $add: ["$totalAmt", "$discount"] }, 0] },
+                  ],
+                },
+                calculatedOrderSubtotal: {
+                  $max: [{ $add: ["$totalAmt", "$discount"] }, 0],
+                },
+                totalDiscount: { $max: ["$discount", 0] },
                 customerName: {
                   $ifNull: [
                     "$billingDetails.fullName",
@@ -664,22 +734,31 @@ export const exportOrdersReport = asyncHandler(async (req, res) => {
                 ],
               },
             ],
-           },
-           couponCode: 1,
-           couponDiscount: { $ifNull: ["$discountAmount", 0] },
-           membershipDiscount: { $ifNull: ["$membershipDiscount", 0] },
-           influencerDiscount: { $ifNull: ["$influencerDiscount", 0] },
-           comboDiscount: { $ifNull: ["$comboDiscount", 0] },
-           coinDiscount: { $ifNull: ["$coinRedemption.amount", 0] },
-           totalDiscount: { $ifNull: ["$discount", 0] },
-           influencerId: 1,
-           influencerCode: 1,
-           affiliateCode: 1,
-           influencerCommission: 1,
-           shipping: 1,
-           subtotal: 1,
-           gst: 1,
-           productDoc: 1,
+          },
+          couponCode: 1,
+          couponDiscount: { $ifNull: ["$discountAmount", 0] },
+          membershipDiscount: { $ifNull: ["$membershipDiscount", 0] },
+          influencerDiscount: { $ifNull: ["$influencerDiscount", 0] },
+          comboDiscount: { $ifNull: ["$comboDiscount", 0] },
+          coinDiscount: { $ifNull: ["$coinRedemption.amount", 0] },
+          totalDiscount: { $ifNull: ["$discount", 0] },
+          influencerId: 1,
+          influencerCode: 1,
+          affiliateCode: 1,
+          influencerCommission: 1,
+          shipping: 1,
+          subtotal: {
+            $cond: [
+              { $gt: ["$subtotal", 0] },
+              "$subtotal",
+              { $max: [{ $add: ["$totalAmt", "$discount"] }, 0] },
+            ],
+          },
+          calculatedOrderSubtotal: {
+            $max: [{ $add: ["$totalAmt", "$discount"] }, 0],
+          },
+          gst: 1,
+          productDoc: 1,
         },
       },
     ];
@@ -697,11 +776,12 @@ export const exportOrdersReport = asyncHandler(async (req, res) => {
     );
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
 
-    const { workbook, worksheet: orderWorksheet } = await createOrderReportWriter({
-      stream: res,
-      sheetName: "Order Report",
-      columns: ORDER_REPORT_COLUMNS,
-    });
+    const { workbook, worksheet: orderWorksheet } =
+      await createOrderReportWriter({
+        stream: res,
+        sheetName: "Order Report",
+        columns: ORDER_REPORT_COLUMNS,
+      });
 
     const { worksheet: pricingWorksheet } = await createOrderReportWriter({
       workbook,
@@ -737,7 +817,10 @@ export const exportOrdersReport = asyncHandler(async (req, res) => {
         extractHsnFromSpecifications(variantDoc?.attributes) ||
         extractHsnFromSpecifications(productDoc?.specifications);
       const deliveryStatus = String(
-        row?.deliveryStatus || row?.shipmentStatus || row?.shipment_status || "pending",
+        row?.deliveryStatus ||
+          row?.shipmentStatus ||
+          row?.shipment_status ||
+          "pending",
       ).trim();
 
       orderWorksheet
@@ -750,6 +833,7 @@ export const exportOrdersReport = asyncHandler(async (req, res) => {
           variantName: String(row?.variantName || "").trim(),
           quantity: Number(row?.quantity || 0),
           price: Number(row?.price || 0),
+          productPaidAmountAfterDiscount: resolveProductPaidAfterDiscount(row),
           couponCode: String(row?.couponCode || "").trim(),
           couponDiscount: Number(row?.couponDiscount || 0),
           membershipDiscount: Number(row?.membershipDiscount || 0),
@@ -773,10 +857,16 @@ export const exportOrdersReport = asyncHandler(async (req, res) => {
         const mrpCandidate = Number(
           variantDoc?.originalPrice ?? productDoc?.originalPrice ?? 0,
         );
-        const sellingCandidate = Number(variantDoc?.price ?? productDoc?.price ?? 0);
-        const weightCandidate = Number(variantDoc?.weight ?? productDoc?.weight ?? 0);
+        const sellingCandidate = Number(
+          variantDoc?.price ?? productDoc?.price ?? 0,
+        );
+        const weightCandidate = Number(
+          variantDoc?.weight ?? productDoc?.weight ?? 0,
+        );
         const resolvedMrp =
-          Number.isFinite(mrpCandidate) && mrpCandidate > 0 ? mrpCandidate : null;
+          Number.isFinite(mrpCandidate) && mrpCandidate > 0
+            ? mrpCandidate
+            : null;
         const resolvedSellingPrice =
           Number.isFinite(sellingCandidate) && sellingCandidate > 0
             ? sellingCandidate
@@ -796,17 +886,21 @@ export const exportOrdersReport = asyncHandler(async (req, res) => {
           pricingEntry = {
             productId,
             variantId,
-            productName: String(productDoc?.name || row?.productName || "").trim(),
-             variantName: String(variantDoc?.name || row?.variantName || "").trim(),
-             sku,
-             hsnCode: hsn ? String(hsn).trim() : "",
-             unit: String(variantDoc?.unit || productDoc?.unit || "").trim(),
-             weight: resolvedWeight,
-             mrp: resolvedMrp,
-             sellingPrice: resolvedSellingPrice,
-             costOfMaking: extractCostOfMaking(productDoc),
-             deliveryCost:
-               productDoc?.freeShipping === true
+            productName: String(
+              productDoc?.name || row?.productName || "",
+            ).trim(),
+            variantName: String(
+              variantDoc?.name || row?.variantName || "",
+            ).trim(),
+            sku,
+            hsnCode: hsn ? String(hsn).trim() : "",
+            unit: String(variantDoc?.unit || productDoc?.unit || "").trim(),
+            weight: resolvedWeight,
+            mrp: resolvedMrp,
+            sellingPrice: resolvedSellingPrice,
+            costOfMaking: extractCostOfMaking(productDoc),
+            deliveryCost:
+              productDoc?.freeShipping === true
                 ? 0
                 : Number(productDoc?.shippingCost || 0) > 0
                   ? Number(productDoc.shippingCost)
@@ -821,7 +915,9 @@ export const exportOrdersReport = asyncHandler(async (req, res) => {
           pricingEntry.hsnCode = String(hsn).trim();
         }
         if (!pricingEntry.unit && (variantDoc?.unit || productDoc?.unit)) {
-          pricingEntry.unit = String(variantDoc?.unit || productDoc?.unit || "").trim();
+          pricingEntry.unit = String(
+            variantDoc?.unit || productDoc?.unit || "",
+          ).trim();
         }
         if (
           (!pricingEntry.weight || Number(pricingEntry.weight) <= 0) &&
@@ -832,7 +928,10 @@ export const exportOrdersReport = asyncHandler(async (req, res) => {
         if (pricingEntry.mrp === null && resolvedMrp !== null) {
           pricingEntry.mrp = resolvedMrp;
         }
-        if (pricingEntry.sellingPrice === null && resolvedSellingPrice !== null) {
+        if (
+          pricingEntry.sellingPrice === null &&
+          resolvedSellingPrice !== null
+        ) {
           pricingEntry.sellingPrice = resolvedSellingPrice;
         }
 
@@ -843,7 +942,9 @@ export const exportOrdersReport = asyncHandler(async (req, res) => {
       }
     }
 
-    const influencerCodeOverride = normalizeInfluencerCode(req.query.influencerCode);
+    const influencerCodeOverride = normalizeInfluencerCode(
+      req.query.influencerCode,
+    );
     const influencerCodesToFetch = new Set();
     if (influencerCodeOverride) {
       influencerCodesToFetch.add(influencerCodeOverride);
@@ -863,7 +964,9 @@ export const exportOrdersReport = asyncHandler(async (req, res) => {
       const influencers = await InfluencerModel.find({
         code: { $in: Array.from(influencerCodesToFetch) },
       })
-        .select("code discountType discountValue commissionType commissionValue isActive")
+        .select(
+          "code discountType discountValue commissionType commissionValue isActive",
+        )
         .lean();
 
       influencers.forEach((influencer) => {
@@ -955,20 +1058,30 @@ export const exportOrdersReport = asyncHandler(async (req, res) => {
           subtotalProduct:
             Number.isFinite(item?.sellingPrice) && item.sellingPrice > 0
               ? Number(item.sellingPrice)
-            : Number.isFinite(item?.mrp) && item.mrp > 0
+              : Number.isFinite(item?.mrp) && item.mrp > 0
                 ? Number(item.mrp)
                 : "",
           influencerDiscountRs: {
             formula: `IFERROR(J${rowNumber}*(F${rowNumber}/100),0)`,
           },
-          couponDiscountRs: { formula: `IFERROR(J${rowNumber}*(G${rowNumber}/100),0)` },
-          discountedProductPrice: { formula: `IFERROR(J${rowNumber}-K${rowNumber}-L${rowNumber},0)` },
+          couponDiscountRs: {
+            formula: `IFERROR(J${rowNumber}*(G${rowNumber}/100),0)`,
+          },
+          discountedProductPrice: {
+            formula: `IFERROR(J${rowNumber}-K${rowNumber}-L${rowNumber},0)`,
+          },
           cgstRs: { formula: `IFERROR(M${rowNumber}*(H${rowNumber}/100),0)` },
           sgstRs: { formula: `IFERROR(M${rowNumber}*(I${rowNumber}/100),0)` },
-          productPriceAfterGst: { formula: `IFERROR(M${rowNumber}+N${rowNumber}+O${rowNumber},0)` },
+          productPriceAfterGst: {
+            formula: `IFERROR(M${rowNumber}+N${rowNumber}+O${rowNumber},0)`,
+          },
           customerPrice: { formula: `IFERROR(P${rowNumber}+C${rowNumber},0)` },
-          influencerCommissionRs: { formula: `IFERROR(Q${rowNumber}*(E${rowNumber}/100),0)` },
-          totalCost: { formula: `IFERROR(B${rowNumber}+C${rowNumber}+R${rowNumber},0)` },
+          influencerCommissionRs: {
+            formula: `IFERROR(Q${rowNumber}*(E${rowNumber}/100),0)`,
+          },
+          totalCost: {
+            formula: `IFERROR(B${rowNumber}+C${rowNumber}+R${rowNumber},0)`,
+          },
           actualProfit: { formula: `IFERROR(Q${rowNumber}-S${rowNumber},0)` },
           actualMarginPercent: {
             formula: `IFERROR(IF(Q${rowNumber}=0,0,T${rowNumber}/Q${rowNumber}*100),0)`,
@@ -981,7 +1094,8 @@ export const exportOrdersReport = asyncHandler(async (req, res) => {
           sku: item.sku,
           hsnCode: item.hsnCode,
           unit: item.unit,
-          weight: Number.isFinite(item.weight) && item.weight > 0 ? item.weight : "",
+          weight:
+            Number.isFinite(item.weight) && item.weight > 0 ? item.weight : "",
           mrp: Number.isFinite(item.mrp) && item.mrp > 0 ? item.mrp : "",
           sellingPrice:
             Number.isFinite(item.sellingPrice) && item.sellingPrice > 0

@@ -1,9 +1,12 @@
+import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
+import { getAccessTokenSecret } from "../config/authSecrets.js";
+import { sendTemplatedEmail } from "../config/emailService.js";
 import { getMessaging, isFirebaseReady } from "../config/firebaseAdmin.js";
 import LiveOfferEventModel from "../models/liveOfferEvent.model.js";
+import NewsletterModel from "../models/newsletter.model.js";
 import NotificationTokenModel from "../models/notificationToken.model.js";
 import UserModel from "../models/user.model.js";
-import { sendTemplatedEmail } from "../config/emailService.js";
 import { emitLiveOfferNotification } from "../realtime/offerEvents.js";
 import { getIO } from "../realtime/socket.js";
 
@@ -29,9 +32,7 @@ const normalizeBaseUrl = (value) =>
     .replace(/\/+$/, "");
 
 const isLocalhostBaseUrl = (value) =>
-  /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(
-    normalizeBaseUrl(value),
-  );
+  /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(normalizeBaseUrl(value));
 
 const getFrontendBaseUrl = () => {
   const candidate =
@@ -79,6 +80,112 @@ const resolveAbsoluteTargetUrl = (frontendBaseUrl, targetPathOrUrl) => {
 
   return `${frontendBaseUrl}${target.startsWith("/") ? "" : "/"}${target}`;
 };
+
+const getBackendBaseUrl = () => {
+  const candidate =
+    normalizeBaseUrl(process.env.BACKEND_URL) ||
+    normalizeBaseUrl(process.env.API_BASE_URL) ||
+    normalizeBaseUrl(process.env.NEXT_PUBLIC_API_URL);
+
+  if (isProduction && isLocalhostBaseUrl(candidate)) {
+    return "https://healthy-one-gram.el.r.appspot.com";
+  }
+
+  return candidate || "https://healthy-one-gram.el.r.appspot.com";
+};
+
+const normalizePromotionalEmail = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase();
+
+const getPromotionalUnsubscribeSecret = () =>
+  String(
+    process.env.PROMOTIONAL_UNSUBSCRIBE_SECRET || getAccessTokenSecret() || "",
+  ).trim();
+
+const createPromotionalUnsubscribeToken = (email) => {
+  const secret = getPromotionalUnsubscribeSecret();
+  if (!secret) return "";
+
+  return jwt.sign(
+    {
+      type: "promotional_unsubscribe",
+      email,
+    },
+    secret,
+    { expiresIn: "90d" },
+  );
+};
+
+const verifyPromotionalUnsubscribeToken = (token) => {
+  const secret = getPromotionalUnsubscribeSecret();
+  if (!secret) {
+    throw new Error("missing_unsubscribe_secret");
+  }
+
+  const payload = jwt.verify(token, secret);
+  if (payload?.type !== "promotional_unsubscribe") {
+    throw new Error("invalid_unsubscribe_token_type");
+  }
+
+  return normalizePromotionalEmail(payload?.email);
+};
+
+const buildPromotionalUnsubscribeUrl = (email) => {
+  const token = createPromotionalUnsubscribeToken(email);
+  if (!token) return "";
+
+  const backendBaseUrl = getBackendBaseUrl();
+  const apiBaseUrl = /\/api$/i.test(backendBaseUrl)
+    ? backendBaseUrl
+    : `${backendBaseUrl}/api`;
+
+  return `${apiBaseUrl}/notifications/unsubscribe/promotional?token=${encodeURIComponent(token)}`;
+};
+
+const buildPromotionalUnsubscribeHeaders = (email) => {
+  const oneClickUrl = buildPromotionalUnsubscribeUrl(email);
+  if (!oneClickUrl) return {};
+
+  return {
+    "List-Unsubscribe": `<${oneClickUrl}>`,
+    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+  };
+};
+
+const renderPromotionalUnsubscribePage = ({
+  success,
+  message,
+  showConfirm = false,
+  confirmUrl = "",
+}) => `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>${success ? "Unsubscribed" : "Unsubscribe failed"}</title>
+  </head>
+  <body style="margin:0;background:#f7fafc;font-family:'Segoe UI',Arial,sans-serif;color:#1a202c;">
+    <div style="max-width:560px;margin:64px auto;padding:24px;">
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:28px;box-shadow:0 8px 30px rgba(15,23,42,.06);">
+        <h1 style="margin:0 0 10px;font-size:24px;line-height:1.25;color:${success ? "#166534" : "#9f1239"};">
+          ${success ? "You are unsubscribed" : "We could not unsubscribe you"}
+        </h1>
+        <p style="margin:0 0 14px;font-size:15px;line-height:1.6;color:#334155;">
+          ${message}
+        </p>
+        ${
+          showConfirm
+            ? `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;"><a href="${confirmUrl}" style="display:inline-block;background:#111827;color:#fff;text-decoration:none;padding:10px 16px;border-radius:10px;font-weight:600;">Unsubscribe</a><a href="${getFrontendBaseUrl()}" style="display:inline-block;background:#f8fafc;color:#0f172a;text-decoration:none;padding:10px 16px;border-radius:10px;border:1px solid #d1d5db;font-weight:600;">Cancel</a></div>`
+            : ""
+        }
+        <div style="margin-top:18px;padding:12px;border-radius:10px;background:#f8fafc;border:1px solid #e2e8f0;color:#475569;font-size:13px;">You can manage subscriptions anytime from account settings.</div>
+        <p style="margin:0;font-size:13px;color:#64748b;">HealthyOneGram</p>
+      </div>
+    </div>
+  </body>
+</html>`;
 
 const normalizeSessionId = (value) =>
   String(value || "")
@@ -140,8 +247,7 @@ const cacheLiveOffer = async (payload) => {
           body: String(normalizedPayload.body || ""),
           audience: normalizedPayload.audience === "guest" ? "guest" : "all",
           data:
-            normalizedPayload.data &&
-            typeof normalizedPayload.data === "object"
+            normalizedPayload.data && typeof normalizedPayload.data === "object"
               ? normalizedPayload.data
               : {},
           source: String(normalizedPayload.source || "socket"),
@@ -312,9 +418,7 @@ export const unregisterToken = async (req, res) => {
     }
 
     const query =
-      scopedFilters.length > 0
-        ? { token, $or: scopedFilters }
-        : { token };
+      scopedFilters.length > 0 ? { token, $or: scopedFilters } : { token };
 
     await NotificationTokenModel.findOneAndUpdate(query, {
       isActive: false,
@@ -348,7 +452,10 @@ export const unregisterToken = async (req, res) => {
  */
 export const sendOfferNotification = async (coupon, options = {}) => {
   const includeUsers = options.includeUsers !== false;
-  const targetPath = normalizeNotificationTargetPath(options.targetUrl, "/products");
+  const targetPath = normalizeNotificationTargetPath(
+    options.targetUrl,
+    "/products",
+  );
   const couponCode = String(coupon?.code || "")
     .trim()
     .toUpperCase();
@@ -365,7 +472,8 @@ export const sendOfferNotification = async (coupon, options = {}) => {
   const customBody = String(options.body || "").trim();
 
   const notification = {
-    title: customTitle || (couponCode ? `New Offer: ${discountText}` : "New Offer"),
+    title:
+      customTitle || (couponCode ? `New Offer: ${discountText}` : "New Offer"),
     body:
       customBody ||
       String(coupon?.description || "").trim() ||
@@ -429,7 +537,9 @@ export const sendOfferNotification = async (coupon, options = {}) => {
     // Get all active tokens (both guests and users for offers)
     const [guestTokens, userTokens] = await Promise.all([
       NotificationTokenModel.getGuestTokens(),
-      includeUsers ? NotificationTokenModel.getUserTokens() : Promise.resolve([]),
+      includeUsers
+        ? NotificationTokenModel.getUserTokens()
+        : Promise.resolve([]),
     ]);
 
     let allowedUserTokens = userTokens;
@@ -453,7 +563,9 @@ export const sendOfferNotification = async (coupon, options = {}) => {
       }
     }
 
-    const allTokens = [...guestTokens, ...allowedUserTokens].map((t) => t.token);
+    const allTokens = [...guestTokens, ...allowedUserTokens].map(
+      (t) => t.token,
+    );
 
     if (allTokens.length === 0) {
       debugLog("No tokens to send offer notification to");
@@ -611,10 +723,13 @@ export const sendOrderUpdateNotification = async (order, newStatus) => {
   }
 
   try {
-    const user = await UserModel.findById(userId).select("notificationSettings");
+    const user = await UserModel.findById(userId).select(
+      "notificationSettings",
+    );
     const pushNotificationsEnabled =
       user?.notificationSettings?.pushNotifications !== false;
-    const orderUpdatesEnabled = user?.notificationSettings?.orderUpdates !== false;
+    const orderUpdatesEnabled =
+      user?.notificationSettings?.orderUpdates !== false;
 
     if (!pushNotificationsEnabled || !orderUpdatesEnabled) {
       debugLog(`User ${userId} has disabled order update notifications`);
@@ -887,7 +1002,8 @@ export const manualSendOffer = async (req, res) => {
 
     const liveDelivered = Number(result.liveDelivered || 0);
     const noPushTokens =
-      result.success && (result.reason === "no_tokens" || result.totalTokens === 0);
+      result.success &&
+      (result.reason === "no_tokens" || result.totalTokens === 0);
 
     if (noPushTokens && liveDelivered === 0) {
       return res.status(409).json({
@@ -917,8 +1033,7 @@ export const manualSendOffer = async (req, res) => {
       }
 
       const message =
-        baseMessage +
-        (reason && !pushConfigMissing ? ` (${reason})` : "");
+        baseMessage + (reason && !pushConfigMissing ? ` (${reason})` : "");
 
       return res.status(503).json({
         error: true,
@@ -949,6 +1064,106 @@ export const manualSendOffer = async (req, res) => {
 };
 
 /**
+ * Unsubscribe recipient from promotional emails via signed email link.
+ * @route GET /api/notifications/unsubscribe/promotional?token=...
+ * @route POST /api/notifications/unsubscribe/promotional { token }
+ */
+export const unsubscribePromotionalEmail = async (req, res) => {
+  const shouldConfirm = ["1", "true", "yes", "on"].includes(
+    String(req.query?.confirm || "")
+      .trim()
+      .toLowerCase(),
+  );
+  const respondWithResult = (statusCode, payload) => {
+    if (
+      String(req.headers?.accept || "")
+        .toLowerCase()
+        .includes("text/html") ||
+      req.method === "GET"
+    ) {
+      return res
+        .status(statusCode)
+        .set("Content-Type", "text/html; charset=utf-8")
+        .send(
+          renderPromotionalUnsubscribePage({
+            success: Boolean(payload?.success),
+            message: payload?.message || "",
+          }),
+        );
+    }
+
+    return res.status(statusCode).json(payload);
+  };
+
+  try {
+    const token = String(req.query?.token || req.body?.token || "").trim();
+    if (!token) {
+      return respondWithResult(400, {
+        success: false,
+        error: true,
+        message: "Missing unsubscribe token.",
+      });
+    }
+
+    const email = verifyPromotionalUnsubscribeToken(token);
+    if (!email) {
+      return respondWithResult(400, {
+        success: false,
+        error: true,
+        message: "Invalid unsubscribe token.",
+      });
+    }
+
+    if (req.method === "GET" && !shouldConfirm) {
+      const confirmUrl = `${buildPromotionalUnsubscribeUrl(email)}&confirm=1`;
+      return res
+        .status(200)
+        .set("Content-Type", "text/html; charset=utf-8")
+        .send(
+          renderPromotionalUnsubscribePage({
+            success: true,
+            message:
+              "Do you want to stop receiving promotional emails from HealthyOneGram?",
+            showConfirm: true,
+            confirmUrl,
+          }),
+        );
+    }
+
+    const updatedUser = await UserModel.findOneAndUpdate(
+      { email },
+      {
+        $set: {
+          "notificationSettings.promotionalEmails": false,
+        },
+      },
+      { new: true },
+    ).select("_id");
+
+    if (!updatedUser) {
+      return respondWithResult(404, {
+        success: false,
+        error: true,
+        message: "This email is not registered for promotional notifications.",
+      });
+    }
+
+    return respondWithResult(200, {
+      success: true,
+      error: false,
+      message:
+        "You have successfully unsubscribed from promotional emails. You can re-enable them anytime from account settings.",
+    });
+  } catch (error) {
+    return respondWithResult(400, {
+      success: false,
+      error: true,
+      message: "The unsubscribe link is invalid or expired.",
+    });
+  }
+};
+
+/**
  * Send promotional email to opted-in users (Admin)
  * @route POST /api/notifications/admin/send-promotional-email
  * @body { subject, headline, message, couponCode?, discountText?, ctaLabel?, ctaUrl?, validUntil? }
@@ -958,7 +1173,9 @@ export const manualSendPromotionalEmail = async (req, res) => {
     const rawSubject = String(req.body?.subject || "").trim();
     const rawHeadline = String(req.body?.headline || "").trim();
     const rawMessage = String(req.body?.message || "").trim();
-    const rawCoupon = String(req.body?.couponCode || "").trim().toUpperCase();
+    const rawCoupon = String(req.body?.couponCode || "")
+      .trim()
+      .toUpperCase();
     const rawDiscountText = String(req.body?.discountText || "").trim();
     const rawCtaLabel = String(req.body?.ctaLabel || "").trim();
     const rawCtaUrl = String(req.body?.ctaUrl || "").trim();
@@ -980,26 +1197,57 @@ export const manualSendPromotionalEmail = async (req, res) => {
     const ctaLabel = rawCtaLabel || "Shop now";
     const headline = rawHeadline || rawSubject;
     const supportContact = getSupportContactEmail();
-    const supportUrl = supportContact ? `mailto:${supportContact}` : frontendBaseUrl;
-    const offerDetails = [rawDiscountText, rawCoupon ? `Use code ${rawCoupon}` : ""]
+    const supportUrl = supportContact
+      ? `mailto:${supportContact}`
+      : frontendBaseUrl;
+    const offerDetails = [
+      rawDiscountText,
+      rawCoupon ? `Use code ${rawCoupon}` : "",
+    ]
       .filter(Boolean)
       .join(" • ");
     const couponLine = rawCoupon ? `Coupon code: ${rawCoupon}` : "";
     const discountLine = rawDiscountText ? `Discount: ${rawDiscountText}` : "";
     const validUntilLine = rawValidUntil ? `Valid until: ${rawValidUntil}` : "";
 
-    const recipients = await UserModel.find({
+    const users = await UserModel.find({
       email: { $exists: true, $ne: "" },
       "notificationSettings.promotionalEmails": { $ne: false },
     })
       .select("email name")
       .lean();
 
+    const newsletterEmails = await NewsletterModel.find({
+      email: { $exists: true, $ne: "" },
+      isActive: { $ne: false },
+    })
+      .select("email")
+      .lean();
+
+    const recipientByEmail = new Map();
+    users.forEach((entry) => {
+      const email = normalizePromotionalEmail(entry?.email);
+      if (!email) return;
+      recipientByEmail.set(email, {
+        email,
+        name: String(entry?.name || "Customer").trim() || "Customer",
+      });
+    });
+    newsletterEmails.forEach((entry) => {
+      const email = normalizePromotionalEmail(entry?.email);
+      if (!email) return;
+      if (!recipientByEmail.has(email)) {
+        recipientByEmail.set(email, { email, name: "Customer" });
+      }
+    });
+
+    const recipients = Array.from(recipientByEmail.values());
+
     if (!recipients.length) {
       return res.status(409).json({
         error: true,
         success: false,
-        message: "No opted-in users with email addresses found.",
+        message: "No recipients with email addresses found.",
         data: { sent: 0, failed: 0, total: 0 },
       });
     }
@@ -1011,9 +1259,12 @@ export const manualSendPromotionalEmail = async (req, res) => {
     for (let i = 0; i < recipients.length; i += batchSize) {
       const batch = recipients.slice(i, i + batchSize);
       const results = await Promise.allSettled(
-        batch.map((user) =>
-          sendTemplatedEmail({
-            to: String(user?.email || "").trim().toLowerCase(),
+        batch.map((user) => {
+          const recipientEmail = normalizePromotionalEmail(user?.email);
+          const unsubscribeUrl = buildPromotionalUnsubscribeUrl(recipientEmail);
+
+          return sendTemplatedEmail({
+            to: recipientEmail,
             subject: rawSubject,
             templateFile: "promotionalOffer.html",
             templateData: {
@@ -1029,6 +1280,7 @@ export const manualSendPromotionalEmail = async (req, res) => {
               site_url: frontendBaseUrl,
               support_contact: supportContact || "support",
               support_url: supportUrl,
+              unsubscribe_url: unsubscribeUrl,
               year: String(new Date().getFullYear()),
             },
             text: [
@@ -1037,13 +1289,15 @@ export const manualSendPromotionalEmail = async (req, res) => {
               offerDetails ? `Offer: ${offerDetails}` : "",
               validUntilLine || "",
               `Shop: ${ctaUrl}`,
+              unsubscribeUrl ? `Unsubscribe: ${unsubscribeUrl}` : "",
               supportContact ? `Support: ${supportContact}` : "",
             ]
               .filter(Boolean)
               .join("\n"),
             context: "promotional.email",
-          }),
-        ),
+            headers: buildPromotionalUnsubscribeHeaders(recipientEmail),
+          });
+        }),
       );
 
       results.forEach((result) => {
@@ -1109,4 +1363,3 @@ export const cleanupRateLimitMap = () => {
 
 // Cleanup every 10 minutes
 setInterval(cleanupRateLimitMap, 10 * 60 * 1000);
-

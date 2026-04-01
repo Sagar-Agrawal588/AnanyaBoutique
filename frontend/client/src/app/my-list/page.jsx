@@ -13,19 +13,56 @@ import { IoMdClose } from "react-icons/io";
 
 const MyWishlistPage = () => {
   const router = useRouter();
-  const { addToCart } = useCart();
-  const { wishlistItems, wishlistCount, loading, removeFromWishlist, removingItems } =
-    useWishlist();
+  const { addToCart, addComboToCart } = useCart();
+  const {
+    wishlistItems,
+    wishlistCount,
+    loading,
+    removeFromWishlist,
+    removingItems,
+  } = useWishlist();
   const [snackbar, setSnackbar] = useState({
     open: false,
     message: "",
     severity: "success",
   });
 
-  const getProduct = (item) =>
-    item.product && typeof item.product === "object"
-      ? item.product
-      : item.productData || item;
+  const getItemType = (item) =>
+    String(item?.itemType || "product")
+      .trim()
+      .toLowerCase() === "combo"
+      ? "combo"
+      : "product";
+
+  const getEntity = (item) => {
+    const itemType = getItemType(item);
+    if (itemType === "combo") {
+      if (item.combo && typeof item.combo === "object") return item.combo;
+      return item.comboData || item;
+    }
+
+    if (item.product && typeof item.product === "object") return item.product;
+    return item.productData || item;
+  };
+
+  const getEntityId = (item) => {
+    const itemType = getItemType(item);
+    const entity = getEntity(item);
+    if (itemType === "combo") {
+      return String(
+        entity?._id || entity?.id || item?.combo || item?.comboId || "",
+      );
+    }
+    return String(entity?._id || entity?.id || item?.product || "");
+  };
+
+  const getItemKey = (item) => {
+    const itemType = getItemType(item);
+    const itemId = getEntityId(item);
+    const variantId =
+      itemType === "product" ? String(item?.variantId || "") : "";
+    return `${itemType}::${itemId}::${variantId}`;
+  };
 
   const getDisplayQuantity = (item) => {
     const parsed = Number(item?.quantity || 1);
@@ -36,13 +73,18 @@ const MyWishlistPage = () => {
   const getDisplayPrice = (item, product) => {
     const snapshot = Number(item?.priceSnapshot || 0);
     if (snapshot > 0) return snapshot;
-    return Number(product?.price || 0);
+    return Number(product?.price ?? product?.comboPrice ?? 0);
   };
 
   const getOldPrice = (item, product, price) => {
     const snapshot = Number(item?.originalPriceSnapshot || 0);
     if (snapshot > 0) return snapshot;
-    const fallback = Number(product?.originalPrice || product?.oldPrice || 0);
+    const fallback = Number(
+      product?.originalPrice ??
+        product?.originalTotal ??
+        product?.oldPrice ??
+        0,
+    );
     return fallback > 0 ? fallback : price;
   };
 
@@ -53,15 +95,21 @@ const MyWishlistPage = () => {
 
   const handleAddToCart = async (item) => {
     try {
-      const product = getProduct(item);
+      const itemType = getItemType(item);
+      const entity = getEntity(item);
       const quantity = getDisplayQuantity(item);
+      if (itemType === "combo") {
+        await addComboToCart(entity, quantity);
+        return true;
+      }
+
       const variantId = item?.variantId || null;
       const variantName = String(item?.variantName || "").trim();
-      const price = getDisplayPrice(item, product);
-      const originalPrice = getOldPrice(item, product, price);
+      const price = getDisplayPrice(item, entity);
+      const originalPrice = getOldPrice(item, entity, price);
 
       const cartProduct = {
-        ...product,
+        ...entity,
         price,
         originalPrice,
         variantId,
@@ -132,7 +180,10 @@ const MyWishlistPage = () => {
                 <FaHeart className="text-slate-300 text-6xl" />
                 <p className="text-slate-500">Your wishlist is empty</p>
                 <Link href="/products">
-                  <Button variant="contained" className="!bg-primary !text-white">
+                  <Button
+                    variant="contained"
+                    className="!bg-primary !text-white"
+                  >
                     Discover Products
                   </Button>
                 </Link>
@@ -142,31 +193,38 @@ const MyWishlistPage = () => {
             {!loading && wishlistItems.length > 0 && (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-5">
                 {wishlistItems.map((item, index) => {
-                  const product = getProduct(item);
-                  const productId = product._id || product.id || item.product;
-                  const isRemoving = Boolean(removingItems[String(productId || "")]);
-                  const price = getDisplayPrice(item, product);
-                  const oldPrice = getOldPrice(item, product, price);
+                  const itemType = getItemType(item);
+                  const entity = getEntity(item);
+                  const itemId = getEntityId(item);
+                  const isRemoving = Boolean(removingItems[getItemKey(item)]);
+                  const price = getDisplayPrice(item, entity);
+                  const oldPrice = getOldPrice(item, entity, price);
                   const discount = calcDiscount(price, oldPrice);
                   const quantity = getDisplayQuantity(item);
                   const variantLabel = String(item?.variantName || "").trim();
                   const imageUrl =
-                    product.images?.[0] ||
-                    product.image ||
-                    product.thumbnail ||
+                    entity.images?.[0] ||
+                    entity.comboImages?.[0] ||
+                    entity.comboThumbnail ||
+                    entity.image ||
+                    entity.thumbnail ||
                     "/product_1.png";
+                  const itemLink =
+                    itemType === "combo"
+                      ? `/combo/${itemId}`
+                      : `/product/${itemId}`;
 
                   return (
                     <article
-                      key={productId || index}
+                      key={itemId || index}
                       className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm hover:shadow-md transition"
                     >
                       <div className="flex gap-4">
-                        <Link href={`/product/${productId}`} className="shrink-0">
+                        <Link href={itemLink} className="shrink-0">
                           <div className="w-[108px] h-[108px] rounded-xl overflow-hidden bg-slate-50">
                             <img
                               src={imageUrl}
-                              alt={product.name || "Product"}
+                              alt={entity.name || "Product"}
                               className="w-full h-full object-cover"
                             />
                           </div>
@@ -174,24 +232,32 @@ const MyWishlistPage = () => {
 
                         <div className="flex-1 min-w-0">
                           <span className="text-xs uppercase tracking-wide text-slate-500">
-                            {product.brand || "Healthy One Gram"}
+                            {entity.brand || "Healthy One Gram"}
                           </span>
-                          <Link href={`/product/${productId}`}>
+                          <Link href={itemLink}>
                             <h3 className="text-sm md:text-base font-semibold text-slate-900 hover:text-primary mt-1 line-clamp-2">
-                              {product.name || "Product"}
+                              {entity.name || "Product"}
                             </h3>
                           </Link>
-                          {(variantLabel || quantity > 1) && (
+                          {itemType === "product" &&
+                            (variantLabel || quantity > 1) && (
+                              <p className="mt-1 text-xs text-slate-500">
+                                {variantLabel
+                                  ? `Variant: ${variantLabel}`
+                                  : "Variant: Standard"}
+                                {quantity > 1 ? ` | Qty: ${quantity}` : ""}
+                              </p>
+                            )}
+                          {itemType === "combo" && quantity > 1 && (
                             <p className="mt-1 text-xs text-slate-500">
-                              {variantLabel ? `Variant: ${variantLabel}` : "Variant: Standard"}
-                              {quantity > 1 ? ` | Qty: ${quantity}` : ""}
+                              Qty: {quantity}
                             </p>
                           )}
 
                           <div className="mt-2">
                             <Rating
-                              name={`rating-${productId}`}
-                              value={Number(product.rating || 5)}
+                              name={`rating-${itemId}`}
+                              value={Number(entity.rating || 5)}
                               readOnly
                               size="small"
                             />
@@ -217,8 +283,19 @@ const MyWishlistPage = () => {
                         <button
                           onClick={() => {
                             removeFromWishlist({
-                              product: item?.product?._id || item?.product,
-                              variantId: item?.variantId || null,
+                              itemType,
+                              product:
+                                itemType === "product"
+                                  ? item?.product?._id || item?.product
+                                  : null,
+                              combo:
+                                itemType === "combo"
+                                  ? item?.combo?._id || item?.combo
+                                  : null,
+                              variantId:
+                                itemType === "product"
+                                  ? item?.variantId || null
+                                  : null,
                             });
                           }}
                           disabled={isRemoving}

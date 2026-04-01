@@ -18,6 +18,7 @@ import ComboModel from "../models/combo.model.js";
 import ComboOrderModel from "../models/comboOrder.model.js";
 import CouponModel from "../models/coupon.model.js";
 import InvoiceModel from "../models/invoice.model.js";
+import NewsletterModel from "../models/newsletter.model.js";
 import OrderModel from "../models/order.model.js";
 import ProductModel from "../models/product.model.js";
 import PurchaseOrderModel from "../models/purchaseOrder.model.js";
@@ -321,7 +322,9 @@ const resolveOrderSeriesSettings = async () => {
 };
 
 const parseOrderSequenceNumber = (value, scopePrefix) => {
-  const raw = String(value || "").trim().toUpperCase();
+  const raw = String(value || "")
+    .trim()
+    .toUpperCase();
   if (!raw) return null;
   const normalizedScope = String(scopePrefix || "").toUpperCase();
   const legacyScope = normalizedScope.replace("-", "");
@@ -336,6 +339,34 @@ const parseOrderSequenceNumber = (value, scopePrefix) => {
   }
   const sequence = Number(sequenceText);
   return Number.isFinite(sequence) && sequence > 0 ? sequence : null;
+};
+
+const isValidNewsletterEmail = (value) =>
+  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
+
+const captureOrderEmailInNewsletter = async ({ email, userId }) => {
+  const normalizedEmail = String(email || "")
+    .trim()
+    .toLowerCase();
+  if (!normalizedEmail || !isValidNewsletterEmail(normalizedEmail)) return;
+
+  const source = userId ? "signin_order" : "guest_order";
+  await NewsletterModel.findOneAndUpdate(
+    { email: normalizedEmail },
+    {
+      $setOnInsert: {
+        email: normalizedEmail,
+      },
+      $set: {
+        isActive: true,
+        source,
+      },
+    },
+    {
+      upsert: true,
+      setDefaultsOnInsert: true,
+    },
+  );
 };
 
 const generateOrderSeriesNumber = async (referenceDate = new Date()) => {
@@ -1073,6 +1104,101 @@ const sendOrderConfirmationEmail = async (order) => {
       Number(order?.finalAmount || order?.totalAmt || 0),
     );
 
+    const awbNumber = String(
+      order?.awbNo ||
+        order?.awb_no ||
+        order?.awb_number ||
+        order?.awbNumber ||
+        order?.shipment?.awb ||
+        order?.shipping?.awb ||
+        "",
+    ).trim();
+    const applyAwbToXpressbeesUrl = (rawUrl, awb) => {
+      const normalizedUrl = String(rawUrl || "").trim();
+      const normalizedAwb = String(awb || "").trim();
+      if (!normalizedUrl || !normalizedAwb) return normalizedUrl;
+
+      try {
+        const parsed = new URL(normalizedUrl);
+        const host = String(parsed.hostname || "").toLowerCase();
+        if (!host.includes("xpressbees.com")) {
+          return normalizedUrl;
+        }
+
+        parsed.searchParams.delete("awb");
+        parsed.searchParams.set("awbNo", normalizedAwb);
+        return parsed.toString();
+      } catch {
+        return normalizedUrl;
+      }
+    };
+    const trackingUrlTemplate = String(
+      process.env.XPRESSBEES_TRACKING_URL_TEMPLATE ||
+        "https://www.xpressbees.com/shipment/tracking?awbNo=${AWB}",
+    ).trim();
+    const normalizedTrackingTemplate = trackingUrlTemplate.replace(
+      /([?&])awb=\$\{AWB\}/i,
+      "$1awbNo=${AWB}",
+    );
+    const templateWithAwbPlaceholder = normalizedTrackingTemplate.includes(
+      "${AWB}",
+    )
+      ? normalizedTrackingTemplate
+      : trackingUrlTemplate.includes("?")
+        ? `${normalizedTrackingTemplate}&awbNo=${AWB}`
+        : `${normalizedTrackingTemplate}?awbNo=${AWB}`;
+    const trackingUrl =
+      applyAwbToXpressbeesUrl(
+        String(order?.trackingUrl || "").trim(),
+        awbNumber,
+      ) ||
+      (awbNumber
+        ? templateWithAwbPlaceholder.replace(
+            "${AWB}",
+            encodeURIComponent(awbNumber),
+          )
+        : "");
+
+    const estimatedDeliveryDate =
+      order?.deliveryDate || order?.delivery_date
+        ? new Date(order?.deliveryDate || order?.delivery_date)
+        : new Date(
+            new Date(order?.createdAt || Date.now()).getTime() +
+              7 * 24 * 60 * 60 * 1000,
+          );
+
+    const attachments = [];
+    try {
+      const [sellerDetails, productMetaById] = await Promise.all([
+        getInvoiceSellerDetails(),
+        getOrderProductMetadata(order),
+      ]);
+
+      const invoiceResult = await generateInvoicePdf({
+        order,
+        sellerDetails,
+        productMetaById,
+      });
+
+      const absolutePath =
+        invoiceResult?.absolutePath ||
+        getAbsolutePathFromStoredInvoicePath(invoiceResult?.invoicePath || "");
+      if (absolutePath) {
+        const invoiceBuffer = await fsPromises.readFile(absolutePath);
+        const invoiceFileName = `invoice-${displayOrderNumber.replace(/[^a-zA-Z0-9-_]/g, "") || rawOrderId}.pdf`;
+        attachments.push({
+          filename: invoiceFileName,
+          content: invoiceBuffer,
+          contentType: "application/pdf",
+        });
+      }
+    } catch (invoiceError) {
+      logger.warn("sendOrderConfirmationEmail", "Invoice attachment skipped", {
+        orderId: order?._id,
+        error: invoiceError?.message || String(invoiceError),
+      });
+    }
+
     const text = [
       `Order No: ${displayOrderNumber}`,
       `Order ID: ${rawOrderId || "N/A"}`,
@@ -1080,6 +1206,9 @@ const sendOrderConfirmationEmail = async (order) => {
       `Status: ${order?.order_status || "pending"}`,
       `Payment: ${order?.payment_status || "pending"}`,
       `Final Amount: ${formatInr(finalAmount)}`,
+      `Estimated Delivery: ${estimatedDeliveryDate.toLocaleDateString("en-IN")}`,
+      awbNumber ? `AWB: ${awbNumber}` : "",
+      trackingUrl ? `Track Shipment: ${trackingUrl}` : "",
       hasPaymentLink ? `Pay now: ${paymentUrl}` : "",
       `Support: ${supportContact}`,
     ].join("\n");
@@ -1102,6 +1231,10 @@ const sendOrderConfirmationEmail = async (order) => {
         tax_amount: formatInr(taxAmount),
         shipping_amount: formatInr(shippingAmount),
         final_amount: formatInr(finalAmount),
+        estimated_delivery_date:
+          estimatedDeliveryDate.toLocaleDateString("en-IN"),
+        awb_number: awbNumber,
+        tracking_url: trackingUrl,
         site_url: siteUrl,
         payment_url: safePaymentUrl,
         payment_cta_label: paymentCtaLabel,
@@ -1111,6 +1244,7 @@ const sendOrderConfirmationEmail = async (order) => {
       },
       text,
       context: "order.confirmation",
+      attachments,
     });
 
     if (!result?.success) {
@@ -2149,11 +2283,20 @@ const resolveCheckoutContact = async ({
 }) => {
   const normalizedGuest = normalizeGuestDetails(guestDetails);
   let userGstNumber = "";
+  let userEmail = "";
   if (userId && !normalizedGuest.gst) {
     const userRecord = await UserModel.findById(userId)
-      .select("gstNumber")
+      .select("gstNumber email")
       .lean();
     userGstNumber = userRecord?.gstNumber || "";
+    userEmail = String(userRecord?.email || "")
+      .trim()
+      .toLowerCase();
+  } else if (userId) {
+    const userRecord = await UserModel.findById(userId).select("email").lean();
+    userEmail = String(userRecord?.email || "")
+      .trim()
+      .toLowerCase();
   }
 
   if (deliveryAddressId) {
@@ -2183,7 +2326,7 @@ const resolveCheckoutContact = async ({
       state: String(
         serializedAddress.state || normalizedGuest.state || "",
       ).trim(),
-      email: String(normalizedGuest.email || "")
+      email: String(normalizedGuest.email || userEmail || "")
         .trim()
         .toLowerCase(),
       city: String(serializedAddress.city || normalizedGuest.city || "").trim(),
@@ -2229,12 +2372,17 @@ const resolveCheckoutContact = async ({
     city: normalizedGuest.city,
     state: normalizedGuest.state,
     district: normalizedGuest.district,
-    email: normalizedGuest.email,
+    email: normalizedGuest.email || userEmail,
   });
+
+  const resolvedContactEmail = String(normalizedGuest.email || userEmail || "")
+    .trim()
+    .toLowerCase();
 
   return {
     contact: {
       ...normalizedGuest,
+      email: resolvedContactEmail,
       gst: normalizedGuest.gst || userGstNumber,
     },
     addressId: null,
@@ -2242,7 +2390,7 @@ const resolveCheckoutContact = async ({
     pincode: normalizedGuest.pincode,
     structuredAddress,
     addressSnapshot: buildOrderAddressSnapshot(structuredAddress, {
-      email: normalizedGuest.email,
+      email: resolvedContactEmail,
       source: userId ? "registered_manual" : "guest_manual",
       addressId: null,
     }),
@@ -2308,13 +2456,21 @@ const normalizeOrderProducts = ({ products, dbProductMap }) => {
     const subTotal = round2(price * quantity);
     const variantId = item.variantId || item.variant || null;
     const variantName = item.variantName || item.variantTitle || "";
-    const variants = Array.isArray(dbProduct?.variants) ? dbProduct.variants : [];
+    const variants = Array.isArray(dbProduct?.variants)
+      ? dbProduct.variants
+      : [];
     const selectedVariant =
-      variants.find((variant) => String(variant?._id || "") === String(variantId || "")) ||
+      variants.find(
+        (variant) => String(variant?._id || "") === String(variantId || ""),
+      ) ||
       variants.find(
         (variant) =>
-          String(variant?.name || "").trim().toLowerCase() ===
-          String(variantName || "").trim().toLowerCase(),
+          String(variant?.name || "")
+            .trim()
+            .toLowerCase() ===
+          String(variantName || "")
+            .trim()
+            .toLowerCase(),
       ) ||
       variants.find((variant) => variant?.isDefault) ||
       variants[0] ||
@@ -3178,15 +3334,41 @@ export const getAllOrders = asyncHandler(async (req, res) => {
       ORDER_STATUS.RTO,
       ORDER_STATUS.RTO_COMPLETED,
     ];
+    const paidLikeStatuses = [
+      "paid",
+      "confirmed",
+      "captured",
+      "success",
+      "successful",
+      "PAID",
+      "CONFIRMED",
+    ];
+    const pendingPaymentStatuses = ["pending", "pending_payment", "PENDING"];
+    const failedPaymentStatuses = ["failed", "FAILED"];
 
     // Filter by status
     if (normalizedStatus && normalizedStatus !== "all") {
       if (normalizedStatus === "successful") {
-        filter.order_status = { $in: successStatuses };
+        andFilters.push({
+          $or: [
+            { order_status: { $in: successStatuses } },
+            { payment_status: { $in: paidLikeStatuses } },
+          ],
+        });
       } else if (normalizedStatus === "failed") {
-        filter.order_status = { $in: failedStatuses };
+        andFilters.push({
+          $or: [
+            { order_status: { $in: failedStatuses } },
+            { payment_status: { $in: failedPaymentStatuses } },
+          ],
+        });
       } else if (normalizedStatus === "pending") {
-        filter.order_status = { $in: pendingStatuses };
+        andFilters.push({
+          $or: [
+            { order_status: { $in: pendingStatuses } },
+            { payment_status: { $in: pendingPaymentStatuses } },
+          ],
+        });
       } else {
         const normalizedOrderStatus = normalizeOrderStatus(normalizedStatus);
         if (normalizedOrderStatus === ORDER_STATUS.ACCEPTED) {
@@ -4293,6 +4475,21 @@ export const createOrder = asyncHandler(async (req, res) => {
       await reserveComboStock(order, "ORDER_CREATE");
       await reserveInventory(order, "ORDER_CREATE");
       await order.save();
+
+      void captureOrderEmailInNewsletter({
+        email:
+          checkoutContact?.contact?.email ||
+          billingDetails?.email ||
+          guestOrderDetails?.email ||
+          "",
+        userId,
+      }).catch((captureError) => {
+        logger.warn("createOrder", "Failed to capture newsletter email", {
+          orderId: order?._id,
+          userId,
+          error: captureError?.message || String(captureError),
+        });
+      });
     } catch (inventoryError) {
       try {
         await releaseComboStock(order, "ORDER_CREATE_FAIL");
@@ -4928,6 +5125,21 @@ export const saveOrderForLater = asyncHandler(async (req, res) => {
       await reserveComboStock(savedOrder, "ORDER_SAVE");
       await reserveInventory(savedOrder, "ORDER_SAVE");
       await savedOrder.save();
+
+      void captureOrderEmailInNewsletter({
+        email:
+          checkoutContact?.contact?.email ||
+          billingDetails?.email ||
+          guestOrderDetails?.email ||
+          "",
+        userId,
+      }).catch((captureError) => {
+        logger.warn("saveOrderForLater", "Failed to capture newsletter email", {
+          orderId: savedOrder?._id,
+          userId,
+          error: captureError?.message || String(captureError),
+        });
+      });
     } catch (inventoryError) {
       try {
         await releaseComboStock(savedOrder, "ORDER_SAVE_FAIL");
@@ -6953,7 +7165,9 @@ export const createTestOrder = asyncHandler(async (req, res) => {
           productTitle: product.name,
           variantId: null,
           variantName: "",
-          sku: String(product.sku || "").trim().toUpperCase(),
+          sku: String(product.sku || "")
+            .trim()
+            .toUpperCase(),
           hsnCode: String(product.hsnCode || "").trim(),
           quantity,
           price,
