@@ -7,6 +7,7 @@ import {
   shareViaNative,
 } from "@/utils/shareUtils";
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import {
   FaFacebookF,
   FaFacebookMessenger,
@@ -191,100 +192,117 @@ const ShareButton = ({
     );
   };
 
+  const portalTarget = typeof document !== "undefined" ? document.body : null;
+
   return (
     <div className={`relative ${className}`}>
       {renderTrigger()}
-      {isOpen && (
-        <>
-          <div
-            className="fixed inset-0 z-40 bg-slate-900/35 backdrop-blur-[2px]"
-            onClick={() => setIsOpen(false)}
-          />
-
-          <div className="fixed inset-x-3 bottom-3 z-50 mx-auto w-auto max-w-155 rounded-3xl border border-slate-200/80 bg-white/95 p-4 shadow-[0_45px_90px_-44px_rgba(15,23,42,0.6)] backdrop-blur-xl sm:inset-auto sm:right-4 sm:top-20 sm:w-155 sm:bottom-auto">
-            <div className="mb-4 flex items-start justify-between gap-4">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
-                  Share Product
-                </p>
-                <h3 className="mt-1 text-lg font-semibold leading-tight text-slate-900">
-                  {productName}
-                </h3>
-                {productPrice ? (
-                  <p className="text-sm text-slate-500">{productPrice}</p>
-                ) : null}
-              </div>
-              <button
+      {isOpen && portalTarget
+        ? createPortal(
+            <>
+              <div
+                className="fixed inset-0 z-40 bg-slate-900/35 backdrop-blur-[2px]"
                 onClick={() => setIsOpen(false)}
-                className="rounded-full p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
-                title="Close"
-              >
-                <IoClose className="h-5 w-5" />
-              </button>
-            </div>
+              />
 
-            <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {hasNativeShare ? (
-                <button
-                  onClick={handleNativeShare}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-blue-200 bg-linear-to-br from-blue-50 to-cyan-50 px-3 py-2.5 text-sm font-semibold text-blue-700 transition hover:from-blue-100 hover:to-cyan-100"
-                >
-                  <MdOutlineIosShare className="h-5 w-5" />
-                  Share To Apps
-                </button>
-              ) : null}
-
-              <button
-                onClick={handleCopyLink}
-                className={`inline-flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-semibold transition ${
-                  copiedLink
-                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                    : "border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
-                }`}
-              >
-                {copiedLink ? <MdCheck className="h-5 w-5" /> : <FaLink className="h-4 w-4" />}
-                {copiedLink ? "Link Copied" : "Copy Link"}
-              </button>
-
-              <button
-                onClick={handleCopyDetails}
-                className={`inline-flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-semibold transition ${
-                  copiedDetails
-                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                    : "border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
-                }`}
-              >
-                {copiedDetails ? <MdCheck className="h-5 w-5" /> : <MdContentCopy className="h-5 w-5" />}
-                {copiedDetails ? "Details Copied" : "Copy Details"}
-              </button>
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 bg-linear-to-b from-slate-50 to-white p-3">
-              <div className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
-                Share On Platforms
-              </div>
-
-              <div className="grid grid-cols-4 gap-2 sm:grid-cols-5">
-                {SOCIAL_PLATFORMS.map(({ key, label, icon: Icon, bgColor }) => (
+              <div className="fixed inset-x-3 bottom-3 z-50 mx-auto w-auto max-w-155 rounded-3xl border border-slate-200/80 bg-white/95 p-4 shadow-[0_45px_90px_-44px_rgba(15,23,42,0.6)] backdrop-blur-xl sm:inset-auto sm:right-4 sm:top-20 sm:w-155 sm:bottom-auto">
+                <div className="mb-4 flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                      Share Product
+                    </p>
+                    <h3 className="mt-1 text-lg font-semibold leading-tight text-slate-900">
+                      {productName}
+                    </h3>
+                    {productPrice ? (
+                      <p className="text-sm text-slate-500">{productPrice}</p>
+                    ) : null}
+                  </div>
                   <button
-                    key={key}
-                    onClick={() => handleShare(key)}
-                    className="group flex flex-col items-center gap-1.5 rounded-xl border border-transparent p-2 transition hover:border-slate-200 hover:bg-white"
-                    title={`Share on ${label}`}
+                    onClick={() => setIsOpen(false)}
+                    className="rounded-full p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+                    title="Close"
                   >
-                    <span className={`${bgColor} inline-flex h-10 w-10 items-center justify-center rounded-2xl text-white shadow-[0_12px_24px_-16px_rgba(15,23,42,0.7)]`}>
-                      <Icon className="h-4 w-4" />
-                    </span>
-                    <span className="line-clamp-1 text-[11px] font-medium text-slate-600 group-hover:text-slate-800">
-                      {label}
-                    </span>
+                    <IoClose className="h-5 w-5" />
                   </button>
-                ))}
+                </div>
+
+                <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {hasNativeShare ? (
+                    <button
+                      onClick={handleNativeShare}
+                      className="inline-flex items-center justify-center gap-2 rounded-xl border border-blue-200 bg-linear-to-br from-blue-50 to-cyan-50 px-3 py-2.5 text-sm font-semibold text-blue-700 transition hover:from-blue-100 hover:to-cyan-100"
+                    >
+                      <MdOutlineIosShare className="h-5 w-5" />
+                      Share To Apps
+                    </button>
+                  ) : null}
+
+                  <button
+                    onClick={handleCopyLink}
+                    className={`inline-flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-semibold transition ${
+                      copiedLink
+                        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                        : "border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
+                    }`}
+                  >
+                    {copiedLink ? (
+                      <MdCheck className="h-5 w-5" />
+                    ) : (
+                      <FaLink className="h-4 w-4" />
+                    )}
+                    {copiedLink ? "Link Copied" : "Copy Link"}
+                  </button>
+
+                  <button
+                    onClick={handleCopyDetails}
+                    className={`inline-flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-semibold transition ${
+                      copiedDetails
+                        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                        : "border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
+                    }`}
+                  >
+                    {copiedDetails ? (
+                      <MdCheck className="h-5 w-5" />
+                    ) : (
+                      <MdContentCopy className="h-5 w-5" />
+                    )}
+                    {copiedDetails ? "Details Copied" : "Copy Details"}
+                  </button>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 bg-linear-to-b from-slate-50 to-white p-3">
+                  <div className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
+                    Share On Platforms
+                  </div>
+
+                  <div className="grid grid-cols-4 gap-2 sm:grid-cols-5">
+                    {SOCIAL_PLATFORMS.map(
+                      ({ key, label, icon: Icon, bgColor }) => (
+                        <button
+                          key={key}
+                          onClick={() => handleShare(key)}
+                          className="group flex flex-col items-center gap-1.5 rounded-xl border border-transparent p-2 transition hover:border-slate-200 hover:bg-white"
+                          title={`Share on ${label}`}
+                        >
+                          <span
+                            className={`${bgColor} inline-flex h-10 w-10 items-center justify-center rounded-2xl text-white shadow-[0_12px_24px_-16px_rgba(15,23,42,0.7)]`}
+                          >
+                            <Icon className="h-4 w-4" />
+                          </span>
+                          <span className="line-clamp-1 text-[11px] font-medium text-slate-600 group-hover:text-slate-800">
+                            {label}
+                          </span>
+                        </button>
+                      ),
+                    )}
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
-        </>
-      )}
+            </>,
+            portalTarget,
+          )
+        : null}
     </div>
   );
 };
