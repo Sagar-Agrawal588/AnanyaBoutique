@@ -31,13 +31,38 @@ const buildPartnerApiKey = () => {
 const seedPartner = async ({
   scopes = ["catalog.read", "inventory.read", "price.read"],
   rateLimitPerMinute,
+  visibleProductFields,
 } = {}) => {
+  const normalizedRateLimit = Number.isFinite(Number(rateLimitPerMinute))
+    ? Math.max(10, Math.floor(Number(rateLimitPerMinute)))
+    : undefined;
+
   const partner = await Partner.create({
     name: `Partner ${Date.now()}`,
     contactEmail: `partner-${Date.now()}@example.com`,
     status: "active",
     scopes,
-    ...(rateLimitPerMinute !== undefined ? { rateLimitPerMinute } : {}),
+    ...(Array.isArray(visibleProductFields)
+      ? { visibleProductFields }
+      : {}),
+    ...(normalizedRateLimit !== undefined
+      ? {
+          rateLimitPerMinute: normalizedRateLimit,
+          rateLimitPlan: {
+            tier: "custom",
+            baseRPM: normalizedRateLimit,
+            burstRPM: normalizedRateLimit,
+            dailyLimit: 20000,
+            minDynamicRPM: normalizedRateLimit,
+            maxDynamicRPM: normalizedRateLimit,
+            scalingEnabled: false,
+          },
+          dynamicControls: {
+            lockScaling: true,
+            manualOverrideRPM: normalizedRateLimit,
+          },
+        }
+      : {}),
   });
 
   const key = buildPartnerApiKey();
@@ -262,4 +287,62 @@ test("GET /api/v1/partner/health enforces per-partner runtime rate limit", async
   assert.ok(blocked.response.headers.get("ratelimit-limit"));
   assert.ok(blocked.response.headers.get("ratelimit-remaining"));
   assert.ok(blocked.response.headers.get("retry-after"));
+});
+
+test("GET /api/v1/partner/pricing applies Rajasthan GST split and includes taxable + gross values", async () => {
+  const { apiKey } = await seedPartner({ scopes: ["price.read"] });
+  const { product } = await seedCatalog();
+
+  const { response, payload } = await requestJson(
+    `/api/v1/partner/pricing?productId=${String(product._id)}&deliveryState=Rajasthan`,
+    {
+      headers: {
+        "x-api-key": apiKey,
+      },
+    },
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.success, true);
+  assert.equal(payload.data.length, 1);
+  const item = payload.data[0];
+  assert.equal(item.price.amountWithGst, 599);
+  assert.ok(item.price.taxableAmount > 0);
+  assert.ok(item.price.gstAmount > 0);
+  assert.equal(item.price.gstBreakup.mode, "CGST_SGST");
+  assert.ok(item.price.gstBreakup.cgst > 0);
+  assert.ok(item.price.gstBreakup.sgst > 0);
+  assert.equal(item.price.gstBreakup.igst, 0);
+});
+
+test("GET /api/v1/partner/products respects visibleProductFields configuration", async () => {
+  const { apiKey } = await seedPartner({
+    scopes: ["catalog.read"],
+    visibleProductFields: ["stock", "gstBreakup"],
+  });
+  const { product } = await seedCatalog();
+
+  const { response, payload } = await requestJson(
+    `/api/v1/partner/products?deliveryState=Maharashtra&limit=10&page=1`,
+    {
+      headers: {
+        "x-api-key": apiKey,
+      },
+    },
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.success, true);
+  const item = payload.data.find((entry) => entry.id === String(product._id));
+  assert.ok(item);
+  assert.equal(item.stock.availableQuantity, 18);
+  assert.equal(item.price.gstBreakup.mode, "IGST");
+  assert.ok(item.price.gstBreakup.igst > 0);
+  assert.equal(item.description, undefined);
+  assert.equal(item.images, undefined);
+  assert.equal(item.category, undefined);
+  assert.equal(item.tags, undefined);
+  assert.equal(item.discount, undefined);
+  assert.equal(item.shipping, undefined);
+  assert.equal(item.hsnCode, undefined);
 });
