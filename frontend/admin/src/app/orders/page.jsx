@@ -3,7 +3,13 @@ import { useAdmin } from "@/context/AdminContext";
 import { useAdminRealtime } from "@/hooks/useAdminRealtime";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useLiveRefreshSetting } from "@/hooks/useLiveRefreshSetting";
-import { API_BASE_URL, deleteData, getData, postData, putData } from "@/utils/api";
+import {
+  API_BASE_URL,
+  deleteData,
+  getData,
+  postData,
+  putData,
+} from "@/utils/api";
 import { Button } from "@mui/material";
 import MenuItem from "@mui/material/MenuItem";
 import Pagination from "@mui/material/Pagination";
@@ -30,6 +36,124 @@ const ORDER_TABLE_COLUMNS = [
   "96px",
 ];
 
+const extractOrdersPayload = (input) => {
+  if (!input || typeof input !== "object") return null;
+
+  const queue = [input];
+  const visited = new Set();
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current || typeof current !== "object") continue;
+    if (visited.has(current)) continue;
+    visited.add(current);
+
+    if (Array.isArray(current?.orders) && current?.pagination) {
+      return {
+        orders: current.orders,
+        pagination: current.pagination,
+      };
+    }
+
+    for (const value of Object.values(current)) {
+      if (value && typeof value === "object") {
+        queue.push(value);
+      }
+    }
+  }
+
+  return null;
+};
+
+const resolveAlternateLocalhostBase = () => {
+  try {
+    const parsed = new URL(String(API_URL || ""));
+    const host = parsed.hostname.toLowerCase();
+    if (host !== "localhost" && host !== "127.0.0.1") return null;
+
+    if (parsed.port === "8000") {
+      parsed.port = "8001";
+      return parsed.toString().replace(/\/+$/, "");
+    }
+    if (parsed.port === "8001") {
+      parsed.port = "8000";
+      return parsed.toString().replace(/\/+$/, "");
+    }
+    return null;
+  } catch {
+    return null;
+  }
+};
+
+const fetchOrdersFromAltPort = async ({ url, token }) => {
+  const altBase = resolveAlternateLocalhostBase();
+  if (!altBase) return null;
+
+  const resolvedToken =
+    token ||
+    (typeof window !== "undefined" ? localStorage.getItem("adminToken") : null);
+
+  try {
+    const response = await fetch(`${altBase}${url}`, {
+      method: "GET",
+      headers: {
+        ...(resolvedToken ? { Authorization: `Bearer ${resolvedToken}` } : {}),
+      },
+    });
+
+    if (!response.ok) return null;
+    const payload = await response.json().catch(() => null);
+    return extractOrdersPayload(payload);
+  } catch {
+    // Alternate port probing is best-effort only.
+    return null;
+  }
+};
+
+const resolveTrackingUrl = (order = {}) => {
+  const explicitUrl = String(
+    order?.trackingUrl ||
+      order?.tracking_url ||
+      order?.shipmentTrackingUrl ||
+      "",
+  ).trim();
+  const awb = String(
+    order?.awbNo ||
+      order?.awb_no ||
+      order?.awbNumber ||
+      order?.awb_number ||
+      order?.shipment?.awbNo ||
+      order?.shipment?.awb_no ||
+      order?.shipment?.awb_number ||
+      order?.shipment?.awb ||
+      order?.shipping?.awbNo ||
+      order?.shipping?.awb_no ||
+      order?.shipping?.awb_number ||
+      order?.shipping?.awb ||
+      "",
+  ).trim();
+
+  if (!explicitUrl) {
+    if (!awb) return "";
+    return `https://www.xpressbees.com/shipment/tracking?awbNo=${encodeURIComponent(awb)}`;
+  }
+
+  if (!awb) return explicitUrl;
+
+  try {
+    const parsed = new URL(explicitUrl);
+    const host = String(parsed.hostname || "").toLowerCase();
+    const isXpressbees = host.includes("xpressbees.com");
+    if (!isXpressbees) return explicitUrl;
+
+    parsed.searchParams.delete("awb");
+    parsed.searchParams.set("awbNo", awb);
+    return parsed.toString();
+  } catch {
+    return explicitUrl;
+  }
+};
+
 const OrderRow = ({ order, index, token, onStatusUpdate }) => {
   const normalizeStatus = (status) => {
     if (!status) return "pending";
@@ -44,21 +168,23 @@ const OrderRow = ({ order, index, token, onStatusUpdate }) => {
   const [downloadingInvoice, setDownloadingInvoice] = useState(false);
   const [orderReviews, setOrderReviews] = useState([]);
   const [reviewsLoading, setReviewsLoading] = useState(false);
+  const trackingUrl = resolveTrackingUrl(order);
 
   const canDownloadInvoice =
     normalizeStatus(order?.payment_status) === "paid" ||
     Boolean(
       order?.isInvoiceGenerated ||
-        order?.invoiceUrl ||
-        order?.invoicePath ||
-        order?.invoiceGeneratedAt,
+      order?.invoiceUrl ||
+      order?.invoicePath ||
+      order?.invoiceGeneratedAt,
     );
   const fallbackOrderId = String(order?._id || order?.id || "")
     .trim()
     .slice(-8)
     .toUpperCase();
   const orderDisplayId = String(
-    order?.displayOrderId || (fallbackOrderId ? `BOG-${fallbackOrderId}` : "N/A"),
+    order?.displayOrderId ||
+      (fallbackOrderId ? `BOG-${fallbackOrderId}` : "N/A"),
   )
     .trim()
     .toUpperCase();
@@ -251,9 +377,14 @@ const OrderRow = ({ order, index, token, onStatusUpdate }) => {
     if (!confirmed) return;
 
     try {
-      const response = await deleteData(`/api/admin/reviews/${reviewId}`, token);
+      const response = await deleteData(
+        `/api/admin/reviews/${reviewId}`,
+        token,
+      );
       if (response?.success) {
-        setOrderReviews((prev) => prev.filter((review) => review._id !== reviewId));
+        setOrderReviews((prev) =>
+          prev.filter((review) => review._id !== reviewId),
+        );
         toast.success("Review deleted");
       } else {
         toast.error(response?.message || "Failed to delete review");
@@ -341,9 +472,7 @@ const OrderRow = ({ order, index, token, onStatusUpdate }) => {
             <span className="bg-gray-100 rounded-md px-2 py-1 border border-[rgba(0,0,0,0.1)]">
               {addressTypeLabel}
             </span>
-            <p className="pt-2 break-words leading-6">
-              {addressDisplay}
-            </p>
+            <p className="pt-2 break-words leading-6">{addressDisplay}</p>
           </div>
         </td>
         <td className="text-[14px] text-gray-600 font-[500] px-4 py-2">
@@ -454,7 +583,9 @@ const OrderRow = ({ order, index, token, onStatusUpdate }) => {
                             </button>
                           </div>
                           <div className="text-[12px] text-amber-600 font-semibold">
-                            {"★".repeat(Math.max(1, Number(review.rating || 0)))}
+                            {"★".repeat(
+                              Math.max(1, Number(review.rating || 0)),
+                            )}
                             <span className="text-gray-400 ml-1">
                               ({Number(review.rating || 0).toFixed(1)})
                             </span>
@@ -484,15 +615,21 @@ const OrderRow = ({ order, index, token, onStatusUpdate }) => {
             )}
 
             <div className="mt-6 bg-white rounded-lg shadow-sm p-4">
-              <div className="text-gray-800 font-semibold">Order References</div>
+              <div className="text-gray-800 font-semibold">
+                Order References
+              </div>
               <div className="mt-3 grid md:grid-cols-2 gap-3 text-sm">
                 <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
                   <span className="font-semibold text-gray-700">Order No:</span>{" "}
-                  <span className="text-gray-800">{orderDisplayId || "N/A"}</span>
+                  <span className="text-gray-800">
+                    {orderDisplayId || "N/A"}
+                  </span>
                 </div>
                 <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 flex items-center justify-between gap-2">
                   <div className="min-w-0">
-                    <span className="font-semibold text-gray-700">Internal ID:</span>{" "}
+                    <span className="font-semibold text-gray-700">
+                      Internal ID:
+                    </span>{" "}
                     <span className="text-gray-800 break-all">
                       {internalOrderId || "N/A"}
                     </span>
@@ -501,7 +638,9 @@ const OrderRow = ({ order, index, token, onStatusUpdate }) => {
                     size="small"
                     variant="outlined"
                     disabled={!internalOrderId}
-                    onClick={() => copyToClipboard(internalOrderId, "Internal ID")}
+                    onClick={() =>
+                      copyToClipboard(internalOrderId, "Internal ID")
+                    }
                   >
                     Copy
                   </Button>
@@ -546,7 +685,9 @@ const OrderRow = ({ order, index, token, onStatusUpdate }) => {
                 </div>
                 <div>
                   <span className="font-semibold">Courier:</span>{" "}
-                  {order?.courierName || order?.shipping_provider || "Xpressbees"}
+                  {order?.courierName ||
+                    order?.shipping_provider ||
+                    "Xpressbees"}
                 </div>
                 <div>
                   <span className="font-semibold">Tracking Status:</span>{" "}
@@ -554,9 +695,9 @@ const OrderRow = ({ order, index, token, onStatusUpdate }) => {
                 </div>
                 <div>
                   <span className="font-semibold">Tracking URL:</span>{" "}
-                  {order?.trackingUrl ? (
+                  {trackingUrl ? (
                     <a
-                      href={order.trackingUrl}
+                      href={trackingUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-blue-600 hover:underline break-all"
@@ -569,7 +710,9 @@ const OrderRow = ({ order, index, token, onStatusUpdate }) => {
                 </div>
                 <div>
                   <span className="font-semibold">Manifest:</span>{" "}
-                  {order?.manifestId || order?.shipping_manifest ? "Generated" : "Pending"}
+                  {order?.manifestId || order?.shipping_manifest
+                    ? "Generated"
+                    : "Pending"}
                 </div>
                 <div>
                   <span className="font-semibold">Delivery Status:</span>{" "}
@@ -582,7 +725,6 @@ const OrderRow = ({ order, index, token, onStatusUpdate }) => {
           </td>
         </tr>
       )}
-
     </>
   );
 };
@@ -609,35 +751,62 @@ const Orders = () => {
     [intervalMs],
   );
 
-  const fetchOrders = useCallback(async ({ silent = false } = {}) => {
-    if (!silent) {
-      setIsLoading(true);
-    } else {
-      setRefreshing(true);
-    }
-    try {
-      let url = `/api/orders/admin/all?page=${page}&limit=20`;
-      if (search) url += `&search=${search}`;
-      if (statusFilter && statusFilter !== "all") {
-        url += `&status=${statusFilter}`;
-      }
-
-      const response = await getData(url, token);
-      if (response.success) {
-        setOrders(response.data?.orders || []);
-        setTotalPages(response.data?.pagination?.totalPages || 1);
+  const fetchOrders = useCallback(
+    async ({ silent = false } = {}) => {
+      if (!silent) {
+        setIsLoading(true);
       } else {
-        setOrders([]);
-        setTotalPages(1);
+        setRefreshing(true);
       }
-    } catch (error) {
-      console.error("Failed to fetch orders:", error);
-      setOrders([]);
-      setTotalPages(1);
-    }
-    setIsLoading(false);
-    setRefreshing(false);
-  }, [page, search, statusFilter, token]);
+      try {
+        let url = `/api/orders/admin/all?page=${page}&limit=20`;
+        if (search) url += `&search=${search}`;
+        if (statusFilter && statusFilter !== "all") {
+          url += `&status=${statusFilter}`;
+        }
+
+        const response = await getData(url, token);
+        let payload = extractOrdersPayload(response);
+
+        const shouldProbeAltPort =
+          (!payload ||
+            !Array.isArray(payload.orders) ||
+            payload.orders.length === 0) &&
+          page === 1 &&
+          !search &&
+          (!statusFilter || statusFilter === "all");
+
+        if (shouldProbeAltPort) {
+          const altPayload = await fetchOrdersFromAltPort({ url, token });
+          if (
+            altPayload &&
+            Array.isArray(altPayload.orders) &&
+            altPayload.orders.length > 0
+          ) {
+            payload = altPayload;
+          }
+        }
+
+        if ((response?.success || payload) && payload) {
+          const nextOrders = Array.isArray(payload?.orders)
+            ? payload.orders
+            : [];
+          const nextTotalPages = Number(payload?.pagination?.totalPages || 1);
+          setOrders(nextOrders);
+          setTotalPages(nextTotalPages > 0 ? nextTotalPages : 1);
+        } else {
+          // Keep existing rows if request failed; avoid false empty state flashes.
+          console.error("Orders API returned an invalid payload:", response);
+        }
+      } catch (error) {
+        console.error("Failed to fetch orders:", error);
+        // Preserve current data on transient failures.
+      }
+      setIsLoading(false);
+      setRefreshing(false);
+    },
+    [page, search, statusFilter, token],
+  );
 
   useEffect(() => {
     if (!loading && !isAuthenticated) {
@@ -652,7 +821,9 @@ const Orders = () => {
   }, [isAuthenticated, page, statusFilter, fetchOrders]);
 
   useEffect(() => {
-    const rawStatus = String(searchParams?.get("status") || "all").toLowerCase();
+    const rawStatus = String(
+      searchParams?.get("status") || "all",
+    ).toLowerCase();
     const allowed = new Set(["all", "pending", "successful", "failed"]);
     const nextStatus = allowed.has(rawStatus) ? rawStatus : "all";
     setStatusFilter(nextStatus);
@@ -704,7 +875,11 @@ const Orders = () => {
 
     setRepairingPaidOrders(true);
     try {
-      const response = await postData("/api/orders/admin/repair-paid?limit=50", {}, token);
+      const response = await postData(
+        "/api/orders/admin/repair-paid?limit=50",
+        {},
+        token,
+      );
       if (response?.success) {
         const stats = response?.data || {};
         toast.success(
@@ -756,7 +931,9 @@ const Orders = () => {
                 py: 0.8,
               }}
             >
-              {repairingPaidOrders ? "Repairing Paid Orders..." : "Repair Paid Orders"}
+              {repairingPaidOrders
+                ? "Repairing Paid Orders..."
+                : "Repair Paid Orders"}
             </Button>
             <Button
               variant="outlined"
@@ -815,7 +992,9 @@ const Orders = () => {
         </div>
 
         {refreshing ? (
-          <div className="text-xs text-gray-500 mt-2">Refreshing live data...</div>
+          <div className="text-xs text-gray-500 mt-2">
+            Refreshing live data...
+          </div>
         ) : null}
 
         {isLoading ? (

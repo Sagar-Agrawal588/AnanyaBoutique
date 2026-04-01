@@ -1,6 +1,6 @@
 "use client";
-import { FLAVORS, MyContext } from "@/context/ThemeContext";
 import { useSettings } from "@/context/SettingsContext";
+import { FLAVORS, MyContext } from "@/context/ThemeContext";
 import { useContext, useEffect, useState } from "react";
 
 // Convert FLAVORS object to array for mapping
@@ -47,7 +47,11 @@ const mixHexColor = (baseColor, mixColor, ratio) => {
   const mixGreen = Number.parseInt(mix.slice(3, 5), 16);
   const mixBlue = Number.parseInt(mix.slice(5, 7), 16);
 
-  return `#${[blendChannel(baseRed, mixRed), blendChannel(baseGreen, mixGreen), blendChannel(baseBlue, mixBlue)]
+  return `#${[
+    blendChannel(baseRed, mixRed),
+    blendChannel(baseGreen, mixGreen),
+    blendChannel(baseBlue, mixBlue),
+  ]
     .map((value) => value.toString(16).padStart(2, "0"))
     .join("")}`;
 };
@@ -264,23 +268,23 @@ export default function FlavorSwitcherBar() {
             className="flavor-btn"
             onClick={() => handleClick(flavor)}
             style={{
-              background:
-                selected === flavor.name ? flavor.buttonBg : flavor.buttonGlass,
+              background: flavor.buttonBg,
               color: flavor.buttonTextColor,
               fontWeight: "600",
               fontSize: "0.95rem",
               border:
                 selected === flavor.name
                   ? "2px solid rgba(255,255,255,0.65)"
-                  : `2px solid ${flavor.buttonBorder}`,
+                  : `2px solid ${flavor.buttonBg}`,
               borderRadius: "12px",
               padding: "10px 24px",
               boxShadow:
                 selected === flavor.name
                   ? `0 4px 16px ${flavor.buttonShadow}`
-                  : "none",
+                  : `0 2px 10px ${hexToRgba(flavor.buttonBg, 0.22)}`,
               outline: "none",
               cursor: "pointer",
+              opacity: selected === flavor.name ? 1 : 0.92,
             }}
           >
             {flavor.buttonLabel}

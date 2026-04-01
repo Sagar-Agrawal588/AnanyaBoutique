@@ -11,7 +11,74 @@ import ProductItem from "./ProductItem";
 import "swiper/css";
 import "swiper/css/navigation";
 
-const ProductSlider = ({ title, categorySlug, isFeatured, limit = 10 }) => {
+const clampSlides = (target, total) => {
+  if (!total || total <= 0) return 1;
+  return Math.max(1, Math.min(target, total));
+};
+
+const toNumber = (value, fallback = 0) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const roundUpPercent = (value) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+  return Math.ceil(parsed);
+};
+
+const resolveComboImage = (combo) =>
+  combo?.thumbnail ||
+  combo?.comboThumbnail ||
+  combo?.image ||
+  combo?.images?.[0] ||
+  combo?.comboImages?.[0] ||
+  "/product_1.png";
+
+const toComboCardPayload = (combo) => {
+  const price = toNumber(
+    combo?.price ?? combo?.comboPrice ?? combo?.finalPrice,
+    0,
+  );
+  const originalPrice = toNumber(
+    combo?.originalPrice ?? combo?.originalTotal ?? combo?.mrp ?? price,
+    price,
+  );
+  const computedDiscount =
+    originalPrice > price && originalPrice > 0
+      ? roundUpPercent(((originalPrice - price) / originalPrice) * 100)
+      : 0;
+
+  return {
+    ...combo,
+    _id: combo?._id,
+    itemType: "combo",
+    brand: combo?.brand || "Buy One Gram",
+    price,
+    originalPrice,
+    discount:
+      roundUpPercent(combo?.discountPercentage) ||
+      roundUpPercent(computedDiscount),
+    rating: toNumber(combo?.adminStarRating ?? combo?.rating, 0),
+    reviewCount: toNumber(combo?.reviewCount, 0),
+    images: [resolveComboImage(combo)].filter(Boolean),
+    image: resolveComboImage(combo),
+    stock: toNumber(combo?.availableStock ?? combo?.stockQuantity, 0),
+    stock_quantity: toNumber(combo?.availableStock ?? combo?.stockQuantity, 0),
+  };
+};
+
+const ProductSlider = ({
+  title,
+  categorySlug,
+  isFeatured,
+  limit = 10,
+  includeCombos = false,
+  productLimit = 5,
+  comboLimit = 2,
+  sortBy = "createdAt",
+  order = "desc",
+}) => {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const context = useContext(MyContext);
@@ -25,22 +92,93 @@ const ProductSlider = ({ title, categorySlug, isFeatured, limit = 10 }) => {
   useEffect(() => {
     const fetchProducts = async () => {
       try {
-        let url = "/api/products?";
         const params = [];
+        if (categorySlug)
+          params.push(`category=${encodeURIComponent(categorySlug)}`);
+        if (isFeatured) params.push("featured=true");
+        params.push(
+          `sortBy=${encodeURIComponent(String(sortBy || "createdAt"))}`,
+        );
+        params.push(`order=${encodeURIComponent(String(order || "desc"))}`);
+        params.push("separateVariants=true");
+        params.push("includeCombos=false");
+        params.push(`limit=${encodeURIComponent(String(limit || 10))}`);
 
-        if (categorySlug) params.push(`category=${categorySlug}`);
-        if (isFeatured) params.push("isFeatured=true");
-        params.push(`limit=${limit}`);
-
-        url += params.join("&");
-
-        const response = await fetchDataFromApi(url);
-        if (response.success && response.data) {
-          const safeProducts = Array.isArray(response.data)
-            ? response.data.filter((product) => product?.isExclusive !== true)
+        const productsUrl = `/api/products?${params.join("&")}`;
+        const productResponse = await fetchDataFromApi(productsUrl);
+        const fetchedProducts =
+          productResponse?.success && Array.isArray(productResponse?.data)
+            ? productResponse.data.filter(
+                (product) =>
+                  product?.isExclusive !== true &&
+                  String(product?.itemType || "product") !== "combo",
+              )
             : [];
-          setProducts(safeProducts);
+
+        if (!includeCombos) {
+          setProducts(fetchedProducts);
+          return;
         }
+
+        const combosResponse = await fetchDataFromApi(
+          `/api/combos?sort=priority&limit=${Math.max(comboLimit * 5, 10)}`,
+        );
+        const comboItemsRaw =
+          combosResponse?.success && Array.isArray(combosResponse?.data?.items)
+            ? combosResponse.data.items
+            : [];
+
+        const availableCombos = comboItemsRaw.filter((combo) => {
+          const status = String(combo?.status || "")
+            .trim()
+            .toLowerCase();
+          const source = String(combo?.source || "")
+            .trim()
+            .toLowerCase();
+          const comboType = String(combo?.comboType || "")
+            .trim()
+            .toLowerCase();
+          const hasItems =
+            Array.isArray(combo?.items) && combo.items.length > 0;
+
+          // Keep only storefront-real combos.
+          if (combo?.isActive === false || combo?.isVisible === false)
+            return false;
+          if (status && status !== "active") return false;
+          if (source === "ai" || comboType === "ai_suggested") return false;
+          if (!hasItems) return false;
+
+          const available = Number(
+            combo?.availableStock ??
+              combo?.availability?.available ??
+              combo?.stockQuantity ??
+              0,
+          );
+          return Number.isFinite(available) ? available > 0 : true;
+        });
+
+        const rankedCombos = [...availableCombos].sort((a, b) => {
+          const bestSellerWeight =
+            Number(Boolean(b?.isBestSeller)) - Number(Boolean(a?.isBestSeller));
+          if (bestSellerWeight !== 0) return bestSellerWeight;
+          const priorityDelta =
+            toNumber(b?.priority, 0) - toNumber(a?.priority, 0);
+          if (priorityDelta !== 0) return priorityDelta;
+          return (
+            new Date(b?.createdAt || 0).getTime() -
+            new Date(a?.createdAt || 0).getTime()
+          );
+        });
+
+        const topProducts = fetchedProducts.slice(
+          0,
+          Math.max(Number(productLimit) || 0, 0),
+        );
+        const topCombos = rankedCombos
+          .slice(0, Math.max(Number(comboLimit) || 0, 0))
+          .map(toComboCardPayload);
+
+        setProducts([...topProducts, ...topCombos]);
       } catch (error) {
         console.error("Failed to fetch products:", error);
       } finally {
@@ -49,7 +187,16 @@ const ProductSlider = ({ title, categorySlug, isFeatured, limit = 10 }) => {
     };
 
     fetchProducts();
-  }, [categorySlug, isFeatured, limit]);
+  }, [
+    categorySlug,
+    isFeatured,
+    limit,
+    includeCombos,
+    productLimit,
+    comboLimit,
+    sortBy,
+    order,
+  ]);
 
   if (loading) {
     return (
@@ -69,7 +216,55 @@ const ProductSlider = ({ title, categorySlug, isFeatured, limit = 10 }) => {
     return null;
   }
 
-  const navBtnBase = "absolute top-1/2 -translate-y-1/2 z-10 w-9 h-9 md:w-11 md:h-11 rounded-full flex items-center justify-center transition-all duration-300 cursor-pointer";
+  const totalProducts = products.length;
+  const useStaticGrid = totalProducts <= 4;
+  const responsiveSlides = {
+    480: { slidesPerView: clampSlides(2, totalProducts) },
+    640: { slidesPerView: clampSlides(3, totalProducts) },
+    768: { slidesPerView: clampSlides(4, totalProducts) },
+    1024: { slidesPerView: clampSlides(5, totalProducts) },
+  };
+
+  if (useStaticGrid) {
+    return (
+      <div className="productSlider py-5 relative">
+        {title && (
+          <h3
+            className="text-xl font-bold mb-4 transition-colors duration-300"
+            style={{ color: flavor.color }}
+          >
+            {title}
+          </h3>
+        )}
+
+        <div
+          className="grid gap-4"
+          style={{
+            gridTemplateColumns: `repeat(${Math.max(1, totalProducts)}, minmax(0, 1fr))`,
+          }}
+        >
+          {products.map((product) => (
+            <div key={product._id} className="h-full">
+              <ProductItem
+                id={product._id}
+                name={product.name}
+                brand={product.brand || "Buy One Gram"}
+                price={product.price}
+                originalPrice={product.originalPrice}
+                discount={product.discount}
+                rating={product.rating}
+                image={product.thumbnail || product.images?.[0]}
+                product={product}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  const navBtnBase =
+    "absolute top-1/2 -translate-y-1/2 z-10 w-9 h-9 md:w-11 md:h-11 rounded-full flex items-center justify-center transition-all duration-300 cursor-pointer";
 
   return (
     <div className="productSlider py-5 relative">
@@ -127,7 +322,7 @@ const ProductSlider = ({ title, categorySlug, isFeatured, limit = 10 }) => {
       <Swiper
         modules={[Navigation, Autoplay]}
         spaceBetween={16}
-        slidesPerView={2}
+        slidesPerView={clampSlides(2, totalProducts)}
         navigation={{
           prevEl: prevRef.current,
           nextEl: nextRef.current,
@@ -138,16 +333,11 @@ const ProductSlider = ({ title, categorySlug, isFeatured, limit = 10 }) => {
         }}
         onSwiper={() => setSwiperReady(true)}
         autoplay={{ delay: 4000, disableOnInteraction: false }}
-        breakpoints={{
-          480: { slidesPerView: 2 },
-          640: { slidesPerView: 3 },
-          768: { slidesPerView: 4 },
-          1024: { slidesPerView: 5 },
-        }}
-        className="!px-1"
+        breakpoints={responsiveSlides}
+        className="px-1!"
       >
         {products.map((product) => (
-          <SwiperSlide key={product._id} className="!h-auto">
+          <SwiperSlide key={product._id} className="h-auto!">
             <div className="h-full">
               <ProductItem
                 id={product._id}

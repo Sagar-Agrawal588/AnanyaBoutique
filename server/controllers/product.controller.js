@@ -1,7 +1,8 @@
 import mongoose from "mongoose";
-import CategoryModel from "../models/category.model.js";
-import ProductModel from "../models/product.model.js";
 import { checkExclusiveAccess } from "../middlewares/membershipGuard.js";
+import CategoryModel from "../models/category.model.js";
+import ComboModel from "../models/combo.model.js";
+import ProductModel from "../models/product.model.js";
 import {
   getCartUpsellProductSuggestion,
   getFrequentlyBoughtTogether,
@@ -61,11 +62,33 @@ const buildVariantInventoryTotals = (variants = []) => ({
     0,
   ),
   reserved: variants.reduce(
-    (sum, variant) =>
-      sum + normalizeStockValue(variant?.reserved_quantity, 0),
+    (sum, variant) => sum + normalizeStockValue(variant?.reserved_quantity, 0),
     0,
   ),
 });
+
+const formatVariantWeightLabel = (variant = {}) => {
+  const weight = Number(variant?.weight || 0);
+  const unit = String(variant?.unit || "").trim();
+  if (!weight || !unit) return "";
+  if (unit.toLowerCase() === "g" && weight >= 1000) {
+    return `${Number((weight / 1000).toFixed(2))}kg`;
+  }
+  return `${weight}${unit}`;
+};
+
+const resolveComboCardImage = (combo = {}) =>
+  (Array.isArray(combo?.images) ? combo.images[0] : "") ||
+  combo?.comboThumbnail ||
+  combo?.combo_thumbnail ||
+  combo?.thumbnail ||
+  combo?.image ||
+  (Array.isArray(combo?.comboImages) ? combo.comboImages[0] : "") ||
+  (Array.isArray(combo?.combo_images) ? combo.combo_images[0] : "") ||
+  (Array.isArray(combo?.items)
+    ? combo.items.map((item) => String(item?.image || "").trim()).find(Boolean)
+    : "") ||
+  "";
 
 /**
  * Product Controller
@@ -103,12 +126,23 @@ export const getProducts = async (req, res) => {
       inStock,
       lowStock,
       exclude,
+      separateVariants,
+      includeCombos,
     } = req.query;
+
+    const shouldSeparateVariants =
+      String(separateVariants || "")
+        .trim()
+        .toLowerCase() === "true";
+    const shouldIncludeCombos =
+      String(includeCombos || "")
+        .trim()
+        .toLowerCase() === "true";
 
     const canViewExclusive = req?.userIsAdmin === true;
 
     // Build filter object
-    const filter = { isActive: true };
+    const filter = { isActive: { $ne: false } };
     // Exclusive products are never part of normal storefront listings.
     // Only admins can include them in this endpoint for dashboard management.
     if (!canViewExclusive) {
@@ -119,7 +153,7 @@ export const getProducts = async (req, res) => {
     // Debug: Count all products first
     const totalAllProducts = await ProductModel.countDocuments({});
     const totalActiveProducts = await ProductModel.countDocuments({
-      isActive: true,
+      isActive: { $ne: false },
     });
     debugLog(
       "[Product Search] Total products in DB:",
@@ -181,7 +215,7 @@ export const getProducts = async (req, res) => {
       // Debug: Test the name search directly
       const nameMatchTest = await ProductModel.find({
         name: { $regex: searchRegex },
-        isActive: true,
+        isActive: { $ne: false },
       })
         .select("name")
         .limit(5)
@@ -367,6 +401,164 @@ export const getProducts = async (req, res) => {
     const sortOptions = {};
     sortOptions[sortBy] = order === "asc" ? 1 : -1;
 
+    const safePage = Math.max(Number(page) || 1, 1);
+    const safeLimit = Math.min(Math.max(Number(limit) || 15, 1), 200);
+
+    if (shouldSeparateVariants || shouldIncludeCombos) {
+      const productsRaw = await ProductModel.find(filter)
+        .populate("category", "name slug")
+        .populate("subCategory", "name slug")
+        .select("-reviews -description")
+        .sort(sortOptions)
+        .lean();
+
+      const expandedProducts = [];
+      for (const product of productsRaw) {
+        const variants = Array.isArray(product?.variants)
+          ? product.variants
+          : [];
+        if (
+          shouldSeparateVariants &&
+          product?.hasVariants &&
+          variants.length > 0
+        ) {
+          variants.forEach((variant, index) => {
+            const variantLabel =
+              String(variant?.name || "").trim() ||
+              formatVariantWeightLabel(variant);
+            expandedProducts.push({
+              ...product,
+              _id: `${String(product?._id || "")}-${String(variant?._id || index)}`,
+              parentProductId: product?._id || null,
+              variantId: variant?._id || null,
+              variantName: variantLabel,
+              name: variantLabel
+                ? `${String(product?.name || "Product").trim()} - ${variantLabel}`
+                : String(product?.name || "Product"),
+              price: Number(variant?.price ?? product?.price ?? 0),
+              originalPrice: Number(
+                variant?.originalPrice ??
+                  product?.originalPrice ??
+                  product?.oldPrice ??
+                  0,
+              ),
+              discount: Number(
+                variant?.discountPercent ?? product?.discount ?? 0,
+              ),
+              weight: Number(variant?.weight ?? product?.weight ?? 0),
+              unit: String(variant?.unit || product?.unit || "g"),
+              sku: String(variant?.sku || product?.sku || ""),
+              stock: Number(
+                variant?.stock_quantity ??
+                  variant?.stock ??
+                  product?.stock ??
+                  0,
+              ),
+              stock_quantity: Number(
+                variant?.stock_quantity ??
+                  variant?.stock ??
+                  product?.stock_quantity ??
+                  0,
+              ),
+              hasVariants: false,
+              variants: [],
+            });
+          });
+        } else {
+          expandedProducts.push(product);
+        }
+      }
+
+      let comboCards = [];
+      if (shouldIncludeCombos) {
+        const now = new Date();
+        const comboFilter = {
+          isActive: { $ne: false },
+          isVisible: { $ne: false },
+          status: { $ne: "disabled" },
+          $and: [
+            { $or: [{ startDate: null }, { startDate: { $lte: now } }] },
+            { $or: [{ endDate: null }, { endDate: { $gte: now } }] },
+          ],
+        };
+
+        if (search && String(search).trim()) {
+          comboFilter.$or = [
+            { name: { $regex: String(search).trim(), $options: "i" } },
+            { brand: { $regex: String(search).trim(), $options: "i" } },
+          ];
+        }
+
+        const combosRaw = await ComboModel.find(comboFilter)
+          .sort({ priority: -1, totalSavings: -1, createdAt: -1 })
+          .lean();
+
+        comboCards = combosRaw.map((combo) => {
+          const comboPrice = Number(
+            combo?.price ?? combo?.comboPrice ?? combo?.finalPrice ?? 0,
+          );
+          const comboOriginalPrice = Number(
+            combo?.originalPrice ?? combo?.originalTotal ?? comboPrice,
+          );
+          const comboDiscount =
+            Number(combo?.discountPercentage ?? 0) > 0
+              ? Math.ceil(Number(combo?.discountPercentage))
+              : comboOriginalPrice > comboPrice && comboOriginalPrice > 0
+                ? Math.ceil(
+                    ((comboOriginalPrice - comboPrice) / comboOriginalPrice) *
+                      100,
+                  )
+                : 0;
+
+          return {
+            _id: combo?._id || null,
+            id: combo?._id || null,
+            comboId: combo?._id || null,
+            slug: String(combo?.slug || "").trim(),
+            itemType: "combo",
+            name: String(combo?.name || "Combo Deal"),
+            shortDescription: String(combo?.shortDescription || ""),
+            brand: String(combo?.brand || "Buy One Gram"),
+            price: comboPrice,
+            originalPrice: comboOriginalPrice,
+            discount: comboDiscount,
+            images: [resolveComboCardImage(combo)].filter(Boolean),
+            image: resolveComboCardImage(combo),
+            rating: Number(combo?.adminStarRating ?? combo?.rating ?? 0),
+            reviewCount: Number(combo?.reviewCount || 0),
+            availableStock: Number(
+              combo?.availableStock ?? combo?.stockQuantity ?? 0,
+            ),
+            stock: Number(combo?.availableStock ?? combo?.stockQuantity ?? 0),
+            stock_quantity: Number(
+              combo?.availableStock ?? combo?.stockQuantity ?? 0,
+            ),
+            createdAt: combo?.createdAt,
+            updatedAt: combo?.updatedAt,
+            isActive: combo?.isActive !== false,
+            isVisible: combo?.isVisible !== false,
+          };
+        });
+      }
+
+      const combined = [...expandedProducts, ...comboCards];
+      const startIndex = (safePage - 1) * safeLimit;
+      const paginated = combined.slice(startIndex, startIndex + safeLimit);
+      const totalProducts = combined.length;
+      const totalPages = Math.max(Math.ceil(totalProducts / safeLimit), 1);
+
+      return res.status(200).json({
+        error: false,
+        success: true,
+        data: paginated,
+        totalProducts,
+        totalPages,
+        currentPage: safePage,
+        hasNextPage: safePage < totalPages,
+        hasPrevPage: safePage > 1,
+      });
+    }
+
     // Execute query
     const skip = (Number(page) - 1) * Number(limit);
 
@@ -427,7 +619,10 @@ export const getProductById = async (req, res) => {
         .populate("subCategory", "name slug")
         .populate("reviews.user", "name avatar");
     } else {
-      product = await ProductModel.findOne({ slug: id, isActive: true })
+      product = await ProductModel.findOne({
+        slug: id,
+        isActive: { $ne: false },
+      })
         .populate("category", "name slug")
         .populate("subCategory", "name slug")
         .populate("reviews.user", "name avatar");
@@ -473,7 +668,7 @@ export const getFeaturedProducts = async (req, res) => {
     const canViewExclusive = req?.userIsAdmin === true;
 
     const filter = {
-      isActive: true,
+      isActive: { $ne: false },
       isFeatured: true,
       ...(canViewExclusive ? {} : { isExclusive: { $ne: true } }),
     };
@@ -518,7 +713,7 @@ export const getExclusiveProducts = async (req, res) => {
     const skip = (safePage - 1) * safeLimit;
 
     const filter = {
-      isActive: true,
+      isActive: { $ne: false },
       isExclusive: true,
     };
 
@@ -592,7 +787,7 @@ export const getRelatedProducts = async (req, res) => {
     const relatedFilter = {
       _id: { $ne: id },
       category: product.category,
-      isActive: true,
+      isActive: { $ne: false },
       ...(canViewExclusive ? {} : { isExclusive: { $ne: true } }),
     };
 
@@ -792,9 +987,15 @@ export const createProduct = async (req, res) => {
 
     // Validate variants if present
     let processedVariants = variants || [];
-    if (hasVariants && Array.isArray(processedVariants) && processedVariants.length > 0) {
+    if (
+      hasVariants &&
+      Array.isArray(processedVariants) &&
+      processedVariants.length > 0
+    ) {
       // Check for duplicate weights
-      const weightKeys = processedVariants.map((v) => `${v.weight || 0}-${v.unit || "g"}`);
+      const weightKeys = processedVariants.map(
+        (v) => `${v.weight || 0}-${v.unit || "g"}`,
+      );
       const uniqueWeights = new Set(weightKeys);
       if (uniqueWeights.size !== weightKeys.length) {
         return res.status(400).json({
@@ -814,8 +1015,13 @@ export const createProduct = async (req, res) => {
           0,
         );
         const discountPercent =
-          variantOriginalPrice && variantPrice !== null && variantOriginalPrice > variantPrice
-            ? Math.round(((variantOriginalPrice - variantPrice) / variantOriginalPrice) * 100)
+          variantOriginalPrice &&
+          variantPrice !== null &&
+          variantOriginalPrice > variantPrice
+            ? Math.round(
+                ((variantOriginalPrice - variantPrice) / variantOriginalPrice) *
+                  100,
+              )
             : 0;
         return {
           ...variant,
@@ -832,7 +1038,9 @@ export const createProduct = async (req, res) => {
       if (defaults.length === 0) {
         processedVariants[0].isDefault = true;
       } else if (defaults.length > 1) {
-        processedVariants.forEach((v, i) => { v.isDefault = i === processedVariants.indexOf(defaults[0]); });
+        processedVariants.forEach((v, i) => {
+          v.isDefault = i === processedVariants.indexOf(defaults[0]);
+        });
       }
     }
 
@@ -999,9 +1207,15 @@ export const updateProduct = async (req, res) => {
     }
 
     // Validate variants if being updated
-    if (updateData.hasVariants && Array.isArray(updateData.variants) && updateData.variants.length > 0) {
+    if (
+      updateData.hasVariants &&
+      Array.isArray(updateData.variants) &&
+      updateData.variants.length > 0
+    ) {
       // Check for duplicate weights
-      const weightKeys = updateData.variants.map((v) => `${v.weight || 0}-${v.unit || "g"}`);
+      const weightKeys = updateData.variants.map(
+        (v) => `${v.weight || 0}-${v.unit || "g"}`,
+      );
       const uniqueWeights = new Set(weightKeys);
       if (uniqueWeights.size !== weightKeys.length) {
         return res.status(400).json({
@@ -1011,7 +1225,10 @@ export const updateProduct = async (req, res) => {
         });
       }
       const existingVariantMap = new Map(
-        (product.variants || []).map((variant) => [String(variant?._id || ""), variant]),
+        (product.variants || []).map((variant) => [
+          String(variant?._id || ""),
+          variant,
+        ]),
       );
       updateData.variants = updateData.variants.map((variant) => {
         const variantPrice = roundWholeNumber(variant.price);
@@ -1019,14 +1236,21 @@ export const updateProduct = async (req, res) => {
           variant.originalPrice === undefined || variant.originalPrice === null
             ? undefined
             : roundWholeNumber(variant.originalPrice);
-        const existingVariant = existingVariantMap.get(String(variant?._id || ""));
+        const existingVariant = existingVariantMap.get(
+          String(variant?._id || ""),
+        );
         const variantStock = normalizeStockValue(
           variant.stock ?? variant.stock_quantity,
           existingVariant?.stock_quantity ?? existingVariant?.stock ?? 0,
         );
         const discountPercent =
-          variantOriginalPrice && variantPrice !== null && variantOriginalPrice > variantPrice
-            ? Math.round(((variantOriginalPrice - variantPrice) / variantOriginalPrice) * 100)
+          variantOriginalPrice &&
+          variantPrice !== null &&
+          variantOriginalPrice > variantPrice
+            ? Math.round(
+                ((variantOriginalPrice - variantPrice) / variantOriginalPrice) *
+                  100,
+              )
             : 0;
         return {
           ...variant,
@@ -1057,7 +1281,9 @@ export const updateProduct = async (req, res) => {
       Array.isArray(updateData.variants) &&
       updateData.variants.length > 0
     ) {
-      const variantInventoryTotals = buildVariantInventoryTotals(updateData.variants);
+      const variantInventoryTotals = buildVariantInventoryTotals(
+        updateData.variants,
+      );
       updateData.stock = variantInventoryTotals.stock;
       updateData.stock_quantity = variantInventoryTotals.stock;
       updateData.reserved_quantity = variantInventoryTotals.reserved;

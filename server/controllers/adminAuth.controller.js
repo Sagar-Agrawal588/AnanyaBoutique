@@ -1,8 +1,8 @@
 import bcrypt from "bcryptjs";
 import UserModel from "../models/user.model.js";
+import { emitTrackingEvent } from "../services/analytics/trackingEmitter.service.js";
 import generateAccessToken from "../utils/generateAccessToken.js";
 import generateRefreshToken from "../utils/generateRefreshToken.js";
-import { emitTrackingEvent } from "../services/analytics/trackingEmitter.service.js";
 
 const AUTH_PERSIST_MAX_AGE = 365 * 24 * 60 * 60 * 1000; // 365 days
 const ACCESS_TOKEN_MAX_AGE = AUTH_PERSIST_MAX_AGE;
@@ -46,7 +46,10 @@ const buildCookieOptions = (maxAge) => {
   return options;
 };
 
-const normalizeEmail = (email) => String(email || "").trim().toLowerCase();
+const normalizeEmail = (email) =>
+  String(email || "")
+    .trim()
+    .toLowerCase();
 const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
 const ADMIN_PRIMARY_EMAIL = normalizeEmail(
@@ -235,7 +238,8 @@ export const adminGoogleLoginController = async (req, res) => {
     const sanitizedName = String(name || "")
       .trim()
       .replace(/<[^>]*>/g, "");
-    const resolvedName = sanitizedName || normalizedEmail.split("@")[0] || "Admin";
+    const resolvedName =
+      sanitizedName || normalizedEmail.split("@")[0] || "Admin";
 
     let user = await UserModel.findOne({ email: normalizedEmail });
 

@@ -4,6 +4,7 @@ import {
   deleteSetting,
   getAllSettings,
   getHeaderSettings,
+  getMaintenanceStatus,
   getPublicSettings,
   getSettingByKey,
   updateHeaderSettings,
@@ -24,6 +25,9 @@ const router = express.Router();
 
 // Header appearance settings
 router.get("/header", getHeaderSettings);
+
+// Computed maintenance status
+router.get("/maintenance-status", getMaintenanceStatus);
 
 // Get all public settings
 router.get("/public", getPublicSettings);

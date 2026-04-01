@@ -28,7 +28,7 @@ const API_URL = String(API_BASE_URL || "")
   .replace(/\/+$/, "")
   .replace(/\/api$/i, "");
 
-const buildApiUrl = (path) => {
+const buildApiUrlCandidates = (path) => {
   const normalizedPath = String(path || "").startsWith("/")
     ? String(path)
     : `/${String(path || "")}`;
@@ -36,11 +36,29 @@ const buildApiUrl = (path) => {
     ? normalizedPath
     : `/api${normalizedPath}`;
 
-  if (!API_URL) {
-    return apiPath;
+  const candidates = [];
+  if (API_URL) {
+    candidates.push(`${API_URL}${apiPath}`);
+  }
+  candidates.push(apiPath);
+
+  return [...new Set(candidates)];
+};
+
+const fetchWithApiFallback = async (path, requestInit) => {
+  const candidates = buildApiUrlCandidates(path);
+  let lastError = null;
+
+  for (const url of candidates) {
+    try {
+      // Treat any HTTP response as reachable and let callers handle status.
+      return await fetch(url, requestInit);
+    } catch (error) {
+      lastError = error;
+    }
   }
 
-  return `${API_URL}${apiPath}`;
+  throw lastError || new Error("Request failed");
 };
 
 const resolveCartErrorMessage = (message, fallback) => {
@@ -249,7 +267,7 @@ export const CartProvider = ({ children }) => {
         headers["X-Session-Id"] = sessionId;
       }
 
-      const response = await fetch(buildApiUrl("/cart"), {
+      const response = await fetchWithApiFallback("/cart", {
         method: "GET",
         headers,
         credentials: "include",
@@ -266,7 +284,7 @@ export const CartProvider = ({ children }) => {
         loadFromLocalStorage();
       }
     } catch (error) {
-      console.error("Error fetching cart:", error);
+      console.warn("Error fetching cart:", error);
       const restoredFromLocal = loadFromLocalStorage();
       if (!restoredFromLocal && shouldShowCartFetchErrorToast()) {
         toast.error("Unable to sync cart right now. Please refresh.");
@@ -347,7 +365,7 @@ export const CartProvider = ({ children }) => {
         headers["X-Session-Id"] = sessionId;
       }
 
-      const response = await fetch(buildApiUrl("/cart/add"), {
+      const response = await fetchWithApiFallback("/cart/add", {
         method: "POST",
         headers,
         credentials: "include",
@@ -581,7 +599,7 @@ export const CartProvider = ({ children }) => {
         headers["X-Session-Id"] = sessionId;
       }
 
-      const response = await fetch(buildApiUrl("/cart/update"), {
+      const response = await fetchWithApiFallback("/cart/update", {
         method: "PUT",
         headers,
         credentials: "include",
@@ -708,8 +726,8 @@ export const CartProvider = ({ children }) => {
         );
       }
       const query = queryParts.length ? `?${queryParts.join("&")}` : "";
-      const response = await fetch(
-        buildApiUrl(`/cart/remove/${productId}${query}`),
+      const response = await fetchWithApiFallback(
+        `/cart/remove/${productId}${query}`,
         {
           method: "DELETE",
           headers,
@@ -810,7 +828,7 @@ export const CartProvider = ({ children }) => {
         headers["X-Session-Id"] = sessionId;
       }
 
-      await fetch(buildApiUrl("/cart/clear"), {
+      await fetchWithApiFallback("/cart/clear", {
         method: "DELETE",
         headers,
         credentials: "include",

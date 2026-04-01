@@ -148,6 +148,19 @@ settingsSchema.statics.defaultSettings = [
     category: "general",
   },
   {
+    key: "maintenanceSettings",
+    value: {
+      maintenanceEnabled: false,
+      maintenanceStartTime: null,
+      maintenanceEndTime: null,
+      maintenanceMessage:
+        "We are currently undergoing scheduled maintenance. Please check back soon.",
+      showCountdown: true,
+    },
+    description: "Maintenance mode scheduling and display settings",
+    category: "general",
+  },
+  {
     key: "headerSettings",
     value: {
       headerBackgroundColor: "#fffbf5",

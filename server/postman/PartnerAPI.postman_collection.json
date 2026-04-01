@@ -1,0 +1,498 @@
+{
+  "info": {
+    "_postman_id": "5f7f6833-ec95-49d9-9b6f-0f49c3a1a902",
+    "name": "Partner API Automated QA",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (!pm.environment.get('partner_suffix')) {",
+          "  pm.environment.set('partner_suffix', String(Date.now()));",
+          "}",
+          "if (!pm.environment.get('admin_email')) pm.environment.set('admin_email', 'admin@buyonegram.com');",
+          "if (!pm.environment.get('admin_password')) pm.environment.set('admin_password', 'admin123');"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "01 Auth & Setup",
+      "item": [
+        {
+          "name": "Admin Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Response time < 1000ms', function () { pm.expect(pm.response.responseTime).to.be.below(1000); });",
+                  "const body = pm.response.json();",
+                  "pm.test('Login response structure', function () {",
+                  "  pm.expect(body).to.have.property('success', true);",
+                  "  pm.expect(body).to.have.nested.property('data.accessToken');",
+                  "});",
+                  "pm.environment.set('admin_token', body.data.accessToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{admin_email}}\",\n  \"password\": \"{{admin_password}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/admin/login",
+              "host": ["{{base_url}}"],
+              "path": ["api", "admin", "login"]
+            }
+          }
+        },
+        {
+          "name": "Create Working Partner",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.response.to.have.status(201); });",
+                  "pm.test('Response time < 1000ms', function () { pm.expect(pm.response.responseTime).to.be.below(1000); });",
+                  "const body = pm.response.json();",
+                  "pm.test('Partner created structure', function () {",
+                  "  pm.expect(body).to.have.property('success', true);",
+                  "  pm.expect(body).to.have.nested.property('data.partner.id');",
+                  "  pm.expect(body).to.have.nested.property('data.apiKey');",
+                  "});",
+                  "pm.environment.set('api_key', body.data.apiKey);",
+                  "pm.environment.set('partner_id', body.data.partner.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{admin_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Postman Working {{partner_suffix}}\",\n  \"companyName\": \"Postman QA\",\n  \"contactEmail\": \"postman.working.{{partner_suffix}}@partner.local\",\n  \"scopes\": [\"catalog.read\", \"inventory.read\", \"pricing.read\", \"gst.read\"],\n  \"rateLimitPerMinute\": 500,\n  \"dailyRequestLimit\": 50000\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/partner/admin/partners",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "partner", "admin", "partners"]
+            }
+          }
+        },
+        {
+          "name": "Create Low Rate Partner",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.response.to.have.status(201); });",
+                  "const body = pm.response.json();",
+                  "pm.environment.set('low_api_key', body.data.apiKey);",
+                  "pm.environment.set('low_partner_id', body.data.partner.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{admin_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Postman Low {{partner_suffix}}\",\n  \"companyName\": \"Postman QA\",\n  \"contactEmail\": \"postman.low.{{partner_suffix}}@partner.local\",\n  \"scopes\": [\"catalog.read\", \"inventory.read\"],\n  \"rateLimitPerMinute\": 10,\n  \"dailyRequestLimit\": 1000\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/partner/admin/partners",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "partner", "admin", "partners"]
+            }
+          }
+        },
+        {
+          "name": "Create Paused Candidate",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.response.to.have.status(201); });",
+                  "const body = pm.response.json();",
+                  "pm.environment.set('paused_api_key', body.data.apiKey);",
+                  "pm.environment.set('paused_partner_id', body.data.partner.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{admin_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Postman Paused {{partner_suffix}}\",\n  \"companyName\": \"Postman QA\",\n  \"contactEmail\": \"postman.paused.{{partner_suffix}}@partner.local\",\n  \"scopes\": [\"catalog.read\"],\n  \"rateLimitPerMinute\": 100,\n  \"dailyRequestLimit\": 10000\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/partner/admin/partners",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "partner", "admin", "partners"]
+            }
+          }
+        },
+        {
+          "name": "Pause Candidate Partner",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Response time < 1000ms', function () { pm.expect(pm.response.responseTime).to.be.below(1000); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{admin_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"paused\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/partner/admin/partners/{{paused_partner_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "partner", "admin", "partners", "{{paused_partner_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Create Rotate Candidate",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.response.to.have.status(201); });",
+                  "const body = pm.response.json();",
+                  "pm.environment.set('rotate_old_key', body.data.apiKey);",
+                  "pm.environment.set('rotate_partner_id', body.data.partner.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{admin_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Postman Rotate {{partner_suffix}}\",\n  \"companyName\": \"Postman QA\",\n  \"contactEmail\": \"postman.rotate.{{partner_suffix}}@partner.local\",\n  \"scopes\": [\"catalog.read\"],\n  \"rateLimitPerMinute\": 100,\n  \"dailyRequestLimit\": 10000\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/partner/admin/partners",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "partner", "admin", "partners"]
+            }
+          }
+        },
+        {
+          "name": "Rotate Candidate Key",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('Rotate key structure', function () {",
+                  "  pm.expect(body).to.have.nested.property('data.apiKey');",
+                  "});",
+                  "pm.environment.set('rotate_new_key', body.data.apiKey);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{admin_token}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": {
+              "raw": "{{base_url}}/api/v1/partner/admin/partners/{{rotate_partner_id}}/rotate-key",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "partner", "admin", "partners", "{{rotate_partner_id}}", "rotate-key"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 Partner API Happy Path",
+      "item": [
+        {
+          "name": "GET Products",
+          "event": [{"listen":"test","script":{"type":"text/javascript","exec":[
+            "pm.test('Status is 200', function(){ pm.response.to.have.status(200); });",
+            "pm.test('Response time < 1000ms', function(){ pm.expect(pm.response.responseTime).to.be.below(1000); });",
+            "const body = pm.response.json();",
+            "pm.test('Products structure', function(){",
+            "  pm.expect(body).to.have.property('success', true);",
+            "  pm.expect(body).to.have.property('data');",
+            "  pm.expect(body.data).to.be.an('array');",
+            "});"
+          ]}}],
+          "request": {"method":"GET","header":[{"key":"x-api-key","value":"{{api_key}}"}],"url":{"raw":"{{base_url}}/api/v1/partner/products?limit=5&page=1","host":["{{base_url}}"],"path":["api","v1","partner","products"],"query":[{"key":"limit","value":"5"},{"key":"page","value":"1"}]}}
+        },
+        {
+          "name": "GET Inventory",
+          "event": [{"listen":"test","script":{"type":"text/javascript","exec":[
+            "pm.test('Status is 200', function(){ pm.response.to.have.status(200); });",
+            "pm.test('Response time < 1000ms', function(){ pm.expect(pm.response.responseTime).to.be.below(1000); });",
+            "const body = pm.response.json();",
+            "pm.test('Inventory structure', function(){",
+            "  pm.expect(body).to.have.property('success', true);",
+            "  pm.expect(body).to.have.property('data');",
+            "  pm.expect(body.data).to.be.an('array');",
+            "});"
+          ]}}],
+          "request": {"method":"GET","header":[{"key":"x-api-key","value":"{{api_key}}"}],"url":{"raw":"{{base_url}}/api/v1/partner/inventory?limit=5&page=1","host":["{{base_url}}"],"path":["api","v1","partner","inventory"],"query":[{"key":"limit","value":"5"},{"key":"page","value":"1"}]}}
+        },
+        {
+          "name": "GET Pricing",
+          "event": [{"listen":"test","script":{"type":"text/javascript","exec":[
+            "pm.test('Status is 200', function(){ pm.response.to.have.status(200); });",
+            "pm.test('Response time < 1000ms', function(){ pm.expect(pm.response.responseTime).to.be.below(1000); });",
+            "const body = pm.response.json();",
+            "pm.test('Pricing structure', function(){",
+            "  pm.expect(body).to.have.property('success', true);",
+            "  pm.expect(body).to.have.property('data');",
+            "  pm.expect(body.data).to.be.an('array');",
+            "});"
+          ]}}],
+          "request": {"method":"GET","header":[{"key":"x-api-key","value":"{{api_key}}"}],"url":{"raw":"{{base_url}}/api/v1/partner/pricing?deliveryState=Rajasthan","host":["{{base_url}}"],"path":["api","v1","partner","pricing"],"query":[{"key":"deliveryState","value":"Rajasthan"}]}}
+        },
+        {
+          "name": "GET GST",
+          "event": [{"listen":"test","script":{"type":"text/javascript","exec":[
+            "pm.test('Status is 200', function(){ pm.response.to.have.status(200); });",
+            "pm.test('Response time < 1000ms', function(){ pm.expect(pm.response.responseTime).to.be.below(1000); });",
+            "const body = pm.response.json();",
+            "pm.test('GST structure', function(){",
+            "  pm.expect(body).to.have.property('success', true);",
+            "  pm.expect(body).to.have.nested.property('data.gstAmount');",
+            "  pm.expect(body).to.have.nested.property('data.amountWithGst');",
+            "});"
+          ]}}],
+          "request": {"method":"GET","header":[{"key":"x-api-key","value":"{{api_key}}"}],"url":{"raw":"{{base_url}}/api/v1/partner/gst?amount=599&deliveryState=Rajasthan","host":["{{base_url}}"],"path":["api","v1","partner","gst"],"query":[{"key":"amount","value":"599"},{"key":"deliveryState","value":"Rajasthan"}]}}
+        }
+      ]
+    },
+    {
+      "name": "03 Error & Security Cases",
+      "item": [
+        {
+          "name": "Invalid API Key",
+          "event": [{"listen":"test","script":{"type":"text/javascript","exec":[
+            "pm.test('Status is 401', function(){ pm.response.to.have.status(401); });",
+            "const body = pm.response.json();",
+            "pm.test('Unauthorized error message', function(){",
+            "  pm.expect(body).to.have.nested.property('error.code', 'UNAUTHORIZED');",
+            "});"
+          ]}}],
+          "request": {"method":"GET","header":[{"key":"x-api-key","value":"hogp_invalid.deadbeef"}],"url":{"raw":"{{base_url}}/api/v1/partner/products?limit=2&page=1","host":["{{base_url}}"],"path":["api","v1","partner","products"],"query":[{"key":"limit","value":"2"},{"key":"page","value":"1"}]}}
+        },
+        {
+          "name": "Paused Key Access",
+          "event": [{"listen":"test","script":{"type":"text/javascript","exec":[
+            "pm.test('Status is 403', function(){ pm.response.to.have.status(403); });",
+            "const body = pm.response.json();",
+            "pm.test('Paused key error', function(){ pm.expect(body).to.have.nested.property('error.code', 'KEY_PAUSED'); });"
+          ]}}],
+          "request": {"method":"GET","header":[{"key":"x-api-key","value":"{{paused_api_key}}"}],"url":{"raw":"{{base_url}}/api/v1/partner/products?limit=2&page=1","host":["{{base_url}}"],"path":["api","v1","partner","products"],"query":[{"key":"limit","value":"2"},{"key":"page","value":"1"}]}}
+        },
+        {
+          "name": "Rotated Old Key Access",
+          "event": [{"listen":"test","script":{"type":"text/javascript","exec":[
+            "pm.test('Status is 403', function(){ pm.response.to.have.status(403); });",
+            "const body = pm.response.json();",
+            "pm.test('Revoked key error', function(){ pm.expect(body).to.have.nested.property('error.code', 'KEY_REVOKED'); });"
+          ]}}],
+          "request": {"method":"GET","header":[{"key":"x-api-key","value":"{{rotate_old_key}}"}],"url":{"raw":"{{base_url}}/api/v1/partner/products?limit=2&page=1","host":["{{base_url}}"],"path":["api","v1","partner","products"],"query":[{"key":"limit","value":"2"},{"key":"page","value":"1"}]}}
+        },
+        {
+          "name": "Rotated New Key Access",
+          "event": [{"listen":"test","script":{"type":"text/javascript","exec":[
+            "pm.test('Status is 200', function(){ pm.response.to.have.status(200); });",
+            "pm.test('Response time < 1000ms', function(){ pm.expect(pm.response.responseTime).to.be.below(1000); });",
+            "const body = pm.response.json();",
+            "pm.test('Success structure', function(){",
+            "  pm.expect(body).to.have.property('success', true);",
+            "  pm.expect(body).to.have.property('data');",
+            "});"
+          ]}}],
+          "request": {"method":"GET","header":[{"key":"x-api-key","value":"{{rotate_new_key}}"}],"url":{"raw":"{{base_url}}/api/v1/partner/products?limit=2&page=1","host":["{{base_url}}"],"path":["api","v1","partner","products"],"query":[{"key":"limit","value":"2"},{"key":"page","value":"1"}]}}
+        }
+      ]
+    },
+    {
+      "name": "04 Rate Limit Validation",
+      "item": [
+        {
+          "name": "Rate Limit Init",
+          "event": [{"listen":"test","script":{"type":"text/javascript","exec":[
+            "pm.environment.set('rl_iteration', '0');",
+            "pm.environment.set('rl_429_seen', '0');",
+            "pm.test('Init status 200', function(){ pm.response.to.have.status(200); });"
+          ]}}],
+          "request": {"method":"GET","header":[{"key":"x-api-key","value":"{{api_key}}"}],"url":{"raw":"{{base_url}}/api/v1/partner/health","host":["{{base_url}}"],"path":["api","v1","partner","health"]}}
+        },
+        {
+          "name": "Low Key Burst",
+          "event": [{"listen":"test","script":{"type":"text/javascript","exec":[
+            "let i = Number(pm.environment.get('rl_iteration') || '0') + 1;",
+            "pm.environment.set('rl_iteration', String(i));",
+            "pm.test('Status is 200 or 429', function(){ pm.expect([200,429]).to.include(pm.response.code); });",
+            "if (pm.response.code === 429) pm.environment.set('rl_429_seen', '1');",
+            "if (i < 25) {",
+            "  postman.setNextRequest('Low Key Burst');",
+            "} else {",
+            "  postman.setNextRequest('Rate Limit Assert');",
+            "}"
+          ]}}],
+          "request": {"method":"GET","header":[{"key":"x-api-key","value":"{{low_api_key}}"}],"url":{"raw":"{{base_url}}/api/v1/partner/health","host":["{{base_url}}"],"path":["api","v1","partner","health"]}}
+        },
+        {
+          "name": "Rate Limit Assert",
+          "event": [{"listen":"test","script":{"type":"text/javascript","exec":[
+            "pm.test('Medium key stays healthy', function(){ pm.response.to.have.status(200); });",
+            "pm.test('429 observed on low key', function(){ pm.expect(pm.environment.get('rl_429_seen')).to.eql('1'); });"
+          ]}}],
+          "request": {"method":"GET","header":[{"key":"x-api-key","value":"{{api_key}}"}],"url":{"raw":"{{base_url}}/api/v1/partner/health","host":["{{base_url}}"],"path":["api","v1","partner","health"]}}
+        }
+      ]
+    },
+    {
+      "name": "05 Admin Monitoring",
+      "item": [
+        {
+          "name": "Admin Overview",
+          "event": [{"listen":"test","script":{"type":"text/javascript","exec":[
+            "pm.test('Status is 200', function(){ pm.response.to.have.status(200); });",
+            "pm.test('Response time < 1000ms', function(){ pm.expect(pm.response.responseTime).to.be.below(1000); });",
+            "const body = pm.response.json();",
+            "pm.test('Overview structure', function(){",
+            "  pm.expect(body).to.have.property('success', true);",
+            "  pm.expect(body).to.have.nested.property('data.totals.partners');",
+            "  pm.expect(body).to.have.nested.property('data.live.lastHits');",
+            "});"
+          ]}}],
+          "request": {"method":"GET","header":[{"key":"Authorization","value":"Bearer {{admin_token}}"}],"url":{"raw":"{{base_url}}/api/v1/partner/admin/overview","host":["{{base_url}}"],"path":["api","v1","partner","admin","overview"]}}
+        },
+        {
+          "name": "Admin Analytics",
+          "event": [{"listen":"test","script":{"type":"text/javascript","exec":[
+            "pm.test('Status is 200', function(){ pm.response.to.have.status(200); });",
+            "const body = pm.response.json();",
+            "pm.test('Analytics structure', function(){",
+            "  pm.expect(body).to.have.property('success', true);",
+            "  pm.expect(body).to.have.nested.property('data.summary.totalRequestsToday');",
+            "  pm.expect(body).to.have.nested.property('data.partnerStats');",
+            "  pm.expect(body).to.have.nested.property('data.charts.requestsOverTime');",
+            "});"
+          ]}}],
+          "request": {"method":"GET","header":[{"key":"Authorization","value":"Bearer {{admin_token}}"}],"url":{"raw":"{{base_url}}/api/v1/partner/admin/analytics?range=24h","host":["{{base_url}}"],"path":["api","v1","partner","admin","analytics"],"query":[{"key":"range","value":"24h"}]}}
+        },
+        {
+          "name": "Admin Logs",
+          "event": [{"listen":"test","script":{"type":"text/javascript","exec":[
+            "pm.test('Status is 200', function(){ pm.response.to.have.status(200); });",
+            "const body = pm.response.json();",
+            "pm.test('Logs structure', function(){",
+            "  pm.expect(body).to.have.property('success', true);",
+            "  pm.expect(body).to.have.property('data');",
+            "  pm.expect(body.data).to.be.an('array');",
+            "});"
+          ]}}],
+          "request": {"method":"GET","header":[{"key":"Authorization","value":"Bearer {{admin_token}}"}],"url":{"raw":"{{base_url}}/api/v1/partner/admin/logs?limit=10","host":["{{base_url}}"],"path":["api","v1","partner","admin","logs"],"query":[{"key":"limit","value":"10"}]}}
+        }
+      ]
+    },
+    {
+      "name": "06 Load Probe",
+      "item": [
+        {
+          "name": "Load Probe Products",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function(){ pm.response.to.have.status(200); });",
+                  "const loadThresholdMs = Number(pm.environment.get('load_response_threshold_ms') || '3000');",
+                  "pm.test(`Response time < ${loadThresholdMs}ms`, function(){ pm.expect(pm.response.responseTime).to.be.below(loadThresholdMs); });",
+                  "const body = pm.response.json();",
+                  "pm.test('Load probe response shape', function(){",
+                  "  pm.expect(body).to.have.property('success', true);",
+                  "  pm.expect(body).to.have.property('data');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "x-api-key", "value": "{{api_key}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/partner/products?limit=1&page=1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "partner", "products"],
+              "query": [
+                { "key": "limit", "value": "1" },
+                { "key": "page", "value": "1" }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,5 +1,9 @@
-import SettingsModel from "../models/settings.model.js";
 import CouponModel from "../models/coupon.model.js";
+import SettingsModel from "../models/settings.model.js";
+import {
+  normalizeMaintenanceSettings,
+  resolveMaintenanceStatus,
+} from "../utils/maintenance.js";
 
 const isProduction = process.env.NODE_ENV === "production";
 // Debug-only logging to keep production output clean
@@ -77,6 +81,7 @@ export const getPublicSettings = async (req, res) => {
       "paymentGatewayEnabled",
       "defaultPaymentProvider",
       "maintenanceMode",
+      "maintenanceSettings",
       // Offer popup settings
       "showOfferPopup",
       "offerCouponCode",
@@ -94,8 +99,19 @@ export const getPublicSettings = async (req, res) => {
     ];
 
     const settings = await SettingsModel.find({
-      key: { $in: publicKeys },
-      isActive: true,
+      $or: [
+        {
+          key: {
+            $in: publicKeys.filter(
+              (key) => !FLAVOUR_BUTTON_SETTING_KEYS.includes(key),
+            ),
+          },
+          isActive: true,
+        },
+        {
+          key: { $in: FLAVOUR_BUTTON_SETTING_KEYS },
+        },
+      ],
     }).select("key value -_id");
 
     // Convert to object for easier client-side use
@@ -106,7 +122,18 @@ export const getPublicSettings = async (req, res) => {
 
     // Enforce fixed GST settings (admin cannot disable GST)
     settingsObject.taxSettings = FIXED_TAX_SETTINGS;
-    if (settingsObject.storeInfo && typeof settingsObject.storeInfo === "object") {
+    const normalizedMaintenanceSettings = normalizeMaintenanceSettings(
+      settingsObject.maintenanceSettings,
+      Boolean(settingsObject.maintenanceMode),
+    );
+    settingsObject.maintenanceSettings = normalizedMaintenanceSettings;
+    // Legacy compatibility key consumed in existing checkout/client flows.
+    settingsObject.maintenanceMode =
+      normalizedMaintenanceSettings.maintenanceEnabled;
+    if (
+      settingsObject.storeInfo &&
+      typeof settingsObject.storeInfo === "object"
+    ) {
       const currentStoreEmail = String(settingsObject.storeInfo.email || "")
         .trim()
         .toLowerCase();
@@ -138,6 +165,39 @@ export const getPublicSettings = async (req, res) => {
       error: true,
       success: false,
       message: "Failed to fetch settings",
+    });
+  }
+};
+
+/**
+ * Get computed maintenance status
+ * @route GET /api/settings/maintenance-status
+ */
+export const getMaintenanceStatus = async (_req, res) => {
+  try {
+    const status = await resolveMaintenanceStatus({ autoDisable: true });
+
+    return res.status(200).json({
+      error: false,
+      success: true,
+      data: {
+        isMaintenanceMode: status.isActive,
+        maintenanceEnabled: status.maintenanceEnabled,
+        isScheduled: status.isScheduled,
+        maintenanceStartTime: status.maintenanceStartTime,
+        maintenanceEndTime: status.maintenanceEndTime,
+        remainingTime: status.remainingTimeMs,
+        message: status.maintenanceMessage,
+        showCountdown: status.showCountdown,
+        now: status.now,
+      },
+    });
+  } catch (error) {
+    console.error("Error resolving maintenance status:", error);
+    return res.status(500).json({
+      error: true,
+      success: false,
+      message: "Failed to resolve maintenance status",
     });
   }
 };
@@ -299,6 +359,23 @@ export const updateSetting = async (req, res) => {
       req.body.value = normalizedProvider;
     }
 
+    if (key === "maintenanceSettings") {
+      const existingLegacyMaintenance = await SettingsModel.findOne({
+        key: "maintenanceMode",
+      })
+        .select("value")
+        .lean();
+      req.body.value = normalizeMaintenanceSettings(
+        req.body.value,
+        Boolean(existingLegacyMaintenance?.value),
+      );
+      req.body.isActive = true;
+    }
+
+    if (key === "maintenanceMode") {
+      req.body.isActive = true;
+    }
+
     if (FLAVOUR_BUTTON_TEXT_KEYS.has(key)) {
       req.body.value = String(req.body.value ?? "").trim();
     }
@@ -318,6 +395,12 @@ export const updateSetting = async (req, res) => {
         }
         req.body.value = normalizedColor;
       }
+    }
+
+    if (FLAVOUR_BUTTON_SETTING_KEYS.includes(key)) {
+      // Flavour button settings are public storefront controls and should
+      // always stay active so client consumers receive updated values.
+      req.body.isActive = true;
     }
 
     const updateData = {
@@ -342,6 +425,59 @@ export const updateSetting = async (req, res) => {
         runValidators: true,
       },
     ).populate("updatedBy", "name email");
+
+    if (key === "maintenanceSettings") {
+      await SettingsModel.findOneAndUpdate(
+        { key: "maintenanceMode" },
+        {
+          $set: {
+            value: Boolean(req.body.value?.maintenanceEnabled),
+            description: "Put site in maintenance mode",
+            category: "general",
+            isActive: true,
+            updatedBy: adminId,
+          },
+          $setOnInsert: {
+            key: "maintenanceMode",
+          },
+        },
+        {
+          upsert: true,
+        },
+      );
+    }
+
+    if (key === "maintenanceMode") {
+      const maintenanceSettingsDoc = await SettingsModel.findOne({
+        key: "maintenanceSettings",
+      })
+        .select("value")
+        .lean();
+      const normalized = normalizeMaintenanceSettings(
+        maintenanceSettingsDoc?.value,
+        Boolean(req.body.value),
+      );
+      normalized.maintenanceEnabled = Boolean(req.body.value);
+
+      await SettingsModel.findOneAndUpdate(
+        { key: "maintenanceSettings" },
+        {
+          $set: {
+            value: normalized,
+            description: "Maintenance mode scheduling and display settings",
+            category: "general",
+            isActive: true,
+            updatedBy: adminId,
+          },
+          $setOnInsert: {
+            key: "maintenanceSettings",
+          },
+        },
+        {
+          upsert: true,
+        },
+      );
+    }
 
     debugLog(`✓ Setting "${key}" updated/created by admin`);
 
@@ -388,9 +524,22 @@ export const createSetting = async (req, res) => {
       });
     }
 
+    let safeValue = value;
+    if (key === "maintenanceSettings") {
+      const existingLegacyMaintenance = await SettingsModel.findOne({
+        key: "maintenanceMode",
+      })
+        .select("value")
+        .lean();
+      safeValue = normalizeMaintenanceSettings(
+        value,
+        Boolean(existingLegacyMaintenance?.value),
+      );
+    }
+
     const setting = new SettingsModel({
       key,
-      value,
+      value: safeValue,
       description: description || "",
       category: category || "general",
       updatedBy: adminId,
@@ -430,6 +579,7 @@ export const deleteSetting = async (req, res) => {
       "paymentGatewayEnabled",
       "defaultPaymentProvider",
       "maintenanceMode",
+      "maintenanceSettings",
       "shippingSettings",
       "taxSettings",
       "orderSettings",

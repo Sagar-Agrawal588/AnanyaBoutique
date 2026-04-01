@@ -7,6 +7,11 @@ const toNumber = (value, fallback = 0) => {
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
+const roundUpDiscountPercent = (value) => {
+  const percent = toNumber(value, 0);
+  return percent > 0 ? Math.ceil(percent) : 0;
+};
+
 const isImageCandidate = (value) => {
   const normalized = String(value || "").trim();
   if (!normalized || /\s/.test(normalized)) return false;
@@ -53,9 +58,11 @@ const resolveComboImage = (combo) => {
 
 const resolveDiscount = (combo, originalPrice, finalPrice) => {
   const explicitDiscount = toNumber(combo?.discountPercentage, 0);
-  if (explicitDiscount > 0) return explicitDiscount;
+  if (explicitDiscount > 0) return roundUpDiscountPercent(explicitDiscount);
   if (originalPrice > 0 && finalPrice < originalPrice) {
-    return Math.round(((originalPrice - finalPrice) / originalPrice) * 100);
+    return roundUpDiscountPercent(
+      ((originalPrice - finalPrice) / originalPrice) * 100,
+    );
   }
   return 0;
 };
@@ -66,8 +73,14 @@ const mapComboToProductCard = (combo) => {
   const shortDescription = String(combo?.shortDescription || "").trim();
   const normalizedName = name.toLowerCase();
   const normalizedDescription = shortDescription.toLowerCase();
-  const finalPrice = toNumber(combo?.finalPrice ?? combo?.comboPrice ?? combo?.price, 0);
-  const originalPrice = toNumber(combo?.originalPrice ?? combo?.originalTotal, 0);
+  const finalPrice = toNumber(
+    combo?.finalPrice ?? combo?.comboPrice ?? combo?.price,
+    0,
+  );
+  const originalPrice = toNumber(
+    combo?.originalPrice ?? combo?.originalTotal,
+    0,
+  );
 
   return {
     id,
@@ -86,8 +99,12 @@ const mapComboToProductCard = (combo) => {
     isBestSeller: Boolean(combo?.isBestSeller),
     isFeatured: Boolean(combo?.isFeatured),
     isHighDemand:
-      Boolean(combo?.isHighDemand) || String(combo?.demandStatus || "").toUpperCase() === "HIGH",
-    availableStock: toNumber(combo?.availableStock ?? combo?.stockQuantity ?? 0, 0),
+      Boolean(combo?.isHighDemand) ||
+      String(combo?.demandStatus || "").toUpperCase() === "HIGH",
+    availableStock: toNumber(
+      combo?.availableStock ?? combo?.stockQuantity ?? 0,
+      0,
+    ),
     stock: toNumber(combo?.availableStock ?? combo?.stockQuantity ?? 0, 0),
     brand: String(combo?.brand || "").trim() || "Buy One Gram",
     images: [resolveComboImage(combo)],

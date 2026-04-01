@@ -9,6 +9,7 @@ export default function ComboDealsPage() {
   const [combos, setCombos] = useState([]);
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const viewTracker = useRef(new Set());
   const loaderRef = useRef(null);
@@ -32,14 +33,17 @@ export default function ComboDealsPage() {
         setCombos((prev) => (reset ? combosList : [...prev, ...combosList]));
         setPage(response.data?.page || nextPage);
         setPages(response.data?.pages || 1);
+        setTotal(Number(response.data?.total || combosList.length));
       } else {
         if (reset) {
           setCombos([]);
+          setTotal(0);
         }
       }
     } catch (error) {
       if (reset) {
         setCombos([]);
+        setTotal(0);
       }
     } finally {
       setLoading(false);
@@ -110,15 +114,32 @@ export default function ComboDealsPage() {
 
         <section data-track-section="combo_deals_grid">
           {hasCombos ? (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-              {renderedCombos.map((combo) => (
-                <ComboCard
-                  key={combo._id || combo.slug}
-                  combo={combo}
-                  context="combo_deals"
-                  action="details"
-                />
-              ))}
+            <div className="space-y-4">
+              <p className="text-sm text-gray-500">
+                Showing {renderedCombos.length} of {total || renderedCombos.length} combos
+              </p>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                {renderedCombos.map((combo) => (
+                  <ComboCard
+                    key={combo._id || combo.slug}
+                    combo={combo}
+                    context="combo_deals"
+                    action="details"
+                  />
+                ))}
+              </div>
+              {page < pages ? (
+                <div className="text-center">
+                  <button
+                    type="button"
+                    onClick={() => fetchCombos({ reset: false, nextPage: page + 1 })}
+                    disabled={loading}
+                    className="rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100 disabled:opacity-60"
+                  >
+                    {loading ? "Loading..." : "Load more combos"}
+                  </button>
+                </div>
+              ) : null}
             </div>
           ) : loading ? (
             <p className="text-sm text-gray-500">Loading combos...</p>

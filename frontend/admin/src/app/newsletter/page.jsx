@@ -273,11 +273,33 @@ const NewsletterPage = () => {
   const [templateLoading, setTemplateLoading] = useState(true);
   const [templateSaving, setTemplateSaving] = useState(false);
   const [sendingBroadcast, setSendingBroadcast] = useState(false);
+  const [sendingSegmentCampaign, setSendingSegmentCampaign] = useState(false);
   const [uploadingLogoImage, setUploadingLogoImage] = useState(false);
   const [uploadingHeroImage, setUploadingHeroImage] = useState(false);
   const [showLogoCustomize, setShowLogoCustomize] = useState(false);
   const [showHeroCustomize, setShowHeroCustomize] = useState(false);
   const [broadcastAttachments, setBroadcastAttachments] = useState([]);
+  const [automationSaving, setAutomationSaving] = useState(false);
+  const [automationSettings, setAutomationSettings] = useState({
+    enabled: true,
+    feedbackEnabled: true,
+    retentionEnabled: true,
+    feedbackDelayDays: 7,
+    retentionDelayDays: 30,
+    pollIntervalMinutes: 30,
+    maxEmailsPerRun: 100,
+    retryGapHours: 12,
+    sendHourIST: 10,
+    retentionCouponCode: "WELCOME10",
+    retentionDiscountText: "Get 10% OFF on your next order",
+  });
+  const [campaignSegment, setCampaignSegment] = useState("all");
+  const [campaignInactiveDays, setCampaignInactiveDays] = useState("30");
+  const [campaignManualEmails, setCampaignManualEmails] = useState("");
+  const [segmentPreview, setSegmentPreview] = useState({ count: 0, sample: [] });
+  const [emailLogs, setEmailLogs] = useState([]);
+  const [emailLogSummary, setEmailLogSummary] = useState(null);
+  const [emailLogsLoading, setEmailLogsLoading] = useState(false);
   const [editorMode, setEditorMode] = useState("simple");
   const logoImageFileInputRef = useRef(null);
   const heroImageFileInputRef = useRef(null);
@@ -372,6 +394,54 @@ const NewsletterPage = () => {
 
     fetchTemplate();
   }, [isAuthenticated, token]);
+
+  const fetchAutomationSettings = useCallback(async () => {
+    if (!token) return;
+    const response = await getData("/api/email/admin/automation/settings", token);
+    if (response?.success && response?.data?.value) {
+      setAutomationSettings((prev) => ({
+        ...prev,
+        ...response.data.value,
+      }));
+    }
+  }, [token]);
+
+  const fetchEmailLogs = useCallback(async () => {
+    if (!token) return;
+    setEmailLogsLoading(true);
+    const response = await getData("/api/email/admin/logs?days=30&page=1&limit=20", token);
+    if (response?.success) {
+      setEmailLogs(Array.isArray(response.data) ? response.data : []);
+      setEmailLogSummary(response.summary || null);
+    }
+    setEmailLogsLoading(false);
+  }, [token]);
+
+  const fetchSegmentPreview = useCallback(async () => {
+    if (!token) return;
+    const response = await getData(
+      `/api/email/admin/targeting/preview?segment=${encodeURIComponent(
+        campaignSegment,
+      )}&inactiveDays=${encodeURIComponent(campaignInactiveDays || "30")}`,
+      token,
+    );
+    if (response?.success && response?.data) {
+      setSegmentPreview(response.data);
+    }
+  }, [campaignInactiveDays, campaignSegment, token]);
+
+  useEffect(() => {
+    if (isAuthenticated && token) {
+      fetchAutomationSettings();
+      fetchEmailLogs();
+    }
+  }, [isAuthenticated, token, fetchAutomationSettings, fetchEmailLogs]);
+
+  useEffect(() => {
+    if (isAuthenticated && token) {
+      fetchSegmentPreview();
+    }
+  }, [isAuthenticated, token, fetchSegmentPreview]);
 
   useEffect(() => {
     if (editorMode !== "simple") return;
@@ -527,6 +597,66 @@ const NewsletterPage = () => {
       toast.error(response?.message || "Broadcast failed");
     }
     setSendingBroadcast(false);
+  };
+
+  const handleSaveAutomationSettings = async () => {
+    setAutomationSaving(true);
+    const response = await putData(
+      "/api/email/admin/automation/settings",
+      automationSettings,
+      token,
+    );
+
+    if (response?.success) {
+      toast.success("Automation settings saved");
+      await fetchAutomationSettings();
+    } else {
+      toast.error(response?.message || "Failed to save automation settings");
+    }
+    setAutomationSaving(false);
+  };
+
+  const parseManualEmails = () =>
+    String(campaignManualEmails || "")
+      .split(/[\n,;\s]+/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+
+  const handleSendSegmentCampaign = async () => {
+    if (!String(templateSubject || "").trim()) {
+      toast.error("Subject is required");
+      return;
+    }
+    if (!String(templateHtml || "").trim()) {
+      toast.error("Template HTML is required");
+      return;
+    }
+
+    if (!confirm("Send targeted promotional campaign now?")) return;
+
+    setSendingSegmentCampaign(true);
+    const response = await postMultipartData(
+      "/api/email/admin/campaign/send",
+      {
+        subject: templateSubject,
+        html: templateHtml,
+        segment: campaignSegment,
+        inactiveDays: campaignInactiveDays,
+        manualEmails: parseManualEmails(),
+      },
+      token,
+    );
+
+    if (response?.success) {
+      const data = response?.data || {};
+      toast.success(
+        `Campaign done: ${data.sent || 0} sent, ${data.failed || 0} failed, ${data.skipped || 0} skipped`,
+      );
+      await fetchEmailLogs();
+    } else {
+      toast.error(response?.message || "Campaign send failed");
+    }
+    setSendingSegmentCampaign(false);
   };
 
   if (loading || !isAuthenticated) {
@@ -1062,6 +1192,246 @@ const NewsletterPage = () => {
                 className="w-full h-96 border border-gray-200 rounded-lg bg-white"
               />
             </div>
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm p-5 mb-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-800">Automation Controls</h2>
+            <p className="text-sm text-gray-500">Set delays, scheduler frequency, and send time (IST).</p>
+          </div>
+          <Button
+            variant="outlined"
+            onClick={handleSaveAutomationSettings}
+            disabled={automationSaving}
+          >
+            {automationSaving ? "Saving..." : "Save Automation"}
+          </Button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <TextField
+            label="Feedback Delay (days)"
+            value={automationSettings.feedbackDelayDays}
+            onChange={(e) =>
+              setAutomationSettings((prev) => ({
+                ...prev,
+                feedbackDelayDays: Number(e.target.value || 7),
+              }))
+            }
+            size="small"
+            fullWidth
+          />
+          <TextField
+            label="Retention Delay (days)"
+            value={automationSettings.retentionDelayDays}
+            onChange={(e) =>
+              setAutomationSettings((prev) => ({
+                ...prev,
+                retentionDelayDays: Number(e.target.value || 30),
+              }))
+            }
+            size="small"
+            fullWidth
+          />
+          <TextField
+            label="Send Hour IST (0-23)"
+            value={automationSettings.sendHourIST}
+            onChange={(e) =>
+              setAutomationSettings((prev) => ({
+                ...prev,
+                sendHourIST: Number(e.target.value || 10),
+              }))
+            }
+            size="small"
+            fullWidth
+          />
+          <TextField
+            label="Poll Interval (minutes)"
+            value={automationSettings.pollIntervalMinutes}
+            onChange={(e) =>
+              setAutomationSettings((prev) => ({
+                ...prev,
+                pollIntervalMinutes: Number(e.target.value || 30),
+              }))
+            }
+            size="small"
+            fullWidth
+          />
+          <TextField
+            label="Max Emails Per Run"
+            value={automationSettings.maxEmailsPerRun}
+            onChange={(e) =>
+              setAutomationSettings((prev) => ({
+                ...prev,
+                maxEmailsPerRun: Number(e.target.value || 100),
+              }))
+            }
+            size="small"
+            fullWidth
+          />
+          <TextField
+            label="Retry Gap (hours)"
+            value={automationSettings.retryGapHours}
+            onChange={(e) =>
+              setAutomationSettings((prev) => ({
+                ...prev,
+                retryGapHours: Number(e.target.value || 12),
+              }))
+            }
+            size="small"
+            fullWidth
+          />
+          <TextField
+            label="Retention Coupon"
+            value={automationSettings.retentionCouponCode}
+            onChange={(e) =>
+              setAutomationSettings((prev) => ({
+                ...prev,
+                retentionCouponCode: e.target.value,
+              }))
+            }
+            size="small"
+            fullWidth
+          />
+          <TextField
+            label="Retention Offer Text"
+            value={automationSettings.retentionDiscountText}
+            onChange={(e) =>
+              setAutomationSettings((prev) => ({
+                ...prev,
+                retentionDiscountText: e.target.value,
+              }))
+            }
+            size="small"
+            fullWidth
+          />
+          <TextField
+            label="Enabled Flags (1=true, 0=false): enabled, feedback, retention"
+            value={`${automationSettings.enabled ? 1 : 0}, ${automationSettings.feedbackEnabled ? 1 : 0}, ${automationSettings.retentionEnabled ? 1 : 0}`}
+            onChange={(e) => {
+              const [enabledRaw, feedbackRaw, retentionRaw] = String(
+                e.target.value || "",
+              )
+                .split(",")
+                .map((item) => item.trim());
+              setAutomationSettings((prev) => ({
+                ...prev,
+                enabled: enabledRaw !== "0",
+                feedbackEnabled: feedbackRaw !== "0",
+                retentionEnabled: retentionRaw !== "0",
+              }));
+            }}
+            size="small"
+            fullWidth
+          />
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm p-5 mb-6 space-y-4">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-800">Targeted Campaign</h2>
+          <p className="text-sm text-gray-500">Send current newsletter HTML to a specific segment or manual emails.</p>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <Select
+            size="small"
+            value={campaignSegment}
+            onChange={(e) => setCampaignSegment(e.target.value)}
+          >
+            <MenuItem value="all">All users</MenuItem>
+            <MenuItem value="new">New customers</MenuItem>
+            <MenuItem value="repeat">Repeat customers</MenuItem>
+            <MenuItem value="inactive">Inactive users</MenuItem>
+          </Select>
+          <TextField
+            label="Inactive window (days)"
+            value={campaignInactiveDays}
+            onChange={(e) => setCampaignInactiveDays(e.target.value)}
+            size="small"
+            fullWidth
+          />
+          <Button variant="outlined" onClick={fetchSegmentPreview}>Refresh Segment Preview</Button>
+        </div>
+        <TextField
+          label="Manual Emails (optional, comma/newline separated)"
+          value={campaignManualEmails}
+          onChange={(e) => setCampaignManualEmails(e.target.value)}
+          multiline
+          minRows={3}
+          fullWidth
+        />
+        <div className="rounded border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
+          <p>Target count: {segmentPreview?.count || 0}</p>
+          <p className="text-xs text-gray-500 mt-1">
+            Sample: {(segmentPreview?.sample || []).map((item) => item.email).join(", ") || "No sample"}
+          </p>
+        </div>
+        <div>
+          <Button
+            variant="contained"
+            onClick={handleSendSegmentCampaign}
+            disabled={sendingSegmentCampaign}
+            sx={{ bgcolor: "#1f4f8f", "&:hover": { bgcolor: "#163b6b" } }}
+          >
+            {sendingSegmentCampaign ? "Sending..." : "Send Targeted Campaign"}
+          </Button>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm p-5 mb-6">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-800">Email Logs & Analytics</h2>
+            <p className="text-sm text-gray-500">Last 30 days delivery summary and latest logs.</p>
+          </div>
+          <Button variant="outlined" onClick={fetchEmailLogs}>Refresh Logs</Button>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+          <div className="rounded border border-green-200 bg-green-50 p-3 text-sm text-green-800">
+            Sent: {emailLogSummary?.totals?.sent || 0}
+          </div>
+          <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+            Failed: {emailLogSummary?.totals?.failed || 0}
+          </div>
+          <div className="rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+            Skipped: {emailLogSummary?.totals?.skipped || 0}
+          </div>
+        </div>
+        {emailLogsLoading ? (
+          <div className="flex justify-center py-4">
+            <CircularProgress size={24} />
+          </div>
+        ) : emailLogs.length === 0 ? (
+          <p className="text-sm text-gray-500">No email logs found.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-100">
+                <tr>
+                  <th className="text-left px-3 py-2">Type</th>
+                  <th className="text-left px-3 py-2">Email</th>
+                  <th className="text-left px-3 py-2">Status</th>
+                  <th className="text-left px-3 py-2">Subject</th>
+                  <th className="text-left px-3 py-2">Sent At</th>
+                </tr>
+              </thead>
+              <tbody>
+                {emailLogs.map((logItem) => (
+                  <tr key={logItem._id} className="border-b">
+                    <td className="px-3 py-2">{logItem.email_type}</td>
+                    <td className="px-3 py-2">{logItem.to_email}</td>
+                    <td className="px-3 py-2">{logItem.status}</td>
+                    <td className="px-3 py-2">{logItem.subject}</td>
+                    <td className="px-3 py-2">
+                      {logItem.sent_at ? new Date(logItem.sent_at).toLocaleString() : "-"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>

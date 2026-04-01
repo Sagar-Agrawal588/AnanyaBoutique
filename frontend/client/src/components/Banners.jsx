@@ -127,9 +127,23 @@ const Banners = () => {
           {banners.map((banner, index) => {
             const bannerLink =
               banner.title?.includes("Subscribe") ||
-                banner.title?.includes("Save")
+              banner.title?.includes("Save")
                 ? "/membership"
                 : banner.link || "/products";
+
+            const bannerId = String(banner?._id || "").trim();
+            const bannerName = String(banner?.title || `banner-${index + 1}`)
+              .trim()
+              .replace(/\s+/g, " ")
+              .slice(0, 140);
+            const bannerPosition = String(
+              banner?.position || `home_slot_${index + 1}`,
+            )
+              .trim()
+              .slice(0, 80);
+            const bannerCampaign = String(banner?.campaign || "home_banners")
+              .trim()
+              .slice(0, 120);
 
             const isVideo = banner.mediaType === "video" && banner.videoUrl;
 
@@ -145,6 +159,14 @@ const Banners = () => {
                   <Link
                     href={bannerLink}
                     className="group relative block rounded-3xl transition-all"
+                    data-track="banner_click"
+                    data-track-click="banner_click"
+                    data-track-target-type="banner"
+                    data-track-target-id={bannerId || bannerName}
+                    data-banner-id={bannerId}
+                    data-banner-name={bannerName}
+                    data-banner-position={bannerPosition}
+                    data-banner-campaign={bannerCampaign}
                   >
                     <motion.div
                       whileHover={{ y: -5, scale: 1.02 }}

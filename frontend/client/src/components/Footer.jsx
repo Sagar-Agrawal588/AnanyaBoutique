@@ -19,7 +19,8 @@ const FALLBACK_STORE_INFO = {
   name: "BuyOneGram",
   email: "healthyonegram.com",
   phone: "+91 8619641968",
-  address: "G-220,225, RIICO, Sitapura Industrial Area, Jaipur, Rajasthan 302022",
+  address:
+    "G-220,225, RIICO, Sitapura Industrial Area, Jaipur, Rajasthan 302022",
 };
 
 const normalizeStoreLink = (value) => {
@@ -122,7 +123,7 @@ const Footer = () => {
     {
       icon: <LiaShippingFastSolid />,
       title: "Free Delivery",
-      desc: "On every order, we've got it covered",
+      desc: "On Every Order, We've Got It Covered",
       gradient: "linear-gradient(135deg, var(--primary), var(--flavor-hover))",
     },
     {

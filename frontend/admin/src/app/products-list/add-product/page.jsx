@@ -62,15 +62,18 @@ const AddProduct = () => {
   const updateVariant = (index, field, value) => {
     const updated = [...variants];
     updated[index][field] = value;
-    // Auto-generate name from weight+unit
+    // Keep names explicit by appending weight/unit, while preserving manual naming.
     if (field === "weight" || field === "unit") {
       const w = field === "weight" ? value : updated[index].weight;
       const u = field === "unit" ? value : updated[index].unit;
       if (w) {
-        updated[index].name =
-          Number(w) >= 1000 && u === "g"
-            ? `${Number(w) / 1000} Kg`
-            : `${w}${u}`;
+        const normalizedWeight =
+          Number(w) >= 1000 && u === "g" ? `${Number(w) / 1000}kg` : `${w}${u}`;
+        const rawName = String(updated[index].name || "").trim();
+        const baseName = rawName.replace(/\s*-\s*[\d.]+\s*(kg|g|ml|l|pcs)$/i, "").trim();
+        updated[index].name = baseName
+          ? `${baseName} - ${normalizedWeight}`
+          : normalizedWeight;
       }
     }
     // Handle isDefault — only one can be default

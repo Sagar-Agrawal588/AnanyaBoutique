@@ -1,7 +1,7 @@
 "use client";
 
+import { getData, putData, uploadFile } from "@/utils/api";
 import { getImageUrl } from "@/utils/imageUtils";
-import { API_BASE_URL, uploadFile } from "@/utils/api";
 
 import { useAdmin } from "@/context/AdminContext";
 import {
@@ -11,8 +11,8 @@ import {
   Divider,
   FormControl,
   FormControlLabel,
-  InputLabel,
   InputAdornment,
+  InputLabel,
   MenuItem,
   Select,
   Snackbar,
@@ -24,15 +24,14 @@ import {
   MdLocalOffer,
   MdLocalShipping,
   MdPercent,
-  MdRefresh,
   MdReceiptLong,
+  MdRefresh,
   MdSave,
   MdShoppingCart,
   MdStore,
   MdWarning,
 } from "react-icons/md";
 
-const API_URL = API_BASE_URL;
 const POPUP_REDIRECT_TYPES = {
   product: "product",
   category: "category",
@@ -94,10 +93,11 @@ const FLAVOUR_BUTTON_FIELDS = [
   },
 ];
 const HEX_COLOR_PATTERN = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
-const SERIES_PREFIX_PATTERN = /^[a-z0-9]{1,10}$/i;
+const SERIES_PREFIX_PATTERN = /^[a-z0-9-]{1,10}$/i;
 const FISCAL_YEAR_CODE_PATTERN = /^\d{4}$/;
 
-const isHexColor = (value) => HEX_COLOR_PATTERN.test(String(value || "").trim());
+const isHexColor = (value) =>
+  HEX_COLOR_PATTERN.test(String(value || "").trim());
 
 const resolveFiscalYearCode = (value = new Date()) => {
   const date = value instanceof Date ? value : new Date(value);
@@ -141,10 +141,20 @@ const ORDER_SETTINGS_DEFAULTS = {
   orderSeriesPadding: 4,
 };
 
+const DEFAULT_MAINTENANCE_SETTINGS = {
+  maintenanceEnabled: false,
+  maintenanceStartTime: "",
+  maintenanceEndTime: "",
+  maintenanceMessage:
+    "We are currently undergoing scheduled maintenance. Please check back soon.",
+  showCountdown: true,
+};
+
 const buildOrderSeriesPreview = (settings = {}) => {
-  const prefix = String(settings.orderSeriesPrefix || "H1G")
-    .trim()
-    .toUpperCase() || "H1G";
+  const prefix =
+    String(settings.orderSeriesPrefix || "H1G")
+      .trim()
+      .toUpperCase() || "H1G";
   const now = new Date();
   const year = now.getFullYear();
   const month = now.getMonth();
@@ -206,8 +216,10 @@ const SettingsPage = () => {
   const [siteControls, setSiteControls] = useState({
     paymentGatewayEnabled: false,
     defaultPaymentProvider: "PHONEPE",
-    maintenanceMode: false,
   });
+  const [maintenanceSettings, setMaintenanceSettings] = useState(
+    DEFAULT_MAINTENANCE_SETTINGS,
+  );
   const [offerPopupSettings, setOfferPopupSettings] = useState({
     showOfferPopup: true,
     offerCouponCode: "",
@@ -267,24 +279,32 @@ const SettingsPage = () => {
       return { valid: false, message: "CTA button text is required." };
     }
 
-    if (!value.startDate || !value.expiryDate) {
+    const hasStartDate = Boolean(value.startDate);
+    const hasExpiryDate = Boolean(value.expiryDate);
+    const requiresSchedule = Boolean(
+      value.isActive || hasStartDate || hasExpiryDate,
+    );
+
+    if (requiresSchedule && (!hasStartDate || !hasExpiryDate)) {
       return {
         valid: false,
         message: "Start date and expiry date are required.",
       };
     }
 
-    const startDate = new Date(value.startDate);
-    const expiryDate = new Date(value.expiryDate);
-    if (
-      Number.isNaN(startDate.getTime()) ||
-      Number.isNaN(expiryDate.getTime()) ||
-      expiryDate <= startDate
-    ) {
-      return {
-        valid: false,
-        message: "Expiry date must be greater than start date.",
-      };
+    if (requiresSchedule) {
+      const startDate = new Date(value.startDate);
+      const expiryDate = new Date(value.expiryDate);
+      if (
+        Number.isNaN(startDate.getTime()) ||
+        Number.isNaN(expiryDate.getTime()) ||
+        expiryDate <= startDate
+      ) {
+        return {
+          valid: false,
+          message: "Expiry date must be greater than start date.",
+        };
+      }
     }
 
     const requiresRedirect =
@@ -322,7 +342,9 @@ const SettingsPage = () => {
     if (
       String(value.couponCode || "").trim() &&
       !/^[A-Z0-9_-]{3,50}$/.test(
-        String(value.couponCode || "").trim().toUpperCase(),
+        String(value.couponCode || "")
+          .trim()
+          .toUpperCase(),
       )
     ) {
       return {
@@ -349,14 +371,7 @@ const SettingsPage = () => {
   const fetchPopupResources = useCallback(
     async (adminToken) => {
       try {
-        const popupResponse = await fetch(`${API_URL}/api/admin/popup`, {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${adminToken}`,
-          },
-          credentials: "include",
-        });
-        const popupData = await popupResponse.json();
+        const popupData = await getData("/api/admin/popup", adminToken);
         if (popupData?.success && popupData?.data) {
           setPopupSettings(mapPopupPayloadToState(popupData.data));
         }
@@ -366,23 +381,12 @@ const SettingsPage = () => {
 
       try {
         const [productResponse, categoryResponse] = await Promise.all([
-          fetch(`${API_URL}/api/products?limit=250&sortBy=name&order=asc`, {
-            method: "GET",
-            credentials: "include",
-          }),
-          fetch(`${API_URL}/api/categories?flat=true&active=true`, {
-            method: "GET",
-            credentials: "include",
-          }),
+          getData("/api/products?limit=250&sortBy=name&order=asc", adminToken),
+          getData("/api/categories?flat=true&active=true", adminToken),
         ]);
 
-        const [productData, categoryData] = await Promise.all([
-          productResponse.json(),
-          categoryResponse.json(),
-        ]);
-
-        if (productData?.success && Array.isArray(productData?.data)) {
-          const productOptions = productData.data
+        if (productResponse?.success && Array.isArray(productResponse?.data)) {
+          const productOptions = productResponse.data
             .filter((product) => product?._id)
             .map((product) => ({
               value: product._id,
@@ -391,8 +395,11 @@ const SettingsPage = () => {
           setPopupProducts(productOptions);
         }
 
-        if (categoryData?.success && Array.isArray(categoryData?.data)) {
-          const categoryOptions = categoryData.data
+        if (
+          categoryResponse?.success &&
+          Array.isArray(categoryResponse?.data)
+        ) {
+          const categoryOptions = categoryResponse.data
             .filter((category) => category?.slug)
             .map((category) => ({
               value: category.slug,
@@ -417,14 +424,9 @@ const SettingsPage = () => {
         };
       }
 
-      const response = await fetch(`${API_URL}/api/admin/popup`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${adminToken}`,
-        },
-        credentials: "include",
-        body: JSON.stringify({
+      const data = await putData(
+        "/api/admin/popup",
+        {
           title: String(value.title || "").trim(),
           description: String(value.description || "").trim(),
           imageUrl: String(value.imageUrl || "").trim(),
@@ -439,10 +441,10 @@ const SettingsPage = () => {
           couponCode: String(value.couponCode || "")
             .trim()
             .toUpperCase(),
-        }),
-      });
+        },
+        adminToken,
+      );
 
-      const data = await response.json();
       if (data?.success && data?.data) {
         setPopupSettings(mapPopupPayloadToState(data.data));
         return { success: true, message: data?.message || "Popup saved." };
@@ -500,15 +502,7 @@ const SettingsPage = () => {
         return;
       }
 
-      const response = await fetch(`${API_URL}/api/settings/admin/all`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${adminToken}`,
-        },
-        credentials: "include",
-      });
-
-      const data = await response.json();
+      const data = await getData("/api/settings/admin/all", adminToken);
 
       if (data.success && data.data) {
         // Map settings by key
@@ -571,15 +565,42 @@ const SettingsPage = () => {
               setSiteControls((prev) => ({
                 ...prev,
                 defaultPaymentProvider:
-                  String(setting.value || "").trim().toUpperCase() === "PAYTM"
+                  String(setting.value || "")
+                    .trim()
+                    .toUpperCase() === "PAYTM"
                     ? "PAYTM"
                     : "PHONEPE",
               }));
               break;
             case "maintenanceMode":
-              setSiteControls((prev) => ({
+              setMaintenanceSettings((prev) => ({
                 ...prev,
-                maintenanceMode: !!setting.value,
+                maintenanceEnabled: !!setting.value,
+              }));
+              break;
+            case "maintenanceSettings":
+              setMaintenanceSettings((prev) => ({
+                ...prev,
+                ...DEFAULT_MAINTENANCE_SETTINGS,
+                ...(setting?.value && typeof setting.value === "object"
+                  ? {
+                      maintenanceEnabled: !!setting.value.maintenanceEnabled,
+                      maintenanceStartTime: toDateTimeLocal(
+                        setting.value.maintenanceStartTime,
+                      ),
+                      maintenanceEndTime: toDateTimeLocal(
+                        setting.value.maintenanceEndTime,
+                      ),
+                      maintenanceMessage: String(
+                        setting.value.maintenanceMessage ||
+                          DEFAULT_MAINTENANCE_SETTINGS.maintenanceMessage,
+                      ).trim(),
+                      showCountdown:
+                        setting.value.showCountdown === undefined
+                          ? true
+                          : !!setting.value.showCountdown,
+                    }
+                  : {}),
               }));
               break;
             case "highTrafficNotice":
@@ -642,18 +663,12 @@ const SettingsPage = () => {
   const saveSetting = async (key, value) => {
     try {
       const adminToken = token || localStorage.getItem("adminToken");
-      const response = await fetch(`${API_URL}/api/settings/admin/${key}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${adminToken}`,
-        },
-        credentials: "include",
-        body: JSON.stringify({ value }),
-      });
-
-      const data = await response.json();
-      return data.success;
+      const response = await putData(
+        `/api/settings/admin/${key}`,
+        { value },
+        adminToken,
+      );
+      return Boolean(response?.success);
     } catch (error) {
       console.error(`Error saving ${key}:`, error);
       return false;
@@ -702,12 +717,34 @@ const SettingsPage = () => {
     if (orderNumberSeries.enabled) {
       const safePrefix = String(orderNumberSeries.prefix || "").trim();
       if (!SERIES_PREFIX_PATTERN.test(safePrefix)) {
-        setToast("Order series prefix must be 1-10 letters/numbers.", "error");
+        setToast(
+          "Order series prefix must be 1-10 letters/numbers/hyphen.",
+          "error",
+        );
         return;
       }
       const safeFy = String(orderNumberSeries.fiscalYearCode || "").trim();
       if (safeFy && !FISCAL_YEAR_CODE_PATTERN.test(safeFy)) {
         setToast("Fiscal year code must be 4 digits (e.g., 2526).", "error");
+        return;
+      }
+    }
+
+    if (
+      maintenanceSettings.maintenanceStartTime &&
+      maintenanceSettings.maintenanceEndTime
+    ) {
+      const start = new Date(maintenanceSettings.maintenanceStartTime);
+      const end = new Date(maintenanceSettings.maintenanceEndTime);
+      if (
+        Number.isNaN(start.getTime()) ||
+        Number.isNaN(end.getTime()) ||
+        end <= start
+      ) {
+        setToast(
+          "Maintenance end time must be greater than maintenance start time.",
+          "error",
+        );
         return;
       }
     }
@@ -727,6 +764,7 @@ const SettingsPage = () => {
         trafficSaved,
         paymentSaved,
         defaultPaymentProviderSaved,
+        maintenanceSettingsSaved,
         maintenanceSaved,
         showOfferPopupSaved,
         offerCouponCodeSaved,
@@ -742,14 +780,34 @@ const SettingsPage = () => {
         saveSetting("discountSettings", discountSettings),
         saveSetting("storeInfo", storeInfo),
         saveSetting("highTrafficNotice", highTrafficNotice),
-        saveSetting("paymentGatewayEnabled", siteControls.paymentGatewayEnabled),
+        saveSetting(
+          "paymentGatewayEnabled",
+          siteControls.paymentGatewayEnabled,
+        ),
         saveSetting(
           "defaultPaymentProvider",
           String(siteControls.defaultPaymentProvider || "PHONEPE")
             .trim()
             .toUpperCase(),
         ),
-        saveSetting("maintenanceMode", siteControls.maintenanceMode),
+        saveSetting("maintenanceSettings", {
+          maintenanceEnabled: !!maintenanceSettings.maintenanceEnabled,
+          maintenanceStartTime: toIsoIfPresent(
+            maintenanceSettings.maintenanceStartTime,
+          ),
+          maintenanceEndTime: toIsoIfPresent(
+            maintenanceSettings.maintenanceEndTime,
+          ),
+          maintenanceMessage: String(
+            maintenanceSettings.maintenanceMessage ||
+              DEFAULT_MAINTENANCE_SETTINGS.maintenanceMessage,
+          ).trim(),
+          showCountdown: !!maintenanceSettings.showCountdown,
+        }),
+        saveSetting(
+          "maintenanceMode",
+          !!maintenanceSettings.maintenanceEnabled,
+        ),
         saveSetting("showOfferPopup", !!offerPopupSettings.showOfferPopup),
         saveSetting(
           "offerCouponCode",
@@ -781,6 +839,7 @@ const SettingsPage = () => {
         trafficSaved,
         paymentSaved,
         defaultPaymentProviderSaved,
+        maintenanceSettingsSaved,
         maintenanceSaved,
         showOfferPopupSaved,
         offerCouponCodeSaved,
@@ -860,10 +919,10 @@ const SettingsPage = () => {
         </div>
         <Divider className="mb-4" />
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <FormControlLabel
-              control={
-                <Switch
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <FormControlLabel
+            control={
+              <Switch
                 checked={shippingSettings.freeShippingEnabled}
                 onChange={(e) =>
                   setShippingSettings({
@@ -1042,13 +1101,13 @@ const SettingsPage = () => {
                 ...orderSettings,
                 orderSeriesPrefix: String(e.target.value || "")
                   .toUpperCase()
-                  .replace(/[^A-Z0-9]/g, "")
+                  .replace(/[^A-Z0-9-]/g, "")
                   .slice(0, 6),
               })
             }
             size="small"
             fullWidth
-            helperText="Example: H1G"
+            helperText="Letters/numbers/hyphen. Example: H1G-"
           />
 
           <TextField
@@ -1172,12 +1231,15 @@ const SettingsPage = () => {
               onChange={(e) =>
                 setOrderNumberSeries((prev) => ({
                   ...prev,
-                  prefix: e.target.value,
+                  prefix: String(e.target.value || "")
+                    .toUpperCase()
+                    .replace(/[^A-Z0-9-]/g, "")
+                    .slice(0, 10),
                 }))
               }
               size="small"
               fullWidth
-              helperText="Letters/numbers only. Example: H1G"
+              helperText="Letters/numbers/hyphen. Example: H1G-"
               disabled={!orderNumberSeries.enabled}
             />
 
@@ -1205,9 +1267,9 @@ const SettingsPage = () => {
           const startYear = month >= 3 ? year : year - 1;
           const currentFy = resolveFiscalYearCode(now);
           const nextFy = resolveFiscalYearCode(new Date(startYear + 1, 3, 1));
-          const safePrefix = String(
-            orderNumberSeries.prefix || "H1G",
-          ).trim().toUpperCase();
+          const safePrefix = String(orderNumberSeries.prefix || "H1G")
+            .trim()
+            .toUpperCase();
           const safeFyOverride = String(
             orderNumberSeries.fiscalYearCode || "",
           ).trim();
@@ -1224,8 +1286,8 @@ const SettingsPage = () => {
               <p>
                 Current FY code:{" "}
                 <span className="font-mono font-semibold">{currentFy}</span>{" "}
-                (next:{" "}
-                <span className="font-mono font-semibold">{nextFy}</span>)
+                (next: <span className="font-mono font-semibold">{nextFy}</span>
+                )
               </p>
               <p className="mt-1">
                 Preview:{" "}
@@ -1352,9 +1414,7 @@ const SettingsPage = () => {
       <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
         <div className="flex items-center gap-3 mb-4">
           <MdWarning className="text-2xl text-red-500" />
-          <h2 className="text-lg font-semibold text-gray-800">
-            Site Controls
-          </h2>
+          <h2 className="text-lg font-semibold text-gray-800">Site Controls</h2>
         </div>
         <Divider className="mb-4" />
 
@@ -1378,47 +1438,111 @@ const SettingsPage = () => {
           <FormControlLabel
             control={
               <Switch
-                checked={siteControls.maintenanceMode}
+                checked={maintenanceSettings.maintenanceEnabled}
                 onChange={(e) =>
-                  setSiteControls({
-                    ...siteControls,
-                    maintenanceMode: e.target.checked,
-                  })
+                  setMaintenanceSettings((prev) => ({
+                    ...prev,
+                    maintenanceEnabled: e.target.checked,
+                  }))
                 }
                 color="warning"
               />
-              }
-              label="Maintenance Mode"
-            />
-            <FormControl fullWidth size="small">
-              <InputLabel id="default-payment-provider-label">
-                Default Payment Provider
-              </InputLabel>
-              <Select
-                labelId="default-payment-provider-label"
-                value={siteControls.defaultPaymentProvider}
-                label="Default Payment Provider"
+            }
+            label="Maintenance Mode"
+          />
+
+          <FormControlLabel
+            control={
+              <Switch
+                checked={maintenanceSettings.showCountdown}
                 onChange={(e) =>
-                  setSiteControls((prev) => ({
+                  setMaintenanceSettings((prev) => ({
                     ...prev,
-                    defaultPaymentProvider: String(e.target.value || "PHONEPE")
-                      .trim()
-                      .toUpperCase(),
+                    showCountdown: e.target.checked,
                   }))
                 }
-              >
-                <MenuItem value="PHONEPE">PhonePe</MenuItem>
-                <MenuItem value="PAYTM">Paytm</MenuItem>
-              </Select>
-            </FormControl>
-          </div>
+                color="warning"
+              />
+            }
+            label="Show Maintenance Countdown"
+          />
 
-          <p className="text-sm text-gray-500 mt-3">
-            Payment gateway toggle respects environment credentials. The default
-            provider is used across checkout when both gateways are available.
-            Maintenance mode disables checkout while enabled.
-          </p>
+          <TextField
+            label="Maintenance Start Time"
+            type="datetime-local"
+            value={maintenanceSettings.maintenanceStartTime}
+            onChange={(e) =>
+              setMaintenanceSettings((prev) => ({
+                ...prev,
+                maintenanceStartTime: e.target.value,
+              }))
+            }
+            size="small"
+            fullWidth
+            InputLabelProps={{ shrink: true }}
+            helperText="Optional. Leave empty to start maintenance immediately when enabled."
+          />
+
+          <TextField
+            label="Maintenance End Time"
+            type="datetime-local"
+            value={maintenanceSettings.maintenanceEndTime}
+            onChange={(e) =>
+              setMaintenanceSettings((prev) => ({
+                ...prev,
+                maintenanceEndTime: e.target.value,
+              }))
+            }
+            size="small"
+            fullWidth
+            InputLabelProps={{ shrink: true }}
+            helperText="Optional. If set, maintenance auto-disables after this time."
+          />
+
+          <TextField
+            label="Maintenance Message"
+            value={maintenanceSettings.maintenanceMessage}
+            onChange={(e) =>
+              setMaintenanceSettings((prev) => ({
+                ...prev,
+                maintenanceMessage: String(e.target.value || ""),
+              }))
+            }
+            size="small"
+            fullWidth
+            multiline
+            minRows={2}
+          />
+          <FormControl fullWidth size="small">
+            <InputLabel id="default-payment-provider-label">
+              Default Payment Provider
+            </InputLabel>
+            <Select
+              labelId="default-payment-provider-label"
+              value={siteControls.defaultPaymentProvider}
+              label="Default Payment Provider"
+              onChange={(e) =>
+                setSiteControls((prev) => ({
+                  ...prev,
+                  defaultPaymentProvider: String(e.target.value || "PHONEPE")
+                    .trim()
+                    .toUpperCase(),
+                }))
+              }
+            >
+              <MenuItem value="PHONEPE">PhonePe</MenuItem>
+              <MenuItem value="PAYTM">Paytm</MenuItem>
+            </Select>
+          </FormControl>
         </div>
+
+        <p className="text-sm text-gray-500 mt-3">
+          Payment gateway toggle respects environment credentials. The default
+          provider is used across checkout when both gateways are available.
+          Maintenance can be enabled immediately or scheduled with optional end
+          time and countdown.
+        </p>
+      </div>
 
       {/* Welcome Offer Popup (Coupon) */}
       <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
@@ -1507,9 +1631,8 @@ const SettingsPage = () => {
         </div>
 
         <p className="text-sm text-gray-500 mt-3">
-          This controls the coupon welcome popup shown on storefront load. It
-          is separate from Popup Management and separate from manual
-          notifications.
+          This controls the coupon welcome popup shown on storefront load. It is
+          separate from Popup Management and separate from manual notifications.
         </p>
       </div>
 
@@ -1634,7 +1757,9 @@ const SettingsPage = () => {
           </div>
 
           <FormControl size="small" fullWidth>
-            <InputLabel id="popup-redirect-type-label">Redirect Type</InputLabel>
+            <InputLabel id="popup-redirect-type-label">
+              Redirect Type
+            </InputLabel>
             <Select
               labelId="popup-redirect-type-label"
               value={popupSettings.redirectType}
@@ -1790,7 +1915,10 @@ const SettingsPage = () => {
           >
             {popupSettings.imageUrl ? (
               <img
-                src={getImageUrl(popupSettings.imageUrl, popupSettings.imageUrl)}
+                src={getImageUrl(
+                  popupSettings.imageUrl,
+                  popupSettings.imageUrl,
+                )}
                 alt="Popup preview"
                 className="w-full h-[140px] object-cover"
               />
@@ -2058,14 +2186,14 @@ const SettingsPage = () => {
                 <div
                   className="inline-flex items-center justify-center rounded-xl border px-4 py-2 text-sm font-semibold"
                   style={{
-                    backgroundColor:
-                      isHexColor(flavourButtonSettings[field.bgKey])
-                        ? flavourButtonSettings[field.bgKey]
-                        : DEFAULT_FLAVOUR_BUTTON_SETTINGS[field.bgKey],
-                    color:
-                      isHexColor(flavourButtonSettings[field.textColorKey])
-                        ? flavourButtonSettings[field.textColorKey]
-                        : DEFAULT_FLAVOUR_BUTTON_SETTINGS[field.textColorKey],
+                    backgroundColor: isHexColor(
+                      flavourButtonSettings[field.bgKey],
+                    )
+                      ? flavourButtonSettings[field.bgKey]
+                      : DEFAULT_FLAVOUR_BUTTON_SETTINGS[field.bgKey],
+                    color: isHexColor(flavourButtonSettings[field.textColorKey])
+                      ? flavourButtonSettings[field.textColorKey]
+                      : DEFAULT_FLAVOUR_BUTTON_SETTINGS[field.textColorKey],
                     borderColor: "rgba(17, 24, 39, 0.08)",
                   }}
                 >

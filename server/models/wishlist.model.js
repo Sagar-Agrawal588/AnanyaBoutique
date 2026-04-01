@@ -6,10 +6,21 @@ import mongoose from "mongoose";
  * For user wishlists/favorites.
  */
 const wishlistItemSchema = new mongoose.Schema({
+  itemType: {
+    type: String,
+    enum: ["product", "combo"],
+    default: "product",
+    index: true,
+  },
   product: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Product",
-    required: true,
+    default: null,
+  },
+  combo: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Combo",
+    default: null,
   },
   variantId: {
     type: String,
@@ -78,13 +89,28 @@ wishlistSchema.pre("save", function () {
   const seen = new Set();
   const deduped = [];
   for (const item of this.items || []) {
-    const productKey = String(item.product || "");
-    if (!productKey) continue;
+    const itemType = String(item.itemType || "product")
+      .trim()
+      .toLowerCase();
+    const isCombo = itemType === "combo";
+    const primaryKey = String(isCombo ? item.combo || "" : item.product || "");
+    if (!primaryKey) continue;
 
     const variantKey = String(item.variantId || "").trim();
-    const dedupeKey = `${productKey}::${variantKey}`;
+    const dedupeKey = `${isCombo ? "combo" : "product"}::${primaryKey}::${
+      isCombo ? "" : variantKey
+    }`;
     if (seen.has(dedupeKey)) continue; // silently skip duplicates
     seen.add(dedupeKey);
+
+    item.itemType = isCombo ? "combo" : "product";
+    if (isCombo) {
+      item.product = null;
+      item.variantId = null;
+      item.variantName = "";
+    } else {
+      item.combo = null;
+    }
 
     const safeQuantity = Math.max(Number(item.quantity || 1), 1);
     item.quantity = safeQuantity;
@@ -93,7 +119,7 @@ wishlistSchema.pre("save", function () {
   this.items = deduped;
 });
 
-wishlistSchema.index({ user: 1, "items.product": 1 });
+wishlistSchema.index({ user: 1, "items.product": 1, "items.combo": 1 });
 
 const WishlistModel = mongoose.model("Wishlist", wishlistSchema);
 export default WishlistModel;

@@ -38,10 +38,81 @@ import { io } from "socket.io-client";
 const API_URL = API_BASE_URL.endsWith("/api")
   ? API_BASE_URL
   : `${API_BASE_URL}/api`;
+const LOCAL_API_FALLBACKS = ["http://localhost:8000", "http://localhost:8001"];
 const SOCKET_URL = API_BASE_URL.endsWith("/api")
   ? API_BASE_URL.slice(0, -4)
   : API_BASE_URL;
 const SOCKET_TRANSPORTS = ["polling"];
+
+const sanitizeBaseUrl = (value) =>
+  String(value || "")
+    .trim()
+    .replace(/^['"]|['"]$/g, "")
+    .replace(/\/+$/, "");
+
+const normalizeApiPath = (path) => {
+  const normalized = String(path || "").startsWith("/")
+    ? String(path)
+    : `/${String(path || "")}`;
+
+  return normalized.startsWith("/api/") ? normalized : `/api${normalized}`;
+};
+
+const composeApiUrl = (base, path) => {
+  const normalizedBase = sanitizeBaseUrl(base);
+  const normalizedPath = normalizeApiPath(path);
+
+  if (/\/api$/i.test(normalizedBase) && /^\/api(\/|$)/i.test(normalizedPath)) {
+    return `${normalizedBase}${normalizedPath.replace(/^\/api/i, "")}`;
+  }
+
+  return `${normalizedBase}${normalizedPath}`;
+};
+
+const getApiBaseCandidates = () => {
+  const candidates = [sanitizeBaseUrl(API_BASE_URL)].filter(Boolean);
+
+  if (typeof window !== "undefined") {
+    const host = String(window.location.hostname || "").toLowerCase();
+    if (host === "localhost" || host === "127.0.0.1") {
+      candidates.push(...LOCAL_API_FALLBACKS.map(sanitizeBaseUrl));
+    }
+  }
+
+  return [...new Set(candidates.filter(Boolean))];
+};
+
+const fetchWithApiFallback = async (path, options = {}) => {
+  const bases = getApiBaseCandidates();
+  let lastNetworkError = null;
+  let lastResponse = null;
+
+  for (let i = 0; i < bases.length; i += 1) {
+    const isLast = i === bases.length - 1;
+    const url = composeApiUrl(bases[i], path);
+
+    try {
+      const response = await fetch(url, options);
+      if (response.ok) return response;
+
+      lastResponse = response;
+      const shouldTryNext =
+        !isLast && (response.status === 404 || response.status >= 500);
+      if (!shouldTryNext) {
+        return response;
+      }
+    } catch (error) {
+      lastNetworkError = error;
+      if (isLast) {
+        throw error;
+      }
+    }
+  }
+
+  if (lastResponse) return lastResponse;
+  if (lastNetworkError) throw lastNetworkError;
+  throw new Error("Failed to reach orders API");
+};
 
 const STATUS_STEPS = [
   { key: "pending", label: "Pending", icon: MdAccessTime },
@@ -65,17 +136,16 @@ const getAuthToken = () => {
 };
 
 const normalizeOrderIdValue = (value) =>
-  String(value || "").trim().toUpperCase();
+  String(value || "")
+    .trim()
+    .toUpperCase();
 
 const resolveOrderRouteId = (record) =>
   record?._id || record?.id || record?.orderId || null;
 
 const resolveOrderDisplayId = (record) => {
   const explicitId =
-    record?.displayOrderId ||
-    record?.orderNumber ||
-    record?.order_id ||
-    "";
+    record?.displayOrderId || record?.orderNumber || record?.order_id || "";
   if (String(explicitId || "").trim()) {
     return String(explicitId).trim().toUpperCase();
   }
@@ -116,6 +186,50 @@ const getStepIndex = (status) => {
   const normalized = normalizeStatus(status);
   const index = STATUS_STEPS.findIndex((step) => step.key === normalized);
   return index === -1 ? 0 : index;
+};
+
+const resolveTrackingUrl = (order = {}) => {
+  const explicitUrl = String(
+    order?.trackingUrl ||
+      order?.tracking_url ||
+      order?.shipmentTrackingUrl ||
+      "",
+  ).trim();
+  const awb = String(
+    order?.awbNo ||
+      order?.awb_no ||
+      order?.awbNumber ||
+      order?.awb_number ||
+      order?.shipment?.awbNo ||
+      order?.shipment?.awb_no ||
+      order?.shipment?.awb_number ||
+      order?.shipment?.awb ||
+      order?.shipping?.awbNo ||
+      order?.shipping?.awb_no ||
+      order?.shipping?.awb_number ||
+      order?.shipping?.awb ||
+      "",
+  ).trim();
+
+  if (!explicitUrl) {
+    if (!awb) return "";
+    return `https://www.xpressbees.com/shipment/tracking?awbNo=${encodeURIComponent(awb)}`;
+  }
+
+  if (!awb) return explicitUrl;
+
+  try {
+    const parsed = new URL(explicitUrl);
+    const host = String(parsed.hostname || "").toLowerCase();
+    const isXpressbees = host.includes("xpressbees.com");
+    if (!isXpressbees) return explicitUrl;
+
+    parsed.searchParams.delete("awb");
+    parsed.searchParams.set("awbNo", awb);
+    return parsed.toString();
+  } catch {
+    return explicitUrl;
+  }
 };
 
 /**
@@ -177,6 +291,8 @@ const OrderDetailsPage = () => {
 
   const canonicalOrderId = resolveOrderRouteId(order);
   const displayOrderId = resolveOrderDisplayId(order);
+  const awbNumber = String(order?.awbNumber || order?.awb_number || "").trim();
+  const trackingUrl = resolveTrackingUrl(order);
 
   // Fetch order details
   useEffect(() => {
@@ -194,8 +310,8 @@ const OrderDetailsPage = () => {
       }
 
       try {
-        const requestOrderByUrl = async (url) => {
-          const response = await fetch(url, {
+        const requestOrderByUrl = async (path) => {
+          const response = await fetchWithApiFallback(path, {
             method: "GET",
             headers: {
               Authorization: `Bearer ${token}`,
@@ -213,12 +329,12 @@ const OrderDetailsPage = () => {
 
         const fetchSingleOrder = async () => {
           const userScoped = await requestOrderByUrl(
-            `${API_URL}/orders/user/order/${orderId}`,
+            `/orders/user/order/${orderId}`,
           );
           if (userScoped?.response?.status !== 404) {
             return userScoped;
           }
-          return requestOrderByUrl(`${API_URL}/orders/${orderId}`);
+          return requestOrderByUrl(`/orders/${orderId}`);
         };
 
         let resolvedOrder = null;
@@ -245,7 +361,7 @@ const OrderDetailsPage = () => {
         }
 
         if (!resolvedOrder) {
-          const listResponse = await fetch(`${API_URL}/orders/my-orders`, {
+          const listResponse = await fetchWithApiFallback("/orders/my-orders", {
             method: "GET",
             headers: {
               Authorization: `Bearer ${token}`,
@@ -315,7 +431,9 @@ const OrderDetailsPage = () => {
           order_status: payload.status || prev.order_status,
           payment_status: payload.paymentStatus || prev.payment_status,
           statusTimeline: payload.statusTimeline || prev.statusTimeline,
+          trackingUrl: payload.shipment?.trackingUrl || prev.trackingUrl,
           awb_number: payload.shipment?.awb || prev.awb_number,
+          awbNumber: payload.shipment?.awb || prev.awbNumber,
           shipment_status: payload.shipment?.status || prev.shipment_status,
           shipping_provider:
             payload.shipment?.provider || prev.shipping_provider,
@@ -353,8 +471,8 @@ const OrderDetailsPage = () => {
         if (disposed) return;
 
         try {
-          const response = await fetch(
-            `${API_URL}/orders/user/order/${targetOrderId}`,
+          const response = await fetchWithApiFallback(
+            `/orders/user/order/${targetOrderId}`,
             {
               method: "GET",
               headers: {
@@ -404,8 +522,8 @@ const OrderDetailsPage = () => {
       if (!token) return;
 
       try {
-        const response = await fetch(
-          `${API_URL}/reviews/my?orderId=${orderId}`,
+        const response = await fetchWithApiFallback(
+          `/reviews/my?orderId=${encodeURIComponent(String(orderId || ""))}`,
           {
             method: "GET",
             headers: {
@@ -566,11 +684,11 @@ const OrderDetailsPage = () => {
     setShowPaymentModal(true);
   };
 
-  const downloadFile = async (url, filename, key) => {
+  const downloadFile = async (path, filename, key) => {
     try {
       setDownloading((prev) => ({ ...prev, [key]: true }));
       const token = getAuthToken();
-      const response = await fetch(url, {
+      const response = await fetchWithApiFallback(path, {
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
         credentials: "include",
       });
@@ -609,7 +727,7 @@ const OrderDetailsPage = () => {
   const handleDownloadInvoice = () => {
     if (!canonicalOrderId) return;
     downloadFile(
-      `${API_URL}/orders/${canonicalOrderId}/invoice`,
+      `/orders/${canonicalOrderId}/invoice`,
       `invoice-${displayOrderId || canonicalOrderId}.pdf`,
       "invoice",
     );
@@ -740,9 +858,9 @@ const OrderDetailsPage = () => {
     hasDeliveredTimelineStatus;
   const hasInvoiceHint = Boolean(
     order?.isInvoiceGenerated ||
-      order?.invoiceUrl ||
-      order?.invoicePath ||
-      order?.invoiceGeneratedAt,
+    order?.invoiceUrl ||
+    order?.invoicePath ||
+    order?.invoiceGeneratedAt,
   );
   const canDownloadInvoice =
     hasInvoiceHint ||
@@ -1285,6 +1403,41 @@ const OrderDetailsPage = () => {
                     order.guestDetails?.email ||
                     "-"}
                 </p>
+              </div>
+            </div>
+          )}
+
+          {(awbNumber || trackingUrl) && (
+            <div className="bg-white rounded-xl shadow-sm p-5 md:p-6 mb-6">
+              <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                <MdLocalShipping className="text-orange-500" />
+                Shipment Tracking
+              </h2>
+              <div className="space-y-2 text-gray-700 text-sm">
+                <p>
+                  <span className="font-semibold text-gray-800">Courier:</span>{" "}
+                  {order?.shipping_provider ||
+                    order?.courierName ||
+                    "Xpressbees"}
+                </p>
+                <p>
+                  <span className="font-semibold text-gray-800">AWB:</span>{" "}
+                  {awbNumber || "N/A"}
+                </p>
+                <p>
+                  <span className="font-semibold text-gray-800">Status:</span>{" "}
+                  {order?.shipment_status || order?.shipmentStatus || "pending"}
+                </p>
+                {trackingUrl ? (
+                  <a
+                    href={trackingUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center rounded-lg bg-orange-600 px-3 py-2 font-semibold text-white hover:bg-orange-700"
+                  >
+                    Track Shipment
+                  </a>
+                ) : null}
               </div>
             </div>
           )}

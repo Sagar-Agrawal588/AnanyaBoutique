@@ -61,6 +61,17 @@ const defaultSessionsExplorerState = {
   },
 };
 
+const LIVE_BUTTON_FEED_LIMIT = 40;
+const LIVE_BUTTON_EVENT_TYPES = new Set([
+  "click_event",
+  "product_click",
+  "banner_click",
+  "rage_click",
+  "button_hover_start",
+  "button_focus",
+  "button_blur",
+]);
+
 const toNumber = (value, fallback = 0) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -72,7 +83,10 @@ const formatCurrency = (value) =>
   `Rs ${toNumber(value, 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 
 const formatDuration = (milliseconds) => {
-  const totalSeconds = Math.max(Math.floor(toNumber(milliseconds, 0) / 1000), 0);
+  const totalSeconds = Math.max(
+    Math.floor(toNumber(milliseconds, 0) / 1000),
+    0,
+  );
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${minutes}m ${seconds}s`;
@@ -143,6 +157,9 @@ const resolveEventProductId = (event) =>
 const resolveClickTarget = (metadata = {}) =>
   safeString(
     metadata?.trackName ||
+      metadata?.buttonLabel ||
+      metadata?.targetId ||
+      metadata?.target_id ||
       metadata?.text ||
       metadata?.id ||
       metadata?.className ||
@@ -150,14 +167,81 @@ const resolveClickTarget = (metadata = {}) =>
       "",
   );
 
+const resolvePreviewTarget = (event = {}) =>
+  safeString(
+    event?.metadata?.buttonLabel ||
+      event?.metadata?.targetId ||
+      event?.metadata?.target_id ||
+      event?.metadata?.trackName ||
+      event?.metadata?.text ||
+      event?.metadata?.id ||
+      "unknown_target",
+  );
+
 const buildRangeQuery = (days) => {
   const to = new Date();
-  const from = new Date(to.getTime() - Number(days || 30) * 24 * 60 * 60 * 1000);
+  const from = new Date(
+    to.getTime() - Number(days || 30) * 24 * 60 * 60 * 1000,
+  );
   return { from: from.toISOString(), to: to.toISOString() };
 };
 
+const formatDateInput = (value) => {
+  if (!value) return "";
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toISOString().slice(0, 10);
+};
+
+const buildRangeFromDates = (startInput, endInput, fallbackDays = 30) => {
+  const fallback = buildRangeQuery(fallbackDays);
+  const fallbackFrom = new Date(fallback.from);
+  const fallbackTo = new Date(fallback.to);
+
+  const start = startInput ? new Date(`${startInput}T00:00:00.000Z`) : fallbackFrom;
+  const end = endInput ? new Date(`${endInput}T23:59:59.999Z`) : fallbackTo;
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) {
+    return {
+      from: fallback.from,
+      to: fallback.to,
+      days: fallbackDays,
+    };
+  }
+
+  const days =
+    Math.max(1, Math.floor((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1);
+
+  return {
+    from: start.toISOString(),
+    to: end.toISOString(),
+    days,
+  };
+};
+
+const buildYearRange = (year) => {
+  const normalizedYear = Number(year);
+  if (!Number.isFinite(normalizedYear)) {
+    const fallback = buildRangeQuery(30);
+    return {
+      startDate: formatDateInput(fallback.from),
+      endDate: formatDateInput(fallback.to),
+    };
+  }
+  return {
+    startDate: formatDateInput(new Date(Date.UTC(normalizedYear, 0, 1))),
+    endDate: formatDateInput(new Date(Date.UTC(normalizedYear, 11, 31))),
+  };
+};
+
+const buildBehaviorAllTimeRange = () => ({
+  startDate: "2015-01-01",
+  endDate: formatDateInput(new Date()),
+});
+
 const getApiErrorMessage = (response, fallback) =>
-  [response?.message, response?.details].filter(Boolean).join(" - ") || fallback;
+  [response?.message, response?.details].filter(Boolean).join(" - ") ||
+  fallback;
 
 const getSessionIntent = (session) => {
   const events = toNumber(session?.eventCount, 0);
@@ -165,22 +249,46 @@ const getSessionIntent = (session) => {
   const activeTime = toNumber(session?.totalActiveTime, 0);
 
   if (events >= 15 || pages >= 4 || activeTime >= 120000) {
-    return { label: "High", className: "bg-emerald-50 text-emerald-700 border-emerald-200" };
+    return {
+      label: "High",
+      className: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    };
   }
   if (events >= 5 || pages >= 2 || activeTime >= 30000) {
-    return { label: "Medium", className: "bg-amber-50 text-amber-700 border-amber-200" };
+    return {
+      label: "Medium",
+      className: "bg-amber-50 text-amber-700 border-amber-200",
+    };
   }
-  return { label: "Low", className: "bg-slate-50 text-slate-700 border-slate-200" };
+  return {
+    label: "Low",
+    className: "bg-slate-50 text-slate-700 border-slate-200",
+  };
 };
 
 const getWorkerState = (performance) => {
   const total = toNumber(performance?.workerHealth?.totalWorkers, 0);
   const healthy = toNumber(performance?.workerHealth?.healthyWorkers, 0);
 
-  if (!total) return { label: "No workers", className: "bg-amber-50 text-amber-700 border-amber-200" };
-  if (healthy === total) return { label: "Healthy", className: "bg-emerald-50 text-emerald-700 border-emerald-200" };
-  if (healthy === 0) return { label: "Critical", className: "bg-rose-50 text-rose-700 border-rose-200" };
-  return { label: "Degraded", className: "bg-amber-50 text-amber-700 border-amber-200" };
+  if (!total)
+    return {
+      label: "No workers",
+      className: "bg-amber-50 text-amber-700 border-amber-200",
+    };
+  if (healthy === total)
+    return {
+      label: "Healthy",
+      className: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    };
+  if (healthy === 0)
+    return {
+      label: "Critical",
+      className: "bg-rose-50 text-rose-700 border-rose-200",
+    };
+  return {
+    label: "Degraded",
+    className: "bg-amber-50 text-amber-700 border-amber-200",
+  };
 };
 
 const buildTimelineInsights = (timeline = [], productInteractions = []) => {
@@ -212,18 +320,29 @@ const buildTimelineInsights = (timeline = [], productInteractions = []) => {
 
     const sectionName = resolveEventSectionName(event);
     if (sectionName) {
-      const section = sectionMap.get(sectionName) || { sectionName, events: 0, durationMs: 0 };
+      const section = sectionMap.get(sectionName) || {
+        sectionName,
+        events: 0,
+        durationMs: 0,
+      };
       section.events += 1;
       section.durationMs += Math.max(toNumber(metadata.durationMs, 0), 0);
       sectionMap.set(sectionName, section);
     }
 
     const productKey = safeString(
-      metadata.productName ||
-        resolveEventProductId(event),
+      metadata.productName || resolveEventProductId(event),
     );
 
-    if (productKey || ["product_view", "add_to_cart", "checkout_started", "purchase_completed"].includes(type)) {
+    if (
+      productKey ||
+      [
+        "product_view",
+        "add_to_cart",
+        "checkout_started",
+        "purchase_completed",
+      ].includes(type)
+    ) {
       const key = productKey || "unknown_product";
       const product = productMap.get(key) || { key, events: 0 };
       product.events += 1;
@@ -233,7 +352,10 @@ const buildTimelineInsights = (timeline = [], productInteractions = []) => {
     if (["click_event", "rage_click"].includes(type)) {
       const clickTarget = resolveClickTarget(metadata);
       if (clickTarget) {
-        const click = clickTargetMap.get(clickTarget) || { target: clickTarget, clicks: 0 };
+        const click = clickTargetMap.get(clickTarget) || {
+          target: clickTarget,
+          clicks: 0,
+        };
         click.clicks += 1;
         clickTargetMap.set(clickTarget, click);
       }
@@ -241,7 +363,9 @@ const buildTimelineInsights = (timeline = [], productInteractions = []) => {
   }
 
   for (const interaction of productInteractions || []) {
-    const key = safeString(interaction?.productName || interaction?.productId || "unknown_product");
+    const key = safeString(
+      interaction?.productName || interaction?.productId || "unknown_product",
+    );
     const product = productMap.get(key) || { key, events: 0 };
     product.events += 1;
     productMap.set(key, product);
@@ -255,12 +379,66 @@ const buildTimelineInsights = (timeline = [], productInteractions = []) => {
     addToCart,
     checkoutStarted,
     purchases,
-    eventTypes: Array.from(eventTypeMap.entries()).map(([eventType, count]) => ({ eventType, count })).sort((a, b) => b.count - a.count),
+    eventTypes: Array.from(eventTypeMap.entries())
+      .map(([eventType, count]) => ({ eventType, count }))
+      .sort((a, b) => b.count - a.count),
     pages: Array.from(pageMap.values()).sort((a, b) => b.events - a.events),
-    sections: Array.from(sectionMap.values()).sort((a, b) => b.events - a.events),
-    sectionsByDuration: Array.from(sectionMap.values()).sort((a, b) => b.durationMs - a.durationMs),
-    clickTargets: Array.from(clickTargetMap.values()).sort((a, b) => b.clicks - a.clicks),
-    products: Array.from(productMap.values()).sort((a, b) => b.events - a.events),
+    sections: Array.from(sectionMap.values()).sort(
+      (a, b) => b.events - a.events,
+    ),
+    sectionsByDuration: Array.from(sectionMap.values()).sort(
+      (a, b) => b.durationMs - a.durationMs,
+    ),
+    clickTargets: Array.from(clickTargetMap.values()).sort(
+      (a, b) => b.clicks - a.clicks,
+    ),
+    products: Array.from(productMap.values()).sort(
+      (a, b) => b.events - a.events,
+    ),
+  };
+};
+
+const buildPlainLanguageSummary = ({ overview, engagement, timelineInsights }) => {
+  const conversionRate = toNumber(overview?.conversionRate, 0);
+  const bounceRate = toNumber(overview?.bounceRate, 0);
+  const rageClicks = toNumber(engagement?.rageClickCount, 0);
+  const addToCart = toNumber(timelineInsights?.addToCart, 0);
+  const checkoutStarted = toNumber(timelineInsights?.checkoutStarted, 0);
+  const purchases = toNumber(timelineInsights?.purchases, 0);
+
+  const topPage = timelineInsights?.pages?.[0]?.path || "No dominant page yet";
+  const topSection = timelineInsights?.sections?.[0]?.sectionName || "No dominant section yet";
+  const topButton = timelineInsights?.clickTargets?.[0]?.target || "No dominant button yet";
+
+  const highlights = [
+    `Top customer path: ${topPage}`,
+    `Most active section: ${topSection}`,
+    `Most clicked button: ${topButton}`,
+  ];
+
+  const recommendations = [];
+  if (bounceRate >= 55) {
+    recommendations.push("Bounce rate is high. Simplify landing content and show a stronger first CTA.");
+  }
+  if (rageClicks >= 10) {
+    recommendations.push("Rage clicks are high. Review button visibility, response speed, and click targets.");
+  }
+  if (checkoutStarted > addToCart) {
+    recommendations.push("Checkout starts exceed add-to-cart. Validate event instrumentation for cart and checkout.");
+  }
+  if (checkoutStarted > 0 && purchases === 0) {
+    recommendations.push("Customers start checkout but do not finish. Audit payment and delivery messaging on checkout.");
+  }
+  if (conversionRate < 1 && addToCart > 0) {
+    recommendations.push("Add-to-cart exists but conversion is low. Test trust badges, delivery promise, and payment clarity.");
+  }
+  if (recommendations.length === 0) {
+    recommendations.push("Current flow is stable. Focus next on improving top performing pages and buttons.");
+  }
+
+  return {
+    highlights,
+    recommendations,
   };
 };
 
@@ -269,6 +447,10 @@ export default function BehaviorAnalyticsPage() {
   const router = useRouter();
 
   const [rangeDays, setRangeDays] = useState(30);
+  const defaultRange = useMemo(() => buildRangeQuery(30), []);
+  const [startDate, setStartDate] = useState(formatDateInput(defaultRange.from));
+  const [endDate, setEndDate] = useState(formatDateInput(defaultRange.to));
+  const [yearJump, setYearJump] = useState(String(new Date().getFullYear()));
   const [overview, setOverview] = useState(null);
   const [engagement, setEngagement] = useState(null);
   const [performance, setPerformance] = useState(null);
@@ -279,15 +461,15 @@ export default function BehaviorAnalyticsPage() {
   const { intervalMs } = useLiveRefreshSetting();
   const analyticsRefreshConfig = useMemo(
     () => ({
-      minIntervalMs: intervalMs,
-      fallbackIntervalMs: Math.max(intervalMs * 30, 30000),
+      minIntervalMs: Math.max(intervalMs, 5000),
+      fallbackIntervalMs: Math.max(intervalMs * 20, 60000),
     }),
     [intervalMs],
   );
   const sessionsRefreshConfig = useMemo(
     () => ({
-      minIntervalMs: Math.max(intervalMs * 5, 5000),
-      fallbackIntervalMs: Math.max(intervalMs * 60, 60000),
+      minIntervalMs: Math.max(intervalMs * 3, 15000),
+      fallbackIntervalMs: Math.max(intervalMs * 8, 120000),
     }),
     [intervalMs],
   );
@@ -299,27 +481,53 @@ export default function BehaviorAnalyticsPage() {
   const [userView, setUserView] = useState(defaultUserViewState);
 
   const [sessionExplorerType, setSessionExplorerType] = useState("all");
-  const [sessionExplorerSearchInput, setSessionExplorerSearchInput] = useState("");
+  const [sessionExplorerSearchInput, setSessionExplorerSearchInput] =
+    useState("");
   const [sessionExplorerSearch, setSessionExplorerSearch] = useState("");
   const [sessionExplorerPage, setSessionExplorerPage] = useState(1);
   const [sessionExplorerLoading, setSessionExplorerLoading] = useState(false);
-  const [sessionExplorer, setSessionExplorer] = useState(defaultSessionsExplorerState);
+  const [sessionExplorer, setSessionExplorer] = useState(
+    defaultSessionsExplorerState,
+  );
 
   const [productJourneyLoading, setProductJourneyLoading] = useState(false);
-  const [productJourney, setProductJourney] = useState(defaultProductJourneyState);
+  const [productJourney, setProductJourney] = useState(
+    defaultProductJourneyState,
+  );
+  const [liveButtonFeed, setLiveButtonFeed] = useState([]);
   const [funnelTypeFilter, setFunnelTypeFilter] = useState("all");
   const [funnelMinSessionsInput, setFunnelMinSessionsInput] = useState("1");
   const [funnelSearchInput, setFunnelSearchInput] = useState("");
 
   const workerState = useMemo(() => getWorkerState(performance), [performance]);
   const timelineInsights = useMemo(
-    () => buildTimelineInsights(userView.timeline || [], userView.productInteractions || []),
+    () =>
+      buildTimelineInsights(
+        userView.timeline || [],
+        userView.productInteractions || [],
+      ),
     [userView.timeline, userView.productInteractions],
   );
-  const guestStats = useMemo(() => resolveUserTypeStats(engagement, "guest"), [engagement]);
-  const loggedInStats = useMemo(() => resolveUserTypeStats(engagement, "logged_in"), [engagement]);
+  const guestStats = useMemo(
+    () => resolveUserTypeStats(engagement, "guest"),
+    [engagement],
+  );
+  const loggedInStats = useMemo(
+    () => resolveUserTypeStats(engagement, "logged_in"),
+    [engagement],
+  );
   const attractiveButtons = useMemo(
-    () => (Array.isArray(engagement?.attractiveButtons) ? engagement.attractiveButtons : []),
+    () =>
+      Array.isArray(engagement?.attractiveButtons)
+        ? engagement.attractiveButtons
+        : [],
+    [engagement],
+  );
+  const bannerPerformance = useMemo(
+    () =>
+      Array.isArray(engagement?.bannerPerformance)
+        ? engagement.bannerPerformance
+        : [],
     [engagement],
   );
   const topConvertingButtonsByProduct = useMemo(
@@ -329,8 +537,33 @@ export default function BehaviorAnalyticsPage() {
         : [],
     [engagement],
   );
+  const movementByEvent = useMemo(
+    () => engagement?.movementByEvent || {},
+    [engagement],
+  );
+  const movementRows = useMemo(
+    () =>
+      Object.entries(movementByEvent || {}).map(([eventName, value]) => ({
+        eventName,
+        total: toNumber(value?.total, 0),
+        guest: toNumber(value?.guest, 0),
+        loggedIn: toNumber(value?.loggedIn, 0),
+        avgDurationMs: toNumber(value?.avgDurationMs, 0),
+      })),
+    [movementByEvent],
+  );
+  const movementTargets = useMemo(
+    () =>
+      Array.isArray(engagement?.movementTargets)
+        ? engagement.movementTargets
+        : [],
+    [engagement],
+  );
   const filteredTopConvertingButtonsByProduct = useMemo(() => {
-    const minSessions = Math.max(Math.floor(toNumber(funnelMinSessionsInput, 1)), 1);
+    const minSessions = Math.max(
+      Math.floor(toNumber(funnelMinSessionsInput, 1)),
+      1,
+    );
     const search = safeString(funnelSearchInput).toLowerCase();
 
     return topConvertingButtonsByProduct.filter((row) => {
@@ -338,11 +571,17 @@ export default function BehaviorAnalyticsPage() {
         return false;
       }
 
-      if (funnelTypeFilter === "guest" && toNumber(row?.guestClickedSessions, 0) <= 0) {
+      if (
+        funnelTypeFilter === "guest" &&
+        toNumber(row?.guestClickedSessions, 0) <= 0
+      ) {
         return false;
       }
 
-      if (funnelTypeFilter === "logged_in" && toNumber(row?.loggedInClickedSessions, 0) <= 0) {
+      if (
+        funnelTypeFilter === "logged_in" &&
+        toNumber(row?.loggedInClickedSessions, 0) <= 0
+      ) {
         return false;
       }
 
@@ -360,80 +599,183 @@ export default function BehaviorAnalyticsPage() {
     funnelMinSessionsInput,
     funnelSearchInput,
   ]);
+  const plainLanguageSummary = useMemo(
+    () => buildPlainLanguageSummary({ overview, engagement, timelineInsights }),
+    [overview, engagement, timelineInsights],
+  );
+  const selectedRange = useMemo(
+    () => buildRangeFromDates(startDate, endDate, rangeDays),
+    [startDate, endDate, rangeDays],
+  );
+  const behaviorRangePresets = useMemo(
+    () => [
+      { label: "Today", type: "days", value: 0 },
+      { label: "7D", type: "days", value: 7 },
+      { label: "30D", type: "days", value: 30 },
+      { label: "90D", type: "days", value: 90 },
+      { label: "1Y", type: "days", value: 365 },
+      { label: "2Y", type: "days", value: 730 },
+      { label: "This Year", type: "year", value: new Date().getFullYear() },
+      { label: "Last Year", type: "year", value: new Date().getFullYear() - 1 },
+      { label: "All Time", type: "allTime", value: null },
+    ],
+    [],
+  );
+  const yearOptions = useMemo(() => {
+    const years = [];
+    const currentYear = new Date().getFullYear();
+    for (let year = currentYear; year >= 2015; year -= 1) years.push(String(year));
+    return years;
+  }, []);
 
-  const fetchAnalytics = useCallback(async ({ silent = false } = {}) => {
-    if (!token) return;
-    if (!silent) {
-      setLoading(true);
-      setError("");
-    } else {
-      setRefreshing(true);
-    }
+  const applyBehaviorRange = useCallback((range) => {
+    setStartDate(range.startDate);
+    setEndDate(range.endDate);
+  }, []);
 
-    const nextRange = buildRangeQuery(rangeDays);
-    const params = `from=${encodeURIComponent(nextRange.from)}&to=${encodeURIComponent(nextRange.to)}`;
-
-    try {
-      const [overviewRes, engagementRes, performanceRes] = await Promise.all([
-        getData(`/api/admin/analytics/behavior/overview?${params}`, token),
-        getData(`/api/admin/analytics/behavior/engagement?${params}`, token),
-        getData(`/api/admin/analytics/behavior/performance`, token),
-      ]);
-
-      if (!overviewRes?.success) {
-        throw new Error(getApiErrorMessage(overviewRes, "Failed to load behavior overview"));
+  const applyBehaviorPreset = useCallback(
+    (preset) => {
+      if (!preset) return;
+      if (preset.type === "allTime") {
+        applyBehaviorRange(buildBehaviorAllTimeRange());
+        setRangeDays(3650);
+        return;
       }
-      if (!engagementRes?.success) {
-        throw new Error(getApiErrorMessage(engagementRes, "Failed to load behavior engagement"));
+      if (preset.type === "year") {
+        const year = String(preset.value || "");
+        setYearJump(year);
+        applyBehaviorRange(buildYearRange(year));
+        setRangeDays(365);
+        return;
       }
-      if (!performanceRes?.success) {
-        throw new Error(getApiErrorMessage(performanceRes, "Failed to load behavior performance"));
-      }
+      const nextRange = buildRangeQuery(Number(preset.value || 30));
+      applyBehaviorRange({
+        startDate: formatDateInput(nextRange.from),
+        endDate: formatDateInput(nextRange.to),
+      });
+      setRangeDays(Number(preset.value || 30));
+    },
+    [applyBehaviorRange],
+  );
 
-      setOverview(overviewRes.data);
-      setEngagement(engagementRes.data);
-      setPerformance(performanceRes.data);
-    } catch (requestError) {
-      setError(requestError?.message || "Failed to load behavior analytics");
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [rangeDays, token]);
-
-  const fetchSessionExplorer = useCallback(async ({ silent = false } = {}) => {
-    if (!token) return;
-    if (!silent) {
-      setSessionExplorerLoading(true);
-      setError("");
-    }
-
-    const nextRange = buildRangeQuery(rangeDays);
-    const params = new URLSearchParams({
-      from: nextRange.from,
-      to: nextRange.to,
-      type: sessionExplorerType,
-      page: String(sessionExplorerPage),
-      limit: "25",
-    });
-
-    if (sessionExplorerSearch) params.set("q", sessionExplorerSearch);
-
-    try {
-      const response = await getData(`/api/admin/analytics/behavior/sessions?${params.toString()}`, token);
-      if (!response?.success) {
-        throw new Error(getApiErrorMessage(response, "Failed to load sessions"));
-      }
-      setSessionExplorer({ ...defaultSessionsExplorerState, ...response.data });
-    } catch (requestError) {
-      setError(requestError?.message || "Failed to load sessions");
-      setSessionExplorer(defaultSessionsExplorerState);
-    } finally {
+  const fetchAnalytics = useCallback(
+    async ({ silent = false } = {}) => {
+      if (!token) return;
       if (!silent) {
-        setSessionExplorerLoading(false);
+        setLoading(true);
+        setError("");
+      } else {
+        setRefreshing(true);
       }
-    }
-  }, [rangeDays, sessionExplorerType, sessionExplorerPage, sessionExplorerSearch, token]);
+
+      const nextRange = selectedRange;
+      const params = `from=${encodeURIComponent(nextRange.from)}&to=${encodeURIComponent(nextRange.to)}`;
+
+      try {
+        const [overviewRes, engagementRes, performanceRes] = await Promise.all([
+          getData(`/api/admin/analytics/behavior/overview?${params}`, token),
+          getData(`/api/admin/analytics/behavior/engagement?${params}`, token),
+          getData(`/api/admin/analytics/behavior/performance`, token),
+        ]);
+
+        const failures = [];
+
+        if (overviewRes?.success) {
+          setOverview(overviewRes.data);
+        } else {
+          failures.push(
+            getApiErrorMessage(overviewRes, "Failed to load behavior overview"),
+          );
+        }
+
+        if (engagementRes?.success) {
+          setEngagement(engagementRes.data);
+        } else {
+          failures.push(
+            getApiErrorMessage(
+              engagementRes,
+              "Failed to load behavior engagement data",
+            ),
+          );
+        }
+
+        if (performanceRes?.success) {
+          setPerformance(performanceRes.data);
+        } else {
+          failures.push(
+            getApiErrorMessage(
+              performanceRes,
+              "Failed to load behavior performance",
+            ),
+          );
+        }
+
+        // Keep existing data rendered when one endpoint has a transient issue.
+        if (failures.length === 3) {
+          setError(failures[0]);
+        } else {
+          setError("");
+        }
+      } catch (requestError) {
+        setError(requestError?.message || "Failed to load behavior analytics");
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [selectedRange, token],
+  );
+
+  const fetchSessionExplorer = useCallback(
+    async ({ silent = false } = {}) => {
+      if (!token) return;
+      if (!silent) {
+        setSessionExplorerLoading(true);
+        setError("");
+      }
+
+      const nextRange = selectedRange;
+      const params = new URLSearchParams({
+        from: nextRange.from,
+        to: nextRange.to,
+        type: sessionExplorerType,
+        page: String(sessionExplorerPage),
+        limit: "25",
+      });
+
+      if (sessionExplorerSearch) params.set("q", sessionExplorerSearch);
+
+      try {
+        const response = await getData(
+          `/api/admin/analytics/behavior/sessions?${params.toString()}`,
+          token,
+        );
+        if (!response?.success) {
+          throw new Error(
+            getApiErrorMessage(response, "Failed to load sessions"),
+          );
+        }
+        setSessionExplorer({
+          ...defaultSessionsExplorerState,
+          ...response.data,
+        });
+      } catch (requestError) {
+        setError(requestError?.message || "Failed to load sessions");
+        setSessionExplorer(defaultSessionsExplorerState);
+      } finally {
+        if (!silent) {
+          setSessionExplorerLoading(false);
+        }
+      }
+    },
+    [
+      selectedRange,
+      sessionExplorerType,
+      sessionExplorerPage,
+      sessionExplorerSearch,
+      token,
+    ],
+  );
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) router.push("/login");
@@ -457,10 +799,40 @@ export default function BehaviorAnalyticsPage() {
     sessionsRefreshConfig,
   );
 
-  const handleAnalyticsBatch = useCallback(() => {
-    triggerAnalyticsRefresh();
-    triggerSessionsRefresh();
-  }, [triggerAnalyticsRefresh, triggerSessionsRefresh]);
+  const handleAnalyticsBatch = useCallback(
+    (payload = {}) => {
+      const previewEvents = Array.isArray(payload?.eventsPreview)
+        ? payload.eventsPreview
+        : [];
+      if (previewEvents.length > 0) {
+        const mapped = previewEvents
+          .slice()
+          .reverse()
+          .filter((event) =>
+            LIVE_BUTTON_EVENT_TYPES.has(safeString(event?.eventType)),
+          )
+          .map((event, index) => ({
+            id: `${safeString(event?.sessionId) || "session"}-${safeString(event?.timestamp) || Date.now()}-${index}`,
+            eventType: safeString(event?.eventType || "unknown"),
+            target: resolvePreviewTarget(event),
+            page: normalizePath(event?.pageUrl),
+            timestamp: event?.timestamp || new Date().toISOString(),
+            sessionId: safeString(event?.sessionId) || "-",
+            userType: safeString(event?.userId) ? "Logged In" : "Guest",
+          }));
+
+        if (mapped.length > 0) {
+          setLiveButtonFeed((prev) =>
+            [...mapped, ...prev].slice(0, LIVE_BUTTON_FEED_LIMIT),
+          );
+        }
+      }
+
+      triggerAnalyticsRefresh();
+      triggerSessionsRefresh();
+    },
+    [triggerAnalyticsRefresh, triggerSessionsRefresh],
+  );
 
   useAdminRealtime({ token, onAnalyticsBatch: handleAnalyticsBatch });
 
@@ -469,7 +841,9 @@ export default function BehaviorAnalyticsPage() {
     const normalizedLookup = safeString(rawLookupValue);
 
     if (!normalizedLookup) {
-      setError(`${normalizedMode === "user" ? "User ID" : "Session ID"} is required`);
+      setError(
+        `${normalizedMode === "user" ? "User ID" : "Session ID"} is required`,
+      );
       return;
     }
 
@@ -482,9 +856,14 @@ export default function BehaviorAnalyticsPage() {
         : `sessionId=${encodeURIComponent(normalizedLookup)}`;
 
     try {
-      const response = await getData(`/api/admin/analytics/behavior/user-activity?${query}&limit=3000`, token);
+      const response = await getData(
+        `/api/admin/analytics/behavior/user-activity?${query}&limit=3000`,
+        token,
+      );
       if (!response?.success) {
-        throw new Error(getApiErrorMessage(response, "Failed to load user activity"));
+        throw new Error(
+          getApiErrorMessage(response, "Failed to load user activity"),
+        );
       }
       setUserView({ ...defaultUserViewState, ...response.data });
     } catch (requestError) {
@@ -495,7 +874,8 @@ export default function BehaviorAnalyticsPage() {
     }
   };
 
-  const fetchUserView = async () => fetchUserViewByLookup(lookupMode, lookupValue);
+  const fetchUserView = async () =>
+    fetchUserViewByLookup(lookupMode, lookupValue);
 
   const handleApplySessionSearch = () => {
     const nextSearch = safeString(sessionExplorerSearchInput);
@@ -529,7 +909,9 @@ export default function BehaviorAnalyticsPage() {
     const normalizedProductId = safeString(productIdInput);
 
     if (!normalizedLookup) {
-      setError(`${lookupMode === "user" ? "User ID" : "Session ID"} is required`);
+      setError(
+        `${lookupMode === "user" ? "User ID" : "Session ID"} is required`,
+      );
       return;
     }
 
@@ -546,7 +928,7 @@ export default function BehaviorAnalyticsPage() {
         ? `userId=${encodeURIComponent(normalizedLookup)}`
         : `sessionId=${encodeURIComponent(normalizedLookup)}`;
 
-    const nextRange = buildRangeQuery(rangeDays);
+    const nextRange = selectedRange;
     const rangeParams = `from=${encodeURIComponent(nextRange.from)}&to=${encodeURIComponent(nextRange.to)}`;
 
     try {
@@ -556,7 +938,9 @@ export default function BehaviorAnalyticsPage() {
       );
 
       if (!response?.success) {
-        throw new Error(getApiErrorMessage(response, "Failed to load product journey"));
+        throw new Error(
+          getApiErrorMessage(response, "Failed to load product journey"),
+        );
       }
 
       setProductJourney({ ...defaultProductJourneyState, ...response.data });
@@ -576,27 +960,67 @@ export default function BehaviorAnalyticsPage() {
       <div className="max-w-7xl mx-auto space-y-6">
         <div className="flex flex-wrap justify-between items-center gap-3">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Behavior Analytics</h1>
-            <p className="text-sm text-gray-600 mt-1">Track user behavior across sessions, pages, sections, and products.</p>
+            <h1 className="text-3xl font-bold text-gray-900">
+              Customer Behavior Insights
+            </h1>
+            <p className="text-sm text-gray-600 mt-1">
+              Understand where shoppers engage, where they drop, and what to improve next.
+            </p>
             <div className="mt-3">
-              <StatusPill label={`Worker: ${workerState.label}`} className={workerState.className} />
+              <StatusPill
+                label={`Worker: ${workerState.label}`}
+                className={workerState.className}
+              />
             </div>
           </div>
-          <div className="flex gap-2">
-            {RANGE_OPTIONS.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                onClick={() => setRangeDays(option.value)}
-                className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${
-                  rangeDays === option.value
-                    ? "bg-blue-600 text-white"
-                    : "bg-white text-gray-700 border border-gray-300"
-                }`}
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-wrap gap-2 justify-end">
+              {behaviorRangePresets.map((preset) => (
+                <button
+                  key={preset.label}
+                  type="button"
+                  onClick={() => applyBehaviorPreset(preset)}
+                  className="px-3 py-2 rounded-lg text-xs font-semibold transition bg-white text-gray-700 border border-gray-300 hover:bg-gray-100"
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+            <div className="flex flex-wrap items-center gap-2 justify-end">
+              <input
+                type="date"
+                value={startDate}
+                onChange={(event) => {
+                  setStartDate(event.target.value);
+                }}
+                className="border border-gray-300 rounded-lg px-2 py-1.5 text-xs"
+              />
+              <span className="text-xs text-gray-400">to</span>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(event) => {
+                  setEndDate(event.target.value);
+                }}
+                className="border border-gray-300 rounded-lg px-2 py-1.5 text-xs"
+              />
+              <select
+                value={yearJump}
+                onChange={(event) => {
+                  const year = String(event.target.value || "");
+                  setYearJump(year);
+                  applyBehaviorRange(buildYearRange(year));
+                }}
+                className="border border-gray-300 rounded-lg px-2 py-1.5 text-xs bg-white"
               >
-                {option.label}
-              </button>
-            ))}
+                {yearOptions.map((year) => (
+                  <option key={year} value={year}>
+                    {year}
+                  </option>
+                ))}
+              </select>
+              <span className="text-xs text-gray-500">{selectedRange.days} days</span>
+            </div>
           </div>
         </div>
 
@@ -606,7 +1030,7 @@ export default function BehaviorAnalyticsPage() {
 
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
           <div className="flex items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold text-gray-900">How To Use</h2>
+            <h2 className="text-lg font-semibold text-gray-900">Quick Guide</h2>
             <button
               type="button"
               onClick={() => setShowGuide((prev) => !prev)}
@@ -621,28 +1045,39 @@ export default function BehaviorAnalyticsPage() {
               <GuideCard
                 title="Overview"
                 lines={[
-                  "Sessions and active users show traffic quality.",
-                  "Bounce + conversion indicate funnel health.",
+                  "Total sessions and active users show how much quality traffic you have.",
+                  "Bounce and conversion tell you whether visitors are moving toward purchase.",
                 ]}
               />
               <GuideCard
                 title="Session Explorer"
                 lines={[
-                  "Filter All, Guest, or Logged In sessions.",
-                  "Open Session/User for full timeline drilldown.",
+                  "Filter by All, Guest, or Logged In to compare behavior quickly.",
+                  "Open any session to see the exact journey step by step.",
                 ]}
               />
               <GuideCard
-                title="Product And Section"
+                title="Pages, Buttons, Products"
                 lines={[
-                  "Use timeline insights for top pages and sections.",
-                  "Use Most Attractive Buttons to spot strongest CTAs.",
-                  "Use Top Converting Button By Product to find winning product CTA patterns.",
-                  "Load Product Journey for product-level behavior.",
+                  "Use timeline cards to find top pages and sections.",
+                  "Use top button reports to identify strongest call-to-action placements.",
+                  "Use product conversion funnel to find winning and weak product CTAs.",
+                  "Load Product Journey to understand one product end-to-end.",
                 ]}
               />
             </div>
           ) : null}
+        </div>
+
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+          <PlainLanguageCard
+            title="What Happened"
+            rows={plainLanguageSummary.highlights}
+          />
+          <PlainLanguageCard
+            title="What To Do Next"
+            rows={plainLanguageSummary.recommendations}
+          />
         </div>
 
         {error ? (
@@ -652,18 +1087,72 @@ export default function BehaviorAnalyticsPage() {
         ) : null}
 
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          <MetricCard title="Total Sessions" value={overview?.totalSessions || 0} hint="Guest + logged-in sessions." />
-          <MetricCard title="Active Users" value={overview?.activeUsers || 0} hint="Recently active logged-in users." />
-          <MetricCard title="Avg Active Time" value={formatDuration(overview?.avgActiveTimeMs || 0)} hint="Active time, not idle open tab time." />
-          <MetricCard title="Bounce Rate" value={`${toNumber(overview?.bounceRate, 0).toFixed(2)}%`} hint="Lower is better." />
-          <MetricCard title="Conversion Rate" value={`${toNumber(overview?.conversionRate, 0).toFixed(2)}%`} hint="Sessions that reached purchase." />
-          <MetricCard title="Revenue" value={formatCurrency(overview?.revenue || 0)} hint="Tracked purchase amount." />
+          <MetricCard
+            title="Total Sessions"
+            value={overview?.totalSessions || 0}
+            hint="Guest + logged-in sessions."
+          />
+          <MetricCard
+            title="Active Users"
+            value={overview?.activeUsers || 0}
+            hint="Recently active logged-in users."
+          />
+          <MetricCard
+            title="Average Active Time"
+            value={formatDuration(overview?.avgActiveTimeMs || 0)}
+            hint="Active time, not idle open tab time."
+          />
+          <MetricCard
+            title="Bounce Rate"
+            value={`${toNumber(overview?.bounceRate, 0).toFixed(2)}%`}
+            hint="Lower is better."
+          />
+          <MetricCard
+            title="Conversion Rate"
+            value={`${toNumber(overview?.conversionRate, 0).toFixed(2)}%`}
+            hint="Share of sessions that completed a purchase."
+          />
+          <MetricCard
+            title="Revenue"
+            value={formatCurrency(overview?.revenue || 0)}
+            hint="Tracked purchase amount."
+          />
         </div>
 
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-          <MetricCard title="Avg Time Per Product" value={formatDuration(engagement?.avgTimePerProductMs || 0)} hint="Hover/product interaction depth." />
-          <MetricCard title="Avg Scroll Depth" value={`${toNumber(engagement?.avgScrollDepth, 0).toFixed(1)}%`} hint="How far users scroll." />
-          <MetricCard title="Rage Click Count" value={engagement?.rageClickCount || 0} hint="Possible UX friction." />
+          <MetricCard
+            title="Avg Time Per Product"
+            value={formatDuration(engagement?.avgTimePerProductMs || 0)}
+            hint="Hover/product interaction depth."
+          />
+          <MetricCard
+            title="Avg Scroll Depth"
+            value={`${toNumber(engagement?.avgScrollDepth, 0).toFixed(1)}%`}
+            hint="How far users scroll."
+          />
+          <MetricCard
+            title="Rage Click Count"
+            value={engagement?.rageClickCount || 0}
+            hint="Possible UX friction."
+          />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <MetricCard
+            title="Drop-Off Rate"
+            value={`${toNumber(engagement?.dropOffRate ?? engagement?.drop_off_rate, 0).toFixed(2)}%`}
+            hint="Sessions that did not reach purchase."
+          />
+          <MetricCard
+            title="Guest Drop-Off"
+            value={`${toNumber(engagement?.dropOffRateGuest, 0).toFixed(2)}%`}
+            hint="Guest-only session drop-off."
+          />
+          <MetricCard
+            title="Logged-In Drop-Off"
+            value={`${toNumber(engagement?.dropOffRateLoggedIn, 0).toFixed(2)}%`}
+            hint="Logged-in session drop-off."
+          />
         </div>
 
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
@@ -690,7 +1179,12 @@ export default function BehaviorAnalyticsPage() {
                   <XAxis dataKey="minute" />
                   <YAxis />
                   <Tooltip />
-                  <Line type="monotone" dataKey="events" stroke="#2563eb" strokeWidth={2} />
+                  <Line
+                    type="monotone"
+                    dataKey="events"
+                    stroke="#2563eb"
+                    strokeWidth={2}
+                  />
                 </LineChart>
               </ResponsiveContainer>
             ) : (
@@ -701,7 +1195,12 @@ export default function BehaviorAnalyticsPage() {
           <ChartCard title="Section Engagement (Top)">
             {(engagement?.sectionEngagementHeatmap || []).length > 0 ? (
               <ResponsiveContainer width="100%" height={280}>
-                <BarChart data={(engagement?.sectionEngagementHeatmap || []).slice(0, 12)}>
+                <BarChart
+                  data={(engagement?.sectionEngagementHeatmap || []).slice(
+                    0,
+                    12,
+                  )}
+                >
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="sectionName" />
                   <YAxis />
@@ -718,14 +1217,155 @@ export default function BehaviorAnalyticsPage() {
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <h2 className="text-xl font-semibold text-gray-900">Most Attractive Buttons</h2>
+              <h2 className="text-xl font-semibold text-gray-900">
+                Most Interacted Buttons
+              </h2>
               <p className="text-sm text-gray-600 mt-1">
-                Ranked by clicks, rage-click pressure, and pre-click dwell time.
+                Button-level view of where users click, hover, and focus most.
               </p>
             </div>
-            <div className="text-xs text-gray-500">
-              Range: {rangeDays} days
+          </div>
+
+          {movementTargets.length > 0 ? (
+            <div className="mt-4 overflow-auto">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="text-left text-gray-500 border-b border-gray-200">
+                    <th className="py-2 pr-3">Button Target</th>
+                    <th className="py-2 pr-3">Total Movement Events</th>
+                    <th className="py-2 pr-3">Guest</th>
+                    <th className="py-2 pr-3">Logged In</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {movementTargets.map((row) => (
+                    <tr
+                      key={`${row.target}-${row.total}`}
+                      className="border-b border-gray-100 text-gray-700"
+                    >
+                      <td className="py-2 pr-3 font-medium break-all">
+                        {row.target}
+                      </td>
+                      <td className="py-2 pr-3">{toNumber(row.total, 0)}</td>
+                      <td className="py-2 pr-3">{toNumber(row.guest, 0)}</td>
+                      <td className="py-2 pr-3">{toNumber(row.loggedIn, 0)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
+          ) : (
+            <EmptyHint text="No per-button movement targets captured for this range." />
+          )}
+        </div>
+
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900">
+                Live Button Activity Feed
+              </h2>
+              <p className="text-sm text-gray-600 mt-1">
+                Real-time click, hover, and focus activity from current sessions.
+              </p>
+            </div>
+          </div>
+
+          {liveButtonFeed.length > 0 ? (
+            <div className="mt-4 overflow-auto max-h-96">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="text-left text-gray-500 border-b border-gray-200">
+                    <th className="py-2 pr-3">Time</th>
+                    <th className="py-2 pr-3">Event</th>
+                    <th className="py-2 pr-3">Button Target</th>
+                    <th className="py-2 pr-3">User Type</th>
+                    <th className="py-2 pr-3">Session</th>
+                    <th className="py-2 pr-3">Page</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {liveButtonFeed.map((row) => (
+                    <tr
+                      key={row.id}
+                      className="border-b border-gray-100 text-gray-700 align-top"
+                    >
+                      <td className="py-2 pr-3 whitespace-nowrap">
+                        {formatDateTime(row.timestamp)}
+                      </td>
+                      <td className="py-2 pr-3 font-medium">{row.eventType}</td>
+                      <td className="py-2 pr-3 break-all">{row.target}</td>
+                      <td className="py-2 pr-3">{row.userType}</td>
+                      <td className="py-2 pr-3 break-all">{row.sessionId}</td>
+                      <td className="py-2 pr-3 break-all">{row.page}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <EmptyHint text="Live feed will populate as users click, hover, or focus buttons." />
+          )}
+        </div>
+
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900">
+                Button Movement Events
+              </h2>
+              <p className="text-sm text-gray-600 mt-1">
+                Hover and focus activity split by guest and logged-in users.
+              </p>
+            </div>
+          </div>
+
+          {movementRows.length > 0 ? (
+            <div className="mt-4 overflow-auto">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="text-left text-gray-500 border-b border-gray-200">
+                    <th className="py-2 pr-3">Event</th>
+                    <th className="py-2 pr-3">Total</th>
+                    <th className="py-2 pr-3">Guest</th>
+                    <th className="py-2 pr-3">Logged In</th>
+                    <th className="py-2 pr-3">Avg Duration</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {movementRows.map((row) => (
+                    <tr
+                      key={row.eventName}
+                      className="border-b border-gray-100 text-gray-700"
+                    >
+                      <td className="py-2 pr-3 font-medium">{row.eventName}</td>
+                      <td className="py-2 pr-3">{toNumber(row.total, 0)}</td>
+                      <td className="py-2 pr-3">{toNumber(row.guest, 0)}</td>
+                      <td className="py-2 pr-3">{toNumber(row.loggedIn, 0)}</td>
+                      <td className="py-2 pr-3">
+                        {formatDuration(row.avgDurationMs)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <EmptyHint text="No movement events captured for this range." />
+          )}
+        </div>
+
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900">
+                Most Attractive Buttons
+              </h2>
+              <p className="text-sm text-gray-600 mt-1">
+                Ranked by interaction quality: clicks, rage clicks, and attention time.
+              </p>
+            </div>
+            <div className="text-xs text-gray-500">Range: {selectedRange.days} days</div>
           </div>
 
           {attractiveButtons.length > 0 ? (
@@ -745,21 +1385,41 @@ export default function BehaviorAnalyticsPage() {
                 </thead>
                 <tbody>
                   {attractiveButtons.slice(0, 20).map((row) => (
-                    <tr key={`${row.target}-${row.score}`} className="border-b border-gray-100 text-gray-700 align-top">
+                    <tr
+                      key={`${row.target}-${row.score}`}
+                      className="border-b border-gray-100 text-gray-700 align-top"
+                    >
                       <td className="py-2 pr-3">
-                        <div className="font-semibold break-all">{row.target}</div>
-                        <div className="text-xs text-gray-500">Score: {toNumber(row.score, 0).toFixed(2)}</div>
+                        <div className="font-semibold break-all">
+                          {row.target}
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          Score: {toNumber(row.score, 0).toFixed(2)}
+                        </div>
                       </td>
-                      <td className="py-2 pr-3">{toNumber(row.totalInteractions, 0)}</td>
-                      <td className="py-2 pr-3">{formatDuration(row.avgPreClickDwellMs || 0)}</td>
-                      <td className="py-2 pr-3">{toNumber(row.rageClicks, 0)}</td>
-                      <td className="py-2 pr-3">{toNumber(row.guestInteractions, 0)}</td>
-                      <td className="py-2 pr-3">{toNumber(row.loggedInInteractions, 0)}</td>
+                      <td className="py-2 pr-3">
+                        {toNumber(row.totalInteractions, 0)}
+                      </td>
+                      <td className="py-2 pr-3">
+                        {formatDuration(row.avgPreClickDwellMs || 0)}
+                      </td>
+                      <td className="py-2 pr-3">
+                        {toNumber(row.rageClicks, 0)}
+                      </td>
+                      <td className="py-2 pr-3">
+                        {toNumber(row.guestInteractions, 0)}
+                      </td>
+                      <td className="py-2 pr-3">
+                        {toNumber(row.loggedInInteractions, 0)}
+                      </td>
                       <td className="py-2 pr-3">
                         {(row.topSections || []).length > 0 ? (
                           <div className="space-y-1">
                             {row.topSections.map((section) => (
-                              <div key={`${row.target}-${section}`} className="text-xs text-gray-700 break-all">
+                              <div
+                                key={`${row.target}-${section}`}
+                                className="text-xs text-gray-700 break-all"
+                              >
                                 {section}
                               </div>
                             ))}
@@ -772,7 +1432,10 @@ export default function BehaviorAnalyticsPage() {
                         {(row.topProducts || []).length > 0 ? (
                           <div className="space-y-1">
                             {row.topProducts.map((product) => (
-                              <div key={`${row.target}-${product}`} className="text-xs text-gray-700 break-all">
+                              <div
+                                key={`${row.target}-${product}`}
+                                className="text-xs text-gray-700 break-all"
+                              >
                                 {product}
                               </div>
                             ))}
@@ -796,14 +1459,92 @@ export default function BehaviorAnalyticsPage() {
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <h2 className="text-xl font-semibold text-gray-900">Top Converting Button By Product</h2>
+              <h2 className="text-xl font-semibold text-gray-900">
+                Banner Performance
+              </h2>
               <p className="text-sm text-gray-600 mt-1">
-                Funnel by session: click to add-to-cart to checkout to purchase for each button and product.
+                Banner click engagement split by guest and logged-in visitors.
               </p>
             </div>
-            <div className="text-xs text-gray-500">
-              Range: {rangeDays} days
+            <div className="text-xs text-gray-500">Range: {selectedRange.days} days</div>
+          </div>
+
+          {bannerPerformance.length > 0 ? (
+            <div className="mt-4 overflow-auto">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="text-left text-gray-500 border-b border-gray-200">
+                    <th className="py-2 pr-3">Banner</th>
+                    <th className="py-2 pr-3">Campaign / Position</th>
+                    <th className="py-2 pr-3">Interactions</th>
+                    <th className="py-2 pr-3">Clicks</th>
+                    <th className="py-2 pr-3">Rage Clicks</th>
+                    <th className="py-2 pr-3">Guest</th>
+                    <th className="py-2 pr-3">Logged In</th>
+                    <th className="py-2 pr-3">Avg Pre-Click Dwell</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {bannerPerformance.slice(0, 20).map((row) => (
+                    <tr
+                      key={`${row.bannerId || row.bannerName || "banner"}-${row.bannerPosition || ""}`}
+                      className="border-b border-gray-100 text-gray-700 align-top"
+                    >
+                      <td className="py-2 pr-3">
+                        <div className="font-semibold break-all">
+                          {row.bannerName || row.bannerId || "-"}
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          ID: {row.bannerId || "-"}
+                        </div>
+                      </td>
+                      <td className="py-2 pr-3">
+                        <div className="text-xs text-gray-700 break-all">
+                          {row.bannerCampaign || "-"}
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          {row.bannerPosition || "-"}
+                        </div>
+                      </td>
+                      <td className="py-2 pr-3">
+                        {toNumber(row.totalInteractions, 0)}
+                      </td>
+                      <td className="py-2 pr-3">{toNumber(row.clicks, 0)}</td>
+                      <td className="py-2 pr-3">
+                        {toNumber(row.rageClicks, 0)}
+                      </td>
+                      <td className="py-2 pr-3">
+                        {toNumber(row.guestInteractions, 0)}
+                      </td>
+                      <td className="py-2 pr-3">
+                        {toNumber(row.loggedInInteractions, 0)}
+                      </td>
+                      <td className="py-2 pr-3">
+                        {formatDuration(row.avgPreClickDwellMs || 0)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
+          ) : (
+            <div className="mt-4">
+              <EmptyHint text="No banner click interactions available for this range." />
+            </div>
+          )}
+        </div>
+
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900">
+                Top Converting Button By Product
+              </h2>
+              <p className="text-sm text-gray-600 mt-1">
+                Product-wise funnel from click to add-to-cart to checkout to purchase.
+              </p>
+            </div>
+            <div className="text-xs text-gray-500">Range: {selectedRange.days} days</div>
           </div>
 
           <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -819,7 +1560,11 @@ export default function BehaviorAnalyticsPage() {
                       : "bg-white text-gray-700"
                   }`}
                 >
-                  {type === "all" ? "All" : type === "guest" ? "Guest" : "Logged In"}
+                  {type === "all"
+                    ? "All"
+                    : type === "guest"
+                      ? "Guest"
+                      : "Logged In"}
                 </button>
               ))}
             </div>
@@ -829,9 +1574,11 @@ export default function BehaviorAnalyticsPage() {
               min={1}
               step={1}
               value={funnelMinSessionsInput}
-              onChange={(event) => setFunnelMinSessionsInput(event.target.value)}
+              onChange={(event) =>
+                setFunnelMinSessionsInput(event.target.value)
+              }
               placeholder="Min clicked sessions"
-              className="border border-gray-300 rounded-lg px-3 py-2 w-[170px]"
+              className="border border-gray-300 rounded-lg px-3 py-2 w-42.5"
             />
 
             <input
@@ -856,7 +1603,8 @@ export default function BehaviorAnalyticsPage() {
           </div>
 
           <div className="mt-3 text-xs text-gray-600">
-            Showing {filteredTopConvertingButtonsByProduct.length} of {topConvertingButtonsByProduct.length} rows
+            Showing {filteredTopConvertingButtonsByProduct.length} of{" "}
+            {topConvertingButtonsByProduct.length} rows
           </div>
 
           {filteredTopConvertingButtonsByProduct.length > 0 ? (
@@ -875,48 +1623,60 @@ export default function BehaviorAnalyticsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredTopConvertingButtonsByProduct.slice(0, 25).map((row) => (
-                    <tr
-                      key={`${row.target}-${row.productId}`}
-                      className="border-b border-gray-100 text-gray-700 align-top"
-                    >
-                      <td className="py-2 pr-3">
-                        <div className="font-semibold break-all">{row.target || "-"}</div>
-                        <div className="text-xs text-gray-500">
-                          Clicks: {toNumber(row.totalClickEvents, 0)}
-                        </div>
-                      </td>
-                      <td className="py-2 pr-3 break-all">{row.productId || "-"}</td>
-                      <td className="py-2 pr-3">{toNumber(row.sessionsClicked, 0)}</td>
-                      <td className="py-2 pr-3">
-                        {formatPercent(row.clickToCartRate)}
-                        <div className="text-xs text-gray-500">
-                          {toNumber(row.sessionsWithAddToCart, 0)} sessions
-                        </div>
-                      </td>
-                      <td className="py-2 pr-3">
-                        {formatPercent(row.cartToCheckoutRate)}
-                        <div className="text-xs text-gray-500">
-                          {toNumber(row.sessionsWithCheckout, 0)} sessions
-                        </div>
-                      </td>
-                      <td className="py-2 pr-3">
-                        {formatPercent(row.clickToPurchaseRate)}
-                        <div className="text-xs text-gray-500">
-                          {toNumber(row.sessionsWithPurchase, 0)} sessions
-                        </div>
-                      </td>
-                      <td className="py-2 pr-3">
-                        <div className="text-xs text-gray-700">
-                          {toNumber(row.guestClickedSessions, 0)} / {toNumber(row.loggedInClickedSessions, 0)}
-                        </div>
-                        <div className="text-xs text-gray-500">
-                          Purchase: {toNumber(row.guestPurchaseSessions, 0)} / {toNumber(row.loggedInPurchaseSessions, 0)}
-                        </div>
-                      </td>
-                      <td className="py-2 pr-3">{formatDuration(row.avgPreClickDwellMs || 0)}</td>
-                    </tr>
-                  ))}
+                  {filteredTopConvertingButtonsByProduct
+                    .slice(0, 25)
+                    .map((row) => (
+                      <tr
+                        key={`${row.target}-${row.productId}`}
+                        className="border-b border-gray-100 text-gray-700 align-top"
+                      >
+                        <td className="py-2 pr-3">
+                          <div className="font-semibold break-all">
+                            {row.target || "-"}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            Clicks: {toNumber(row.totalClickEvents, 0)}
+                          </div>
+                        </td>
+                        <td className="py-2 pr-3 break-all">
+                          {row.productId || "-"}
+                        </td>
+                        <td className="py-2 pr-3">
+                          {toNumber(row.sessionsClicked, 0)}
+                        </td>
+                        <td className="py-2 pr-3">
+                          {formatPercent(row.clickToCartRate)}
+                          <div className="text-xs text-gray-500">
+                            {toNumber(row.sessionsWithAddToCart, 0)} sessions
+                          </div>
+                        </td>
+                        <td className="py-2 pr-3">
+                          {formatPercent(row.cartToCheckoutRate)}
+                          <div className="text-xs text-gray-500">
+                            {toNumber(row.sessionsWithCheckout, 0)} sessions
+                          </div>
+                        </td>
+                        <td className="py-2 pr-3">
+                          {formatPercent(row.clickToPurchaseRate)}
+                          <div className="text-xs text-gray-500">
+                            {toNumber(row.sessionsWithPurchase, 0)} sessions
+                          </div>
+                        </td>
+                        <td className="py-2 pr-3">
+                          <div className="text-xs text-gray-700">
+                            {toNumber(row.guestClickedSessions, 0)} /{" "}
+                            {toNumber(row.loggedInClickedSessions, 0)}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            Purchase: {toNumber(row.guestPurchaseSessions, 0)} /{" "}
+                            {toNumber(row.loggedInPurchaseSessions, 0)}
+                          </div>
+                        </td>
+                        <td className="py-2 pr-3">
+                          {formatDuration(row.avgPreClickDwellMs || 0)}
+                        </td>
+                      </tr>
+                    ))}
                 </tbody>
               </table>
             </div>
@@ -928,8 +1688,13 @@ export default function BehaviorAnalyticsPage() {
         </div>
 
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-          <h2 className="text-xl font-semibold text-gray-900">Session Explorer</h2>
-          <p className="text-sm text-gray-600 mt-1">Browse guest and logged-in sessions, then open one for full drilldown.</p>
+          <h2 className="text-xl font-semibold text-gray-900">
+            Session Explorer
+          </h2>
+          <p className="text-sm text-gray-600 mt-1">
+            Browse guest and logged-in sessions, then open one for full
+            drilldown.
+          </p>
 
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <div className="inline-flex rounded-lg border border-gray-200 overflow-hidden">
@@ -942,10 +1707,16 @@ export default function BehaviorAnalyticsPage() {
                     setSessionExplorerPage(1);
                   }}
                   className={`px-4 py-2 text-sm font-semibold ${
-                    sessionExplorerType === type ? "bg-blue-600 text-white" : "bg-white text-gray-700"
+                    sessionExplorerType === type
+                      ? "bg-blue-600 text-white"
+                      : "bg-white text-gray-700"
                   }`}
                 >
-                  {type === "all" ? "All" : type === "guest" ? "Guest" : "Logged In"}
+                  {type === "all"
+                    ? "All"
+                    : type === "guest"
+                      ? "Guest"
+                      : "Logged In"}
                 </button>
               ))}
             </div>
@@ -953,7 +1724,9 @@ export default function BehaviorAnalyticsPage() {
             <input
               type="text"
               value={sessionExplorerSearchInput}
-              onChange={(event) => setSessionExplorerSearchInput(event.target.value)}
+              onChange={(event) =>
+                setSessionExplorerSearchInput(event.target.value)
+              }
               onKeyDown={(event) => {
                 if (event.key === "Enter") handleApplySessionSearch();
               }}
@@ -972,7 +1745,9 @@ export default function BehaviorAnalyticsPage() {
           </div>
 
           <div className="mt-3 text-xs text-gray-600">
-            Sessions: {sessionExplorer?.totals?.all || 0} | Guest: {sessionExplorer?.totals?.guest || 0} | Logged In: {sessionExplorer?.totals?.loggedIn || 0}
+            Sessions: {sessionExplorer?.totals?.all || 0} | Guest:{" "}
+            {sessionExplorer?.totals?.guest || 0} | Logged In:{" "}
+            {sessionExplorer?.totals?.loggedIn || 0}
           </div>
 
           <div className="mt-4 overflow-auto">
@@ -982,6 +1757,7 @@ export default function BehaviorAnalyticsPage() {
                   <tr className="text-left text-gray-500 border-b border-gray-200">
                     <th className="py-2 pr-3">Session</th>
                     <th className="py-2 pr-3">User</th>
+                    <th className="py-2 pr-3">IP</th>
                     <th className="py-2 pr-3">Type</th>
                     <th className="py-2 pr-3">Intent</th>
                     <th className="py-2 pr-3">Started</th>
@@ -996,20 +1772,59 @@ export default function BehaviorAnalyticsPage() {
                   {(sessionExplorer?.items || []).map((session) => {
                     const intent = getSessionIntent(session);
                     return (
-                      <tr key={session.sessionId} className="border-b border-gray-100 text-gray-700">
-                        <td className="py-2 pr-3 break-all">{session.sessionId || "-"}</td>
-                        <td className="py-2 pr-3 break-all">{session.userId || "-"}</td>
-                        <td className="py-2 pr-3">{session.userId ? "Logged In" : "Guest"}</td>
-                        <td className="py-2 pr-3"><StatusPill label={intent.label} className={intent.className} /></td>
-                        <td className="py-2 pr-3">{formatDateTime(session.startedAt)}</td>
-                        <td className="py-2 pr-3">{formatDateTime(session.lastSeenAt)}</td>
+                      <tr
+                        key={session.sessionId}
+                        className="border-b border-gray-100 text-gray-700"
+                      >
+                        <td className="py-2 pr-3 break-all">
+                          {session.sessionId || "-"}
+                        </td>
+                        <td className="py-2 pr-3 break-all">
+                          {session.userId || "-"}
+                        </td>
+                        <td className="py-2 pr-3 break-all text-xs">
+                          {session.ipAddress || "-"}
+                        </td>
+                        <td className="py-2 pr-3">
+                          {session.userId ? "Logged In" : "Guest"}
+                        </td>
+                        <td className="py-2 pr-3">
+                          <StatusPill
+                            label={intent.label}
+                            className={intent.className}
+                          />
+                        </td>
+                        <td className="py-2 pr-3">
+                          {formatDateTime(session.startedAt)}
+                        </td>
+                        <td className="py-2 pr-3">
+                          {formatDateTime(session.lastSeenAt)}
+                        </td>
                         <td className="py-2 pr-3">{session.eventCount || 0}</td>
                         <td className="py-2 pr-3">{session.pageViews || 0}</td>
-                        <td className="py-2 pr-3">{formatDuration(session.totalActiveTime || 0)}</td>
+                        <td className="py-2 pr-3">
+                          {formatDuration(session.totalActiveTime || 0)}
+                        </td>
                         <td className="py-2 pr-3">
                           <div className="flex flex-wrap gap-2">
-                            <button type="button" onClick={() => handleOpenSession(session.sessionId)} className="px-2.5 py-1 rounded-md bg-blue-600 text-white text-xs font-semibold">Open Session</button>
-                            {session.userId ? <button type="button" onClick={() => handleOpenUser(session.userId)} className="px-2.5 py-1 rounded-md bg-emerald-600 text-white text-xs font-semibold">Open User</button> : null}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleOpenSession(session.sessionId)
+                              }
+                              className="px-2.5 py-1 rounded-md bg-blue-600 text-white text-xs font-semibold"
+                            >
+                              Open Session
+                            </button>
+                            {session.userId ? (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenUser(session.userId)}
+                                className="px-2.5 py-1 rounded-md bg-emerald-600 text-white text-xs font-semibold"
+                              >
+                                Open User
+                              </button>
+                            ) : null}
                           </div>
                         </td>
                       </tr>
@@ -1030,8 +1845,13 @@ export default function BehaviorAnalyticsPage() {
             <div className="flex gap-2">
               <button
                 type="button"
-                onClick={() => setSessionExplorerPage((prev) => Math.max(prev - 1, 1))}
-                disabled={!sessionExplorer?.pagination?.hasPrev || sessionExplorerLoading}
+                onClick={() =>
+                  setSessionExplorerPage((prev) => Math.max(prev - 1, 1))
+                }
+                disabled={
+                  !sessionExplorer?.pagination?.hasPrev ||
+                  sessionExplorerLoading
+                }
                 className="px-3 py-1.5 rounded-md border border-gray-300 text-sm font-semibold text-gray-700 disabled:opacity-50"
               >
                 Previous
@@ -1039,7 +1859,10 @@ export default function BehaviorAnalyticsPage() {
               <button
                 type="button"
                 onClick={() => setSessionExplorerPage((prev) => prev + 1)}
-                disabled={!sessionExplorer?.pagination?.hasNext || sessionExplorerLoading}
+                disabled={
+                  !sessionExplorer?.pagination?.hasNext ||
+                  sessionExplorerLoading
+                }
                 className="px-3 py-1.5 rounded-md border border-gray-300 text-sm font-semibold text-gray-700 disabled:opacity-50"
               >
                 Next
@@ -1049,13 +1872,30 @@ export default function BehaviorAnalyticsPage() {
         </div>
 
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-          <h2 className="text-xl font-semibold text-gray-900">User Activity Viewer</h2>
-          <p className="text-sm text-gray-600 mt-1">Inspect timeline and top page/section/product behavior for a user or session.</p>
+          <h2 className="text-xl font-semibold text-gray-900">
+            User Activity Viewer
+          </h2>
+          <p className="text-sm text-gray-600 mt-1">
+            Inspect timeline and top page/section/product behavior for a user or
+            session.
+          </p>
 
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <div className="inline-flex rounded-lg border border-gray-200 overflow-hidden">
-              <button type="button" onClick={() => setLookupMode("user")} className={`px-4 py-2 text-sm font-semibold ${lookupMode === "user" ? "bg-blue-600 text-white" : "bg-white text-gray-700"}`}>User ID</button>
-              <button type="button" onClick={() => setLookupMode("session")} className={`px-4 py-2 text-sm font-semibold ${lookupMode === "session" ? "bg-blue-600 text-white" : "bg-white text-gray-700"}`}>Session ID</button>
+              <button
+                type="button"
+                onClick={() => setLookupMode("user")}
+                className={`px-4 py-2 text-sm font-semibold ${lookupMode === "user" ? "bg-blue-600 text-white" : "bg-white text-gray-700"}`}
+              >
+                User ID
+              </button>
+              <button
+                type="button"
+                onClick={() => setLookupMode("session")}
+                className={`px-4 py-2 text-sm font-semibold ${lookupMode === "session" ? "bg-blue-600 text-white" : "bg-white text-gray-700"}`}
+              >
+                Session ID
+              </button>
             </div>
 
             <input
@@ -1065,11 +1905,18 @@ export default function BehaviorAnalyticsPage() {
               onKeyDown={(event) => {
                 if (event.key === "Enter") fetchUserView();
               }}
-              placeholder={lookupMode === "user" ? "Enter user ID" : "Enter session ID"}
-              className="border border-gray-300 rounded-lg px-3 py-2 w-full md:w-[380px]"
+              placeholder={
+                lookupMode === "user" ? "Enter user ID" : "Enter session ID"
+              }
+              className="border border-gray-300 rounded-lg px-3 py-2 w-full md:w-95"
             />
 
-            <button type="button" onClick={fetchUserView} disabled={userViewLoading} className="bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold disabled:opacity-60">
+            <button
+              type="button"
+              onClick={fetchUserView}
+              disabled={userViewLoading}
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold disabled:opacity-60"
+            >
               {userViewLoading ? "Loading..." : "Load Activity"}
             </button>
 
@@ -1081,37 +1928,92 @@ export default function BehaviorAnalyticsPage() {
                 if (event.key === "Enter") fetchProductJourney();
               }}
               placeholder="Enter product ID (Mongo _id)"
-              className="border border-gray-300 rounded-lg px-3 py-2 w-full md:w-[280px]"
+              className="border border-gray-300 rounded-lg px-3 py-2 w-full md:w-70"
             />
 
-            <button type="button" onClick={fetchProductJourney} disabled={productJourneyLoading} className="bg-slate-800 text-white px-4 py-2 rounded-lg font-semibold disabled:opacity-60">
+            <button
+              type="button"
+              onClick={fetchProductJourney}
+              disabled={productJourneyLoading}
+              className="bg-slate-800 text-white px-4 py-2 rounded-lg font-semibold disabled:opacity-60"
+            >
               {productJourneyLoading ? "Loading..." : "Load Product Journey"}
             </button>
           </div>
           <div className="mt-2 text-xs text-gray-500">
-            Use the product `_id` from your products collection or from `/product/:id` URL.
+            Use the product `_id` from your products collection or from
+            `/product/:id` URL.
           </div>
 
           {(userView.timeline || []).length > 0 ? (
             <>
               <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 mt-6">
-                <MiniMetricCard title="Events" value={timelineInsights.totalEvents} />
-                <MiniMetricCard title="Unique Pages" value={timelineInsights.uniquePages} />
-                <MiniMetricCard title="Unique Sections" value={timelineInsights.uniqueSections} />
-                <MiniMetricCard title="Unique Products" value={timelineInsights.uniqueProducts} />
-                <MiniMetricCard title="Add To Cart" value={timelineInsights.addToCart} />
-                <MiniMetricCard title="Checkout" value={timelineInsights.checkoutStarted} />
+                <MiniMetricCard
+                  title="Events"
+                  value={timelineInsights.totalEvents}
+                />
+                <MiniMetricCard
+                  title="Unique Pages"
+                  value={timelineInsights.uniquePages}
+                />
+                <MiniMetricCard
+                  title="Unique Sections"
+                  value={timelineInsights.uniqueSections}
+                />
+                <MiniMetricCard
+                  title="Unique Products"
+                  value={timelineInsights.uniqueProducts}
+                />
+                <MiniMetricCard
+                  title="Added To Cart"
+                  value={timelineInsights.addToCart}
+                />
+                <MiniMetricCard
+                  title="Checkout Started"
+                  value={timelineInsights.checkoutStarted}
+                />
               </div>
 
               <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 mt-4">
-                <InsightCard title="Top Event Types" rows={timelineInsights.eventTypes.slice(0, 10).map((row) => `${row.eventType}: ${row.count}`)} />
-                <InsightCard title="Top Pages" rows={timelineInsights.pages.slice(0, 10).map((row) => `${row.path} (${row.events})`)} />
-                <InsightCard title="Top Sections" rows={timelineInsights.sections.slice(0, 10).map((row) => `${row.sectionName} (${row.events}, ${formatDuration(row.durationMs)})`)} />
+                <InsightCard
+                  title="Most Common Actions"
+                  rows={timelineInsights.eventTypes
+                    .slice(0, 10)
+                    .map((row) => `${row.eventType}: ${row.count}`)}
+                />
+                <InsightCard
+                  title="Most Visited Pages"
+                  rows={timelineInsights.pages
+                    .slice(0, 10)
+                    .map((row) => `${row.path} (${row.events})`)}
+                />
+                <InsightCard
+                  title="Most Active Sections"
+                  rows={timelineInsights.sections
+                    .slice(0, 10)
+                    .map(
+                      (row) =>
+                        `${row.sectionName} (${row.events}, ${formatDuration(row.durationMs)})`,
+                    )}
+                />
               </div>
 
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mt-4">
-                <InsightCard title="Top Click Targets" rows={timelineInsights.clickTargets.slice(0, 10).map((row) => `${row.target} (${row.clicks})`)} />
-                <InsightCard title="Sections By Time" rows={timelineInsights.sectionsByDuration.slice(0, 10).map((row) => `${row.sectionName} (${formatDuration(row.durationMs)})`)} />
+                <InsightCard
+                  title="Most Clicked Targets"
+                  rows={timelineInsights.clickTargets
+                    .slice(0, 10)
+                    .map((row) => `${row.target} (${row.clicks})`)}
+                />
+                <InsightCard
+                  title="Sections With Highest Time Spent"
+                  rows={timelineInsights.sectionsByDuration
+                    .slice(0, 10)
+                    .map(
+                      (row) =>
+                        `${row.sectionName} (${formatDuration(row.durationMs)})`,
+                    )}
+                />
               </div>
 
               <div className="mt-4 bg-gray-50 rounded-lg p-4">
@@ -1120,28 +2022,67 @@ export default function BehaviorAnalyticsPage() {
                   {(userView.timeline || []).map((event) => {
                     const metadata = event?.metadata || {};
                     const sectionName = resolveEventSectionName(event);
-                    const sectionDuration = Math.max(toNumber(metadata?.durationMs, 0), 0);
+                    const sectionDuration = Math.max(
+                      toNumber(metadata?.durationMs, 0),
+                      0,
+                    );
                     const clickTarget = resolveClickTarget(metadata);
                     const productId = resolveEventProductId(event);
                     const activeTimeMs = Math.max(
-                      toNumber(metadata?.activeTimeMs ?? metadata?.pageActiveMs, 0),
+                      toNumber(
+                        metadata?.activeTimeMs ?? metadata?.pageActiveMs,
+                        0,
+                      ),
                       0,
                     );
 
                     return (
-                      <div key={event.eventId} className="bg-white rounded-md border border-gray-200 p-3">
-                        <div className="text-xs text-gray-500">{formatDateTime(event.timestamp)}</div>
-                        <div className="text-sm font-semibold text-gray-800">{event.eventType}</div>
-                        <div className="text-xs text-gray-600 break-all">Session: {event.sessionId || "-"}</div>
-                        {event.pageUrl ? <div className="text-xs text-gray-600 break-all">Page: {normalizePath(event.pageUrl)}</div> : null}
+                      <div
+                        key={event.eventId}
+                        className="bg-white rounded-md border border-gray-200 p-3"
+                      >
+                        <div className="text-xs text-gray-500">
+                          {formatDateTime(event.timestamp)}
+                        </div>
+                        <div className="text-sm font-semibold text-gray-800">
+                          {event.eventType}
+                        </div>
+                        <div className="text-xs text-gray-600 break-all">
+                          Session: {event.sessionId || "-"}
+                        </div>
+                        {event.pageUrl ? (
+                          <div className="text-xs text-gray-600 break-all">
+                            Page: {normalizePath(event.pageUrl)}
+                          </div>
+                        ) : null}
 
-                        {(sectionName || clickTarget || productId || activeTimeMs > 0 || sectionDuration > 0) ? (
+                        {sectionName ||
+                        clickTarget ||
+                        productId ||
+                        activeTimeMs > 0 ||
+                        sectionDuration > 0 ? (
                           <div className="mt-2 flex flex-wrap gap-2">
-                            {sectionName ? <EventMetaPill label={`Section: ${sectionName}`} /> : null}
-                            {sectionDuration > 0 ? <EventMetaPill label={`Section Time: ${formatDuration(sectionDuration)}`} /> : null}
-                            {clickTarget ? <EventMetaPill label={`Click: ${clickTarget}`} /> : null}
-                            {activeTimeMs > 0 ? <EventMetaPill label={`Active: ${formatDuration(activeTimeMs)}`} /> : null}
-                            {productId ? <EventMetaPill label={`Product: ${productId}`} /> : null}
+                            {sectionName ? (
+                              <EventMetaPill
+                                label={`Section: ${sectionName}`}
+                              />
+                            ) : null}
+                            {sectionDuration > 0 ? (
+                              <EventMetaPill
+                                label={`Section Time: ${formatDuration(sectionDuration)}`}
+                              />
+                            ) : null}
+                            {clickTarget ? (
+                              <EventMetaPill label={`Click: ${clickTarget}`} />
+                            ) : null}
+                            {activeTimeMs > 0 ? (
+                              <EventMetaPill
+                                label={`Active: ${formatDuration(activeTimeMs)}`}
+                              />
+                            ) : null}
+                            {productId ? (
+                              <EventMetaPill label={`Product: ${productId}`} />
+                            ) : null}
                           </div>
                         ) : null}
                       </div>
@@ -1152,16 +2093,31 @@ export default function BehaviorAnalyticsPage() {
 
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mt-4">
                 <div className="bg-gray-50 rounded-lg p-4">
-                  <h3 className="font-semibold text-gray-800 mb-2">Session Summary</h3>
+                  <h3 className="font-semibold text-gray-800 mb-2">
+                    Session Snapshot
+                  </h3>
                   {userView.sessionSummary ? (
                     <div className="bg-white rounded-md border border-gray-200 p-3 text-xs text-gray-700 space-y-1">
-                      <div className="break-all">{userView.sessionSummary.sessionId || "-"}</div>
-                      <div>Started: {formatDateTime(userView.sessionSummary.startedAt)}</div>
-                      <div>Last Seen: {formatDateTime(userView.sessionSummary.lastSeenAt)}</div>
-                      <div>Active Time: {formatDuration(userView.sessionSummary.totalActiveTime || 0)}</div>
+                      <div className="break-all">
+                        {userView.sessionSummary.sessionId || "-"}
+                      </div>
                       <div>
-                        Events: {userView.sessionSummary.eventCount || 0} | Page Views:{" "}
-                        {userView.sessionSummary.pageViews || 0}
+                        Started:{" "}
+                        {formatDateTime(userView.sessionSummary.startedAt)}
+                      </div>
+                      <div>
+                        Last Seen:{" "}
+                        {formatDateTime(userView.sessionSummary.lastSeenAt)}
+                      </div>
+                      <div>
+                        Active Time:{" "}
+                        {formatDuration(
+                          userView.sessionSummary.totalActiveTime || 0,
+                        )}
+                      </div>
+                      <div>
+                        Events: {userView.sessionSummary.eventCount || 0} | Page
+                        Views: {userView.sessionSummary.pageViews || 0}
                       </div>
                     </div>
                   ) : (
@@ -1170,20 +2126,30 @@ export default function BehaviorAnalyticsPage() {
                 </div>
 
                 <div className="bg-gray-50 rounded-lg p-4">
-                  <h3 className="font-semibold text-gray-800 mb-2">Purchase History</h3>
+                  <h3 className="font-semibold text-gray-800 mb-2">
+                    Purchase History
+                  </h3>
                   {(userView.purchaseHistory || []).length > 0 ? (
                     <div className="max-h-48 overflow-auto space-y-2">
-                      {(userView.purchaseHistory || []).map((purchase, index) => (
-                        <div
-                          key={purchase.eventId || `${purchase.orderId}-${index}`}
-                          className="bg-white rounded-md border border-gray-200 p-3 text-xs text-gray-700"
-                        >
-                          <div>{formatDateTime(purchase.timestamp)}</div>
-                          <div className="break-all">Order: {purchase.orderId || "-"}</div>
-                          <div>Amount: {formatCurrency(purchase.amount || 0)}</div>
-                          <div>Method: {purchase.paymentMethod || "-"}</div>
-                        </div>
-                      ))}
+                      {(userView.purchaseHistory || []).map(
+                        (purchase, index) => (
+                          <div
+                            key={
+                              purchase.eventId || `${purchase.orderId}-${index}`
+                            }
+                            className="bg-white rounded-md border border-gray-200 p-3 text-xs text-gray-700"
+                          >
+                            <div>{formatDateTime(purchase.timestamp)}</div>
+                            <div className="break-all">
+                              Order: {purchase.orderId || "-"}
+                            </div>
+                            <div>
+                              Amount: {formatCurrency(purchase.amount || 0)}
+                            </div>
+                            <div>Method: {purchase.paymentMethod || "-"}</div>
+                          </div>
+                        ),
+                      )}
                     </div>
                   ) : (
                     <EmptyHint text="No purchase events for this lookup." />
@@ -1201,11 +2167,22 @@ export default function BehaviorAnalyticsPage() {
             <div className="mt-8 border-t border-gray-200 pt-6">
               <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900">Product Journey</h3>
-                  <p className="text-sm text-gray-600">Product: {productJourney?.product?.productName || productJourney?.product?.productId || "-"}</p>
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    Product Interest Journey
+                  </h3>
+                  <p className="text-sm text-gray-600">
+                    Product:{" "}
+                    {productJourney?.product?.productName ||
+                      productJourney?.product?.productId ||
+                      "-"}
+                  </p>
                 </div>
                 <StatusPill
-                  label={productJourney.summary.roamingWithoutCart ? "Roaming Without Cart" : "Has Conversion Signals"}
+                  label={
+                    productJourney.summary.roamingWithoutCart
+                      ? "Roaming Without Cart"
+                      : "Has Conversion Signals"
+                  }
                   className={
                     productJourney.summary.roamingWithoutCart
                       ? "bg-amber-100 text-amber-800 border-amber-200"
@@ -1215,14 +2192,44 @@ export default function BehaviorAnalyticsPage() {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-                <MiniMetricCard title="Product Views" value={productJourney.summary.productViews || 0} />
-                <MiniMetricCard title="Unique Sessions" value={productJourney.summary.uniqueSessions || 0} />
-                <MiniMetricCard title="Add To Cart" value={productJourney.summary.addToCartCount || 0} />
-                <MiniMetricCard title="Purchases" value={productJourney.summary.purchaseCount || 0} />
-                <MiniMetricCard title="Avg Hover Time" value={formatDuration(productJourney.summary.avgHoverDurationMs || 0)} />
-                <MiniMetricCard title="Total Hover" value={formatDuration(productJourney.summary.totalHoverDurationMs || 0)} />
-                <MiniMetricCard title="Checkout Started" value={productJourney.summary.checkoutStartedCount || 0} />
-                <MiniMetricCard title="Revenue" value={formatCurrency(productJourney.summary.attributedRevenue || 0)} />
+                <MiniMetricCard
+                  title="Product Views"
+                  value={productJourney.summary.productViews || 0}
+                />
+                <MiniMetricCard
+                  title="Unique Sessions"
+                  value={productJourney.summary.uniqueSessions || 0}
+                />
+                <MiniMetricCard
+                  title="Add To Cart"
+                  value={productJourney.summary.addToCartCount || 0}
+                />
+                <MiniMetricCard
+                  title="Purchases"
+                  value={productJourney.summary.purchaseCount || 0}
+                />
+                <MiniMetricCard
+                  title="Avg Hover Time"
+                  value={formatDuration(
+                    productJourney.summary.avgHoverDurationMs || 0,
+                  )}
+                />
+                <MiniMetricCard
+                  title="Total Hover"
+                  value={formatDuration(
+                    productJourney.summary.totalHoverDurationMs || 0,
+                  )}
+                />
+                <MiniMetricCard
+                  title="Checkout Started"
+                  value={productJourney.summary.checkoutStartedCount || 0}
+                />
+                <MiniMetricCard
+                  title="Revenue"
+                  value={formatCurrency(
+                    productJourney.summary.attributedRevenue || 0,
+                  )}
+                />
               </div>
             </div>
           ) : null}
@@ -1242,7 +2249,12 @@ function MetricCard({ title, value, hint }) {
   );
 }
 
-function UserTypeBehaviorCard({ title, stats, conversionRate, badgeClassName = "" }) {
+function UserTypeBehaviorCard({
+  title,
+  stats,
+  conversionRate,
+  badgeClassName = "",
+}) {
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
       <div className="flex items-center justify-between gap-2">
@@ -1255,17 +2267,36 @@ function UserTypeBehaviorCard({ title, stats, conversionRate, badgeClassName = "
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
         <MiniMetricCard title="Sessions" value={toNumber(stats?.sessions, 0)} />
         <MiniMetricCard title="Events" value={toNumber(stats?.events, 0)} />
-        <MiniMetricCard title="Add To Cart" value={toNumber(stats?.addToCart, 0)} />
-        <MiniMetricCard title="Purchases" value={toNumber(stats?.purchases, 0)} />
+        <MiniMetricCard
+          title="Add To Cart"
+          value={toNumber(stats?.addToCart, 0)}
+        />
+        <MiniMetricCard
+          title="Purchases"
+          value={toNumber(stats?.purchases, 0)}
+        />
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
-        <MiniMetricCard title="Checkout" value={toNumber(stats?.checkoutStarted, 0)} />
-        <MiniMetricCard title="Click Events" value={toNumber(stats?.clickEvents, 0)} />
-        <MiniMetricCard title="Rage Clicks" value={toNumber(stats?.rageClicks, 0)} />
-        <MiniMetricCard title="Avg Session Active" value={formatDuration(stats?.avgSessionActiveTimeMs || 0)} />
+        <MiniMetricCard
+          title="Checkout"
+          value={toNumber(stats?.checkoutStarted, 0)}
+        />
+        <MiniMetricCard
+          title="Click Events"
+          value={toNumber(stats?.clickEvents, 0)}
+        />
+        <MiniMetricCard
+          title="Rage Clicks"
+          value={toNumber(stats?.rageClicks, 0)}
+        />
+        <MiniMetricCard
+          title="Avg Session Active"
+          value={formatDuration(stats?.avgSessionActiveTimeMs || 0)}
+        />
       </div>
       <div className="text-xs text-gray-500 mt-3">
-        Avg page active at heartbeat: {formatDuration(stats?.avgPageActiveMs || 0)}
+        Avg page active at heartbeat:{" "}
+        {formatDuration(stats?.avgPageActiveMs || 0)}
       </div>
     </div>
   );
@@ -1302,9 +2333,29 @@ function GuideCard({ title, lines = [] }) {
   );
 }
 
+function PlainLanguageCard({ title, rows = [] }) {
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+      <h3 className="text-base font-semibold text-gray-900">{title}</h3>
+      <div className="mt-3 space-y-2">
+        {rows.map((row) => (
+          <div
+            key={`${title}-${row}`}
+            className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700"
+          >
+            {row}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function StatusPill({ label, className = "" }) {
   return (
-    <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold ${className}`}>
+    <span
+      className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold ${className}`}
+    >
       {label}
     </span>
   );
@@ -1325,7 +2376,10 @@ function InsightCard({ title, rows = [] }) {
       {rows.length > 0 ? (
         <div className="max-h-60 overflow-auto space-y-2">
           {rows.map((row, index) => (
-            <div key={`${title}-${index}`} className="text-sm text-gray-700 bg-gray-50 rounded-md border border-gray-200 px-3 py-2">
+            <div
+              key={`${title}-${index}`}
+              className="text-sm text-gray-700 bg-gray-50 rounded-md border border-gray-200 px-3 py-2"
+            >
               {row}
             </div>
           ))}

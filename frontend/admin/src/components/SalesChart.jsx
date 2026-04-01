@@ -1,17 +1,17 @@
 "use client";
 
-import { useMemo, useRef } from "react";
 import {
-  Chart as ChartJS,
   CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Tooltip,
-  Legend,
+  Chart as ChartJS,
   Filler,
+  Legend,
+  LinearScale,
+  LineElement,
+  PointElement,
+  Tooltip,
 } from "chart.js";
 import zoomPlugin from "chartjs-plugin-zoom";
+import { useMemo, useRef } from "react";
 import { Line } from "react-chartjs-2";
 
 ChartJS.register(
@@ -74,7 +74,11 @@ const formatXAxisLabel = (value, interval) => {
   return raw;
 };
 
-export default function SalesChart({ data = [], interval = "daily" }) {
+export default function SalesChart({
+  data = [],
+  interval = "daily",
+  cumulative = false,
+}) {
   const chartRef = useRef(null);
   const rawLabels = useMemo(() => data.map((point) => point.date), [data]);
   const labels = useMemo(
@@ -87,7 +91,9 @@ export default function SalesChart({ data = [], interval = "daily" }) {
       labels,
       datasets: [
         {
-          label: "Confirmed Orders",
+          label: cumulative
+            ? "Confirmed Orders (Cumulative)"
+            : "Confirmed Orders",
           data: data.map((point) => point.confirmed || 0),
           borderColor: "#3B82F6",
           backgroundColor: "rgba(59, 130, 246, 0.1)",
@@ -96,7 +102,7 @@ export default function SalesChart({ data = [], interval = "daily" }) {
           pointHoverRadius: 5,
         },
         {
-          label: "RTO Orders",
+          label: cumulative ? "RTO Orders (Cumulative)" : "RTO Orders",
           data: data.map((point) => point.rto || 0),
           borderColor: "#F97316",
           backgroundColor: "rgba(249, 115, 22, 0.1)",
@@ -167,7 +173,8 @@ export default function SalesChart({ data = [], interval = "daily" }) {
             Confirmed vs RTO Orders
           </h2>
           <p className="text-sm text-gray-500">
-            Interval: {interval.charAt(0).toUpperCase() + interval.slice(1)} · counts per bucket
+            Interval: {interval.charAt(0).toUpperCase() + interval.slice(1)} ·{" "}
+            {cumulative ? "running total in range" : "counts per bucket"}
           </p>
         </div>
         <button

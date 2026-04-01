@@ -107,9 +107,61 @@ const defaultItem = {
 const round2 = (value) =>
   Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
 
+const roundCurrency = (value) => Math.round(Number(value || 0));
+
 const toSafeNumber = (value, fallback = 0) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const formatVariantOptionLabel = (variant = {}) => {
+  const name = String(variant?.name || "").trim();
+  const sku = String(variant?.sku || "").trim();
+  const weight = Number(variant?.weight || 0);
+  const unit = String(variant?.unit || "").trim();
+
+  let weightLabel = "";
+  if (weight > 0 && unit) {
+    if (unit.toLowerCase() === "g" && weight >= 1000) {
+      weightLabel = `${Number((weight / 1000).toFixed(2))} kg`;
+    } else {
+      weightLabel = `${weight} ${unit}`;
+    }
+  }
+
+  const label = [name, weightLabel].filter(Boolean).join(" - ");
+  if (label) return label;
+  if (name) return name;
+  if (weightLabel) return weightLabel;
+  return sku || "Variant";
+};
+
+const isAiComboType = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase() === "ai_suggested";
+
+const resolveAvailableUnitsForProduct = (product, variantId = "") => {
+  if (!product) return 0;
+
+  if (product.track_inventory === false || product.trackInventory === false) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  const normalizedVariantId = String(variantId || "").trim();
+  if (normalizedVariantId && Array.isArray(product?.variants)) {
+    const variant = product.variants.find(
+      (entry) => String(entry?._id || "") === normalizedVariantId,
+    );
+    if (!variant) return 0;
+    const variantStock = Number(variant?.stock_quantity ?? variant?.stock ?? 0);
+    const variantReserved = Number(variant?.reserved_quantity ?? 0);
+    return Math.max(variantStock - variantReserved, 0);
+  }
+
+  const stock = Number(product?.stock_quantity ?? product?.stock ?? 0);
+  const reserved = Number(product?.reserved_quantity ?? 0);
+  return Math.max(stock - reserved, 0);
 };
 
 const normalizeDateValue = (value) => {
@@ -430,6 +482,7 @@ export default function ComboManagementPage() {
   }, [isAuthenticated, token, fetchCombos, fetchProducts, fetchDrafts]);
 
   const pricingPreview = useMemo(() => {
+    const shouldRoundForAi = isAiComboType(formData.comboType);
     const itemTotals = comboItems.map((item) => {
       const product = productMap.get(String(item.productId || ""));
       if (!product) return 0;
@@ -464,12 +517,59 @@ export default function ComboManagementPage() {
 
     comboPrice = Math.max(comboPrice, 0);
     if (comboPrice > originalTotal) comboPrice = originalTotal;
+    if (shouldRoundForAi) {
+      comboPrice = roundCurrency(comboPrice);
+      if (comboPrice > originalTotal) comboPrice = originalTotal;
+    }
     const savings = round2(Math.max(originalTotal - comboPrice, 0));
     const discountPercent =
-      originalTotal > 0 ? round2((savings / originalTotal) * 100) : 0;
+      originalTotal > 0
+        ? shouldRoundForAi
+          ? Math.ceil((savings / originalTotal) * 100)
+          : round2((savings / originalTotal) * 100)
+        : 0;
 
     return { originalTotal, comboPrice, savings, discountPercent };
-  }, [comboItems, formData.pricingType, formData.pricingValue, productMap]);
+  }, [
+    comboItems,
+    formData.comboType,
+    formData.pricingType,
+    formData.pricingValue,
+    formData.price,
+    formData.originalPrice,
+    productMap,
+  ]);
+
+  const comboAvailabilityPreview = useMemo(() => {
+    const itemAvailability = comboItems.map((item) => {
+      const requiredQuantity = Math.max(toSafeNumber(item.quantity, 1), 1);
+      const product = productMap.get(String(item.productId || ""));
+      const availableUnits = resolveAvailableUnitsForProduct(
+        product,
+        item.variantId,
+      );
+      const comboUnits = Number.isFinite(availableUnits)
+        ? Math.max(Math.floor(availableUnits / requiredQuantity), 0)
+        : Number.POSITIVE_INFINITY;
+
+      return {
+        key: `${String(item.productId || "")}:${String(item.variantId || "")}`,
+        requiredQuantity,
+        availableUnits,
+        comboUnits,
+      };
+    });
+
+    const finiteComboUnits = itemAvailability
+      .map((entry) => entry.comboUnits)
+      .filter((value) => Number.isFinite(value));
+
+    const autoComboQuantity = finiteComboUnits.length
+      ? Math.max(Math.min(...finiteComboUnits), 0)
+      : 0;
+
+    return { itemAvailability, autoComboQuantity };
+  }, [comboItems, productMap]);
 
   const suggestionStats = useMemo(() => {
     const scores = suggestions
@@ -633,6 +733,12 @@ export default function ComboManagementPage() {
   };
 
   const buildPayload = () => {
+    const shouldRoundForAi = isAiComboType(formData.comboType);
+    const rawComboPrice = toSafeNumber(formData.price, 0);
+    const normalizedComboPrice = shouldRoundForAi
+      ? roundCurrency(rawComboPrice)
+      : rawComboPrice;
+
     const payload = {
       name: formData.name.trim(),
       slug: formData.slug.trim() || undefined,
@@ -643,8 +749,8 @@ export default function ComboManagementPage() {
       reviewCount: Math.max(toSafeNumber(formData.reviewCount, 0), 0),
       sku: formData.sku.trim() || undefined,
       originalPrice: toSafeNumber(formData.originalPrice, 0),
-      comboPrice: toSafeNumber(formData.price, 0),
-      price: toSafeNumber(formData.price, 0),
+      comboPrice: normalizedComboPrice,
+      price: normalizedComboPrice,
       image: formData.image.trim(),
       thumbnail: formData.thumbnail.trim(),
       comboType: formData.comboType,
@@ -1059,8 +1165,18 @@ export default function ComboManagementPage() {
                   </div>
                 </TableCell>
                 <TableCell>{combo.comboType || "fixed_bundle"}</TableCell>
-                <TableCell>₹{round2(combo.comboPrice || 0)}</TableCell>
-                <TableCell>{round2(combo.discountPercentage || 0)}%</TableCell>
+                <TableCell>
+                  ₹
+                  {isAiComboType(combo.comboType)
+                    ? roundCurrency(combo.comboPrice || 0)
+                    : round2(combo.comboPrice || 0)}
+                </TableCell>
+                <TableCell>
+                  {isAiComboType(combo.comboType)
+                    ? Math.ceil(Number(combo.discountPercentage || 0))
+                    : round2(combo.discountPercentage || 0)}
+                  %
+                </TableCell>
                 <TableCell>
                   <div className="flex items-center gap-2">
                     <Tooltip title="Enable or disable this combo">
@@ -1421,6 +1537,10 @@ export default function ComboManagementPage() {
               <p className="text-[11px] text-gray-500">
                 Auto uses lowest product stock; Manual uses stock quantity.
               </p>
+              <p className="text-[11px] text-emerald-700">
+                Auto available quantity:{" "}
+                {comboAvailabilityPreview.autoComboQuantity}
+              </p>
             </div>
             <TextField
               label="Stock Quantity"
@@ -1676,6 +1796,17 @@ export default function ComboManagementPage() {
               const variants = Array.isArray(product?.variants)
                 ? product.variants
                 : [];
+              const requiredQuantity = Math.max(
+                toSafeNumber(item.quantity, 1),
+                1,
+              );
+              const availableUnits = resolveAvailableUnitsForProduct(
+                product,
+                item.variantId,
+              );
+              const maxComboUnits = Number.isFinite(availableUnits)
+                ? Math.max(Math.floor(availableUnits / requiredQuantity), 0)
+                : Number.POSITIVE_INFINITY;
               return (
                 <div
                   key={index}
@@ -1702,6 +1833,12 @@ export default function ComboManagementPage() {
                     <p className="text-[10px] text-gray-500">
                       Product included in the combo.
                     </p>
+                    <p className="text-[10px] text-emerald-700">
+                      Available:{" "}
+                      {Number.isFinite(availableUnits)
+                        ? availableUnits
+                        : "Unlimited"}
+                    </p>
                   </div>
                   <div className="flex flex-col gap-1">
                     <Select
@@ -1715,7 +1852,7 @@ export default function ComboManagementPage() {
                       <MenuItem value="">Default Variant</MenuItem>
                       {variants.map((variant) => (
                         <MenuItem key={variant._id} value={variant._id}>
-                          {variant.name || variant.sku}
+                          {formatVariantOptionLabel(variant)}
                         </MenuItem>
                       ))}
                     </Select>
@@ -1730,7 +1867,11 @@ export default function ComboManagementPage() {
                     onChange={(e) =>
                       handleItemChange(index, "quantity", e.target.value)
                     }
-                    helperText="Quantity per combo."
+                    helperText={`Quantity per combo. Max combos from this item: ${
+                      Number.isFinite(maxComboUnits)
+                        ? maxComboUnits
+                        : "Unlimited"
+                    }`}
                   />
                   <Tooltip title="Remove this product from the combo">
                     <span>
@@ -1856,27 +1997,42 @@ export default function ComboManagementPage() {
           {!suggestionsLoading && suggestions.length > 0 && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {suggestions.map((suggestion) => {
+                const shouldRoundForAi = isAiComboType(suggestion?.comboType);
                 const originalTotal = resolvePrice(
                   suggestion.originalTotal ?? suggestion.originalPrice,
                   0,
                 );
-                const comboPrice = resolvePrice(
+                const resolvedComboPrice = resolvePrice(
                   suggestion.suggestedPrice ??
                     suggestion.comboPrice ??
                     suggestion.price,
                   0,
                 );
+                const comboPrice = shouldRoundForAi
+                  ? roundCurrency(resolvedComboPrice)
+                  : resolvedComboPrice;
                 const savings = round2(
                   Number(suggestion.totalSavings ?? originalTotal - comboPrice),
                 );
-                const discountPercent = round2(
-                  Number(
-                    suggestion.discountPercentage ??
-                      (originalTotal > 0
-                        ? ((originalTotal - comboPrice) / originalTotal) * 100
-                        : 0),
-                  ),
-                );
+                const discountPercent = shouldRoundForAi
+                  ? Math.ceil(
+                      Number(
+                        suggestion.discountPercentage ??
+                          (originalTotal > 0
+                            ? ((originalTotal - comboPrice) / originalTotal) *
+                              100
+                            : 0),
+                      ),
+                    )
+                  : round2(
+                      Number(
+                        suggestion.discountPercentage ??
+                          (originalTotal > 0
+                            ? ((originalTotal - comboPrice) / originalTotal) *
+                              100
+                            : 0),
+                      ),
+                    );
                 const tags = Array.isArray(suggestion.tags)
                   ? suggestion.tags
                   : [];
@@ -1998,10 +2154,16 @@ export default function ComboManagementPage() {
             {!draftsLoading && drafts.length > 0 && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                 {drafts.map((draft) => {
+                  const shouldRoundForAi = isAiComboType(draft?.comboType);
                   const originalTotal = round2(
                     Number(draft.originalTotal || 0),
                   );
-                  const comboPrice = round2(Number(draft.suggestedPrice || 0));
+                  const resolvedComboPrice = round2(
+                    Number(draft.suggestedPrice || 0),
+                  );
+                  const comboPrice = shouldRoundForAi
+                    ? roundCurrency(resolvedComboPrice)
+                    : resolvedComboPrice;
                   const savings = round2(
                     Number(
                       draft.discountPercentage
