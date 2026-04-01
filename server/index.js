@@ -210,6 +210,7 @@ import membershipPageRouter from "./routes/membershipPage.route.js";
 import newsletterRouter from "./routes/newsletter.route.js";
 import notificationRouter from "./routes/notification.route.js";
 import orderRouter from "./routes/order.route.js";
+import { startOrderPaymentReminderJob } from "./controllers/order.controller.js";
 import partnerApiRouter from "./routes/partnerApi.route.js";
 import policyRouter from "./routes/policy.route.js";
 import popupRouter from "./routes/popup.route.js";
@@ -621,6 +622,7 @@ connectDb()
     startInventoryReservationExpiryJob();
     startMembershipExpiryJob();
     startEmailAutomationJob();
+    startOrderPaymentReminderJob();
     startFrequentlyBoughtTogetherJob();
     startComboAnalysisJob();
     startPartnerDynamicScalingEngine();

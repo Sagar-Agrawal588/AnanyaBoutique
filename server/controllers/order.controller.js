@@ -27,6 +27,7 @@ import UserModel from "../models/user.model.js";
 import { emitOrderStatusUpdate } from "../realtime/orderEvents.js";
 import { emitTrackingEvent } from "../services/analytics/trackingEmitter.service.js";
 import { autoCreateShipmentForPaidOrder } from "../services/automatedShipping.service.js";
+import { createEmailLog } from "../services/emailAutomation.service.js";
 import {
   applyRedemptionToUser,
   awardCoinsToUser,
@@ -1514,16 +1515,47 @@ const sendOrderPaymentReminderEmail = async (
   try {
     const { email: recipientEmail, name: customerName } =
       await resolveOrderRecipient(order);
+    const displayOrderNumber = resolveDisplayOrderNumber(order);
+    const providerLabel = resolvePaymentProviderLabel(paymentProvider);
+    const normalizedFailureKind =
+      failureKind === "cancelled" ? "cancelled" : "failed";
+    const subject =
+      normalizedFailureKind === "cancelled"
+        ? `Payment Cancelled - ${displayOrderNumber}`
+        : `Payment Reminder - ${displayOrderNumber}`;
+    const emailLog = await createEmailLog({
+      user_id: order?.user || null,
+      order_id: order?._id || null,
+      to_email: recipientEmail || "unknown@unknown.invalid",
+      email_type: "order_payment_reminder",
+      template_type: "orderPaymentReminder.html",
+      subject,
+      status: "queued",
+      metadata: {
+        provider: providerLabel,
+        failureKind: normalizedFailureKind,
+      },
+    });
 
     if (!recipientEmail) {
       logger.warn("sendOrderPaymentReminderEmail", "Recipient email missing", {
         orderId: order?._id,
       });
+      if (emailLog?._id) {
+        await mongoose.model("EmailLog").updateOne(
+          { _id: emailLog._id },
+          {
+            $set: {
+              status: "skipped",
+              error_message: "Missing recipient email",
+            },
+          },
+        );
+      }
       return false;
     }
 
     const rawOrderId = String(order?._id || "").trim();
-    const displayOrderNumber = resolveDisplayOrderNumber(order);
     const supportContact = "healthyonegram.com";
     const supportUrl = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(supportContact)
       ? `mailto:${supportContact}`
@@ -1545,9 +1577,6 @@ const sendOrderPaymentReminderEmail = async (
     const finalAmount = round2(
       Number(order?.finalAmount || order?.totalAmt || 0),
     );
-    const providerLabel = resolvePaymentProviderLabel(paymentProvider);
-    const normalizedFailureKind =
-      failureKind === "cancelled" ? "cancelled" : "failed";
     const failureMessage =
       normalizedFailureKind === "cancelled"
         ? "Your payment was cancelled before completion. You can return and place the order again when ready."
@@ -1563,11 +1592,6 @@ const sendOrderPaymentReminderEmail = async (
       `Open: ${actionUrl}`,
       `Support: ${supportContact}`,
     ].join("\n");
-
-    const subject =
-      normalizedFailureKind === "cancelled"
-        ? `Payment Cancelled - ${displayOrderNumber}`
-        : `Payment Reminder - ${displayOrderNumber}`;
 
     const result = await sendTemplatedEmail({
       to: recipientEmail,
@@ -1601,7 +1625,29 @@ const sendOrderPaymentReminderEmail = async (
         recipientEmail,
         error: result?.error || "Unknown error",
       });
+      if (emailLog?._id) {
+        await mongoose.model("EmailLog").updateOne(
+          { _id: emailLog._id },
+          {
+            $set: {
+              status: "failed",
+              error_message: result?.error || "send_failed",
+            },
+          },
+        );
+      }
       return false;
+    }
+
+    if (emailLog?._id) {
+      await mongoose.model("EmailLog").updateOne(
+        { _id: emailLog._id },
+        {
+          $set: {
+            status: "sent",
+          },
+        },
+      );
     }
 
     return true;
@@ -1656,7 +1702,20 @@ const PAYMENT_EMAIL_DELAY_MS = Math.max(
   Number(process.env.ORDER_PAYMENT_EMAIL_DELAY_MS || 60_000),
   0,
 );
+const PAYMENT_REMINDER_POLL_INTERVAL_MS = Math.max(
+  Number(
+    process.env.ORDER_PAYMENT_REMINDER_POLL_INTERVAL_MS ||
+      PAYMENT_EMAIL_DELAY_MS ||
+      60_000,
+  ),
+  15_000,
+);
+const PAYMENT_REMINDER_LOOKBACK_HOURS = Math.max(
+  Number(process.env.ORDER_PAYMENT_REMINDER_LOOKBACK_HOURS || 24),
+  1,
+);
 const scheduledOrderEmailTasks = new Map();
+let orderPaymentReminderJob = null;
 
 const scheduleOrderEmailTask = ({
   orderId,
@@ -1767,6 +1826,83 @@ const scheduleOrderPaymentReminderEmail = ({
         logContext,
       });
     },
+  });
+};
+
+const inferStoredPaymentFailureKind = (order) => {
+  const storedKind = String(order?.paymentReminderEmailFailureKind || "")
+    .trim()
+    .toLowerCase();
+  if (storedKind === "cancelled") return "cancelled";
+  if (storedKind === "failed") return "failed";
+
+  const reason = String(order?.failureReason || "")
+    .trim()
+    .toLowerCase();
+  if (
+    reason.includes("cancel") ||
+    reason.includes("abort") ||
+    reason.includes("dropped") ||
+    reason.includes("closed by user")
+  ) {
+    return "cancelled";
+  }
+
+  return "failed";
+};
+
+const processDueOrderPaymentReminderEmails = async ({
+  logContext = "orderPaymentReminderJob",
+} = {}) => {
+  const now = Date.now();
+  const dueBefore = new Date(now - PAYMENT_EMAIL_DELAY_MS);
+  const lookbackAfter = new Date(
+    now - PAYMENT_REMINDER_LOOKBACK_HOURS * 60 * 60 * 1000,
+  );
+
+  const dueOrders = await OrderModel.find({
+    payment_status: "failed",
+    paymentReminderEmailSentAt: null,
+    paymentMethod: { $in: Object.values(PAYMENT_PROVIDERS) },
+    paymentId: { $exists: true, $nin: [null, ""] },
+    updatedAt: { $lte: dueBefore, $gte: lookbackAfter },
+  })
+    .sort({ updatedAt: 1, createdAt: 1 })
+    .limit(25);
+
+  for (const order of dueOrders) {
+    await maybeSendOrderPaymentReminderEmail({
+      order,
+      failureKind: inferStoredPaymentFailureKind(order),
+      paymentProvider:
+        normalizeSupportedPaymentProvider(order?.paymentMethod) ||
+        PAYMENT_PROVIDERS.PHONEPE,
+      logContext,
+    });
+  }
+};
+
+export const startOrderPaymentReminderJob = () => {
+  if (orderPaymentReminderJob) return;
+
+  const run = () =>
+    processDueOrderPaymentReminderEmails().catch((error) => {
+      logger.error("orderPaymentReminderJob", "Reminder queue execution failed", {
+        error: error?.message || String(error),
+      });
+    });
+
+  run();
+  orderPaymentReminderJob = setInterval(run, PAYMENT_REMINDER_POLL_INTERVAL_MS);
+
+  if (typeof orderPaymentReminderJob?.unref === "function") {
+    orderPaymentReminderJob.unref();
+  }
+
+  logger.info("orderPaymentReminderJob", "Payment reminder scheduler started", {
+    delayMs: PAYMENT_EMAIL_DELAY_MS,
+    pollIntervalMs: PAYMENT_REMINDER_POLL_INTERVAL_MS,
+    lookbackHours: PAYMENT_REMINDER_LOOKBACK_HOURS,
   });
 };
 
