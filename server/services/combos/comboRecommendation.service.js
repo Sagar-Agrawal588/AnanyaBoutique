@@ -35,6 +35,12 @@ const buildActiveComboFilter = () => {
   };
 };
 
+const normalizeVariantNameKey = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+
 const attachAvailability = async (combos = []) => {
   if (!Array.isArray(combos) || combos.length === 0) return [];
   const productIds = combos
@@ -196,6 +202,7 @@ export const getCartUpsellCombos = async (cartItems = [], { limit = 6 } = {}) =>
         .map((item) => ({
           productId: String(item?.productId || item?.product || "").trim(),
           variantId: String(item?.variantId || item?.variant || "").trim(),
+          variantName: String(item?.variantName || "").trim(),
         }))
         .filter((item) => item.productId)
     : [];
@@ -203,7 +210,10 @@ export const getCartUpsellCombos = async (cartItems = [], { limit = 6 } = {}) =>
   if (normalizedItems.length === 0) return [];
 
   const itemKeys = normalizedItems
-    .map((item) => `${item.productId}:${item.variantId || ""}`)
+    .map((item) => {
+      const variantNameKey = normalizeVariantNameKey(item.variantName);
+      return `${item.productId}:${item.variantId || ""}:${variantNameKey}`;
+    })
     .sort();
   const cacheKey = getCacheKey(
     "cart_upsell",
@@ -216,7 +226,19 @@ export const getCartUpsellCombos = async (cartItems = [], { limit = 6 } = {}) =>
     new Set(normalizedItems.map((item) => String(item.productId))),
   ).filter(Boolean);
   const cartProductIdSet = new Set(uniqueIds);
-  const cartVariantKeySet = new Set(itemKeys);
+  const cartVariantKeySet = new Set(
+    normalizedItems
+      .filter((item) => item.variantId)
+      .map((item) => `${item.productId}:${item.variantId}`),
+  );
+  const cartVariantNameKeySet = new Set(
+    normalizedItems
+      .map((item) => {
+        const variantNameKey = normalizeVariantNameKey(item.variantName);
+        return variantNameKey ? `${item.productId}:${variantNameKey}` : "";
+      })
+      .filter(Boolean),
+  );
 
   const combos = await ComboModel.find({
     ...buildActiveComboFilter(),
@@ -232,8 +254,12 @@ export const getCartUpsellCombos = async (cartItems = [], { limit = 6 } = {}) =>
       const productId = String(item?.productId || "");
       if (!productId) return false;
       const variantId = item?.variantId ? String(item.variantId) : "";
+      const variantNameKey = normalizeVariantNameKey(item?.variantName);
       if (variantId) {
         return !cartVariantKeySet.has(`${productId}:${variantId}`);
+      }
+      if (variantNameKey) {
+        return !cartVariantNameKeySet.has(`${productId}:${variantNameKey}`);
       }
       return !cartProductIdSet.has(productId);
     });

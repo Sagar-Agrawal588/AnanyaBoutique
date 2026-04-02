@@ -7,12 +7,54 @@ import { useEffect, useMemo, useState } from "react";
 
 const API_URL = API_BASE_URL;
 
-const formatInr = (value) =>
-  new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    maximumFractionDigits: 2,
-  }).format(Number(value || 0));
+const round2 = (value) =>
+  Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
+
+const toRoundedRupee = (value) => Math.max(Math.round(Number(value || 0)), 0);
+
+const buildDisplayTotals = (order) => {
+  const totals = order?.totals || {};
+  const couponCode = String(order?.couponCode || "").trim();
+  const subtotalRaw = Math.max(Number(totals.subtotal || 0), 0);
+  const legacyDiscountRaw = Math.max(Number(totals.discount || 0), 0);
+  const couponDiscountRaw = Math.max(
+    Number(order?.couponDiscount ?? totals.couponDiscount ?? 0),
+    0,
+  );
+  const couponDiscount = couponCode ? couponDiscountRaw : 0;
+  const taxRaw = Math.max(Number(totals.tax || 0), 0);
+  const shippingRaw = Math.max(Number(totals.shipping || 0), 0);
+  const totalRaw = Math.max(Number(totals.finalAmount || 0), 0);
+
+  const totalRounded = toRoundedRupee(totalRaw);
+  const discountedSubtotalRaw = Math.max(subtotalRaw - legacyDiscountRaw, 0);
+  const gstRatePercent =
+    discountedSubtotalRaw > 0 && taxRaw >= 0
+      ? (taxRaw * 100) / discountedSubtotalRaw
+      : 5;
+
+  const discountedSubtotal =
+    totalRounded > 0
+      ? round2(totalRounded / (1 + gstRatePercent / 100))
+      : round2(discountedSubtotalRaw);
+
+  const gst =
+    totalRounded > 0
+      ? round2(totalRounded - discountedSubtotal)
+      : round2(taxRaw);
+  const subtotalDisplay = round2(discountedSubtotal + couponDiscount);
+
+  return {
+    couponCode,
+    hasCouponDiscount: couponDiscount > 0.009,
+    subtotalDisplay,
+    couponDiscount: round2(couponDiscount),
+    discountedSubtotal,
+    gst,
+    shipping: round2(shippingRaw),
+    total: round2(totalRounded),
+  };
+};
 
 const PayOrderPage = () => {
   const params = useParams();
@@ -28,6 +70,7 @@ const PayOrderPage = () => {
   const [submitting, setSubmitting] = useState(false);
 
   const canPay = Boolean(order?.payable);
+  const displayTotals = useMemo(() => buildDisplayTotals(order), [order]);
 
   useEffect(() => {
     const load = async () => {
@@ -72,7 +115,9 @@ const PayOrderPage = () => {
             data.data?.enabledProviders?.[0] ||
             "";
           setSelectedProvider(
-            String(fallbackProvider || "").trim().toUpperCase(),
+            String(fallbackProvider || "")
+              .trim()
+              .toUpperCase(),
           );
         }
       } catch {
@@ -146,7 +191,9 @@ const PayOrderPage = () => {
     <div className="min-h-screen bg-slate-50 py-10 px-4">
       <div className="max-w-3xl mx-auto">
         <div className="bg-white border border-slate-200 rounded-2xl p-6 mb-6">
-          <h1 className="text-2xl font-semibold text-slate-900">Pay for Order</h1>
+          <h1 className="text-2xl font-semibold text-slate-900">
+            Pay for Order
+          </h1>
           <p className="text-slate-600 mt-1">
             Order {order?.displayOrderId || order?.orderId}
           </p>
@@ -157,31 +204,42 @@ const PayOrderPage = () => {
           <div className="space-y-2 text-sm text-slate-700">
             <div className="flex items-center justify-between">
               <span>Subtotal</span>
-              <span>{formatInr(order?.totals?.subtotal)}</span>
+              <span>₹{displayTotals.subtotalDisplay.toFixed(2)}</span>
             </div>
+            {displayTotals.hasCouponDiscount && (
+              <div className="flex items-center justify-between">
+                <span>
+                  Discount
+                  {displayTotals.couponCode
+                    ? ` (${displayTotals.couponCode})`
+                    : ""}
+                </span>
+                <span>-₹{displayTotals.couponDiscount.toFixed(2)}</span>
+              </div>
+            )}
+            {displayTotals.hasCouponDiscount && (
+              <div className="flex items-center justify-between">
+                <span>Discounted Subtotal</span>
+                <span>₹{displayTotals.discountedSubtotal.toFixed(2)}</span>
+              </div>
+            )}
             <div className="flex items-center justify-between">
-              <span>Discount</span>
-              <span>-{formatInr(order?.totals?.discount)}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span>Tax</span>
-              <span>{formatInr(order?.totals?.tax)}</span>
+              <span>GST</span>
+              <span>₹{displayTotals.gst.toFixed(2)}</span>
             </div>
             <div className="flex items-center justify-between">
               <span>Shipping</span>
-              <span>{formatInr(order?.totals?.shipping)}</span>
+              <span>₹{displayTotals.shipping.toFixed(2)}</span>
             </div>
             <div className="flex items-center justify-between font-semibold text-slate-900">
               <span>Total</span>
-              <span>{formatInr(order?.totals?.finalAmount)}</span>
+              <span>₹{displayTotals.total.toFixed(2)}</span>
             </div>
           </div>
         </div>
 
         <div className="bg-white border border-slate-200 rounded-2xl p-6">
-          <h2 className="text-lg font-semibold text-slate-800 mb-4">
-            Payment
-          </h2>
+          <h2 className="text-lg font-semibold text-slate-800 mb-4">Payment</h2>
           {!canPay ? (
             <p className="text-slate-600">
               This order is not payable. Current status:{" "}

@@ -311,19 +311,20 @@ const ProductDetailPage = () => {
   const buildCartProduct = () => {
     if (!product) return null;
     if (!selectedVariant) return product;
+    const selectedVariantId = selectedVariant._id || selectedVariant.id;
     return {
       ...product,
       price: selectedVariant.price,
       originalPrice: selectedVariant.originalPrice || product.originalPrice,
       selectedVariant: {
-        _id: selectedVariant._id,
+        _id: selectedVariantId,
         name: selectedVariant.name,
         sku: selectedVariant.sku,
         price: selectedVariant.price,
         weight: selectedVariant.weight,
         unit: selectedVariant.unit,
       },
-      variantId: selectedVariant._id,
+      variantId: selectedVariantId,
     };
   };
 
@@ -393,11 +394,13 @@ const ProductDetailPage = () => {
       if (!product) return;
 
       const productId = product._id || product.id;
+      const selectedVariantId =
+        selectedVariant?._id || selectedVariant?.id || null;
 
       // Check if already in cart
-      if (isInCart(productId)) {
+      if (isInCart(productId, selectedVariantId)) {
         // Remove from cart
-        await removeFromCart(productId, selectedVariant?._id || null);
+        await removeFromCart(productId, selectedVariantId);
         setSnackbar({
           open: true,
           message: "Removed from cart!",
@@ -433,7 +436,7 @@ const ProductDetailPage = () => {
     try {
       if (!product) return;
       const productId = product._id || product.id;
-      const variantId = selectedVariant?._id || null;
+      const variantId = selectedVariant?._id || selectedVariant?.id || null;
       const hasVariant = hasSelectedVariantInCart(productId, variantId);
 
       if (!hasVariant) {
@@ -586,7 +589,7 @@ const ProductDetailPage = () => {
   const productId = product?._id || product?.id;
   const isVariantInCart = hasSelectedVariantInCart(
     productId,
-    selectedVariant?._id || null,
+    selectedVariant?._id || selectedVariant?.id || null,
   );
   const isBuyNowDisabled = !isVariantInCart && availableQty === 0;
 

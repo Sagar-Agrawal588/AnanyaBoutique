@@ -13,6 +13,10 @@ const WishlistContext = createContext();
 const API_URL = API_BASE_URL;
 const LOCAL_API_FALLBACKS = ["http://localhost:8000", "http://localhost:8001"];
 
+const isNetworkFetchError = (error) =>
+  error instanceof TypeError &&
+  /failed to fetch|load failed|networkerror/i.test(String(error?.message || ""));
+
 const sanitizeBaseUrl = (value) =>
   String(value || "")
     .trim()
@@ -261,7 +265,6 @@ export const WishlistProvider = ({ children }) => {
       setWishlistItems(data?.data?.items || []);
       setWishlistCount(data?.data?.itemCount || 0);
     } catch (err) {
-      console.error(err);
       if (!getToken()) {
         loadLocal();
       } else {
@@ -376,7 +379,9 @@ export const WishlistProvider = ({ children }) => {
       setWishlistCount(data?.data?.itemCount || 0);
       toast.success("Added to wishlist");
     } catch (err) {
-      console.error(err);
+      if (!isNetworkFetchError(err)) {
+        console.error(err);
+      }
       toast.error("Failed to add to wishlist");
     }
   };
@@ -445,7 +450,9 @@ export const WishlistProvider = ({ children }) => {
       setWishlistCount(data?.data?.itemCount || 0);
       toast.success("Removed from wishlist");
     } catch (err) {
-      console.error(err);
+      if (!isNetworkFetchError(err)) {
+        console.error(err);
+      }
       toast.error("Failed to remove item");
     } finally {
       setRemovingItems((prev) => {

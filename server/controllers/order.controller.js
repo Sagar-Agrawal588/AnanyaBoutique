@@ -27,7 +27,6 @@ import UserModel from "../models/user.model.js";
 import { emitOrderStatusUpdate } from "../realtime/orderEvents.js";
 import { emitTrackingEvent } from "../services/analytics/trackingEmitter.service.js";
 import { autoCreateShipmentForPaidOrder } from "../services/automatedShipping.service.js";
-import { createEmailLog } from "../services/emailAutomation.service.js";
 import {
   applyRedemptionToUser,
   awardCoinsToUser,
@@ -41,9 +40,12 @@ import {
   isComboEligibleForSegment,
   releaseComboStock,
   reserveComboStock,
+  resolveComboUnitOriginalTotal,
+  resolveEffectiveComboUnitPrice,
   resolveUserSegment,
   restoreComboStock,
 } from "../services/combos/combo.service.js";
+import { createEmailLog } from "../services/emailAutomation.service.js";
 import {
   confirmInventory,
   releaseInventory,
@@ -614,6 +616,11 @@ const validateCouponForOrder = async ({
 const round2 = (value) =>
   Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
 
+const roundToNearestRupee = (value) => Math.round(Number(value || 0));
+
+const resolveGatewayPayableAmount = (value) =>
+  Math.max(roundToNearestRupee(value), 1);
+
 const resolveInfluencerCommissionBase = (order = {}) => {
   const taxableSubtotal = Number(
     order?.subtotal ?? order?.gst?.taxableAmount ?? 0,
@@ -915,13 +922,22 @@ const stringifyOrderItemsForEmail = (order) => {
   return items
     .map((item, index) => {
       const name = String(item?.productTitle || item?.name || "Item").trim();
+      const variantName = String(
+        item?.variantName || item?.variantTitle || "",
+      ).trim();
+      const displayName =
+        variantName && !name.toLowerCase().includes(variantName.toLowerCase())
+          ? `${name} (${variantName})`
+          : name;
       const quantity = Math.max(Number(item?.quantity || 0), 0);
+      const unitPrice = round2(Number(item?.price || 0));
       const lineTotal = round2(
         Number(
           item?.subTotal || item?.subTotalAmt || item?.price * quantity || 0,
         ),
       );
-      return `${index + 1}. ${name} x ${quantity} = ${formatInr(lineTotal)}`;
+      const unitLabel = unitPrice > 0 ? ` @ ${formatInr(unitPrice)}` : "";
+      return `${index + 1}. ${displayName} x ${quantity}${unitLabel} = ${formatInr(lineTotal)}`;
     })
     .join("\n");
 };
@@ -1887,9 +1903,13 @@ export const startOrderPaymentReminderJob = () => {
 
   const run = () =>
     processDueOrderPaymentReminderEmails().catch((error) => {
-      logger.error("orderPaymentReminderJob", "Reminder queue execution failed", {
-        error: error?.message || String(error),
-      });
+      logger.error(
+        "orderPaymentReminderJob",
+        "Reminder queue execution failed",
+        {
+          error: error?.message || String(error),
+        },
+      );
     });
 
   run();
@@ -1915,6 +1935,11 @@ const toObjectIdOrNull = (value) => {
     value && typeof value === "object" && value._id ? value._id : value;
   const asString = String(candidate || "").trim();
   return mongoose.Types.ObjectId.isValid(asString) ? candidate : null;
+};
+
+const normalizeMongoIdString = (value) => {
+  const normalized = String(value || "").trim();
+  return mongoose.Types.ObjectId.isValid(normalized) ? normalized : null;
 };
 
 const decodePaytmWebhookEnvelope = (body = {}) => {
@@ -2123,6 +2148,148 @@ const getBackendBaseUrl = (req) => {
       ? forwardedProto
       : String(req?.protocol || "https").trim() || "https";
   return `${protocol}://${host}`;
+};
+
+const resolveHostname = (value) => {
+  const input = String(value || "").trim();
+  if (!input) return "";
+  try {
+    const parsed = new URL(input.includes("://") ? input : `https://${input}`);
+    return String(parsed.hostname || "")
+      .trim()
+      .toLowerCase();
+  } catch {
+    return "";
+  }
+};
+
+const isLocalHostName = (hostname) => {
+  const normalized = String(hostname || "")
+    .trim()
+    .toLowerCase();
+  if (!normalized) return false;
+  return (
+    normalized === "localhost" ||
+    normalized === "127.0.0.1" ||
+    normalized === "::1" ||
+    normalized.endsWith(".local")
+  );
+};
+
+const isPhonePeProdEnvironment = () =>
+  String(process.env.PHONEPE_ENV || "PROD")
+    .trim()
+    .toUpperCase() === "PROD";
+
+const isRuntimeProduction = () =>
+  String(process.env.NODE_ENV || "")
+    .trim()
+    .toLowerCase() === "production";
+
+const isLocalhostPaymentSource = (req) => {
+  const originHost = resolveHostname(req?.headers?.origin);
+  const refererHost = resolveHostname(req?.headers?.referer);
+  const hostHeader = String(req?.headers?.host || "")
+    .trim()
+    .toLowerCase();
+  const forwardedHost = String(req?.headers?.["x-forwarded-host"] || "")
+    .split(",")[0]
+    .trim()
+    .toLowerCase();
+
+  const candidates = [
+    originHost,
+    refererHost,
+    resolveHostname(hostHeader),
+    resolveHostname(forwardedHost),
+  ].filter(Boolean);
+
+  return candidates.some((host) => isLocalHostName(host));
+};
+
+const buildPhonePeLocalhostProdError = () => ({
+  error: true,
+  success: false,
+  code: "PHONEPE_LOCALHOST_NOT_SUPPORTED",
+  message:
+    "PhonePe QR in PROD mode cannot be initiated from localhost/non-whitelisted origins. Open checkout from your registered domain (for example https://healthyonegram.com) or use UAT credentials for local testing.",
+});
+
+const shouldBlockPhonePeForLocalhost = (req) =>
+  isRuntimeProduction() &&
+  isPhonePeProdEnvironment() &&
+  isLocalhostPaymentSource(req);
+
+const buildPhonePeOrderCallbackUrl = ({
+  configuredCallbackUrl,
+  backendUrl,
+  merchantTransactionId,
+}) => {
+  const resolvedBackendBase = String(backendUrl || getClientBaseUrl())
+    .trim()
+    .replace(/\/+$/, "");
+  const fallbackBase = `${resolvedBackendBase}/api/orders/webhook/phonepe`;
+  const fallback = `${fallbackBase}?merchantOrderId=${encodeURIComponent(
+    String(merchantTransactionId || ""),
+  )}`;
+  const configured = String(configuredCallbackUrl || "").trim();
+  if (!configured) return fallback;
+
+  try {
+    const callbackUrl = new URL(
+      configured.startsWith("http")
+        ? configured
+        : `${resolvedBackendBase}${configured.startsWith("/") ? "" : "/"}${configured}`,
+    );
+    callbackUrl.searchParams.set(
+      "merchantOrderId",
+      String(merchantTransactionId || ""),
+    );
+    return callbackUrl.toString();
+  } catch {
+    return fallback;
+  }
+};
+
+const buildPhonePeOrderRedirectUrl = ({
+  configuredRedirectUrl,
+  primaryOrigin,
+  merchantTransactionId,
+  orderId,
+  returnPath = "/my-orders",
+}) => {
+  const resolvedOrigin = String(primaryOrigin || getClientBaseUrl())
+    .trim()
+    .replace(/\/+$/, "");
+  const fallback = `${resolvedOrigin}/payment/phonepe?merchantOrderId=${encodeURIComponent(
+    String(merchantTransactionId || ""),
+  )}&orderId=${encodeURIComponent(String(orderId || ""))}&paymentProvider=${encodeURIComponent(
+    PAYMENT_PROVIDERS.PHONEPE,
+  )}&flow=order&returnPath=${encodeURIComponent(String(returnPath || "/my-orders"))}`;
+  const configured = String(configuredRedirectUrl || "").trim();
+  if (!configured) return fallback;
+
+  try {
+    const redirectUrl = new URL(
+      configured.startsWith("http")
+        ? configured
+        : `${resolvedOrigin}${configured.startsWith("/") ? "" : "/"}${configured}`,
+    );
+    redirectUrl.searchParams.set(
+      "merchantOrderId",
+      String(merchantTransactionId || ""),
+    );
+    redirectUrl.searchParams.set("orderId", String(orderId || ""));
+    redirectUrl.searchParams.set("paymentProvider", PAYMENT_PROVIDERS.PHONEPE);
+    redirectUrl.searchParams.set("flow", "order");
+    redirectUrl.searchParams.set(
+      "returnPath",
+      String(returnPath || "/my-orders"),
+    );
+    return redirectUrl.toString();
+  } catch {
+    return fallback;
+  }
 };
 
 const isBrowserNavigationRequest = (req) => {
@@ -2604,42 +2771,50 @@ const normalizeOrderProducts = ({ products, dbProductMap }) => {
     const variants = Array.isArray(dbProduct?.variants)
       ? dbProduct.variants
       : [];
+    const normalizedRequestedPrice = round2(Number(item?.price || 0));
 
-    let selectedVariant = null;
-    if (variants.length > 0) {
-      if (normalizedVariantId) {
-        selectedVariant =
-          variants.find(
+    const variantById = normalizedVariantId
+      ? variants.find(
+          (variant) =>
+            String(variant?._id || "") === String(normalizedVariantId),
+        )
+      : null;
+    const variantByName = normalizedVariantName
+      ? variants.find(
+          (variant) =>
+            String(variant?.name || "")
+              .trim()
+              .toLowerCase() === normalizedVariantName.toLowerCase(),
+        )
+      : null;
+    const variantsMatchingPrice =
+      normalizedRequestedPrice > 0
+        ? variants.filter(
             (variant) =>
-              String(variant?._id || "") === String(normalizedVariantId),
-          ) || null;
-      }
+              round2(Number(variant?.price || 0)) === normalizedRequestedPrice,
+          )
+        : [];
+    const variantByPrice =
+      variantsMatchingPrice.length === 1 ? variantsMatchingPrice[0] : null;
 
-      if (!selectedVariant && normalizedVariantName) {
-        const needle = normalizedVariantName.toLowerCase();
-        selectedVariant =
-          variants.find(
-            (variant) =>
-              String(variant?.name || "").trim().toLowerCase() === needle,
-          ) || null;
-      }
+    let selectedVariant =
+      variantById || variantByName || variantByPrice || null;
 
-      if (
-        !selectedVariant &&
-        (normalizedVariantId || normalizedVariantName) &&
-        variants.length > 0
-      ) {
-        throw new AppError("INVALID_INPUT", {
-          field: normalizedVariantId ? "variantId" : "variantName",
-          value: normalizedVariantId || normalizedVariantName,
-          productId,
-        });
-      }
+    if (
+      !selectedVariant &&
+      (normalizedVariantId || normalizedVariantName) &&
+      variants.length > 0
+    ) {
+      throw new AppError("INVALID_INPUT", {
+        field: normalizedVariantId ? "variantId" : "variantName",
+        value: normalizedVariantId || normalizedVariantName,
+        productId,
+      });
+    }
 
-      if (!selectedVariant) {
-        selectedVariant =
-          variants.find((variant) => variant?.isDefault) || variants[0] || null;
-      }
+    if (!selectedVariant && variants.length > 0) {
+      selectedVariant =
+        variants.find((variant) => variant?.isDefault) || variants[0] || null;
     }
 
     const resolvedVariantId = selectedVariant?._id
@@ -2659,8 +2834,18 @@ const normalizeOrderProducts = ({ products, dbProductMap }) => {
           return round2(parsed);
         }
       }
-      return round2(Number(dbProduct.price || 0));
+      return round2(Number(dbProduct.price ?? item.price ?? 0));
     })();
+
+    const resolvedImage =
+      item.image ||
+      selectedVariant?.image ||
+      (Array.isArray(selectedVariant?.images)
+        ? selectedVariant.images[0]
+        : "") ||
+      dbProduct.images?.[0] ||
+      dbProduct.thumbnail ||
+      "";
     const subTotal = round2(resolvedPrice * quantity);
 
     const resolvedSku = String(
@@ -2681,12 +2866,7 @@ const normalizeOrderProducts = ({ products, dbProductMap }) => {
       hsnCode: resolvedHsn,
       quantity,
       price: resolvedPrice,
-      image:
-        item.image ||
-        selectedVariant?.image ||
-        dbProduct.images?.[0] ||
-        dbProduct.thumbnail ||
-        "",
+      image: resolvedImage,
       subTotal,
     };
   });
@@ -2871,21 +3051,36 @@ const fetchAndNormalizeOrderProducts = async (
   products = [],
   logContext = "order",
 ) => {
-  const productIds = products.map((p) => String(p.productId || ""));
+  const normalizedProductIds = products.map((product, index) => {
+    const productId = normalizeMongoIdString(product?.productId);
+    if (!productId) {
+      throw new AppError("INVALID_INPUT", {
+        field: `products[${index}].productId`,
+        value: product?.productId ?? null,
+      });
+    }
+    return productId;
+  });
   const dbProducts = await ProductModel.find({
-    _id: { $in: productIds },
+    _id: { $in: normalizedProductIds },
   })
     .select("_id name price images thumbnail isExclusive sku hsnCode variants")
     .lean();
   const dbProductMap = new Map(dbProducts.map((p) => [String(p._id), p]));
-  const missingIds = productIds.filter((id) => !dbProductMap.has(String(id)));
+  const missingIds = normalizedProductIds.filter(
+    (id) => !dbProductMap.has(String(id)),
+  );
   if (missingIds.length > 0) {
     logger.warn(logContext, "Some products not found", { missingIds });
     throw new AppError("PRODUCT_NOT_FOUND", { missingIds });
   }
 
   const normalizedProducts = normalizeOrderProducts({
-    products,
+    products: products.map((product, index) => ({
+      ...product,
+      productId: normalizedProductIds[index],
+      variantId: normalizeMongoIdString(product?.variantId),
+    })),
     dbProductMap,
   });
 
@@ -2921,7 +3116,16 @@ const fetchAndNormalizeOrderCombos = async ({
     };
   }
 
-  const comboIds = aggregated.map((combo) => combo.comboId);
+  const comboIds = aggregated.map((combo, index) => {
+    const comboId = normalizeMongoIdString(combo?.comboId);
+    if (!comboId) {
+      throw new AppError("INVALID_INPUT", {
+        field: `combos[${index}].comboId`,
+        value: combo?.comboId ?? null,
+      });
+    }
+    return comboId;
+  });
   const dbCombos = await ComboModel.find({ _id: { $in: comboIds } }).lean();
   const comboMap = new Map(dbCombos.map((combo) => [String(combo._id), combo]));
 
@@ -2992,15 +3196,35 @@ const fetchAndNormalizeOrderCombos = async ({
       });
     }
 
+    const expanded = expandComboToOrderProducts(combo, comboQuantity);
+    const comboUnitBaseline = resolveComboUnitOriginalTotal(combo);
+    const comboOriginalBaselineFromExpanded = round2(
+      expanded.reduce((sum, item) => sum + Number(item?.subTotal || 0), 0),
+    );
+    const comboOriginalBaseline =
+      comboUnitBaseline > 0
+        ? round2(comboUnitBaseline * comboQuantity)
+        : comboOriginalBaselineFromExpanded > 0
+          ? comboOriginalBaselineFromExpanded
+          : round2(
+              Number(combo.originalPrice ?? combo.originalTotal ?? 0) *
+                comboQuantity,
+            );
+    const comboUnitPrice = resolveEffectiveComboUnitPrice(combo);
+    const comboListPrice = round2(comboUnitPrice * comboQuantity);
+
     const snapshot = buildComboOrderSnapshot(combo, comboQuantity);
     if (snapshot) {
+      snapshot.comboPrice = comboUnitPrice;
+      snapshot.savings = round2(
+        Math.max(comboOriginalBaseline - comboListPrice, 0),
+      );
       normalizedCombos.push(snapshot);
     }
 
-    comboOriginalAmount += Number(combo.originalTotal || 0) * comboQuantity;
-    comboPriceAmount += Number(combo.comboPrice || 0) * comboQuantity;
+    comboOriginalAmount += comboOriginalBaseline;
+    comboPriceAmount += comboListPrice;
 
-    const expanded = expandComboToOrderProducts(combo, comboQuantity);
     expandedProducts.push(...expanded);
   }
 
@@ -3043,6 +3267,12 @@ const calculateCheckoutPricing = async ({
   const discountedOriginalAmount = round2(
     Math.max(originalAmount - normalizedComboDiscount, 0),
   );
+  const originalBaseSplit = splitGstInclusiveAmount(
+    originalAmount,
+    CHECKOUT_GST_RATE,
+    checkoutContact?.state,
+  );
+  const originalBaseSubtotal = round2(originalBaseSplit.taxableAmount || 0);
 
   // Product catalog prices are GST-inclusive; derive a GST-exclusive base first.
   const baseSplit = splitGstInclusiveAmount(
@@ -3051,6 +3281,9 @@ const calculateCheckoutPricing = async ({
     checkoutContact?.state,
   );
   const baseSubtotal = round2(baseSplit.taxableAmount || 0);
+  const comboDiscountBase = round2(
+    Math.max(originalBaseSubtotal - baseSubtotal, 0),
+  );
 
   const membershipDiscount = 0;
 
@@ -3144,7 +3377,7 @@ const calculateCheckoutPricing = async ({
     membershipDiscount +
       influencerDiscount +
       couponDiscount +
-      normalizedComboDiscount,
+      comboDiscountBase,
   );
 
   let influencerCommission = 0;
@@ -3178,7 +3411,8 @@ const calculateCheckoutPricing = async ({
       tax: gstAmount,
     },
     redemption,
-    comboDiscount: normalizedComboDiscount,
+    comboDiscount: comboDiscountBase,
+    comboDiscountInclusive: normalizedComboDiscount,
   };
 };
 
@@ -3659,6 +3893,123 @@ export const getAllOrders = asyncHandler(async (req, res) => {
     }
 
     const dbError = handleDatabaseError(error, "getAllOrders");
+    return sendError(res, dbError);
+  }
+});
+
+/**
+ * Remove all pending orders (Admin)
+ * @route DELETE /api/orders/admin/pending
+ * @access Admin
+ */
+export const removeAllPendingOrders = asyncHandler(async (req, res) => {
+  try {
+    const pendingStatuses = [
+      ORDER_STATUS.PENDING,
+      ORDER_STATUS.PAYMENT_PENDING,
+      ORDER_STATUS.IN_WAREHOUSE,
+    ];
+    const pendingPaymentStatuses = ["pending", "pending_payment", "PENDING"];
+
+    const filter = {
+      purchaseOrder: null,
+      $or: [
+        { order_status: { $in: pendingStatuses } },
+        { payment_status: { $in: pendingPaymentStatuses } },
+      ],
+    };
+
+    const pendingOrders = await OrderModel.find(filter)
+      .select("_id order_status payment_status inventoryStatus products combos")
+      .lean();
+
+    if (pendingOrders.length === 0) {
+      return sendSuccess(
+        res,
+        {
+          totalMatched: 0,
+          deletedCount: 0,
+          skippedCount: 0,
+        },
+        "No pending orders found",
+      );
+    }
+
+    let deletedCount = 0;
+    let skippedCount = 0;
+    let releasedInventoryCount = 0;
+    let releasedComboCount = 0;
+    const skippedOrderIds = [];
+
+    for (const order of pendingOrders) {
+      try {
+        if (String(order?.inventoryStatus || "").toLowerCase() === "reserved") {
+          const inventoryRelease = await releaseInventory(
+            order,
+            "ADMIN_PENDING_PURGE",
+          );
+          if (inventoryRelease?.status === "released") {
+            releasedInventoryCount += 1;
+          }
+
+          const comboRelease = await releaseComboStock(
+            order,
+            "ADMIN_PENDING_PURGE",
+          );
+          if (comboRelease?.status === "released") {
+            releasedComboCount += 1;
+          }
+        }
+
+        const deleteResult = await OrderModel.deleteOne({ _id: order._id });
+        if (Number(deleteResult?.deletedCount || 0) === 1) {
+          deletedCount += 1;
+        } else {
+          skippedCount += 1;
+          skippedOrderIds.push(String(order._id));
+        }
+      } catch (cleanupError) {
+        skippedCount += 1;
+        skippedOrderIds.push(String(order._id));
+        logger.error(
+          "removeAllPendingOrders",
+          "Failed to remove pending order",
+          {
+            orderId: order?._id,
+            error: cleanupError?.message || String(cleanupError),
+          },
+        );
+      }
+    }
+
+    logger.info("removeAllPendingOrders", "Pending order cleanup finished", {
+      totalMatched: pendingOrders.length,
+      deletedCount,
+      skippedCount,
+      releasedInventoryCount,
+      releasedComboCount,
+    });
+
+    return sendSuccess(
+      res,
+      {
+        totalMatched: pendingOrders.length,
+        deletedCount,
+        skippedCount,
+        releasedInventoryCount,
+        releasedComboCount,
+        skippedOrderIds,
+      },
+      deletedCount > 0
+        ? `Removed ${deletedCount} pending orders`
+        : "No pending orders were removed",
+    );
+  } catch (error) {
+    if (error instanceof AppError) {
+      return sendError(res, error);
+    }
+
+    const dbError = handleDatabaseError(error, "removeAllPendingOrders");
     return sendError(res, dbError);
   }
 });
@@ -4587,9 +4938,10 @@ export const createOrder = asyncHandler(async (req, res) => {
     const shippingCharge = pricing.shippingCharge;
     const computedFinalAmount = pricing.finalAmount;
     const totalDiscount = pricing.totalDiscount;
-    const comboDiscount =
-      pricing.comboDiscount || comboPayload.comboDiscount || 0;
-    const payableAmount = Math.max(computedFinalAmount, 1);
+    const comboDiscount = round2(
+      Number(pricing.comboDiscountInclusive ?? pricing.comboDiscount ?? 0),
+    );
+    const payableAmount = resolveGatewayPayableAmount(computedFinalAmount);
 
     const checkoutPurchaseOrder = await authorizePurchaseOrderForCheckout({
       purchaseOrderId,
@@ -4865,7 +5217,7 @@ export const createOrder = asyncHandler(async (req, res) => {
         paytmResponse.orderId,
       )}&txnToken=${encodeURIComponent(
         paytmResponse.txnToken,
-      )}&amount=${encodeURIComponent(Number(payableAmount).toFixed(2))}`;
+      )}&amount=${encodeURIComponent(String(payableAmount))}`;
       const paymentUrlWithGateway = gatewayBase
         ? `${paymentUrl}&gatewayBase=${encodeURIComponent(gatewayBase)}`
         : paymentUrl;
@@ -4879,6 +5231,13 @@ export const createOrder = asyncHandler(async (req, res) => {
         {
           orderId: order._id,
           paymentProvider: PAYMENT_PROVIDERS.PAYTM,
+          gatewayPayableAmount: payableAmount,
+          totals: {
+            subtotal: round2(Number(taxData.taxableAmount || 0)),
+            tax: round2(Number(taxData.tax || 0)),
+            shipping: round2(Number(shippingCharge || 0)),
+            finalAmount: round2(Number(computedFinalAmount || 0)),
+          },
           paymentUrl: paymentUrlWithGateway,
           merchantTransactionId,
           txnToken: paytmResponse.txnToken,
@@ -4890,19 +5249,22 @@ export const createOrder = asyncHandler(async (req, res) => {
     }
 
     if (selectedPaymentProvider === PAYMENT_PROVIDERS.PHONEPE) {
-      const defaultPhonePeCallback = `${backendUrl}/api/orders/webhook/phonepe`;
-      const callbackUrl =
-        process.env.PHONEPE_ORDER_CALLBACK_URL ||
-        `${defaultPhonePeCallback}?merchantOrderId=${encodeURIComponent(
-          merchantTransactionId,
-        )}`;
-      const defaultPhonePeRedirect = `${primaryOrigin}/payment/phonepe?merchantOrderId=${encodeURIComponent(
+      if (shouldBlockPhonePeForLocalhost(req)) {
+        return res.status(400).json(buildPhonePeLocalhostProdError());
+      }
+
+      const callbackUrl = buildPhonePeOrderCallbackUrl({
+        configuredCallbackUrl: process.env.PHONEPE_ORDER_CALLBACK_URL,
+        backendUrl,
         merchantTransactionId,
-      )}&orderId=${encodeURIComponent(String(order._id))}&paymentProvider=${encodeURIComponent(
-        PAYMENT_PROVIDERS.PHONEPE,
-      )}&flow=order&returnPath=${encodeURIComponent("/my-orders")}`;
-      const redirectUrl =
-        process.env.PHONEPE_REDIRECT_URL || defaultPhonePeRedirect;
+      });
+      const redirectUrl = buildPhonePeOrderRedirectUrl({
+        configuredRedirectUrl: process.env.PHONEPE_REDIRECT_URL,
+        primaryOrigin,
+        merchantTransactionId,
+        orderId: order._id,
+        returnPath: "/my-orders",
+      });
 
       const phonepeResponse = await createPhonePePayment({
         amount: payableAmount,
@@ -4922,6 +5284,13 @@ export const createOrder = asyncHandler(async (req, res) => {
         {
           orderId: order._id,
           paymentProvider: PAYMENT_PROVIDERS.PHONEPE,
+          gatewayPayableAmount: payableAmount,
+          totals: {
+            subtotal: round2(Number(taxData.taxableAmount || 0)),
+            tax: round2(Number(taxData.tax || 0)),
+            shipping: round2(Number(shippingCharge || 0)),
+            finalAmount: round2(Number(computedFinalAmount || 0)),
+          },
           paymentUrl: phonepeResponse.redirectUrl,
           merchantTransactionId,
           phonepeOrderId: phonepeResponse.phonepeOrderId,
@@ -5082,9 +5451,14 @@ export const previewOrderPricing = asyncHandler(async (req, res) => {
         gstAmount: pricing.gstAmount,
         shipping: pricing.shippingCharge,
         finalAmount: pricing.finalAmount,
+        gatewayPayableAmount: resolveGatewayPayableAmount(pricing.finalAmount),
         originalAmount: pricing.originalAmount,
         discountBreakdown: {
-          combo: pricing.comboDiscount || comboPayload.comboDiscount || 0,
+          combo: round2(
+            Number(
+              pricing.comboDiscountInclusive ?? pricing.comboDiscount ?? 0,
+            ),
+          ),
           membership: pricing.membershipDiscount,
           influencer: pricing.influencerDiscount,
           coupon: pricing.couponDiscount,
@@ -5235,8 +5609,9 @@ export const saveOrderForLater = asyncHandler(async (req, res) => {
     const shippingCharge = pricing.shippingCharge;
     const finalOrderAmount = pricing.finalAmount;
     const totalDiscount = pricing.totalDiscount;
-    const comboDiscount =
-      pricing.comboDiscount || comboPayload.comboDiscount || 0;
+    const comboDiscount = round2(
+      Number(pricing.comboDiscountInclusive ?? pricing.comboDiscount ?? 0),
+    );
 
     const checkoutPurchaseOrder = await authorizePurchaseOrderForCheckout({
       purchaseOrderId,
@@ -5505,6 +5880,7 @@ export const saveOrderForLater = asyncHandler(async (req, res) => {
         orderId: savedOrder._id,
         orderStatus: savedOrder.order_status,
         paymentStatus: savedOrder.payment_status,
+        gatewayPayableAmount: resolveGatewayPayableAmount(finalOrderAmount),
         pricing: {
           originalAmount: originalPrice,
           membershipDiscount,
@@ -5632,9 +6008,12 @@ export const getPayOrderDetails = asyncHandler(async (req, res) => {
       paymentStatus: normalizedPaymentStatus || "pending",
       orderStatus: normalizedOrderStatus || "pending",
       payable: isPayable,
+      couponCode: String(order.couponCode || "").trim(),
+      couponDiscount: round2(Number(order.discountAmount || 0)),
       totals: {
         subtotal: round2(Number(order.subtotal || 0)),
         discount: round2(Number(order.discount || 0)),
+        couponDiscount: round2(Number(order.discountAmount || 0)),
         tax: round2(Number(order.tax || 0)),
         shipping: round2(Number(order.shipping || 0)),
         finalAmount: round2(Number(order.finalAmount || order.totalAmt || 0)),
@@ -5723,9 +6102,8 @@ export const initiatePayOrderPayment = asyncHandler(async (req, res) => {
       requestedPaymentProvider,
     );
 
-    const payableAmount = Math.max(
+    const payableAmount = resolveGatewayPayableAmount(
       Number(order.finalAmount || order.totalAmt || 0),
-      1,
     );
 
     const primaryOrigin = getClientBaseUrl();
@@ -5775,9 +6153,7 @@ export const initiatePayOrderPayment = asyncHandler(async (req, res) => {
         paytmResponse.orderId,
       )}&txnToken=${encodeURIComponent(
         paytmResponse.txnToken,
-      )}&amount=${encodeURIComponent(
-        Number(payableAmount).toFixed(2),
-      )}&returnPath=${encodeURIComponent(returnPath)}`;
+      )}&amount=${encodeURIComponent(String(payableAmount))}&returnPath=${encodeURIComponent(returnPath)}`;
       const paymentUrlWithGateway = gatewayBase
         ? `${paymentUrl}&gatewayBase=${encodeURIComponent(gatewayBase)}`
         : paymentUrl;
@@ -5802,6 +6178,13 @@ export const initiatePayOrderPayment = asyncHandler(async (req, res) => {
       return sendSuccess(res, {
         orderId: order._id,
         paymentProvider: PAYMENT_PROVIDERS.PAYTM,
+        gatewayPayableAmount: payableAmount,
+        totals: {
+          subtotal: round2(Number(order.subtotal || 0)),
+          tax: round2(Number(order.tax || 0)),
+          shipping: round2(Number(order.shipping || 0)),
+          finalAmount: round2(Number(order.finalAmount || order.totalAmt || 0)),
+        },
         paymentUrl: paymentUrlWithGateway,
         merchantTransactionId,
         txnToken: paytmResponse.txnToken,
@@ -5810,22 +6193,25 @@ export const initiatePayOrderPayment = asyncHandler(async (req, res) => {
     }
 
     if (selectedPaymentProvider === PAYMENT_PROVIDERS.PHONEPE) {
+      if (shouldBlockPhonePeForLocalhost(req)) {
+        return res.status(400).json(buildPhonePeLocalhostProdError());
+      }
+
       const merchantTransactionId = `BOG_${order._id}_${Date.now()
         .toString(36)
         .toUpperCase()}`;
-      const defaultPhonePeCallback = `${backendUrl}/api/orders/webhook/phonepe`;
-      const callbackUrl =
-        process.env.PHONEPE_ORDER_CALLBACK_URL ||
-        `${defaultPhonePeCallback}?merchantOrderId=${encodeURIComponent(
-          merchantTransactionId,
-        )}`;
-      const defaultPhonePeRedirect = `${primaryOrigin}/payment/phonepe?merchantOrderId=${encodeURIComponent(
+      const callbackUrl = buildPhonePeOrderCallbackUrl({
+        configuredCallbackUrl: process.env.PHONEPE_ORDER_CALLBACK_URL,
+        backendUrl,
         merchantTransactionId,
-      )}&orderId=${encodeURIComponent(String(order._id))}&paymentProvider=${encodeURIComponent(
-        PAYMENT_PROVIDERS.PHONEPE,
-      )}&flow=order&returnPath=${encodeURIComponent(returnPath)}`;
-      const redirectUrl =
-        process.env.PHONEPE_REDIRECT_URL || defaultPhonePeRedirect;
+      });
+      const redirectUrl = buildPhonePeOrderRedirectUrl({
+        configuredRedirectUrl: process.env.PHONEPE_REDIRECT_URL,
+        primaryOrigin,
+        merchantTransactionId,
+        orderId: order._id,
+        returnPath,
+      });
 
       const phonepeResponse = await createPhonePePayment({
         amount: payableAmount,
@@ -5856,6 +6242,13 @@ export const initiatePayOrderPayment = asyncHandler(async (req, res) => {
       return sendSuccess(res, {
         orderId: order._id,
         paymentProvider: PAYMENT_PROVIDERS.PHONEPE,
+        gatewayPayableAmount: payableAmount,
+        totals: {
+          subtotal: round2(Number(order.subtotal || 0)),
+          tax: round2(Number(order.tax || 0)),
+          shipping: round2(Number(order.shipping || 0)),
+          finalAmount: round2(Number(order.finalAmount || order.totalAmt || 0)),
+        },
         paymentUrl: phonepeResponse.redirectUrl,
         merchantTransactionId,
         phonepeOrderId: phonepeResponse.phonepeOrderId,
@@ -5956,9 +6349,8 @@ export const retryOrderPayment = asyncHandler(async (req, res) => {
       requestedPaymentProvider,
     );
 
-    const payableAmount = Math.max(
+    const payableAmount = resolveGatewayPayableAmount(
       Number(order.finalAmount || order.totalAmt || 0),
-      1,
     );
 
     const primaryOrigin = getClientBaseUrl();
@@ -6000,7 +6392,7 @@ export const retryOrderPayment = asyncHandler(async (req, res) => {
         paytmResponse.orderId,
       )}&txnToken=${encodeURIComponent(
         paytmResponse.txnToken,
-      )}&amount=${encodeURIComponent(Number(payableAmount).toFixed(2))}`;
+      )}&amount=${encodeURIComponent(String(payableAmount))}`;
       const paymentUrlWithGateway = gatewayBase
         ? `${paymentUrl}&gatewayBase=${encodeURIComponent(gatewayBase)}`
         : paymentUrl;
@@ -6024,6 +6416,13 @@ export const retryOrderPayment = asyncHandler(async (req, res) => {
       return sendSuccess(res, {
         orderId: order._id,
         paymentProvider: PAYMENT_PROVIDERS.PAYTM,
+        gatewayPayableAmount: payableAmount,
+        totals: {
+          subtotal: round2(Number(order.subtotal || 0)),
+          tax: round2(Number(order.tax || 0)),
+          shipping: round2(Number(order.shipping || 0)),
+          finalAmount: round2(Number(order.finalAmount || order.totalAmt || 0)),
+        },
         paymentUrl: paymentUrlWithGateway,
         merchantTransactionId,
         txnToken: paytmResponse.txnToken,
@@ -6032,20 +6431,23 @@ export const retryOrderPayment = asyncHandler(async (req, res) => {
     }
 
     if (selectedPaymentProvider === PAYMENT_PROVIDERS.PHONEPE) {
+      if (shouldBlockPhonePeForLocalhost(req)) {
+        return res.status(400).json(buildPhonePeLocalhostProdError());
+      }
+
       const merchantTransactionId = `BOG_${order._id}_${Date.now().toString(36).toUpperCase()}`;
-      const defaultPhonePeCallback = `${backendUrl}/api/orders/webhook/phonepe`;
-      const callbackUrl =
-        process.env.PHONEPE_ORDER_CALLBACK_URL ||
-        `${defaultPhonePeCallback}?merchantOrderId=${encodeURIComponent(
-          merchantTransactionId,
-        )}`;
-      const defaultPhonePeRedirect = `${primaryOrigin}/payment/phonepe?merchantOrderId=${encodeURIComponent(
+      const callbackUrl = buildPhonePeOrderCallbackUrl({
+        configuredCallbackUrl: process.env.PHONEPE_ORDER_CALLBACK_URL,
+        backendUrl,
         merchantTransactionId,
-      )}&orderId=${encodeURIComponent(String(order._id))}&paymentProvider=${encodeURIComponent(
-        PAYMENT_PROVIDERS.PHONEPE,
-      )}&flow=order&returnPath=${encodeURIComponent("/my-orders")}`;
-      const redirectUrl =
-        process.env.PHONEPE_REDIRECT_URL || defaultPhonePeRedirect;
+      });
+      const redirectUrl = buildPhonePeOrderRedirectUrl({
+        configuredRedirectUrl: process.env.PHONEPE_REDIRECT_URL,
+        primaryOrigin,
+        merchantTransactionId,
+        orderId: order._id,
+        returnPath: "/my-orders",
+      });
 
       const phonepeResponse = await createPhonePePayment({
         amount: payableAmount,
@@ -6075,6 +6477,13 @@ export const retryOrderPayment = asyncHandler(async (req, res) => {
       return sendSuccess(res, {
         orderId: order._id,
         paymentProvider: PAYMENT_PROVIDERS.PHONEPE,
+        gatewayPayableAmount: payableAmount,
+        totals: {
+          subtotal: round2(Number(order.subtotal || 0)),
+          tax: round2(Number(order.tax || 0)),
+          shipping: round2(Number(order.shipping || 0)),
+          finalAmount: round2(Number(order.finalAmount || order.totalAmt || 0)),
+        },
         paymentUrl: phonepeResponse.redirectUrl,
         merchantTransactionId,
         phonepeOrderId: phonepeResponse.phonepeOrderId,

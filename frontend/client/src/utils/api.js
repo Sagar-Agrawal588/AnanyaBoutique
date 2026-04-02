@@ -6,7 +6,12 @@ const HEALTHY_ONE_GRAM_HOSTS = new Set([
   "www.healthyonegram.com",
 ]);
 
-const LOCAL_API_FALLBACKS = ["http://localhost:8001", "http://localhost:8000"];
+const LOCAL_API_FALLBACKS = [
+  "http://127.0.0.1:8000",
+  "http://127.0.0.1:8001",
+  "http://localhost:8000",
+  "http://localhost:8001",
+];
 
 const sanitizeBaseUrl = (value) =>
   String(value || "")
@@ -32,7 +37,9 @@ const normalizeLocalFallbacks = () =>
   LOCAL_API_FALLBACKS.map(sanitizeBaseUrl).filter(Boolean);
 
 const resolveApiBaseUrl = () => {
+  const localDevBaseUrl = sanitizeBaseUrl(process.env.NEXT_PUBLIC_LOCAL_API_URL);
   const envCandidates = [
+    localDevBaseUrl,
     process.env.NEXT_PUBLIC_APP_API_URL,
     process.env.NEXT_PUBLIC_API_URL,
   ]
@@ -47,10 +54,10 @@ const resolveApiBaseUrl = () => {
     const isLocalhost = hostname === "localhost" || hostname === "127.0.0.1";
 
     if (isLocalhost) {
-      if (envBaseUrl && isLocalhostUrl(envBaseUrl)) {
-        return envBaseUrl;
-      }
-      return normalizeLocalFallbacks()[0] || "http://localhost:8001";
+      // When the client is running on localhost, honor an explicit API URL
+      // from env first. Falling back to the Next.js origin only works when
+      // dev rewrites are intentionally configured for that backend.
+      return envBaseUrl || origin || normalizeLocalFallbacks()[0] || "";
     }
 
     if (HEALTHY_ONE_GRAM_HOSTS.has(hostname)) {
@@ -179,17 +186,23 @@ const handleApiError = (error, fallbackMessage) => {
 };
 
 const getApiBaseCandidates = () => {
-  const candidates = [sanitizeBaseUrl(API_BASE_URL)].filter(Boolean);
+  const candidates = [];
+  const resolvedBase = sanitizeBaseUrl(API_BASE_URL);
 
   if (typeof window !== "undefined") {
     const hostname = String(window.location.hostname || "").toLowerCase();
     const isLocalhost = hostname === "localhost" || hostname === "127.0.0.1";
     if (isLocalhost) {
+      if (resolvedBase && !isLocalhostUrl(resolvedBase)) {
+        candidates.push(resolvedBase);
+      }
       candidates.push(...normalizeLocalFallbacks());
     }
   }
 
-  return [...new Set(candidates)];
+  candidates.push(resolvedBase);
+
+  return [...new Set(candidates.filter(Boolean))];
 };
 
 const requestWithRetry = async (config, fallbackMessage) => {

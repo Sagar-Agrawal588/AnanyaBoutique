@@ -7,6 +7,8 @@ import {
   buildComboOrderSnapshot,
   computeComboAvailability,
   evaluateComboEligibility,
+  resolveComboUnitOriginalTotal,
+  resolveEffectiveComboUnitPrice,
 } from "../services/combos/combo.service.js";
 
 const getAvailableQuantity = (product, variantId = null) => {
@@ -77,7 +79,9 @@ const resolveRequestedProductIdentity = (productId, variantId = null) => {
     };
   }
 
-  const parts = rawProductId.split("-").map((part) => String(part || "").trim());
+  const parts = rawProductId
+    .split("-")
+    .map((part) => String(part || "").trim());
   const parentProductId = parts[0] || "";
   const embeddedVariantId = parts[1] || "";
 
@@ -92,7 +96,8 @@ const resolveRequestedProductIdentity = (productId, variantId = null) => {
   return {
     productId: parentProductId,
     variantId:
-      normalizedVariantId || (isValidObjectId(embeddedVariantId) ? embeddedVariantId : null),
+      normalizedVariantId ||
+      (isValidObjectId(embeddedVariantId) ? embeddedVariantId : null),
     fromCompositeId: true,
   };
 };
@@ -153,7 +158,7 @@ export const getCart = async (req, res) => {
         .populate({
           path: "items.combo",
           select:
-            "name slug comboPrice originalPrice originalTotal totalSavings comboType comboThumbnail thumbnail image comboImages isActive isVisible startDate endDate stockMode stockQuantity reservedQuantity items",
+            "name slug price comboPrice originalPrice originalTotal totalSavings comboType comboThumbnail thumbnail image comboImages isActive isVisible startDate endDate stockMode stockQuantity reservedQuantity items",
         });
     } else if (sessionId) {
       cart = await CartModel.findOne({ sessionId })
@@ -165,7 +170,7 @@ export const getCart = async (req, res) => {
         .populate({
           path: "items.combo",
           select:
-            "name slug comboPrice originalPrice originalTotal totalSavings comboType comboThumbnail thumbnail image comboImages isActive isVisible startDate endDate stockMode stockQuantity reservedQuantity items",
+            "name slug price comboPrice originalPrice originalTotal totalSavings comboType comboThumbnail thumbnail image comboImages isActive isVisible startDate endDate stockMode stockQuantity reservedQuantity items",
         });
     }
 
@@ -192,10 +197,8 @@ export const getCart = async (req, res) => {
           continue;
         }
 
-        const comboPrice = Number(combo.comboPrice || 0);
-        const comboOriginal = Number(
-          combo.originalPrice ?? combo.originalTotal ?? 0,
-        );
+        const comboPrice = resolveEffectiveComboUnitPrice(combo);
+        const comboOriginal = resolveComboUnitOriginalTotal(combo);
         if (Number(item.price ?? 0) !== comboPrice) {
           item.price = comboPrice;
         }
@@ -437,10 +440,9 @@ export const addToCart = async (req, res) => {
           });
         }
         cart.items[existingIndex].quantity = newQuantity;
-        cart.items[existingIndex].price = Number(combo.comboPrice || 0);
-        cart.items[existingIndex].originalPrice = Number(
-          combo.originalPrice ?? combo.originalTotal ?? 0,
-        );
+        cart.items[existingIndex].price = resolveEffectiveComboUnitPrice(combo);
+        cart.items[existingIndex].originalPrice =
+          resolveComboUnitOriginalTotal(combo);
         cart.items[existingIndex].comboSnapshot = buildComboOrderSnapshot(
           combo,
           newQuantity,
@@ -450,10 +452,8 @@ export const addToCart = async (req, res) => {
           itemType: "combo",
           combo: comboId,
           quantity,
-          price: Number(combo.comboPrice || 0),
-          originalPrice: Number(
-            combo.originalPrice ?? combo.originalTotal ?? 0,
-          ),
+          price: resolveEffectiveComboUnitPrice(combo),
+          originalPrice: resolveComboUnitOriginalTotal(combo),
           comboSnapshot: buildComboOrderSnapshot(combo, quantity),
         });
       }
@@ -468,7 +468,7 @@ export const addToCart = async (req, res) => {
       await cart.populate({
         path: "items.combo",
         select:
-          "name slug comboPrice originalPrice originalTotal totalSavings comboType comboThumbnail thumbnail image comboImages isActive isVisible startDate endDate stockMode stockQuantity reservedQuantity items",
+          "name slug price comboPrice originalPrice originalTotal totalSavings comboType comboThumbnail thumbnail image comboImages isActive isVisible startDate endDate stockMode stockQuantity reservedQuantity items",
       });
 
       return res.status(200).json({
@@ -511,13 +511,26 @@ export const addToCart = async (req, res) => {
       });
     }
 
-    // Get product details
+    // Get product details before evaluating variant requirements.
     const product = await ProductModel.findById(productId);
     if (!product || !product.isActive) {
       return res.status(404).json({
         error: true,
         success: false,
         message: "Product not found or unavailable",
+      });
+    }
+
+    const hasVariantOptions =
+      Boolean(product.hasVariants) &&
+      Array.isArray(product.variants) &&
+      product.variants.length > 0;
+
+    if (hasVariantOptions && !variantId) {
+      return res.status(400).json({
+        error: true,
+        success: false,
+        message: "Please select a pack size before adding this product",
       });
     }
 
@@ -740,10 +753,9 @@ export const updateCartItem = async (req, res) => {
         }
 
         cart.items[itemIndex].quantity = quantity;
-        cart.items[itemIndex].price = Number(combo.comboPrice || 0);
-        cart.items[itemIndex].originalPrice = Number(
-          combo.originalPrice ?? combo.originalTotal ?? 0,
-        );
+        cart.items[itemIndex].price = resolveEffectiveComboUnitPrice(combo);
+        cart.items[itemIndex].originalPrice =
+          resolveComboUnitOriginalTotal(combo);
         cart.items[itemIndex].comboSnapshot = buildComboOrderSnapshot(
           combo,
           quantity,
@@ -760,7 +772,7 @@ export const updateCartItem = async (req, res) => {
       await cart.populate({
         path: "items.combo",
         select:
-          "name slug comboPrice originalPrice originalTotal totalSavings comboType comboThumbnail thumbnail image comboImages isActive isVisible startDate endDate stockMode stockQuantity reservedQuantity items",
+          "name slug price comboPrice originalPrice originalTotal totalSavings comboType comboThumbnail thumbnail image comboImages isActive isVisible startDate endDate stockMode stockQuantity reservedQuantity items",
       });
 
       return res.status(200).json({
@@ -1003,7 +1015,7 @@ export const removeFromCart = async (req, res) => {
     await cart.populate({
       path: "items.combo",
       select:
-        "name slug comboPrice originalPrice originalTotal totalSavings comboType comboThumbnail thumbnail image comboImages isActive isVisible startDate endDate stockMode stockQuantity reservedQuantity items",
+        "name slug price comboPrice originalPrice originalTotal totalSavings comboType comboThumbnail thumbnail image comboImages isActive isVisible startDate endDate stockMode stockQuantity reservedQuantity items",
     });
 
     res.status(200).json({
@@ -1253,10 +1265,10 @@ export const mergeCart = async (req, res) => {
           );
           if (mergedQuantity <= 0) continue;
           userCart.items[existingIndex].quantity = mergedQuantity;
-          userCart.items[existingIndex].price = Number(combo.comboPrice || 0);
-          userCart.items[existingIndex].originalPrice = Number(
-            combo.originalPrice ?? combo.originalTotal ?? 0,
-          );
+          userCart.items[existingIndex].price =
+            resolveEffectiveComboUnitPrice(combo);
+          userCart.items[existingIndex].originalPrice =
+            resolveComboUnitOriginalTotal(combo);
           userCart.items[existingIndex].comboSnapshot = buildComboOrderSnapshot(
             combo,
             mergedQuantity,
@@ -1269,10 +1281,8 @@ export const mergeCart = async (req, res) => {
             itemType: "combo",
             combo: comboId,
             quantity: safeQuantity,
-            price: Number(combo.comboPrice || 0),
-            originalPrice: Number(
-              combo.originalPrice ?? combo.originalTotal ?? 0,
-            ),
+            price: resolveEffectiveComboUnitPrice(combo),
+            originalPrice: resolveComboUnitOriginalTotal(combo),
             comboSnapshot: buildComboOrderSnapshot(combo, safeQuantity),
           });
         }

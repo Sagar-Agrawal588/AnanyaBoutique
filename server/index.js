@@ -103,6 +103,13 @@ const isHttpOrigin = (origin) =>
   /^https?:\/\/[^/\s]+$/i.test(normalizeOrigin(origin));
 const isDevLocalhostOrigin = (origin) =>
   /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(normalizeOrigin(origin));
+const isLocalRequestHost = (value) =>
+  /(^|\/\/)(localhost|127\.0\.0\.1|\[::1\]|::1|0\.0\.0\.0)(:\d+)?$/i.test(
+    normalizeOrigin(value).replace(/\/+$/, ""),
+  ) ||
+  /^(localhost|127\.0\.0\.1|\[::1\]|::1|0\.0\.0\.0)(:\d+)?$/i.test(
+    String(value || "").trim(),
+  );
 const parseOriginList = (value) =>
   String(normalizeEnvValue(value) || "")
     .split(",")
@@ -261,28 +268,40 @@ app.use((req, res, next) => {
 });
 
 app.use(
-  cors({
-    origin: function (origin, callback) {
-      const normalized = normalizeOrigin(origin);
-      if (
-        !origin ||
-        allowedOrigins.includes(normalized) ||
-        (!isProductionEnv && isDevLocalhostOrigin(normalized))
-      ) {
-        callback(null, true);
-      } else {
-        callback(new Error("Not allowed by CORS"));
-      }
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: [
-      "Content-Type",
-      "Authorization",
-      "X-Session-Id",
-      "X-Analytics-Consent",
-      "X-Page-Url",
-    ],
+  cors((req, callback) => {
+    const origin = req.header("Origin");
+    const normalizedOrigin = normalizeOrigin(origin);
+    const requestHost =
+      req?.headers?.host || req?.hostname || req?.socket?.localAddress || "";
+    const allowLocalDevOrigin =
+      isDevLocalhostOrigin(normalizedOrigin) &&
+      (!isProductionEnv || isLocalRequestHost(requestHost));
+
+    const corsOptions = {
+      credentials: true,
+      methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+      allowedHeaders: [
+        "Content-Type",
+        "Authorization",
+        "X-Session-Id",
+        "X-Analytics-Consent",
+        "X-Page-Url",
+      ],
+    };
+
+    if (
+      !origin ||
+      allowedOrigins.includes(normalizedOrigin) ||
+      allowLocalDevOrigin
+    ) {
+      callback(null, {
+        ...corsOptions,
+        origin: true,
+      });
+      return;
+    }
+
+    callback(new Error("Not allowed by CORS"));
   }),
 );
 

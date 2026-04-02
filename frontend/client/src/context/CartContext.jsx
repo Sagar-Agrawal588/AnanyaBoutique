@@ -10,7 +10,7 @@ import {
   parseJsonSafely,
 } from "@/utils/safeJsonFetch";
 import Cookies from "js-cookie";
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { toast } from "react-hot-toast";
 
 /**
@@ -27,6 +27,12 @@ const API_URL = String(API_BASE_URL || "")
   .trim()
   .replace(/\/+$/, "")
   .replace(/\/api$/i, "");
+const LOCAL_API_FALLBACKS = [
+  "http://127.0.0.1:8000",
+  "http://127.0.0.1:8001",
+  "http://localhost:8000",
+  "http://localhost:8001",
+];
 
 const buildApiUrlCandidates = (path) => {
   const normalizedPath = String(path || "").startsWith("/")
@@ -37,9 +43,26 @@ const buildApiUrlCandidates = (path) => {
     : `/api${normalizedPath}`;
 
   const candidates = [];
+
+  if (typeof window !== "undefined") {
+    const hostname = String(window.location.hostname || "").toLowerCase();
+    const isLocalhost = hostname === "localhost" || hostname === "127.0.0.1";
+    if (isLocalhost) {
+      LOCAL_API_FALLBACKS.forEach((base) => {
+        const normalizedBase = String(base || "")
+          .trim()
+          .replace(/\/+$/, "");
+        if (normalizedBase) {
+          candidates.push(`${normalizedBase}${apiPath}`);
+        }
+      });
+    }
+  }
+
   if (API_URL) {
     candidates.push(`${API_URL}${apiPath}`);
   }
+
   candidates.push(apiPath);
 
   return [...new Set(candidates)];
@@ -48,14 +71,34 @@ const buildApiUrlCandidates = (path) => {
 const fetchWithApiFallback = async (path, requestInit) => {
   const candidates = buildApiUrlCandidates(path);
   let lastError = null;
+  let lastResponse = null;
 
-  for (const url of candidates) {
+  for (let index = 0; index < candidates.length; index += 1) {
+    const url = candidates[index];
+    const isLastCandidate = index === candidates.length - 1;
     try {
-      // Treat any HTTP response as reachable and let callers handle status.
-      return await fetch(url, requestInit);
+      const response = await fetch(url, requestInit);
+      if (response.ok) {
+        return response;
+      }
+
+      lastResponse = response;
+      const status = Number(response.status || 0);
+      const shouldTryNext =
+        !isLastCandidate &&
+        (status === 404 || status === 401 || status >= 500 || status === 0);
+      if (shouldTryNext) {
+        continue;
+      }
+
+      return response;
     } catch (error) {
       lastError = error;
     }
+  }
+
+  if (lastResponse) {
+    return lastResponse;
   }
 
   throw lastError || new Error("Request failed");
@@ -118,14 +161,57 @@ const resolveComboType = (value) =>
       "",
   ).trim();
 
-const resolveComboPrice = (value) =>
-  Number(
+const resolveComboPrice = (value) => {
+  const explicitComboPrice = Number(
     value?.comboPrice ??
       value?.combo?.comboPrice ??
       value?.comboSnapshot?.comboPrice ??
-      value?.price ??
       0,
   );
+  if (Number.isFinite(explicitComboPrice) && explicitComboPrice > 0) {
+    return explicitComboPrice;
+  }
+
+  const legacyPrice = Number(value?.price ?? value?.combo?.price ?? 0);
+  if (Number.isFinite(legacyPrice) && legacyPrice > 0) {
+    return legacyPrice;
+  }
+
+  const pricingType = String(
+    value?.pricing?.type || value?.combo?.pricing?.type || "",
+  )
+    .trim()
+    .toLowerCase();
+  const pricingValue = Number(
+    value?.pricing?.value ?? value?.combo?.pricing?.value ?? 0,
+  );
+  const comboItems = Array.isArray(value?.items)
+    ? value.items
+    : Array.isArray(value?.combo?.items)
+      ? value.combo.items
+      : [];
+  const baseTotal = comboItems.reduce(
+    (sum, item) =>
+      sum +
+      Number(item?.price || 0) *
+        Math.max(Number(item?.quantity || item?.quantityRequired || 1), 1),
+    0,
+  );
+
+  if (baseTotal > 0 && Number.isFinite(pricingValue) && pricingValue > 0) {
+    if (pricingType === "fixed_price") {
+      return Math.min(pricingValue, baseTotal);
+    }
+    if (pricingType === "percent_discount") {
+      return Math.max(baseTotal * (1 - pricingValue / 100), 0);
+    }
+    if (pricingType === "fixed_discount") {
+      return Math.max(baseTotal - pricingValue, 0);
+    }
+  }
+
+  return 0;
+};
 
 const resolveProductId = (value) => {
   if (!value) return "";
@@ -225,6 +311,12 @@ const shouldShowCartFetchErrorToast = () => {
   );
 };
 
+const isLocalDevBrowser = () => {
+  if (typeof window === "undefined") return false;
+  const hostname = String(window.location?.hostname || "").toLowerCase();
+  return hostname === "localhost" || hostname === "127.0.0.1";
+};
+
 // Generate or get session ID for guest carts
 const getSessionId = () => {
   if (typeof window === "undefined") return null;
@@ -240,6 +332,50 @@ const getSessionId = () => {
   return sessionId;
 };
 
+const getStoredCartItemsSafely = () => {
+  if (typeof window === "undefined") return [];
+
+  try {
+    const savedCart = localStorage.getItem("cart");
+    return savedCart ? parseStoredCart(savedCart) : [];
+  } catch {
+    return [];
+  }
+};
+
+const buildCartLineKey = (item) => {
+  if (isComboCartItem(item)) {
+    const comboId = String(resolveComboId(item) || "").trim();
+    return comboId ? `combo:${comboId}` : "";
+  }
+
+  const productId = String(resolveProductId(item) || "").trim();
+  const variantId = String(
+    (item?.variant?._id ||
+      item?.variant?.id ||
+      item?.variantId ||
+      (typeof item?.variant === "string" ? item.variant : null) ||
+      item?.selectedVariant?._id ||
+      item?.selectedVariant?.id ||
+      "") || "",
+  ).trim();
+  return productId ? `product:${productId}:${variantId}` : "";
+};
+
+const getCartLineQuantity = (item) =>
+  Math.max(Number(item?.quantity || 0), 0);
+
+const buildCartSyncSignature = (items = []) =>
+  JSON.stringify(
+    (Array.isArray(items) ? items : [])
+      .map((item) => ({
+        key: buildCartLineKey(item),
+        quantity: getCartLineQuantity(item),
+      }))
+      .filter((entry) => entry.key && entry.quantity > 0)
+      .sort((a, b) => a.key.localeCompare(b.key)),
+  );
+
 export const CartProvider = ({ children }) => {
   const [cartItems, setCartItems] = useState([]);
   const [cartCount, setCartCount] = useState(0);
@@ -248,6 +384,8 @@ export const CartProvider = ({ children }) => {
   const [isInitialized, setIsInitialized] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [orderNote, setOrderNote] = useState("");
+  const mergedGuestSessionRef = useRef("");
+  const syncedStoredCartRef = useRef("");
   const { calculateShipping } = useSettings();
 
   // Get user token if logged in
@@ -256,13 +394,213 @@ export const CartProvider = ({ children }) => {
     return Cookies.get("accessToken") || localStorage.getItem("token");
   };
 
+  const shouldUseLocalDevFallback = () => isLocalDevBrowser();
+
   const resolveVariantId = (item) => {
     if (isComboCartItem(item)) return null;
-    const rawVariant = item?.variant?._id || item?.variant || item?.variantId;
+    const rawVariant =
+      item?.variant?._id ||
+      item?.variant?.id ||
+      item?.variantId ||
+      (typeof item?.variant === "string" ? item.variant : null) ||
+      item?.selectedVariant?._id ||
+      item?.selectedVariant?.id ||
+      null;
     if (rawVariant === undefined || rawVariant === null || rawVariant === "") {
       return null;
     }
     return String(rawVariant);
+  };
+
+  const buildRequestHeaders = (token, sessionId) => {
+    const headers = {
+      "Content-Type": "application/json",
+    };
+
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+    if (sessionId) {
+      headers["X-Session-Id"] = sessionId;
+    }
+
+    return headers;
+  };
+
+  const applyServerCartPayload = (payload) => {
+    const safeItems = Array.isArray(payload?.items) ? payload.items : [];
+    const safeItemCount =
+      Number(payload?.itemCount) ||
+      safeItems.reduce(
+        (sum, item) => sum + Math.max(Number(item?.quantity || 1), 1),
+        0,
+      );
+    const safeSubtotal = Number.isFinite(Number(payload?.subtotal))
+      ? Number(payload?.subtotal)
+      : safeItems.reduce((sum, item) => {
+          const quantity = Math.max(Number(item?.quantity || 1), 1);
+          const price =
+            Number(item?.price) ||
+            Number(item?.product?.price) ||
+            Number(item?.productData?.price) ||
+            0;
+          return sum + price * quantity;
+        }, 0);
+
+    setCartItems(safeItems);
+    setCartCount(safeItemCount);
+    setCartTotal(round2(safeSubtotal));
+
+    return safeItems;
+  };
+
+  const resolvePendingStoredCartLines = (storedItems = [], serverItems = []) => {
+    const serverIndex = new Map();
+
+    for (const item of serverItems) {
+      const key = buildCartLineKey(item);
+      if (!key) continue;
+      serverIndex.set(key, getCartLineQuantity(item));
+    }
+
+    return storedItems
+      .map((item) => {
+        const key = buildCartLineKey(item);
+        if (!key) return null;
+
+        const localQuantity = getCartLineQuantity(item);
+        const serverQuantity = Number(serverIndex.get(key) || 0);
+        const quantityToSync = Math.max(localQuantity - serverQuantity, 0);
+
+        return quantityToSync > 0
+          ? {
+              item,
+              quantity: quantityToSync,
+            }
+          : null;
+      })
+      .filter(Boolean);
+  };
+
+  const buildStoredCartSyncPayload = (item, quantity) => {
+    const normalizedQuantity = Math.max(Number(quantity || 1), 1);
+    if (isComboCartItem(item)) {
+      const comboPayload = buildComboCartPayload(item, normalizedQuantity);
+      return comboPayload?.comboId ? comboPayload : null;
+    }
+
+    const product = item?.productData || item?.product || item;
+    const productId = resolveProductId(item);
+    if (!productId) return null;
+
+    const variantId = resolveVariantId(item);
+    const variantName = String(
+      item?.variantName ||
+        item?.selectedVariant?.name ||
+        product?.variantName ||
+        product?.selectedVariant?.name ||
+        product?.variant?.name ||
+        "",
+    )
+      .trim()
+      .slice(0, 120);
+
+    return {
+      productId,
+      quantity: normalizedQuantity,
+      price: Number(item?.price ?? product?.price ?? 0),
+      originalPrice: Number(
+        item?.originalPrice ??
+          product?.originalPrice ??
+          product?.oldPrice ??
+          product?.price ??
+          0,
+      ),
+      variantId: variantId || undefined,
+      variantName: variantName || undefined,
+    };
+  };
+
+  const mergeGuestSessionCart = async (token, sessionId) => {
+    if (!token || !sessionId) return;
+
+    const mergeKey = `${String(token)}::${String(sessionId)}`;
+    if (mergedGuestSessionRef.current === mergeKey) {
+      return;
+    }
+
+    const headers = buildRequestHeaders(token, sessionId);
+    const response = await fetchWithApiFallback("/cart/merge", {
+      method: "POST",
+      headers,
+      credentials: "include",
+      body: JSON.stringify({ sessionId }),
+    });
+    const data = await parseJsonSafely(response);
+
+    if (response.ok && data?.success) {
+      mergedGuestSessionRef.current = mergeKey;
+    }
+  };
+
+  const syncStoredCartToServer = async (token, sessionId, serverPayload) => {
+    if (!token) return null;
+
+    const storedItems = getStoredCartItemsSafely();
+    if (storedItems.length === 0) return null;
+
+    const serverItems = Array.isArray(serverPayload?.items)
+      ? serverPayload.items
+      : [];
+    const syncSignature = `${String(token)}::${buildCartSyncSignature(storedItems)}`;
+    const pendingLines = resolvePendingStoredCartLines(storedItems, serverItems);
+
+    if (pendingLines.length === 0) {
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("cart");
+      }
+      syncedStoredCartRef.current = syncSignature;
+      return null;
+    }
+
+    if (syncedStoredCartRef.current === syncSignature) {
+      return null;
+    }
+
+    const headers = buildRequestHeaders(token, sessionId);
+    let latestPayload = null;
+    let latestItems = serverItems;
+
+    for (const pendingLine of pendingLines) {
+      const payload = buildStoredCartSyncPayload(
+        pendingLine.item,
+        pendingLine.quantity,
+      );
+      if (!payload) continue;
+
+      const response = await fetchWithApiFallback("/cart/add", {
+        method: "POST",
+        headers,
+        credentials: "include",
+        body: JSON.stringify(payload),
+      });
+      const data = await parseJsonSafely(response);
+
+      if (data?.success && data?.data) {
+        latestPayload = data.data;
+        latestItems = Array.isArray(data.data.items) ? data.data.items : latestItems;
+      }
+    }
+
+    const remainingLines = resolvePendingStoredCartLines(storedItems, latestItems);
+    if (remainingLines.length === 0) {
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("cart");
+      }
+      syncedStoredCartRef.current = syncSignature;
+    }
+
+    return latestPayload;
   };
 
   // Fetch cart from API or local storage
@@ -271,16 +609,14 @@ export const CartProvider = ({ children }) => {
       setLoading(true);
       const token = getToken();
       const sessionId = getSessionId();
+      const headers = buildRequestHeaders(token, sessionId);
 
-      const headers = {
-        "Content-Type": "application/json",
-      };
-
-      if (token) {
-        headers["Authorization"] = `Bearer ${token}`;
-      }
-      if (sessionId) {
-        headers["X-Session-Id"] = sessionId;
+      if (token && sessionId) {
+        try {
+          await mergeGuestSessionCart(token, sessionId);
+        } catch (mergeError) {
+          console.warn("Unable to merge guest cart into account cart:", mergeError);
+        }
       }
 
       const response = await fetchWithApiFallback("/cart", {
@@ -292,19 +628,98 @@ export const CartProvider = ({ children }) => {
       const data = await parseJsonSafely(response);
 
       if (data?.success && data?.data) {
-        setCartItems(data.data.items || []);
-        setCartCount(data.data.itemCount || 0);
-        setCartTotal(round2(data.data.subtotal || 0));
+        let finalPayload = data.data;
+
+        if (token) {
+          try {
+            const syncedPayload = await syncStoredCartToServer(
+              token,
+              sessionId,
+              finalPayload,
+            );
+            if (syncedPayload?.items) {
+              finalPayload = syncedPayload;
+            }
+          } catch (syncError) {
+            console.warn("Unable to sync stored cart into account cart:", syncError);
+          }
+        }
+
+        const apiItems = applyServerCartPayload(finalPayload);
+        return {
+          success: true,
+          source: "api",
+          items: apiItems,
+        };
       } else {
-        // Fallback to local storage
-        loadFromLocalStorage();
+        // For authenticated users, never replace server cart with local fallback.
+        if (token) {
+          if (shouldUseLocalDevFallback()) {
+            const restored = loadFromLocalStorage();
+            return {
+              success: restored,
+              source: "local-dev-fallback",
+              items: restored
+                ? parseStoredCart(localStorage.getItem("cart") || "{}")
+                : [],
+            };
+          }
+          if (shouldShowCartFetchErrorToast()) {
+            toast.error("Unable to sync cart right now. Please refresh.");
+          }
+          return {
+            success: false,
+            source: "api",
+            items: Array.isArray(cartItems) ? cartItems : [],
+          };
+        }
+
+        // Guest fallback to local storage
+        const restored = loadFromLocalStorage();
+        return {
+          success: restored,
+          source: "local",
+          items: restored
+            ? parseStoredCart(localStorage.getItem("cart") || "{}")
+            : [],
+        };
       }
     } catch (error) {
       console.warn("Error fetching cart:", error);
+
+      const token = getToken();
+      if (token) {
+        if (shouldUseLocalDevFallback()) {
+          const restoredFromLocal = loadFromLocalStorage();
+          return {
+            success: restoredFromLocal,
+            source: "local-dev-error-fallback",
+            items: restoredFromLocal
+              ? parseStoredCart(localStorage.getItem("cart") || "{}")
+              : [],
+          };
+        }
+        if (shouldShowCartFetchErrorToast()) {
+          toast.error("Unable to sync cart right now. Please refresh.");
+        }
+        return {
+          success: false,
+          source: "api-error",
+          items: Array.isArray(cartItems) ? cartItems : [],
+        };
+      }
+
       const restoredFromLocal = loadFromLocalStorage();
       if (!restoredFromLocal && shouldShowCartFetchErrorToast()) {
         toast.error("Unable to sync cart right now. Please refresh.");
       }
+      return {
+        success: restoredFromLocal,
+        source: "local-error",
+        items: restoredFromLocal
+          ? parseStoredCart(localStorage.getItem("cart") || "{}")
+          : [],
+      };
     } finally {
       setLoading(false);
       setIsInitialized(true);
@@ -361,18 +776,11 @@ export const CartProvider = ({ children }) => {
         toast.error("Combo is unavailable right now.");
         return { success: false, message: "Combo unavailable" };
       }
-      const resolvedProductId = !isComboRequest ? resolveProductId(product) : "";
+      const resolvedProductId = !isComboRequest
+        ? resolveProductId(product)
+        : "";
 
-      const headers = {
-        "Content-Type": "application/json",
-      };
-
-      if (token) {
-        headers["Authorization"] = `Bearer ${token}`;
-      }
-      if (sessionId) {
-        headers["X-Session-Id"] = sessionId;
-      }
+      const headers = buildRequestHeaders(token, sessionId);
 
       const response = await fetchWithApiFallback("/cart/add", {
         method: "POST",
@@ -386,11 +794,12 @@ export const CartProvider = ({ children }) => {
                 quantity,
                 price: product.price,
                 originalPrice: product.originalPrice || product.oldPrice,
-                variantId:
-                  product.variantId ||
-                  product.selectedVariant?._id ||
+                variantId: resolveVariantId(product) || undefined,
+                variantName:
+                  product.variantName ||
+                  product.selectedVariant?.name ||
+                  product?.variant?.name ||
                   undefined,
-                variantName: product.selectedVariant?.name || undefined,
               },
         ),
       });
@@ -410,6 +819,9 @@ export const CartProvider = ({ children }) => {
         setCartItems(data.data.items || []);
         setCartCount(data.data.itemCount || 0);
         setCartTotal(round2(data.data.subtotal || 0));
+        if (token && typeof window !== "undefined") {
+          localStorage.removeItem("cart");
+        }
 
         if (isComboRequest) {
           trackEvent("combo_add_to_cart", {
@@ -426,9 +838,7 @@ export const CartProvider = ({ children }) => {
             productId: String(trackedProductId || ""),
             quantity: Number(quantity || 1),
             price: Number(product.price || 0),
-            variantId: String(
-              product.variantId || product.selectedVariant?._id || "",
-            ),
+            variantId: String(resolveVariantId(product) || ""),
           });
         }
 
@@ -464,15 +874,26 @@ export const CartProvider = ({ children }) => {
           return { success: false, message: errorMessage };
         }
 
+        if (shouldUseLocalDevFallback()) {
+          addToCartLocal(product, quantity);
+          if (cartItems.length === 0) {
+            setIsDrawerOpen(true);
+          }
+          return { success: true, source: "local-dev-fallback" };
+        }
+
+        if (token) {
+          toast.error(errorMessage);
+          return { success: false, message: errorMessage };
+        }
+
         addToCartLocal(product, quantity);
         const trackedProductId = resolveProductId(product);
         trackEvent("add_to_cart", {
           productId: String(trackedProductId || ""),
           quantity: Number(quantity || 1),
           price: Number(product.price || 0),
-          variantId: String(
-            product.variantId || product.selectedVariant?._id || "",
-          ),
+          variantId: String(resolveVariantId(product) || ""),
           source: "local_fallback",
         });
         if (cartItems.length === 0) {
@@ -486,15 +907,24 @@ export const CartProvider = ({ children }) => {
         toast.error("Unable to add combo right now.");
         return { success: false, message: "Combo add failed" };
       }
+      if (shouldUseLocalDevFallback()) {
+        addToCartLocal(product, quantity);
+        if (cartItems.length === 0) {
+          setIsDrawerOpen(true);
+        }
+        return { success: true, source: "local-dev-error-fallback" };
+      }
+      if (getToken()) {
+        toast.error("Unable to add item right now. Please try again.");
+        return { success: false, message: "Add to cart failed" };
+      }
       addToCartLocal(product, quantity);
       const trackedProductId = resolveProductId(product);
       trackEvent("add_to_cart", {
         productId: String(trackedProductId || ""),
         quantity: Number(quantity || 1),
         price: Number(product.price || 0),
-        variantId: String(
-          product.variantId || product.selectedVariant?._id || "",
-        ),
+        variantId: String(resolveVariantId(product) || ""),
         source: "local_fallback",
       });
       if (cartItems.length === 0) {
@@ -534,13 +964,26 @@ export const CartProvider = ({ children }) => {
     // Check stock if available in product object
     const stock = product.stock !== undefined ? product.stock : Infinity;
     const resolvedProductId = resolveProductId(product);
+    const resolvedVariantId = resolveVariantId(product);
+    const resolvedVariantName = String(
+      product?.variantName ||
+        product?.selectedVariant?.name ||
+        product?.variant?.name ||
+        "",
+    )
+      .trim()
+      .slice(0, 120);
 
     // If we're adding NEW item, check if quantum <= stock
     // If we're updating existing, check if (existing + quantity) <= stock
 
     const existingIndex = cartItems.findIndex((item) => {
       const itemId = resolveProductId(item);
-      return String(itemId) === String(resolvedProductId);
+      const itemVariantId = resolveVariantId(item);
+      return (
+        String(itemId) === String(resolvedProductId) &&
+        String(itemVariantId || "") === String(resolvedVariantId || "")
+      );
     });
 
     let newItems;
@@ -565,6 +1008,9 @@ export const CartProvider = ({ children }) => {
           productData: product,
           _id: resolvedProductId,
           parentProductId: resolvedProductId,
+          variant: resolvedVariantId,
+          variantId: resolvedVariantId,
+          variantName: resolvedVariantName,
           quantity,
           price: product.price,
           originalPrice: product.originalPrice || product.oldPrice,
@@ -600,16 +1046,7 @@ export const CartProvider = ({ children }) => {
         ? resolveComboId(options) || productId
         : "";
 
-      const headers = {
-        "Content-Type": "application/json",
-      };
-
-      if (token) {
-        headers["Authorization"] = `Bearer ${token}`;
-      }
-      if (sessionId) {
-        headers["X-Session-Id"] = sessionId;
-      }
+      const headers = buildRequestHeaders(token, sessionId);
 
       const response = await fetchWithApiFallback("/cart/update", {
         method: "PUT",
@@ -647,9 +1084,20 @@ export const CartProvider = ({ children }) => {
         setCartItems(data.data.items || []);
         setCartCount(data.data.itemCount || 0);
         setCartTotal(round2(data.data.subtotal || 0));
+        if (token && typeof window !== "undefined") {
+          localStorage.removeItem("cart");
+        }
         return { success: true };
       } else {
         if (response.status >= 400 && response.status < 500) {
+          toast.error(errorMessage);
+          return { success: false, message: errorMessage };
+        }
+        if (shouldUseLocalDevFallback()) {
+          updateQuantityLocal(productId, quantity, variantId);
+          return { success: true, source: "local-dev-fallback" };
+        }
+        if (token) {
           toast.error(errorMessage);
           return { success: false, message: errorMessage };
         }
@@ -661,6 +1109,18 @@ export const CartProvider = ({ children }) => {
       }
     } catch (error) {
       console.error("Error updating cart:", error);
+      if (shouldUseLocalDevFallback() && !options?.itemType && !options?.comboId) {
+        updateQuantityLocal(productId, quantity, variantId);
+        return { success: true, source: "local-dev-error-fallback" };
+      }
+      if (getToken()) {
+        toast.error(
+          options?.itemType || options?.comboId
+            ? "Unable to update combo right now."
+            : "Unable to update item quantity right now.",
+        );
+        return { success: false };
+      }
       if (!options?.itemType && !options?.comboId) {
         updateQuantityLocal(productId, quantity, variantId);
       } else {
@@ -696,8 +1156,7 @@ export const CartProvider = ({ children }) => {
       ? (variantId ??
         resolveVariantId(
           cartItems.find(
-            (item) =>
-              String(resolveProductId(item)) === String(productId),
+            (item) => String(resolveProductId(item)) === String(productId),
           ),
         ))
       : null;
@@ -707,17 +1166,7 @@ export const CartProvider = ({ children }) => {
       setLoading(true);
       const token = getToken();
       const sessionId = getSessionId();
-
-      const headers = {
-        "Content-Type": "application/json",
-      };
-
-      if (token) {
-        headers["Authorization"] = `Bearer ${token}`;
-      }
-      if (sessionId) {
-        headers["X-Session-Id"] = sessionId;
-      }
+      const headers = buildRequestHeaders(token, sessionId);
 
       const queryParts = [];
       if (isComboRequest) {
@@ -741,11 +1190,25 @@ export const CartProvider = ({ children }) => {
       );
 
       const data = await parseJsonSafely(response);
+      const errorMessage = resolveCartErrorMessage(
+        getResponseErrorMessage(
+          data,
+          isComboRequest
+            ? "Unable to remove combo right now."
+            : "Unable to remove item right now.",
+        ),
+        isComboRequest
+          ? "Unable to remove combo right now."
+          : "Unable to remove item right now.",
+      );
 
       if (data?.success) {
         setCartItems(data.data.items || []);
         setCartCount(data.data.itemCount || 0);
         setCartTotal(round2(data.data.subtotal || 0));
+        if (token && typeof window !== "undefined") {
+          localStorage.removeItem("cart");
+        }
         if (!isComboRequest) {
           trackEvent("remove_from_cart", {
             productId: String(productId || ""),
@@ -754,6 +1217,17 @@ export const CartProvider = ({ children }) => {
         }
         // toast.success("Item removed from cart");
       } else {
+        if (shouldUseLocalDevFallback()) {
+          removeFromCartLocal(productId, resolvedVariantId, {
+            itemType: isComboRequest ? "combo" : "product",
+            comboId,
+          });
+          return { success: true, source: "local-dev-fallback" };
+        }
+        if (token) {
+          toast.error(errorMessage);
+          return { success: false, message: errorMessage };
+        }
         removeFromCartLocal(productId, resolvedVariantId, {
           itemType: isComboRequest ? "combo" : "product",
           comboId,
@@ -768,6 +1242,21 @@ export const CartProvider = ({ children }) => {
       }
     } catch (error) {
       console.error("Error removing from cart:", error);
+      if (shouldUseLocalDevFallback()) {
+        removeFromCartLocal(productId, resolvedVariantId, {
+          itemType: isComboRequest ? "combo" : "product",
+          comboId,
+        });
+        return { success: true, source: "local-dev-error-fallback" };
+      }
+      if (getToken()) {
+        toast.error(
+          isComboRequest
+            ? "Unable to remove combo right now."
+            : "Unable to remove item right now.",
+        );
+        return { success: false };
+      }
       removeFromCartLocal(productId, resolvedVariantId, {
         itemType: isComboRequest ? "combo" : "product",
         comboId,
@@ -799,9 +1288,7 @@ export const CartProvider = ({ children }) => {
           return String(itemComboId || "") !== String(comboId || "");
         }
 
-        const itemProductId = String(
-          resolveProductId(item),
-        );
+        const itemProductId = String(resolveProductId(item));
         const itemVariantId = resolveVariantId(item);
         const isSameProduct = itemProductId === String(productId);
         const isSameVariant =
@@ -821,17 +1308,7 @@ export const CartProvider = ({ children }) => {
       setLoading(true);
       const token = getToken();
       const sessionId = getSessionId();
-
-      const headers = {
-        "Content-Type": "application/json",
-      };
-
-      if (token) {
-        headers["Authorization"] = `Bearer ${token}`;
-      }
-      if (sessionId) {
-        headers["X-Session-Id"] = sessionId;
-      }
+      const headers = buildRequestHeaders(token, sessionId);
 
       await fetchWithApiFallback("/cart/clear", {
         method: "DELETE",
@@ -913,6 +1390,8 @@ export const CartProvider = ({ children }) => {
     if (typeof window === "undefined") return;
 
     const handleAuthChange = () => {
+      mergedGuestSessionRef.current = "";
+      syncedStoredCartRef.current = "";
       if (getToken()) {
         fetchCart();
       } else {
