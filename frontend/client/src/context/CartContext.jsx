@@ -27,6 +27,7 @@ const API_URL = String(API_BASE_URL || "")
   .trim()
   .replace(/\/+$/, "")
   .replace(/\/api$/i, "");
+const LOCAL_API_FALLBACKS = ["http://localhost:8000", "http://localhost:8001"];
 
 const buildApiUrlCandidates = (path) => {
   const normalizedPath = String(path || "").startsWith("/")
@@ -40,6 +41,22 @@ const buildApiUrlCandidates = (path) => {
   if (API_URL) {
     candidates.push(`${API_URL}${apiPath}`);
   }
+
+  if (typeof window !== "undefined") {
+    const hostname = String(window.location.hostname || "").toLowerCase();
+    const isLocalhost = hostname === "localhost" || hostname === "127.0.0.1";
+    if (isLocalhost) {
+      LOCAL_API_FALLBACKS.forEach((base) => {
+        const normalizedBase = String(base || "")
+          .trim()
+          .replace(/\/+$/, "");
+        if (normalizedBase) {
+          candidates.push(`${normalizedBase}${apiPath}`);
+        }
+      });
+    }
+  }
+
   candidates.push(apiPath);
 
   return [...new Set(candidates)];
@@ -48,14 +65,34 @@ const buildApiUrlCandidates = (path) => {
 const fetchWithApiFallback = async (path, requestInit) => {
   const candidates = buildApiUrlCandidates(path);
   let lastError = null;
+  let lastResponse = null;
 
-  for (const url of candidates) {
+  for (let index = 0; index < candidates.length; index += 1) {
+    const url = candidates[index];
+    const isLastCandidate = index === candidates.length - 1;
     try {
-      // Treat any HTTP response as reachable and let callers handle status.
-      return await fetch(url, requestInit);
+      const response = await fetch(url, requestInit);
+      if (response.ok) {
+        return response;
+      }
+
+      lastResponse = response;
+      const status = Number(response.status || 0);
+      const shouldTryNext =
+        !isLastCandidate &&
+        (status === 404 || status === 401 || status >= 500 || status === 0);
+      if (shouldTryNext) {
+        continue;
+      }
+
+      return response;
     } catch (error) {
       lastError = error;
     }
+  }
+
+  if (lastResponse) {
+    return lastResponse;
   }
 
   throw lastError || new Error("Request failed");
@@ -258,7 +295,14 @@ export const CartProvider = ({ children }) => {
 
   const resolveVariantId = (item) => {
     if (isComboCartItem(item)) return null;
-    const rawVariant = item?.variant?._id || item?.variant || item?.variantId;
+    const rawVariant =
+      item?.variant?._id ||
+      item?.variant?.id ||
+      item?.variantId ||
+      (typeof item?.variant === "string" ? item.variant : null) ||
+      item?.selectedVariant?._id ||
+      item?.selectedVariant?.id ||
+      null;
     if (rawVariant === undefined || rawVariant === null || rawVariant === "") {
       return null;
     }
@@ -292,19 +336,64 @@ export const CartProvider = ({ children }) => {
       const data = await parseJsonSafely(response);
 
       if (data?.success && data?.data) {
-        setCartItems(data.data.items || []);
+        const apiItems = Array.isArray(data.data.items) ? data.data.items : [];
+        setCartItems(apiItems);
         setCartCount(data.data.itemCount || 0);
         setCartTotal(round2(data.data.subtotal || 0));
+        return {
+          success: true,
+          source: "api",
+          items: apiItems,
+        };
       } else {
-        // Fallback to local storage
-        loadFromLocalStorage();
+        // For authenticated users, never replace server cart with local fallback.
+        if (token) {
+          if (shouldShowCartFetchErrorToast()) {
+            toast.error("Unable to sync cart right now. Please refresh.");
+          }
+          return {
+            success: false,
+            source: "api",
+            items: Array.isArray(cartItems) ? cartItems : [],
+          };
+        }
+
+        // Guest fallback to local storage
+        const restored = loadFromLocalStorage();
+        return {
+          success: restored,
+          source: "local",
+          items: restored
+            ? parseStoredCart(localStorage.getItem("cart") || "{}")
+            : [],
+        };
       }
     } catch (error) {
       console.warn("Error fetching cart:", error);
+
+      const token = getToken();
+      if (token) {
+        if (shouldShowCartFetchErrorToast()) {
+          toast.error("Unable to sync cart right now. Please refresh.");
+        }
+        return {
+          success: false,
+          source: "api-error",
+          items: Array.isArray(cartItems) ? cartItems : [],
+        };
+      }
+
       const restoredFromLocal = loadFromLocalStorage();
       if (!restoredFromLocal && shouldShowCartFetchErrorToast()) {
         toast.error("Unable to sync cart right now. Please refresh.");
       }
+      return {
+        success: restoredFromLocal,
+        source: "local-error",
+        items: restoredFromLocal
+          ? parseStoredCart(localStorage.getItem("cart") || "{}")
+          : [],
+      };
     } finally {
       setLoading(false);
       setIsInitialized(true);
@@ -361,7 +450,9 @@ export const CartProvider = ({ children }) => {
         toast.error("Combo is unavailable right now.");
         return { success: false, message: "Combo unavailable" };
       }
-      const resolvedProductId = !isComboRequest ? resolveProductId(product) : "";
+      const resolvedProductId = !isComboRequest
+        ? resolveProductId(product)
+        : "";
 
       const headers = {
         "Content-Type": "application/json",
@@ -386,11 +477,12 @@ export const CartProvider = ({ children }) => {
                 quantity,
                 price: product.price,
                 originalPrice: product.originalPrice || product.oldPrice,
-                variantId:
-                  product.variantId ||
-                  product.selectedVariant?._id ||
+                variantId: resolveVariantId(product) || undefined,
+                variantName:
+                  product.variantName ||
+                  product.selectedVariant?.name ||
+                  product?.variant?.name ||
                   undefined,
-                variantName: product.selectedVariant?.name || undefined,
               },
         ),
       });
@@ -426,9 +518,7 @@ export const CartProvider = ({ children }) => {
             productId: String(trackedProductId || ""),
             quantity: Number(quantity || 1),
             price: Number(product.price || 0),
-            variantId: String(
-              product.variantId || product.selectedVariant?._id || "",
-            ),
+            variantId: String(resolveVariantId(product) || ""),
           });
         }
 
@@ -470,9 +560,7 @@ export const CartProvider = ({ children }) => {
           productId: String(trackedProductId || ""),
           quantity: Number(quantity || 1),
           price: Number(product.price || 0),
-          variantId: String(
-            product.variantId || product.selectedVariant?._id || "",
-          ),
+          variantId: String(resolveVariantId(product) || ""),
           source: "local_fallback",
         });
         if (cartItems.length === 0) {
@@ -492,9 +580,7 @@ export const CartProvider = ({ children }) => {
         productId: String(trackedProductId || ""),
         quantity: Number(quantity || 1),
         price: Number(product.price || 0),
-        variantId: String(
-          product.variantId || product.selectedVariant?._id || "",
-        ),
+        variantId: String(resolveVariantId(product) || ""),
         source: "local_fallback",
       });
       if (cartItems.length === 0) {
@@ -534,13 +620,26 @@ export const CartProvider = ({ children }) => {
     // Check stock if available in product object
     const stock = product.stock !== undefined ? product.stock : Infinity;
     const resolvedProductId = resolveProductId(product);
+    const resolvedVariantId = resolveVariantId(product);
+    const resolvedVariantName = String(
+      product?.variantName ||
+        product?.selectedVariant?.name ||
+        product?.variant?.name ||
+        "",
+    )
+      .trim()
+      .slice(0, 120);
 
     // If we're adding NEW item, check if quantum <= stock
     // If we're updating existing, check if (existing + quantity) <= stock
 
     const existingIndex = cartItems.findIndex((item) => {
       const itemId = resolveProductId(item);
-      return String(itemId) === String(resolvedProductId);
+      const itemVariantId = resolveVariantId(item);
+      return (
+        String(itemId) === String(resolvedProductId) &&
+        String(itemVariantId || "") === String(resolvedVariantId || "")
+      );
     });
 
     let newItems;
@@ -565,6 +664,9 @@ export const CartProvider = ({ children }) => {
           productData: product,
           _id: resolvedProductId,
           parentProductId: resolvedProductId,
+          variant: resolvedVariantId,
+          variantId: resolvedVariantId,
+          variantName: resolvedVariantName,
           quantity,
           price: product.price,
           originalPrice: product.originalPrice || product.oldPrice,
@@ -696,8 +798,7 @@ export const CartProvider = ({ children }) => {
       ? (variantId ??
         resolveVariantId(
           cartItems.find(
-            (item) =>
-              String(resolveProductId(item)) === String(productId),
+            (item) => String(resolveProductId(item)) === String(productId),
           ),
         ))
       : null;
@@ -799,9 +900,7 @@ export const CartProvider = ({ children }) => {
           return String(itemComboId || "") !== String(comboId || "");
         }
 
-        const itemProductId = String(
-          resolveProductId(item),
-        );
+        const itemProductId = String(resolveProductId(item));
         const itemVariantId = resolveVariantId(item);
         const isSameProduct = itemProductId === String(productId);
         const isSameVariant =

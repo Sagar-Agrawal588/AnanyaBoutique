@@ -28,6 +28,8 @@ export default function CartPage() {
   const subtotal = round2(cartSubTotalAmount || 0);
   const shippingCost = 0; // DISPLAY-ONLY shipping is shown struck-through below.
   const total = round2(subtotal + shippingCost);
+  const displaySubtotal = Math.max(Math.round(subtotal), 0);
+  const displayTotal = Math.max(Math.round(total), 0);
 
   const resolveProductId = (item) => {
     if (!item) return null;
@@ -318,11 +320,15 @@ export default function CartPage() {
                       <div className="text-right">
                         {data.originalPrice > data.price && (
                           <p className="text-xs text-gray-400 font-bold line-through">
-                            ₹{round2(data.originalPrice * data.quantity)}
+                            ₹
+                            {Math.max(
+                              Math.round(data.originalPrice * data.quantity),
+                              0,
+                            )}
                           </p>
                         )}
                         <p className="text-2xl font-black text-primary tracking-tight">
-                          ₹{round2(data.price * data.quantity)}
+                          ₹{Math.max(Math.round(data.price * data.quantity), 0)}
                         </p>
                       </div>
                     </div>
@@ -345,7 +351,7 @@ export default function CartPage() {
               <div className="space-y-4 mb-8">
                 <div className="flex justify-between text-gray-400 font-bold uppercase tracking-widest text-[11px]">
                   <span>Subtotal</span>
-                  <span className="text-white">₹{subtotal}</span>
+                  <span className="text-white">₹{displaySubtotal}</span>
                 </div>
                 <div className="flex justify-between text-gray-400 font-bold uppercase tracking-widest text-[11px]">
                   <span>Shipping</span>
@@ -364,13 +370,13 @@ export default function CartPage() {
                       Total Amount
                     </p>
                     <p className="text-3xl font-black text-white tracking-tight">
-                      ₹{total}
+                      ₹{displayTotal}
                     </p>
                   </div>
                   <div className="text-right">
                     {cartSavings > 0 && (
                       <p className="text-primary font-black text-xs">
-                        SAVING ₹{round2(cartSavings)}
+                        SAVING ₹{Math.max(Math.round(cartSavings), 0)}
                       </p>
                     )}
                   </div>

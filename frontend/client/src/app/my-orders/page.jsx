@@ -54,16 +54,31 @@ const composeApiUrl = (base, path) => {
 };
 
 const getApiBaseCandidates = () => {
-  const candidates = [sanitizeBaseUrl(API_BASE_URL)].filter(Boolean);
+  const candidates = [];
 
   if (typeof window !== "undefined") {
+    const origin = sanitizeBaseUrl(window.location.origin);
+    if (origin) {
+      candidates.push(origin);
+    }
+    // Keep a same-origin relative fallback so Next.js rewrites can proxy /api calls.
+    candidates.push("");
+
     const host = String(window.location.hostname || "").toLowerCase();
     if (host === "localhost" || host === "127.0.0.1") {
       candidates.push(...LOCAL_API_FALLBACKS.map(sanitizeBaseUrl));
     }
   }
 
-  return [...new Set(candidates.filter(Boolean))];
+  candidates.push(sanitizeBaseUrl(API_BASE_URL));
+
+  return [
+    ...new Set(
+      candidates.filter(
+        (candidate) => candidate !== undefined && candidate !== null,
+      ),
+    ),
+  ];
 };
 
 const fetchWithApiFallback = async (path, options = {}) => {
@@ -81,21 +96,31 @@ const fetchWithApiFallback = async (path, options = {}) => {
 
       lastResponse = response;
       const shouldTryNext =
-        !isLast && (response.status === 404 || response.status >= 500);
+        !isLast &&
+        (response.status === 404 ||
+          response.status === 401 ||
+          response.status >= 500);
       if (!shouldTryNext) {
         return response;
       }
     } catch (error) {
       lastNetworkError = error;
-      if (isLast) {
-        throw error;
-      }
     }
   }
 
   if (lastResponse) return lastResponse;
-  if (lastNetworkError) throw lastNetworkError;
-  throw new Error("Failed to reach orders API");
+  return new Response(
+    JSON.stringify({
+      success: false,
+      message: lastNetworkError?.message || "Failed to reach orders API",
+    }),
+    {
+      status: 503,
+      headers: {
+        "Content-Type": "application/json",
+      },
+    },
+  );
 };
 
 const getCookieToken = () => {
@@ -110,6 +135,101 @@ const getAuthToken = () =>
   getCookieToken() ||
   localStorage.getItem("token") ||
   localStorage.getItem("accessToken");
+
+const toMoney = (value, fallback = 0) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const sanitizeMoney = (value, fallback = 0) =>
+  Math.max(toMoney(value, fallback), 0);
+
+const round2 = (value) =>
+  Math.round((toMoney(value, 0) + Number.EPSILON) * 100) / 100;
+
+const toRoundedRupee = (value) => Math.max(Math.round(toMoney(value, 0)), 0);
+
+const resolveOrderGstRatePercent = ({ order, subtotal, tax }) => {
+  const pricing =
+    order?.pricing && typeof order.pricing === "object" ? order.pricing : null;
+  const fromOrder = toMoney(
+    order?.gst?.rate ?? pricing?.gstRate ?? pricing?.gstRatePercent,
+    NaN,
+  );
+  if (Number.isFinite(fromOrder) && fromOrder > 0) return fromOrder;
+
+  const safeSubtotal = toMoney(subtotal, 0);
+  const safeTax = toMoney(tax, 0);
+  if (safeSubtotal > 0 && safeTax >= 0) {
+    const derivedRate = (safeTax * 100) / safeSubtotal;
+    if (Number.isFinite(derivedRate) && derivedRate > 0 && derivedRate < 100) {
+      return derivedRate;
+    }
+  }
+
+  return 5;
+};
+
+const buildOrderDisplayTotals = (order = {}, orderTotals = {}) => {
+  const pricing =
+    order?.pricing && typeof order.pricing === "object" ? order.pricing : null;
+  const couponCode = String(
+    order?.couponCode || pricing?.couponCode || "",
+  ).trim();
+
+  const comboDiscount = sanitizeMoney(
+    pricing?.comboDiscount ?? order?.comboDiscount,
+    0,
+  );
+  const couponDiscountRaw = sanitizeMoney(
+    pricing?.couponDiscount ?? order?.discountAmount,
+    0,
+  );
+  const couponDiscount = couponCode ? couponDiscountRaw : 0;
+
+  const visibleDiscountTotal = round2(couponDiscount);
+  const discountedSubtotalRaw = sanitizeMoney(
+    pricing?.taxableAmount ?? orderTotals?.discountedSubtotal,
+    sanitizeMoney(Number(orderTotals?.subtotal || 0) - comboDiscount, 0),
+  );
+  const taxRaw = sanitizeMoney(pricing?.tax ?? orderTotals?.tax, 0);
+  const coinRedemptionAmount = sanitizeMoney(
+    pricing?.coinRedemptionAmount ?? orderTotals?.coinRedemptionAmount,
+    0,
+  );
+  const totalRaw = sanitizeMoney(
+    pricing?.total ?? pricing?.finalAmount ?? orderTotals?.total,
+    0,
+  );
+  const totalRounded = toRoundedRupee(totalRaw);
+  const gstRatePercent = resolveOrderGstRatePercent({
+    order,
+    subtotal: discountedSubtotalRaw,
+    tax: taxRaw,
+  });
+  const discountedSubtotal =
+    totalRounded > 0
+      ? round2(totalRounded / (1 + gstRatePercent / 100))
+      : round2(discountedSubtotalRaw);
+  const tax =
+    totalRounded > 0
+      ? round2(totalRounded - discountedSubtotal)
+      : round2(taxRaw);
+  const summarySubtotal = round2(discountedSubtotal + visibleDiscountTotal);
+  const hasVisibleDiscount = visibleDiscountTotal > 0.009;
+
+  return {
+    summarySubtotal,
+    discountedSubtotal,
+    tax,
+    couponDiscount,
+    visibleDiscountTotal,
+    hasVisibleDiscount,
+    coinRedemptionAmount,
+    totalRaw,
+    totalRounded,
+  };
+};
 
 const Orders = () => {
   const router = useRouter();
@@ -513,6 +633,10 @@ const Orders = () => {
                       payableShipping: 0,
                     }),
                   );
+                  const displayTotals = buildOrderDisplayTotals(
+                    order,
+                    orderTotals,
+                  );
 
                   return (
                     <div
@@ -565,12 +689,9 @@ const Orders = () => {
                             <p className="text-sm text-gray-600">Total</p>
                             <p className="text-lg font-semibold text-orange-600">
                               ₹
-                              {Number(orderTotals.total || 0).toLocaleString(
-                                "en-IN",
-                                {
-                                  minimumFractionDigits: 2,
-                                },
-                              )}
+                              {Number(
+                                displayTotals.totalRounded || 0,
+                              ).toLocaleString("en-IN")}
                             </p>
                           </div>
                         </div>
@@ -667,30 +788,52 @@ const Orders = () => {
                             <span className="text-gray-600">Subtotal:</span>
                             <span className="text-gray-900">
                               ₹
-                              {Number(orderTotals.subtotal || 0).toLocaleString(
-                                "en-IN",
-                                {
-                                  minimumFractionDigits: 2,
-                                },
-                              )}
-                            </span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-gray-600">
-                              Discount
-                              {order.couponCode ? ` (${order.couponCode})` : ""}
-                              :
-                            </span>
-                            <span className="text-primary">
-                              -₹
                               {Number(
-                                orderTotals.totalDiscount || 0,
+                                displayTotals.summarySubtotal || 0,
                               ).toLocaleString("en-IN", {
                                 minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
                               })}
                             </span>
                           </div>
-                          {Number(orderTotals.coinRedemptionAmount || 0) >
+                          {displayTotals.hasVisibleDiscount && (
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">
+                                Discount
+                                {order.couponCode &&
+                                displayTotals.couponDiscount > 0
+                                  ? ` (${order.couponCode})`
+                                  : ""}
+                                :
+                              </span>
+                              <span className="text-primary">
+                                -₹
+                                {Number(
+                                  displayTotals.visibleDiscountTotal || 0,
+                                ).toLocaleString("en-IN", {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}
+                              </span>
+                            </div>
+                          )}
+                          {displayTotals.hasVisibleDiscount && (
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">
+                                Discounted Subtotal:
+                              </span>
+                              <span className="text-gray-900">
+                                ₹
+                                {Number(
+                                  displayTotals.discountedSubtotal || 0,
+                                ).toLocaleString("en-IN", {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}
+                              </span>
+                            </div>
+                          )}
+                          {Number(displayTotals.coinRedemptionAmount || 0) >
                             0 && (
                             <div className="flex justify-between">
                               <span className="text-gray-600">
@@ -699,21 +842,23 @@ const Orders = () => {
                               <span className="text-primary">
                                 -₹
                                 {Number(
-                                  orderTotals.coinRedemptionAmount || 0,
+                                  displayTotals.coinRedemptionAmount || 0,
                                 ).toLocaleString("en-IN", {
                                   minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
                                 })}
                               </span>
                             </div>
                           )}
                           <div className="flex justify-between">
-                            <span className="text-gray-600">Tax:</span>
+                            <span className="text-gray-600">GST:</span>
                             <span className="text-gray-900">
                               ₹
-                              {Number(orderTotals.tax || 0).toLocaleString(
+                              {Number(displayTotals.tax || 0).toLocaleString(
                                 "en-IN",
                                 {
                                   minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
                                 },
                               )}
                             </span>
@@ -757,12 +902,9 @@ const Orders = () => {
                             <span>Total:</span>
                             <span className="text-orange-600">
                               ₹
-                              {Number(orderTotals.total || 0).toLocaleString(
-                                "en-IN",
-                                {
-                                  minimumFractionDigits: 2,
-                                },
-                              )}
+                              {Number(
+                                displayTotals.totalRounded || 0,
+                              ).toLocaleString("en-IN")}
                             </span>
                           </div>
                         </div>

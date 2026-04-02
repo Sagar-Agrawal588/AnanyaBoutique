@@ -211,7 +211,9 @@ const parseComboPayload = async (body = {}, { existingCombo = null } = {}) => {
 
   const pricingType = String(
     body?.pricingType || body?.pricing?.type || "fixed_price",
-  ).trim();
+  )
+    .trim()
+    .toLowerCase();
   const pricingValue = Math.max(
     Number(body?.pricingValue ?? body?.pricing?.value ?? 0),
     0,
@@ -222,6 +224,12 @@ const parseComboPayload = async (body = {}, { existingCombo = null } = {}) => {
     items: snapshots,
     pricing: { type: pricingType, value: pricingValue },
   });
+  const baseTotal = round2(
+    snapshots.reduce(
+      (sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 0),
+      0,
+    ),
+  );
 
   const manualOriginalPrice = normalizeNonNegativeNumber(
     body?.originalPrice ?? body?.mrp,
@@ -231,6 +239,11 @@ const parseComboPayload = async (body = {}, { existingCombo = null } = {}) => {
     body?.comboPrice ?? body?.price,
     0,
   );
+  const manualComboPriceDiffersFromRule =
+    Math.abs(manualComboPrice - Number(calculatedPricing.comboPrice || 0)) >
+    0.01;
+  const shouldUseManualComboPrice =
+    manualComboPrice > 0 && manualComboPriceDiffersFromRule;
   const rawComboType = normalizeComboType(
     body?.comboType || body?.type || existingCombo?.comboType || "fixed_bundle",
   );
@@ -246,26 +259,35 @@ const parseComboPayload = async (body = {}, { existingCombo = null } = {}) => {
       : calculatedPricing.originalTotal,
   );
   let comboPrice = round2(
-    manualComboPrice > 0 ? manualComboPrice : calculatedPricing.comboPrice,
+    shouldUseManualComboPrice ? manualComboPrice : calculatedPricing.comboPrice,
   );
 
   if (originalTotal <= 0) {
     originalTotal = round2(calculatedPricing.originalTotal);
   }
-  if (originalTotal > 0 && comboPrice > originalTotal) {
-    comboPrice = originalTotal;
+  const maxAllowedComboPrice = baseTotal > 0 ? baseTotal : originalTotal;
+  if (maxAllowedComboPrice > 0 && comboPrice > maxAllowedComboPrice) {
+    comboPrice = maxAllowedComboPrice;
   }
   comboPrice = Math.max(comboPrice, 0);
   if (shouldRoundAiComboPrice) {
     comboPrice =
-      originalTotal > 0
-        ? Math.min(roundCurrency(comboPrice), originalTotal)
+      maxAllowedComboPrice > 0
+        ? Math.min(roundCurrency(comboPrice), maxAllowedComboPrice)
         : roundCurrency(comboPrice);
   }
 
-  const totalSavings = round2(Math.max(originalTotal - comboPrice, 0));
+  const savingsReferenceTotal = baseTotal > 0 ? baseTotal : originalTotal;
+  const totalSavings = round2(Math.max(savingsReferenceTotal - comboPrice, 0));
   const discountPercentage =
-    originalTotal > 0 ? round2((totalSavings / originalTotal) * 100) : 0;
+    savingsReferenceTotal > 0
+      ? round2((totalSavings / savingsReferenceTotal) * 100)
+      : 0;
+  const persistedPricingType = shouldUseManualComboPrice
+    ? "fixed_price"
+    : pricingType;
+  const normalizedPricingValue =
+    persistedPricingType === "fixed_price" ? comboPrice : pricingValue;
 
   const tags = normalizeComboTags(body?.tags || []);
   const comboType = rawComboType;
@@ -358,7 +380,7 @@ const parseComboPayload = async (body = {}, { existingCombo = null } = {}) => {
     comboThumbnail,
     sku: comboSku,
     items: snapshots,
-    pricing: { type: pricingType, value: pricingValue },
+    pricing: { type: persistedPricingType, value: normalizedPricingValue },
     originalTotal,
     originalPrice: originalTotal,
     comboPrice,

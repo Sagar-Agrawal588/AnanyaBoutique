@@ -12,11 +12,8 @@ const fromPaise = (paise) => Number(paise || 0) / 100;
 
 const roundMoney = (value) => fromPaise(toPaise(value));
 
-const clampPaise = (
-  paise,
-  min = 0,
-  max = Number.POSITIVE_INFINITY,
-) => Math.min(Math.max(Number(paise || 0), min), max);
+const clampPaise = (paise, min = 0, max = Number.POSITIVE_INFINITY) =>
+  Math.min(Math.max(Number(paise || 0), min), max);
 
 const clampMoney = (value) => Math.max(roundMoney(value), 0);
 
@@ -107,7 +104,9 @@ const resolveCouponDiscountPaise = ({
 
   let couponDiscountPaise = 0;
   if (couponType === "PERCENT" || couponType === "PERCENTAGE") {
-    couponDiscountPaise = Math.round((baseAfterPreDiscountPaise * couponValue) / 100);
+    couponDiscountPaise = Math.round(
+      (baseAfterPreDiscountPaise * couponValue) / 100,
+    );
   } else if (couponType === "FLAT" || couponType === "AMOUNT") {
     couponDiscountPaise = toPaise(couponValue);
   } else if (coupon.discountAmount != null) {
@@ -135,11 +134,7 @@ const resolveCouponDiscountPaise = ({
   };
 };
 
-const resolveShippingPaise = ({
-  shippingRules,
-  context,
-  errors,
-}) => {
+const resolveShippingPaise = ({ shippingRules, context, errors }) => {
   if (typeof shippingRules?.calculateShipping === "function") {
     try {
       const resolved = shippingRules.calculateShipping(context);
@@ -156,9 +151,7 @@ const resolveShippingPaise = ({
 
   const baseShippingPaise = clampPaise(
     toPaise(
-      shippingRules?.baseShippingCost ??
-        shippingRules?.shippingCost ??
-        0,
+      shippingRules?.baseShippingCost ?? shippingRules?.shippingCost ?? 0,
     ),
     0,
   );
@@ -203,7 +196,10 @@ const buildItemBreakdown = ({ items, gstRatePercent, pricesIncludeTax }) => {
       let unitGrossPaise = unitPricePaise;
 
       if (pricesIncludeTax) {
-        const split = extractBaseFromInclusivePaise(unitPricePaise, gstRatePercent);
+        const split = extractBaseFromInclusivePaise(
+          unitPricePaise,
+          gstRatePercent,
+        );
         unitBasePaise = split.basePaise;
         unitTaxPaise = split.gstPaise;
         unitGrossPaise = unitPricePaise;
@@ -319,12 +315,14 @@ export const calculateOrderTotals = ({
     0,
   );
 
-  const { couponDiscountPaise, appliedCouponCode } = resolveCouponDiscountPaise({
-    couponCode,
-    couponRules,
-    baseAfterPreDiscountPaise,
-    errors,
-  });
+  const { couponDiscountPaise, appliedCouponCode } = resolveCouponDiscountPaise(
+    {
+      couponCode,
+      couponRules,
+      baseAfterPreDiscountPaise,
+      errors,
+    },
+  );
 
   const discountedSubtotalPaise = Math.max(
     baseAfterPreDiscountPaise - couponDiscountPaise,
@@ -355,7 +353,8 @@ export const calculateOrderTotals = ({
     productTotalPaise,
   );
 
-  const totalDiscountPaise = baseDiscountBeforeCouponPaise + couponDiscountPaise;
+  const totalDiscountPaise =
+    baseDiscountBeforeCouponPaise + couponDiscountPaise;
   const totalPayablePaise = Math.max(
     discountedSubtotalPaise + gstPaise + shippingPaise - coinRedeemPaise,
     0,
@@ -367,7 +366,9 @@ export const calculateOrderTotals = ({
     discount: roundMoney(fromPaise(totalDiscountPaise)),
     totalDiscount: roundMoney(fromPaise(totalDiscountPaise)),
     couponDiscount: roundMoney(fromPaise(couponDiscountPaise)),
-    baseDiscountBeforeCoupon: roundMoney(fromPaise(baseDiscountBeforeCouponPaise)),
+    baseDiscountBeforeCoupon: roundMoney(
+      fromPaise(baseDiscountBeforeCouponPaise),
+    ),
     tax: roundMoney(fromPaise(gstPaise)),
     shipping: roundMoney(fromPaise(shippingPaise)),
     totalPayable: roundMoney(fromPaise(totalPayablePaise)),
@@ -446,7 +447,8 @@ export const buildSavedOrderCalculationInput = (order = {}, options = {}) => {
         pricesIncludeTax: true,
       },
       baseDiscountBeforeCoupon: clampMoney(
-        toSafeNumber(order?.membershipDiscount, 0) +
+        toSafeNumber(order?.comboDiscount, 0) +
+          toSafeNumber(order?.membershipDiscount, 0) +
           toSafeNumber(order?.influencerDiscount, 0),
       ),
       coinRedeemAmount,
@@ -461,6 +463,7 @@ export const buildSavedOrderCalculationInput = (order = {}, options = {}) => {
   });
   const baseSubtotal = clampMoney(originalTotals.subtotal);
   const storedTotalDiscount = clampMoney(order?.discount);
+  const storedComboDiscount = clampMoney(order?.comboDiscount);
   const storedMembershipDiscount = clampMoney(order?.membershipDiscount);
   const storedInfluencerDiscount = clampMoney(order?.influencerDiscount);
   const storedCouponDiscount = clampMoney(order?.discountAmount);
@@ -482,6 +485,10 @@ export const buildSavedOrderCalculationInput = (order = {}, options = {}) => {
     assumeInclusive: assumeInclusiveDiscounts,
     gstRatePercent,
   });
+  let comboDiscount = normalizeDiscountValue(storedComboDiscount, {
+    assumeInclusive: assumeInclusiveDiscounts,
+    gstRatePercent,
+  });
   let influencerDiscount = normalizeDiscountValue(storedInfluencerDiscount, {
     assumeInclusive: assumeInclusiveDiscounts,
     gstRatePercent,
@@ -497,19 +504,19 @@ export const buildSavedOrderCalculationInput = (order = {}, options = {}) => {
 
   if (!(totalDiscount > 0)) {
     totalDiscount = clampMoney(
-      membershipDiscount + influencerDiscount + couponDiscount,
+      comboDiscount + membershipDiscount + influencerDiscount + couponDiscount,
     );
   }
 
   const partSum = clampMoney(
-    membershipDiscount + influencerDiscount + couponDiscount,
+    comboDiscount + membershipDiscount + influencerDiscount + couponDiscount,
   );
   if (totalDiscount > partSum + 0.01) {
     couponDiscount = clampMoney(couponDiscount + (totalDiscount - partSum));
   }
 
   let baseDiscountBeforeCoupon = clampMoney(
-    membershipDiscount + influencerDiscount,
+    comboDiscount + membershipDiscount + influencerDiscount,
   );
   baseDiscountBeforeCoupon = Math.min(baseDiscountBeforeCoupon, baseSubtotal);
 
@@ -517,7 +524,9 @@ export const buildSavedOrderCalculationInput = (order = {}, options = {}) => {
     couponDiscount,
     Math.max(baseSubtotal - baseDiscountBeforeCoupon, 0),
   );
-  const knownDiscount = clampMoney(baseDiscountBeforeCoupon + effectiveCouponDiscount);
+  const knownDiscount = clampMoney(
+    baseDiscountBeforeCoupon + effectiveCouponDiscount,
+  );
   if (totalDiscount > knownDiscount + 0.01) {
     effectiveCouponDiscount = Math.min(
       clampMoney(effectiveCouponDiscount + (totalDiscount - knownDiscount)),

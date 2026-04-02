@@ -6,7 +6,7 @@ const HEALTHY_ONE_GRAM_HOSTS = new Set([
   "www.healthyonegram.com",
 ]);
 
-const LOCAL_API_FALLBACKS = ["http://localhost:8001", "http://localhost:8000"];
+const LOCAL_API_FALLBACKS = ["http://localhost:8000", "http://localhost:8001"];
 
 const sanitizeBaseUrl = (value) =>
   String(value || "")
