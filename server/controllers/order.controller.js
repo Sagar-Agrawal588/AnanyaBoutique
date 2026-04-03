@@ -3477,6 +3477,7 @@ const fetchAndNormalizeOrderCombos = async ({
 const calculateCheckoutPricing = async ({
   normalizedProducts,
   comboDiscount = 0,
+  comboOriginalAmount = 0,
   userId,
   couponCode,
   influencerCode,
@@ -3485,11 +3486,25 @@ const calculateCheckoutPricing = async ({
   paymentType = "prepaid",
   logContext = "checkoutPricing",
 }) => {
+  const comboExpandedAmount = round2(
+    normalizedProducts
+      .filter((item) => Boolean(item?.comboId))
+      .reduce((sum, item) => sum + Number(item?.subTotal || 0), 0),
+  );
+  const standaloneAmount = round2(
+    normalizedProducts
+      .filter((item) => !item?.comboId)
+      .reduce((sum, item) => sum + Number(item?.subTotal || 0), 0),
+  );
+  const normalizedComboOriginalAmount = round2(
+    Math.max(Number(comboOriginalAmount || 0), 0),
+  );
+  const effectiveComboOriginalAmount =
+    normalizedComboOriginalAmount > 0
+      ? normalizedComboOriginalAmount
+      : comboExpandedAmount;
   const originalAmount = round2(
-    normalizedProducts.reduce(
-      (sum, item) => sum + Number(item.subTotal || 0),
-      0,
-    ),
+    standaloneAmount + effectiveComboOriginalAmount,
   );
   const normalizedComboDiscount = Math.min(
     Math.max(round2(Number(comboDiscount || 0)), 0),
@@ -5141,6 +5156,7 @@ export const createOrder = asyncHandler(async (req, res) => {
     const pricing = await calculateCheckoutPricing({
       normalizedProducts: mergedProducts,
       comboDiscount: comboPayload.comboDiscount,
+      comboOriginalAmount: comboPayload.comboOriginalAmount,
       userId,
       couponCode,
       influencerCode,
@@ -5666,6 +5682,7 @@ export const previewOrderPricing = asyncHandler(async (req, res) => {
     const pricing = await calculateCheckoutPricing({
       normalizedProducts: mergedProducts,
       comboDiscount: comboPayload.comboDiscount,
+      comboOriginalAmount: comboPayload.comboOriginalAmount,
       userId,
       couponCode,
       influencerCode,
@@ -5821,6 +5838,7 @@ export const saveOrderForLater = asyncHandler(async (req, res) => {
     const pricing = await calculateCheckoutPricing({
       normalizedProducts: mergedProducts,
       comboDiscount: comboPayload.comboDiscount,
+      comboOriginalAmount: comboPayload.comboOriginalAmount,
       userId,
       couponCode,
       influencerCode,
