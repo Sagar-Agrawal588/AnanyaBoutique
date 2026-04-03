@@ -19,7 +19,10 @@ import ComboOrderModel from "../models/comboOrder.model.js";
 import CouponModel from "../models/coupon.model.js";
 import InvoiceModel from "../models/invoice.model.js";
 import NewsletterModel from "../models/newsletter.model.js";
-import OrderModel from "../models/order.model.js";
+import OrderModel, {
+  generateFinalOrderId,
+  normalizeTempOrderId,
+} from "../models/order.model.js";
 import ProductModel from "../models/product.model.js";
 import PurchaseOrderModel from "../models/purchaseOrder.model.js";
 import SettingsModel from "../models/settings.model.js";
@@ -739,8 +742,136 @@ const persistInvoiceSnapshotToDisk = async ({
 
 const formatInr = (value) => `Rs. ${round2(value).toFixed(2)}`;
 
+const FINAL_ORDER_ID_PATTERN = /^[A-Z0-9]+-\d{4}\/\d{4}$/;
+
+const resolveOrderPublicIdentifier = (order = {}) => {
+  const tempId = normalizeTempOrderId(order?.temp_id);
+  if (tempId) return tempId;
+
+  const rawOrderId = String(order?._id || "").trim();
+  return rawOrderId || "";
+};
+
+const resolveOrderLookupFilter = (identifier) => {
+  const rawIdentifier = String(identifier || "").trim();
+  if (!rawIdentifier) return null;
+
+  const tempId = normalizeTempOrderId(rawIdentifier);
+  if (tempId) {
+    return { temp_id: tempId };
+  }
+
+  if (mongoose.Types.ObjectId.isValid(rawIdentifier)) {
+    return { _id: rawIdentifier };
+  }
+
+  return null;
+};
+
+const findOrderByIdentifier = async (identifier, { lean = false } = {}) => {
+  const filter = resolveOrderLookupFilter(identifier);
+  if (!filter) return null;
+
+  const query = OrderModel.findOne(filter);
+  return lean ? query.lean() : query;
+};
+
+const buildGatewayMerchantTransactionId = (
+  order,
+  { includeRetrySuffix = false } = {},
+) => {
+  const baseReference =
+    normalizeTempOrderId(order?.temp_id) || String(order?._id || "").trim();
+  if (!baseReference) return "";
+
+  if (!includeRetrySuffix) {
+    return `BOG_${baseReference}`;
+  }
+
+  return `BOG_${baseReference}_${Date.now().toString(36).toUpperCase()}`;
+};
+
+const isDuplicateKeyError = (error) => Number(error?.code || 0) === 11000;
+
+const assignFinalOrderIdAfterPaymentSuccess = async ({
+  order,
+  confirmedAt = new Date(),
+}) => {
+  if (!order?._id) {
+    return { order, assigned: false, finalId: null };
+  }
+
+  const existingFinal = String(order.final_id || "")
+    .trim()
+    .toUpperCase();
+  if (existingFinal && FINAL_ORDER_ID_PATTERN.test(existingFinal)) {
+    order.final_id = existingFinal;
+    order.orderNumber = existingFinal;
+    order.displayOrderId = existingFinal;
+    order.confirmed_at = order.confirmed_at || confirmedAt;
+    order.confirmedAt = order.confirmedAt || order.confirmed_at;
+    order.status = "confirmed";
+    return { order, assigned: false, finalId: existingFinal };
+  }
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const generatedFinalId = await generateFinalOrderId(
+      order.createdAt || confirmedAt,
+    );
+
+    try {
+      const updated = await OrderModel.findOneAndUpdate(
+        {
+          _id: order._id,
+          $or: [{ final_id: null }, { final_id: "" }],
+        },
+        {
+          $set: {
+            final_id: generatedFinalId,
+            orderNumber: generatedFinalId,
+            displayOrderId: generatedFinalId,
+            confirmed_at: confirmedAt,
+            confirmedAt: confirmedAt,
+            status: "confirmed",
+          },
+        },
+        { new: true },
+      );
+
+      if (updated) {
+        return { order: updated, assigned: true, finalId: generatedFinalId };
+      }
+
+      const latest = await OrderModel.findById(order._id);
+      if (latest) {
+        return {
+          order: latest,
+          assigned: false,
+          finalId: String(latest.final_id || "")
+            .trim()
+            .toUpperCase(),
+        };
+      }
+
+      return { order, assigned: false, finalId: null };
+    } catch (error) {
+      if (isDuplicateKeyError(error)) {
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  throw new AppError("CONFLICT", {
+    field: "final_id",
+    message: "Failed to allocate a unique final order ID",
+  });
+};
+
 const resolveDisplayOrderNumber = (order = {}) => {
   const explicitDisplayId =
+    order?.final_id ||
+    order?.temp_id ||
     order?.displayOrderId ||
     order?.orderNumber ||
     order?.order_id ||
@@ -992,8 +1123,10 @@ const generatePayOrderToken = async (order) => {
   const email = await resolveOrderEmailForToken(order);
   if (!email) return "";
   const issuedAt = Date.now();
+  const orderReferenceId =
+    resolveOrderPublicIdentifier(order) || String(order?._id || "").trim();
   const signature = signPayOrderToken({
-    orderId: String(order?._id || "").trim(),
+    orderId: orderReferenceId,
     email,
     timestamp: issuedAt,
     secret,
@@ -1028,8 +1161,11 @@ const verifyPayOrderToken = async (order, token) => {
     return { ok: false, reason: "missing_email" };
   }
 
+  const orderReferenceId =
+    resolveOrderPublicIdentifier(order) || String(order?._id || "").trim();
+
   const expected = signPayOrderToken({
-    orderId: String(order?._id || "").trim(),
+    orderId: orderReferenceId,
     email,
     timestamp: issuedAt,
     secret,
@@ -1046,8 +1182,10 @@ const buildPayOrderUrl = async (order) => {
   const token = await generatePayOrderToken(order);
   if (!token) return "";
   const siteUrl = getPrimaryStoreUrl();
+  const orderReferenceId =
+    resolveOrderPublicIdentifier(order) || String(order?._id || "").trim();
   return `${siteUrl}/pay-order/${encodeURIComponent(
-    String(order?._id || ""),
+    orderReferenceId,
   )}?key=${encodeURIComponent(token)}`;
 };
 
@@ -2075,17 +2213,28 @@ const extractOrderIdFromMerchantTransactionId = (merchantTransactionId) => {
   const normalized = String(merchantTransactionId || "").trim();
   if (!normalized || !normalized.startsWith("BOG_")) return null;
 
-  const directOrderId = normalized.replace(/^BOG_/, "");
-  if (mongoose.Types.ObjectId.isValid(directOrderId)) {
-    return directOrderId;
+  const payload = normalized.replace(/^BOG_/, "");
+
+  const directTempId = normalizeTempOrderId(payload);
+  if (directTempId) {
+    return directTempId;
   }
 
-  const withSuffixMatch = normalized.match(
-    /^BOG_([a-fA-F0-9]{24})(?:[_-].+)?$/,
-  );
-  if (!withSuffixMatch?.[1]) return null;
+  if (mongoose.Types.ObjectId.isValid(payload)) {
+    return payload;
+  }
 
-  return withSuffixMatch[1];
+  const tempWithSuffixMatch = payload.match(/^(TMP-[A-Z0-9]{6})(?:[_-].+)?$/i);
+  if (tempWithSuffixMatch?.[1]) {
+    return tempWithSuffixMatch[1].toUpperCase();
+  }
+
+  const objectIdWithSuffixMatch = payload.match(
+    /^([a-fA-F0-9]{24})(?:[_-].+)?$/,
+  );
+  if (!objectIdWithSuffixMatch?.[1]) return null;
+
+  return objectIdWithSuffixMatch[1];
 };
 
 const verifyPaytmWebhookState = async (merchantTransactionId) => {
@@ -2121,6 +2270,50 @@ const getClientBaseUrl = () => {
   }
 
   return "https://healthyonegram.com";
+};
+
+const normalizeHttpOrigin = (value) => {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+
+  try {
+    const parsed = new URL(raw);
+    if (!/^https?:$/i.test(parsed.protocol)) return "";
+    return `${parsed.protocol}//${parsed.host}`.replace(/\/+$/, "");
+  } catch {
+    return "";
+  }
+};
+
+const resolveClientOriginFromRequest = (req) => {
+  const explicitQueryOrigin = normalizeHttpOrigin(
+    req?.query?.clientOrigin || req?.body?.clientOrigin,
+  );
+  if (explicitQueryOrigin) return explicitQueryOrigin;
+
+  const headerOrigin = normalizeHttpOrigin(req?.headers?.origin);
+  if (headerOrigin) return headerOrigin;
+
+  const refererRaw = String(req?.headers?.referer || "").trim();
+  if (refererRaw) {
+    try {
+      const refererOrigin = normalizeHttpOrigin(new URL(refererRaw).origin);
+      if (refererOrigin) return refererOrigin;
+    } catch {
+      // ignore invalid referer
+    }
+  }
+
+  return "";
+};
+
+const resolveClientBaseUrl = (req) => {
+  const requestOrigin = resolveClientOriginFromRequest(req);
+  if (requestOrigin && isLocalHostName(resolveHostname(requestOrigin))) {
+    return requestOrigin;
+  }
+
+  return getClientBaseUrl();
 };
 
 const getBackendBaseUrl = (req) => {
@@ -2248,6 +2441,38 @@ const buildPhonePeOrderCallbackUrl = ({
     return callbackUrl.toString();
   } catch {
     return fallback;
+  }
+};
+
+const buildPaytmOrderCallbackUrl = ({
+  configuredCallbackUrl,
+  backendUrl,
+  req,
+}) => {
+  const resolvedBackendBase = String(
+    backendUrl || getBackendBaseUrl(req) || resolveClientBaseUrl(req),
+  )
+    .trim()
+    .replace(/\/+$/, "");
+
+  const fallback = `${resolvedBackendBase}/api/orders/webhook/paytm`;
+  const configured = String(configuredCallbackUrl || "").trim();
+  const input = configured
+    ? configured.startsWith("http")
+      ? configured
+      : `${resolvedBackendBase}${configured.startsWith("/") ? "" : "/"}${configured}`
+    : fallback;
+
+  try {
+    const callbackUrl = new URL(input);
+    const clientOrigin =
+      resolveClientOriginFromRequest(req) || resolveClientBaseUrl(req);
+    if (clientOrigin) {
+      callbackUrl.searchParams.set("clientOrigin", clientOrigin);
+    }
+    return callbackUrl.toString();
+  } catch {
+    return input;
   }
 };
 
@@ -2434,13 +2659,16 @@ const shouldRedirectPaytm = (req) => {
   return isBrowser && !accept.includes("application/json");
 };
 
-const redirectPaytmWebhookToClient = (res, { orderId, paymentState }) => {
+const redirectPaytmWebhookToClient = (req, res, { orderId, paymentState }) => {
   const path = orderId
     ? `/orders/${encodeURIComponent(String(orderId))}`
     : "/my-orders";
 
+  const preferredClientBase =
+    resolveClientOriginFromRequest(req) || resolveClientBaseUrl(req);
+
   try {
-    const target = new URL(path, `${getClientBaseUrl()}/`);
+    const target = new URL(path, `${preferredClientBase}/`);
     target.searchParams.set("paymentProvider", "PAYTM");
     if (paymentState) {
       target.searchParams.set(
@@ -2450,7 +2678,10 @@ const redirectPaytmWebhookToClient = (res, { orderId, paymentState }) => {
     }
     return res.redirect(303, target.toString());
   } catch {
-    const fallback = new URL("/my-orders", "https://healthyonegram.com/");
+    const fallback = new URL(
+      "/my-orders",
+      `${resolveClientBaseUrl(req) || "https://healthyonegram.com"}/`,
+    );
     fallback.searchParams.set("paymentProvider", "PAYTM");
     if (paymentState) {
       fallback.searchParams.set(
@@ -4948,7 +5179,6 @@ export const createOrder = asyncHandler(async (req, res) => {
       userId,
       checkoutContact,
     });
-    const generatedOrderNumber = await generateOrderSeriesNumber();
     const billingDetails =
       buildBillingDetailsFromCheckoutContact(checkoutContact);
     const guestOrderDetails = buildGuestOrderDetails(checkoutContact, {
@@ -4965,6 +5195,7 @@ export const createOrder = asyncHandler(async (req, res) => {
       delivery_address: checkoutContact.addressId || null,
       payment_status: "pending",
       order_status: "pending",
+      status: "pending",
       statusTimeline: [
         {
           status: ORDER_STATUS.PENDING,
@@ -4998,8 +5229,6 @@ export const createOrder = asyncHandler(async (req, res) => {
       trackingSessionId:
         String(req.analyticsSessionId || req.cookies?.hog_sid || "").trim() ||
         null,
-      orderNumber: generatedOrderNumber,
-      displayOrderId: generatedOrderNumber,
       analyticsConsent: resolveAnalyticsConsentFromRequest(req),
       coinRedemption: {
         coinsUsed: Number(redemption.coinsUsed || 0),
@@ -5177,16 +5406,24 @@ export const createOrder = asyncHandler(async (req, res) => {
 
     emitOrderStatusUpdate(order, "ORDER_CREATE");
 
-    const primaryOrigin = getClientBaseUrl();
+    const primaryOrigin = resolveClientBaseUrl(req);
     const backendUrl = getBackendBaseUrl(req);
-    const merchantTransactionId = `BOG_${order._id}`;
+    const merchantTransactionId = buildGatewayMerchantTransactionId(order);
+
+    if (!merchantTransactionId) {
+      throw new AppError("INTERNAL_ERROR", {
+        message: "Unable to create payment reference for order",
+      });
+    }
 
     if (selectedPaymentProvider === PAYMENT_PROVIDERS.PAYTM) {
-      const callbackBase = backendUrl || getClientBaseUrl();
-      const callbackUrl =
-        process.env.PAYTM_ORDER_CALLBACK_URL ||
-        process.env.PAYTM_CALLBACK_URL ||
-        `${callbackBase}/api/orders/webhook/paytm`;
+      const callbackUrl = buildPaytmOrderCallbackUrl({
+        configuredCallbackUrl:
+          process.env.PAYTM_ORDER_CALLBACK_URL ||
+          process.env.PAYTM_CALLBACK_URL,
+        backendUrl,
+        req,
+      });
 
       const paytmResponse = await createPaytmPayment({
         amount: payableAmount,
@@ -5230,6 +5467,8 @@ export const createOrder = asyncHandler(async (req, res) => {
         res,
         {
           orderId: order._id,
+          tempOrderId: order.temp_id || null,
+          finalOrderId: order.final_id || null,
           paymentProvider: PAYMENT_PROVIDERS.PAYTM,
           gatewayPayableAmount: payableAmount,
           totals: {
@@ -5283,6 +5522,8 @@ export const createOrder = asyncHandler(async (req, res) => {
         res,
         {
           orderId: order._id,
+          tempOrderId: order.temp_id || null,
+          finalOrderId: order.final_id || null,
           paymentProvider: PAYMENT_PROVIDERS.PHONEPE,
           gatewayPayableAmount: payableAmount,
           totals: {
@@ -5618,7 +5859,6 @@ export const saveOrderForLater = asyncHandler(async (req, res) => {
       userId,
       checkoutContact,
     });
-    const generatedOrderNumber = await generateOrderSeriesNumber();
     const billingDetails =
       buildBillingDetailsFromCheckoutContact(checkoutContact);
     const guestOrderDetails = buildGuestOrderDetails(checkoutContact, {
@@ -5634,6 +5874,7 @@ export const saveOrderForLater = asyncHandler(async (req, res) => {
       totalAmt: finalOrderAmount,
       delivery_address: checkoutContact.addressId || null,
       order_status: "pending_payment",
+      status: "pending",
       payment_status: "unavailable",
       statusTimeline: [
         {
@@ -5673,8 +5914,6 @@ export const saveOrderForLater = asyncHandler(async (req, res) => {
       trackingSessionId:
         String(req.analyticsSessionId || req.cookies?.hog_sid || "").trim() ||
         null,
-      orderNumber: generatedOrderNumber,
-      displayOrderId: generatedOrderNumber,
       analyticsConsent: resolveAnalyticsConsentFromRequest(req),
       coinRedemption: {
         coinsUsed: Number(redemption.coinsUsed || 0),
@@ -5959,12 +6198,10 @@ export const getPaymentGatewayStatus = asyncHandler(async (req, res) => {
  */
 export const getPayOrderDetails = asyncHandler(async (req, res) => {
   try {
-    const orderId = req.params.orderId || req.params.id;
+    const orderIdentifier = req.params.orderId || req.params.id;
     const token = String(req.query?.key || req.body?.key || "").trim();
 
-    validateMongoId(orderId, "orderId");
-
-    const order = await OrderModel.findById(orderId).lean();
+    const order = await findOrderByIdentifier(orderIdentifier, { lean: true });
     if (!order) {
       throw new AppError("ORDER_NOT_FOUND");
     }
@@ -6004,6 +6241,8 @@ export const getPayOrderDetails = asyncHandler(async (req, res) => {
 
     return sendSuccess(res, {
       orderId: order._id,
+      tempOrderId: order.temp_id || null,
+      finalOrderId: order.final_id || null,
       displayOrderId,
       paymentStatus: normalizedPaymentStatus || "pending",
       orderStatus: normalizedOrderStatus || "pending",
@@ -6036,10 +6275,8 @@ export const getPayOrderDetails = asyncHandler(async (req, res) => {
  */
 export const initiatePayOrderPayment = asyncHandler(async (req, res) => {
   try {
-    const orderId = req.params.orderId || req.params.id;
+    const orderIdentifier = req.params.orderId || req.params.id;
     const token = String(req.query?.key || req.body?.key || "").trim();
-
-    validateMongoId(orderId, "orderId");
 
     const maintenanceMode = await isMaintenanceMode();
     if (maintenanceMode) {
@@ -6055,7 +6292,7 @@ export const initiatePayOrderPayment = asyncHandler(async (req, res) => {
       throw new AppError("PAYMENT_DISABLED");
     }
 
-    const order = await OrderModel.findById(orderId);
+    const order = await findOrderByIdentifier(orderIdentifier);
     if (!order) {
       throw new AppError("ORDER_NOT_FOUND");
     }
@@ -6106,9 +6343,9 @@ export const initiatePayOrderPayment = asyncHandler(async (req, res) => {
       Number(order.finalAmount || order.totalAmt || 0),
     );
 
-    const primaryOrigin = getClientBaseUrl();
+    const primaryOrigin = resolveClientBaseUrl(req);
     const backendUrl = getBackendBaseUrl(req);
-    const returnPath = `/pay-order/${encodeURIComponent(String(order._id))}?key=${encodeURIComponent(
+    const returnPath = `/pay-order/${encodeURIComponent(resolveOrderPublicIdentifier(order) || String(order._id))}?key=${encodeURIComponent(
       token,
     )}`;
 
@@ -6121,14 +6358,15 @@ export const initiatePayOrderPayment = asyncHandler(async (req, res) => {
 
     if (selectedPaymentProvider === PAYMENT_PROVIDERS.PAYTM) {
       const merchantTransactionId =
-        String(
-          order.paytmOrderId || order.paymentId || `BOG_${order._id}`,
-        ).trim() || `BOG_${order._id}`;
-      const callbackBase = backendUrl || getClientBaseUrl();
-      const callbackUrl =
-        process.env.PAYTM_ORDER_CALLBACK_URL ||
-        process.env.PAYTM_CALLBACK_URL ||
-        `${callbackBase}/api/orders/webhook/paytm`;
+        String(order.paytmOrderId || order.paymentId || "").trim() ||
+        buildGatewayMerchantTransactionId(order);
+      const callbackUrl = buildPaytmOrderCallbackUrl({
+        configuredCallbackUrl:
+          process.env.PAYTM_ORDER_CALLBACK_URL ||
+          process.env.PAYTM_CALLBACK_URL,
+        backendUrl,
+        req,
+      });
 
       const paytmResponse = await createPaytmPayment({
         amount: payableAmount,
@@ -6177,6 +6415,8 @@ export const initiatePayOrderPayment = asyncHandler(async (req, res) => {
 
       return sendSuccess(res, {
         orderId: order._id,
+        tempOrderId: order.temp_id || null,
+        finalOrderId: order.final_id || null,
         paymentProvider: PAYMENT_PROVIDERS.PAYTM,
         gatewayPayableAmount: payableAmount,
         totals: {
@@ -6197,9 +6437,9 @@ export const initiatePayOrderPayment = asyncHandler(async (req, res) => {
         return res.status(400).json(buildPhonePeLocalhostProdError());
       }
 
-      const merchantTransactionId = `BOG_${order._id}_${Date.now()
-        .toString(36)
-        .toUpperCase()}`;
+      const merchantTransactionId = buildGatewayMerchantTransactionId(order, {
+        includeRetrySuffix: true,
+      });
       const callbackUrl = buildPhonePeOrderCallbackUrl({
         configuredCallbackUrl: process.env.PHONEPE_ORDER_CALLBACK_URL,
         backendUrl,
@@ -6241,6 +6481,8 @@ export const initiatePayOrderPayment = asyncHandler(async (req, res) => {
 
       return sendSuccess(res, {
         orderId: order._id,
+        tempOrderId: order.temp_id || null,
+        finalOrderId: order.final_id || null,
         paymentProvider: PAYMENT_PROVIDERS.PHONEPE,
         gatewayPayableAmount: payableAmount,
         totals: {
@@ -6282,13 +6524,11 @@ export const initiatePayOrderPayment = asyncHandler(async (req, res) => {
 export const retryOrderPayment = asyncHandler(async (req, res) => {
   try {
     const userId = req.user;
-    const orderId = req.params.orderId || req.params.id;
+    const orderIdentifier = req.params.orderId || req.params.id;
 
     if (!userId) {
       throw new AppError("UNAUTHORIZED");
     }
-
-    validateMongoId(orderId, "orderId");
 
     const maintenanceMode = await isMaintenanceMode();
     if (maintenanceMode) {
@@ -6304,7 +6544,7 @@ export const retryOrderPayment = asyncHandler(async (req, res) => {
       throw new AppError("PAYMENT_DISABLED");
     }
 
-    const order = await OrderModel.findById(orderId);
+    const order = await findOrderByIdentifier(orderIdentifier);
     if (!order) {
       throw new AppError("ORDER_NOT_FOUND");
     }
@@ -6353,21 +6593,22 @@ export const retryOrderPayment = asyncHandler(async (req, res) => {
       Number(order.finalAmount || order.totalAmt || 0),
     );
 
-    const primaryOrigin = getClientBaseUrl();
+    const primaryOrigin = resolveClientBaseUrl(req);
     const backendUrl = getBackendBaseUrl(req);
 
     const contact = order.billingDetails || order.guestDetails || {};
 
     if (selectedPaymentProvider === PAYMENT_PROVIDERS.PAYTM) {
       const merchantTransactionId =
-        String(
-          order.paytmOrderId || order.paymentId || `BOG_${order._id}`,
-        ).trim() || `BOG_${order._id}`;
-      const callbackBase = backendUrl || getClientBaseUrl();
-      const callbackUrl =
-        process.env.PAYTM_ORDER_CALLBACK_URL ||
-        process.env.PAYTM_CALLBACK_URL ||
-        `${callbackBase}/api/orders/webhook/paytm`;
+        String(order.paytmOrderId || order.paymentId || "").trim() ||
+        buildGatewayMerchantTransactionId(order);
+      const callbackUrl = buildPaytmOrderCallbackUrl({
+        configuredCallbackUrl:
+          process.env.PAYTM_ORDER_CALLBACK_URL ||
+          process.env.PAYTM_CALLBACK_URL,
+        backendUrl,
+        req,
+      });
 
       const paytmResponse = await createPaytmPayment({
         amount: payableAmount,
@@ -6415,6 +6656,8 @@ export const retryOrderPayment = asyncHandler(async (req, res) => {
 
       return sendSuccess(res, {
         orderId: order._id,
+        tempOrderId: order.temp_id || null,
+        finalOrderId: order.final_id || null,
         paymentProvider: PAYMENT_PROVIDERS.PAYTM,
         gatewayPayableAmount: payableAmount,
         totals: {
@@ -6435,7 +6678,9 @@ export const retryOrderPayment = asyncHandler(async (req, res) => {
         return res.status(400).json(buildPhonePeLocalhostProdError());
       }
 
-      const merchantTransactionId = `BOG_${order._id}_${Date.now().toString(36).toUpperCase()}`;
+      const merchantTransactionId = buildGatewayMerchantTransactionId(order, {
+        includeRetrySuffix: true,
+      });
       const callbackUrl = buildPhonePeOrderCallbackUrl({
         configuredCallbackUrl: process.env.PHONEPE_ORDER_CALLBACK_URL,
         backendUrl,
@@ -6476,6 +6721,8 @@ export const retryOrderPayment = asyncHandler(async (req, res) => {
 
       return sendSuccess(res, {
         orderId: order._id,
+        tempOrderId: order.temp_id || null,
+        finalOrderId: order.final_id || null,
         paymentProvider: PAYMENT_PROVIDERS.PHONEPE,
         gatewayPayableAmount: payableAmount,
         totals: {
@@ -6856,6 +7103,7 @@ const applyResolvedPaymentStatus = async ({
       if (paymentProvider) {
         order.paymentMethod = paymentProvider;
       }
+      order.status = "confirmed";
       order.failureReason = "";
       applyOrderStatusTransition(order, ORDER_STATUS.ACCEPTED, {
         source: successSource,
@@ -6871,6 +7119,7 @@ const applyResolvedPaymentStatus = async ({
   } else if (normalizedState === "fail") {
     if (!wasPaid) {
       order.payment_status = "failed";
+      order.status = "pending";
       order.failureReason = failureReason;
       await releaseComboStock(order, successSource);
       await releaseInventory(order, successSource);
@@ -6884,6 +7133,7 @@ const applyResolvedPaymentStatus = async ({
         .toLowerCase() !== "pending"
     ) {
       order.payment_status = "pending";
+      order.status = "pending";
       orderMutated = true;
     }
     if (hasPaymentReminder) {
@@ -6897,6 +7147,24 @@ const applyResolvedPaymentStatus = async ({
   if (orderMutated) {
     order.updatedAt = new Date();
     await order.save();
+  }
+
+  if (
+    !wasPaid &&
+    String(order.payment_status || "")
+      .trim()
+      .toLowerCase() === "paid"
+  ) {
+    const finalIdAssignment = await assignFinalOrderIdAfterPaymentSuccess({
+      order,
+      confirmedAt: order.paymentCompletedAt || new Date(),
+    });
+    if (finalIdAssignment?.order) {
+      order = finalIdAssignment.order;
+    }
+    if (finalIdAssignment?.assigned) {
+      orderMutated = true;
+    }
   }
 
   let invoiceResult = null;
@@ -7212,7 +7480,9 @@ export const handlePaytmWebhook = asyncHandler(async (req, res) => {
       !rawBodyPayload &&
       !hasQueryPayload
     ) {
-      return redirectPaytmWebhookToClient(res, { paymentState: "pending" });
+      return redirectPaytmWebhookToClient(req, res, {
+        paymentState: "pending",
+      });
     }
     const incomingPayload = bodyHasPayload
       ? req.body
@@ -7221,7 +7491,9 @@ export const handlePaytmWebhook = asyncHandler(async (req, res) => {
     if (!PAYMENT_PROVIDER_ENV_ENABLED.PAYTM) {
       logger.warn("handlePaytmWebhook", "Paytm environment not enabled");
       return wantsBrowserRedirect
-        ? redirectPaytmWebhookToClient(res, { paymentState: "unavailable" })
+        ? redirectPaytmWebhookToClient(req, res, {
+            paymentState: "unavailable",
+          })
         : sendSuccess(res, {}, "Webhook received");
     }
 
@@ -7232,7 +7504,7 @@ export const handlePaytmWebhook = asyncHandler(async (req, res) => {
     if (!merchantTransactionId) {
       logger.warn("handlePaytmWebhook", "Missing merchantTransactionId");
       return wantsBrowserRedirect
-        ? redirectPaytmWebhookToClient(res, { paymentState: "pending" })
+        ? redirectPaytmWebhookToClient(req, res, { paymentState: "pending" })
         : sendSuccess(res, {}, "Webhook received");
     }
 
@@ -7241,32 +7513,31 @@ export const handlePaytmWebhook = asyncHandler(async (req, res) => {
         merchantTransactionId,
       });
       return wantsBrowserRedirect
-        ? redirectPaytmWebhookToClient(res, { paymentState: "pending" })
+        ? redirectPaytmWebhookToClient(req, res, { paymentState: "pending" })
         : sendSuccess(res, {}, "Webhook received");
     }
 
-    const orderId = extractOrderIdFromMerchantTransactionId(
+    const orderIdentifier = extractOrderIdFromMerchantTransactionId(
       merchantTransactionId,
     );
-    if (!orderId || !mongoose.Types.ObjectId.isValid(orderId)) {
+    if (!orderIdentifier) {
       logger.warn("handlePaytmWebhook", "Invalid orderId in transaction", {
         merchantTransactionId,
-        orderId,
+        orderIdentifier,
       });
       return wantsBrowserRedirect
-        ? redirectPaytmWebhookToClient(res, { paymentState: "pending" })
+        ? redirectPaytmWebhookToClient(req, res, { paymentState: "pending" })
         : sendSuccess(res, {}, "Webhook received");
     }
 
-    const order = await OrderModel.findById(orderId);
+    const order = await findOrderByIdentifier(orderIdentifier);
 
     if (!order) {
       logger.warn("handlePaytmWebhook", "Order not found", {
         merchantTransactionId,
       });
       return wantsBrowserRedirect
-        ? redirectPaytmWebhookToClient(res, {
-            orderId,
+        ? redirectPaytmWebhookToClient(req, res, {
             paymentState: "pending",
           })
         : sendSuccess(res, {}, "Webhook received");
@@ -7282,7 +7553,7 @@ export const handlePaytmWebhook = asyncHandler(async (req, res) => {
         expected: order.paytmOrderId,
       });
       return wantsBrowserRedirect
-        ? redirectPaytmWebhookToClient(res, {
+        ? redirectPaytmWebhookToClient(req, res, {
             orderId: order._id,
             paymentState: String(
               order.payment_status || "pending",
@@ -7294,7 +7565,7 @@ export const handlePaytmWebhook = asyncHandler(async (req, res) => {
     const verifiedStatus = await verifyPaytmWebhookState(merchantTransactionId);
     if (!verifiedStatus) {
       return wantsBrowserRedirect
-        ? redirectPaytmWebhookToClient(res, {
+        ? redirectPaytmWebhookToClient(req, res, {
             orderId: order._id,
             paymentState: String(
               order.payment_status || "pending",
@@ -7315,7 +7586,7 @@ export const handlePaytmWebhook = asyncHandler(async (req, res) => {
         state: verifiedStatus.state || webhookData.state || null,
       });
       return wantsBrowserRedirect
-        ? redirectPaytmWebhookToClient(res, {
+        ? redirectPaytmWebhookToClient(req, res, {
             orderId: order._id,
             paymentState: String(
               order.payment_status || "pending",
@@ -7394,14 +7665,14 @@ export const handlePaytmWebhook = asyncHandler(async (req, res) => {
 
     if (resolution.skipped) {
       return wantsBrowserRedirect
-        ? redirectPaytmWebhookToClient(res, {
+        ? redirectPaytmWebhookToClient(req, res, {
             orderId: order._id,
             paymentState: clientPaymentState,
           })
         : sendSuccess(res, {}, "Webhook already processed");
     }
     return wantsBrowserRedirect
-      ? redirectPaytmWebhookToClient(res, {
+      ? redirectPaytmWebhookToClient(req, res, {
           orderId: order._id,
           paymentState: clientPaymentState,
         })
@@ -7419,11 +7690,17 @@ export const handlePaytmWebhook = asyncHandler(async (req, res) => {
         req?.query?.orderId ||
         req?.query?.merchantTransactionId ||
         "";
-      const resolvedOrderId = extractOrderIdFromMerchantTransactionId(
+      const resolvedOrderIdentifier = extractOrderIdFromMerchantTransactionId(
         String(orderIdCandidate || "").trim(),
       );
-      return redirectPaytmWebhookToClient(res, {
-        orderId: resolvedOrderId || undefined,
+      const resolvedOrder = resolvedOrderIdentifier
+        ? await findOrderByIdentifier(resolvedOrderIdentifier, { lean: true })
+        : null;
+      const resolvedOrderId = resolvedOrder?._id
+        ? String(resolvedOrder._id)
+        : undefined;
+      return redirectPaytmWebhookToClient(req, res, {
+        orderId: resolvedOrderId,
         paymentState: "failed",
       });
     }
@@ -7538,18 +7815,18 @@ export const handlePhonePeWebhook = asyncHandler(async (req, res) => {
       return sendSuccess(res, {}, "Webhook received");
     }
 
-    const orderId = extractOrderIdFromMerchantTransactionId(
+    const orderIdentifier = extractOrderIdFromMerchantTransactionId(
       merchantTransactionId,
     );
-    if (!orderId || !mongoose.Types.ObjectId.isValid(orderId)) {
+    if (!orderIdentifier) {
       logger.warn("handlePhonePeWebhook", "Invalid orderId in transaction", {
         merchantTransactionId,
-        orderId,
+        orderIdentifier,
       });
       return sendSuccess(res, {}, "Webhook received");
     }
 
-    const order = await OrderModel.findById(orderId);
+    const order = await findOrderByIdentifier(orderIdentifier);
     if (!order) {
       logger.warn("handlePhonePeWebhook", "Order not found", {
         merchantTransactionId,
@@ -7827,7 +8104,7 @@ export const createTestOrder = asyncHandler(async (req, res) => {
     const taxableAmount = round2(Number(pricing.taxableAmount || 0));
     const gstAmount = round2(Number(pricing.gstAmount || 0));
     const finalAmount = round2(taxableAmount + gstAmount + shippingCharge);
-    const generatedOrderNumber = await generateOrderSeriesNumber();
+    const generatedFinalOrderId = await generateFinalOrderId();
     const billingDetails =
       buildBillingDetailsFromCheckoutContact(checkoutContact);
 
@@ -7843,6 +8120,7 @@ export const createTestOrder = asyncHandler(async (req, res) => {
       paymentMethod: "TEST",
       payment_status: "paid",
       order_status: ORDER_STATUS.ACCEPTED,
+      status: "confirmed",
       statusTimeline: [
         {
           status: ORDER_STATUS.PENDING,
@@ -7884,8 +8162,11 @@ export const createTestOrder = asyncHandler(async (req, res) => {
       trackingSessionId:
         String(req.analyticsSessionId || req.cookies?.hog_sid || "").trim() ||
         null,
-      orderNumber: generatedOrderNumber,
-      displayOrderId: generatedOrderNumber,
+      final_id: generatedFinalOrderId,
+      orderNumber: generatedFinalOrderId,
+      displayOrderId: generatedFinalOrderId,
+      confirmed_at: new Date(),
+      confirmedAt: new Date(),
       analyticsConsent: resolveAnalyticsConsentFromRequest(req),
       isSavedOrder: true,
       isDemoOrder: true,

@@ -157,7 +157,10 @@ export const resolveEffectiveComboUnitPrice = (combo = {}) => {
     .trim()
     .toLowerCase();
   const pricingValue = Math.max(Number(combo?.pricing?.value || 0), 0);
-  const explicitComboPrice = Math.max(round2(Number(combo?.comboPrice ?? 0)), 0);
+  const explicitComboPrice = Math.max(
+    round2(Number(combo?.comboPrice ?? 0)),
+    0,
+  );
   const legacyComboPrice = Math.max(round2(Number(combo?.price ?? 0)), 0);
 
   const ruleBasedPrice = resolveRuleBasedComboUnitPrice({
@@ -573,12 +576,10 @@ export const expandComboToOrderProducts = (combo, quantity = 1) => {
 
   return items.map((item, index) => {
     const lineQty = Math.max(Number(item.quantity || 1) * comboQty, 1);
+    const resolvedCurrentPrice = Number(item?.price || 0);
+    const resolvedOriginalPrice = Number(item?.originalPrice || 0);
     const unitPrice = round2(
-      Number(
-        item.originalPrice != null && Number(item.originalPrice) > 0
-          ? item.originalPrice
-          : item.price || 0,
-      ),
+      resolvedCurrentPrice > 0 ? resolvedCurrentPrice : resolvedOriginalPrice,
     );
     const subTotal = round2(unitPrice * lineQty);
 

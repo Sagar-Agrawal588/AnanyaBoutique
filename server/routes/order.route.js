@@ -77,11 +77,10 @@ router.post(
 router.get("/payment-status", getPaymentGatewayStatus);
 
 // Secure guest pay-now flow
-router.get("/pay-order/:orderId", validateGetOrderRequest, getPayOrderDetails);
+router.get("/pay-order/:orderId", getPayOrderDetails);
 router.post(
   "/pay-order/:orderId/initiate",
   paymentLimiter,
-  validateGetOrderRequest,
   initiatePayOrderPayment,
 );
 
@@ -123,12 +122,7 @@ router.get(
 );
 
 // Retry payment for an existing unpaid order
-router.post(
-  "/:orderId/retry-payment",
-  auth,
-  validateGetOrderRequest,
-  retryOrderPayment,
-);
+router.post("/:orderId/retry-payment", auth, retryOrderPayment);
 
 // Download invoice (user own order or admin any order)
 router.get("/:orderId/invoice", auth, downloadOrderInvoice);
