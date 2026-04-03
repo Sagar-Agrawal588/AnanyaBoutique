@@ -8,6 +8,8 @@ const toSafeNumber = (value) => {
 
 const resolveOrderDisplayId = (order = {}) => {
   const explicitId =
+    order?.final_id ||
+    order?.temp_id ||
     order?.displayOrderId ||
     order?.orderNumber ||
     order?.order_id ||

@@ -3,7 +3,16 @@ import { INDIA_COUNTRY } from "../utils/addressUtils.js";
 import OrderSequenceModel from "./orderSequence.model.js";
 import SettingsModel from "./settings.model.js";
 
-const LEGACY_GATEWAY_METHOD = String.fromCharCode(82, 65, 90, 79, 82, 80, 65, 89);
+const LEGACY_GATEWAY_METHOD = String.fromCharCode(
+  82,
+  65,
+  90,
+  79,
+  82,
+  80,
+  65,
+  89,
+);
 const ORDER_PAYMENT_METHODS = [
   LEGACY_GATEWAY_METHOD,
   "PAYTM",
@@ -12,6 +21,53 @@ const ORDER_PAYMENT_METHODS = [
   "PENDING",
   "TEST",
 ];
+
+const ORDER_STATUS_VALUES = [
+  "pending",
+  "pending_payment",
+  "accepted",
+  "in_warehouse",
+  "shipped",
+  "out_for_delivery",
+  "delivered",
+  "cancelled",
+  "rto",
+  "rto_completed",
+  "confirmed",
+  "completed",
+];
+
+const TEMP_ORDER_ID_PATTERN = /^TMP-[A-Z0-9]{6}$/;
+const FINAL_ORDER_ID_PATTERN = /^[A-Z0-9]+-\d{4}\/\d{4}$/;
+const TEMP_ORDER_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const TEMP_ORDER_SUFFIX_LENGTH = 6;
+
+export const normalizeTempOrderId = (value) => {
+  const normalized = String(value || "")
+    .trim()
+    .toUpperCase();
+  return TEMP_ORDER_ID_PATTERN.test(normalized) ? normalized : "";
+};
+
+const createTempOrderIdCandidate = () => {
+  let suffix = "";
+  for (let index = 0; index < TEMP_ORDER_SUFFIX_LENGTH; index += 1) {
+    const randomIndex = Math.floor(Math.random() * TEMP_ORDER_ALPHABET.length);
+    suffix += TEMP_ORDER_ALPHABET[randomIndex];
+  }
+  return `TMP-${suffix}`;
+};
+
+const generateUniqueTempOrderId = async (model) => {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const candidate = createTempOrderIdCandidate();
+    // Unique index also enforces safety; this loop avoids avoidable collisions.
+    const exists = await model.exists({ temp_id: candidate });
+    if (!exists) return candidate;
+  }
+
+  throw new Error("Failed to generate unique temporary order ID");
+};
 
 const deriveDisplayOrderNumber = (orderId) => {
   const rawOrderId = String(orderId || "").trim();
@@ -31,7 +87,9 @@ const resolveFiscalYearCode = (date = new Date()) => {
 };
 
 const DEFAULT_ORDER_NUMBER_PREFIX =
-  String(process.env.ORDER_NUMBER_PREFIX || "H1G").trim().toUpperCase() || "H1G";
+  String(process.env.ORDER_NUMBER_PREFIX || "H1G")
+    .trim()
+    .toUpperCase() || "H1G";
 
 const normalizeSeriesPrefix = (value) => {
   const raw = String(value || "")
@@ -64,12 +122,17 @@ const getOrderNumberSeriesOverride = async () => {
       .select("value -_id")
       .lean();
 
-    const value = setting?.value && typeof setting.value === "object" ? setting.value : null;
+    const value =
+      setting?.value && typeof setting.value === "object"
+        ? setting.value
+        : null;
     const enabled = value?.enabled === true;
     const override = enabled
       ? {
           prefix: normalizeSeriesPrefix(value?.prefix),
-          fiscalYearCode: normalizeFiscalYearCodeOverride(value?.fiscalYearCode),
+          fiscalYearCode: normalizeFiscalYearCodeOverride(
+            value?.fiscalYearCode,
+          ),
         }
       : null;
 
@@ -84,11 +147,12 @@ const getOrderNumberSeriesOverride = async () => {
 const resolveOrderNumberSeries = async (date) => {
   const override = await getOrderNumberSeriesOverride();
   const prefix = normalizeSeriesPrefix(override?.prefix);
-  const fiscalYearCode = override?.fiscalYearCode || resolveFiscalYearCode(date);
+  const fiscalYearCode =
+    override?.fiscalYearCode || resolveFiscalYearCode(date);
   return { prefix, fiscalYearCode };
 };
 
-const buildOrderNumber = ({ prefix, fiscalYearCode, seq }) => {
+export const formatFinalOrderId = ({ prefix, fiscalYearCode, seq }) => {
   const safeSeq = Math.max(Number(seq || 0), 0);
   const padded = String(safeSeq).padStart(4, "0");
   const safePrefix = normalizeSeriesPrefix(prefix);
@@ -97,7 +161,8 @@ const buildOrderNumber = ({ prefix, fiscalYearCode, seq }) => {
 
 const nextOrderSequence = async ({ prefix, fiscalYearCode }) => {
   const safePrefix = normalizeSeriesPrefix(prefix);
-  const key = `${safePrefix}${String(fiscalYearCode || "").trim()}`.toUpperCase();
+  const key =
+    `${safePrefix}${String(fiscalYearCode || "").trim()}`.toUpperCase();
   const updated = await OrderSequenceModel.findOneAndUpdate(
     { _id: key },
     { $inc: { seq: 1 } },
@@ -105,6 +170,13 @@ const nextOrderSequence = async ({ prefix, fiscalYearCode }) => {
   ).lean();
 
   return Number(updated?.seq || 0) || 0;
+};
+
+export const generateFinalOrderId = async (referenceDate = new Date()) => {
+  const { prefix, fiscalYearCode } =
+    await resolveOrderNumberSeries(referenceDate);
+  const seq = await nextOrderSequence({ prefix, fiscalYearCode });
+  return formatFinalOrderId({ prefix, fiscalYearCode, seq });
 };
 
 /**
@@ -133,6 +205,22 @@ const orderSchema = new mongoose.Schema(
       type: String,
       default: null,
       trim: true,
+    },
+
+    // Temporary identifier used before payment success.
+    temp_id: {
+      type: String,
+      default: null,
+      trim: true,
+      uppercase: true,
+    },
+
+    // Final immutable identifier assigned only after successful payment.
+    final_id: {
+      type: String,
+      default: null,
+      trim: true,
+      uppercase: true,
     },
 
     // Products in Order
@@ -243,6 +331,18 @@ const orderSchema = new mongoose.Schema(
       index: true,
     },
 
+    confirmed_at: {
+      type: Date,
+      default: null,
+      index: true,
+    },
+
+    confirmedAt: {
+      type: Date,
+      default: null,
+      index: true,
+    },
+
     confirmationEmailSentAt: {
       type: Date,
       default: null,
@@ -320,20 +420,14 @@ const orderSchema = new mongoose.Schema(
 
     order_status: {
       type: String,
-      enum: [
-        "pending",
-        "pending_payment",
-        "accepted",
-        "in_warehouse",
-        "shipped",
-        "out_for_delivery",
-        "delivered",
-        "cancelled",
-        "rto",
-        "rto_completed",
-        "confirmed",
-        "completed",
-      ],
+      enum: ORDER_STATUS_VALUES,
+      default: "pending",
+      index: true,
+    },
+
+    status: {
+      type: String,
+      enum: ORDER_STATUS_VALUES,
       default: "pending",
       index: true,
     },
@@ -670,51 +764,51 @@ const orderSchema = new mongoose.Schema(
 
     // ==================== SHIPPING (XPRESSBEES) ====================
 
-shipping_provider: {
-  type: String,
-  enum: ["XPRESSBEES", null],
-  default: null,
-},
+    shipping_provider: {
+      type: String,
+      enum: ["XPRESSBEES", null],
+      default: null,
+    },
 
-awb_number: {
-  type: String,
-  default: null,
-},
+    awb_number: {
+      type: String,
+      default: null,
+    },
 
-shipping_label: {
-  type: String,
-  default: null, // PDF URL from courier
-},
+    shipping_label: {
+      type: String,
+      default: null, // PDF URL from courier
+    },
 
-shipping_label_local_path: {
-  type: String,
-  default: null,
-},
+    shipping_label_local_path: {
+      type: String,
+      default: null,
+    },
 
-shipping_manifest: {
-  type: String,
-  default: null, // Manifest PDF URL
-},
+    shipping_manifest: {
+      type: String,
+      default: null, // Manifest PDF URL
+    },
 
-shipment_status: {
-  type: String,
-  enum: [
-    "pending",
-    "shipment_created",
-    "booked",
-    "pickup_scheduled",
-    "in_transit",
-    "out_for_delivery",
-    "shipped",
-    "delivered",
-    "cancelled",
-    "failed",
-    "rto_initiated",
-    "rto_in_transit",
-    "rto_delivered",
-  ],
-  default: "pending",
-},
+    shipment_status: {
+      type: String,
+      enum: [
+        "pending",
+        "shipment_created",
+        "booked",
+        "pickup_scheduled",
+        "in_transit",
+        "out_for_delivery",
+        "shipped",
+        "delivered",
+        "cancelled",
+        "failed",
+        "rto_initiated",
+        "rto_in_transit",
+        "rto_delivered",
+      ],
+      default: "pending",
+    },
 
     awbNumber: {
       type: String,
@@ -772,9 +866,9 @@ shipment_status: {
     },
 
     shipment_created_at: {
-  type: Date,
-  default: null,
-},
+      type: Date,
+      default: null,
+    },
 
     // ==================== INVOICE ====================
 
@@ -871,6 +965,9 @@ orderSchema.index({ payment_status: 1, order_status: 1 });
 orderSchema.index({ paymentId: 1 });
 orderSchema.index({ orderNumber: 1 }, { sparse: true });
 orderSchema.index({ displayOrderId: 1 }, { sparse: true });
+orderSchema.index({ temp_id: 1 }, { unique: true, sparse: true });
+orderSchema.index({ final_id: 1 }, { unique: true, sparse: true });
+orderSchema.index({ status: 1, payment_status: 1 });
 orderSchema.index({ invoiceNumber: 1 }, { sparse: true });
 orderSchema.index({ "gst.state": 1, createdAt: -1 });
 orderSchema.index({ purchaseOrder: 1 }, { sparse: true });
@@ -895,45 +992,77 @@ orderSchema.pre("validate", async function () {
     this.payment_status = "paid";
   }
 
+  if (this.confirmedAt && !this.confirmed_at) {
+    this.confirmed_at = this.confirmedAt;
+  }
+  if (this.confirmed_at && !this.confirmedAt) {
+    this.confirmedAt = this.confirmed_at;
+  }
+
+  const normalizedOrderStatus = String(this.order_status || "")
+    .trim()
+    .toLowerCase();
+  if (ORDER_STATUS_VALUES.includes(normalizedOrderStatus)) {
+    this.order_status = normalizedOrderStatus;
+  } else {
+    this.order_status = "pending";
+  }
+
+  const normalizedStatus = String(this.status || "")
+    .trim()
+    .toLowerCase();
+  this.status = ORDER_STATUS_VALUES.includes(normalizedStatus)
+    ? normalizedStatus
+    : this.order_status;
+
+  const normalizedTempId = normalizeTempOrderId(this.temp_id);
+  if (normalizedTempId) {
+    this.temp_id = normalizedTempId;
+  } else if (this.isNew) {
+    this.temp_id = await generateUniqueTempOrderId(this.constructor);
+  }
+
+  let normalizedFinalId = String(this.final_id || "")
+    .trim()
+    .toUpperCase();
+  const normalizedLegacyOrderNumber = String(this.orderNumber || "")
+    .trim()
+    .toUpperCase();
+  if (
+    !normalizedFinalId &&
+    FINAL_ORDER_ID_PATTERN.test(normalizedLegacyOrderNumber)
+  ) {
+    normalizedFinalId = normalizedLegacyOrderNumber;
+  }
+  this.final_id = normalizedFinalId || null;
+
+  if (
+    String(this.payment_status || "")
+      .trim()
+      .toLowerCase() === "paid" &&
+    !this.confirmed_at
+  ) {
+    const confirmedAt = this.paymentCompletedAt || new Date();
+    this.confirmed_at = confirmedAt;
+    this.confirmedAt = confirmedAt;
+  }
+
   const normalizedOrderNumber = String(this.orderNumber || "")
     .trim()
     .toUpperCase();
-  if (!normalizedOrderNumber) {
-    if (this.isNew) {
-      try {
-        const { prefix, fiscalYearCode } = await resolveOrderNumberSeries(
-          this.createdAt || new Date(),
-        );
-        const seq = await nextOrderSequence({ prefix, fiscalYearCode });
-        const generatedOrderNumber = buildOrderNumber({ prefix, fiscalYearCode, seq });
-        if (generatedOrderNumber) {
-          this.orderNumber = generatedOrderNumber;
-        }
-      } catch {
-        // Never block order creation on the numbering system.
-        const legacyFallback = deriveDisplayOrderNumber(this._id);
-        if (legacyFallback) {
-          this.orderNumber = legacyFallback;
-        }
-      }
-    } else {
-      const generatedOrderNumber = deriveDisplayOrderNumber(this._id);
-      if (generatedOrderNumber) {
-        this.orderNumber = generatedOrderNumber;
-      }
-    }
-  } else if (normalizedOrderNumber !== this.orderNumber) {
-    this.orderNumber = normalizedOrderNumber;
-  }
 
-  const normalizedDisplayOrderId = String(this.displayOrderId || "")
+  const resolvedDisplayIdentifier =
+    this.final_id ||
+    normalizeTempOrderId(this.temp_id) ||
+    normalizedOrderNumber ||
+    deriveDisplayOrderNumber(this._id);
+
+  const normalizedDisplayOrderId = String(resolvedDisplayIdentifier || "")
     .trim()
     .toUpperCase();
-  if (!normalizedDisplayOrderId) {
-    this.displayOrderId = String(this.orderNumber || "").trim().toUpperCase() || null;
-  } else if (normalizedDisplayOrderId !== this.displayOrderId) {
-    this.displayOrderId = normalizedDisplayOrderId;
-  }
+
+  this.orderNumber = normalizedDisplayOrderId || null;
+  this.displayOrderId = normalizedDisplayOrderId || null;
 });
 
 // Pre-save hook for validation
