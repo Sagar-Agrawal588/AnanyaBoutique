@@ -7,6 +7,20 @@ const vendorProductRateSchema = new mongoose.Schema(
       ref: "Product",
       required: true,
     },
+    variantId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+    },
+    variantName: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    packing: {
+      type: String,
+      trim: true,
+      default: "",
+    },
     rate: {
       type: Number,
       required: true,
