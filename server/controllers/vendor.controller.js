@@ -1,6 +1,13 @@
 import mongoose from "mongoose";
 import VendorModel from "../models/vendor.model.js";
 
+const normalizePackingKey = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .replace(/(\d)\.0+(?=[a-z]|$)/g, "$1");
+
 const normalizeVendorProductRates = (value) => {
   if (!Array.isArray(value)) return [];
 
@@ -8,13 +15,33 @@ const normalizeVendorProductRates = (value) => {
 
   value.forEach((entry) => {
     const productId = String(entry?.productId || "").trim();
-    const rate = Number(entry?.rate);
+    const rawRate = entry?.rate;
+    const hasRateValue =
+      rawRate !== null &&
+      typeof rawRate !== "undefined" &&
+      String(rawRate).trim() !== "";
+    if (!hasRateValue) return;
+
+    const rate = Number(rawRate);
+    const variantIdRaw = String(entry?.variantId || "").trim();
+    const variantId =
+      variantIdRaw && mongoose.Types.ObjectId.isValid(variantIdRaw)
+        ? variantIdRaw
+        : "";
+    const variantName = String(entry?.variantName || "").trim();
+    const packing = String(entry?.packing || "").trim();
 
     if (!productId || !mongoose.Types.ObjectId.isValid(productId)) return;
     if (!Number.isFinite(rate) || rate < 0) return;
 
-    dedupedRates.set(productId, {
+    const packingKey = normalizePackingKey(packing || variantName);
+    const dedupeKey = `${productId}:${variantId || packingKey || "base"}`;
+
+    dedupedRates.set(dedupeKey, {
       productId,
+      variantId: variantId || null,
+      variantName,
+      packing: packing || variantName,
       rate,
     });
   });
@@ -53,8 +80,16 @@ export const getVendors = async (req, res) => {
  */
 export const createVendor = async (req, res) => {
   try {
-    const { fullName, phone, email, address, pincode, state, gst, productRates } =
-      req.body;
+    const {
+      fullName,
+      phone,
+      email,
+      address,
+      pincode,
+      state,
+      gst,
+      productRates,
+    } = req.body;
 
     if (!fullName || !fullName.trim()) {
       return res.status(400).json({
@@ -99,8 +134,16 @@ export const createVendor = async (req, res) => {
 export const updateVendor = async (req, res) => {
   try {
     const { id } = req.params;
-    const { fullName, phone, email, address, pincode, state, gst, productRates } =
-      req.body;
+    const {
+      fullName,
+      phone,
+      email,
+      address,
+      pincode,
+      state,
+      gst,
+      productRates,
+    } = req.body;
 
     if (!fullName || !fullName.trim()) {
       return res.status(400).json({
@@ -124,11 +167,9 @@ export const updateVendor = async (req, res) => {
       updatePayload.productRates = normalizeVendorProductRates(productRates);
     }
 
-    const vendor = await VendorModel.findByIdAndUpdate(
-      id,
-      updatePayload,
-      { new: true },
-    );
+    const vendor = await VendorModel.findByIdAndUpdate(id, updatePayload, {
+      new: true,
+    });
 
     if (!vendor) {
       return res.status(404).json({
