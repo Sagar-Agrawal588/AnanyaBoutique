@@ -2,7 +2,7 @@
 
 import { API_BASE_URL } from "@/utils/api";
 
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 
 const SettingsContext = createContext();
 
@@ -12,9 +12,16 @@ const API_URL = String(API_BASE_URL || "")
   .replace(/\/api$/i, "");
 
 const LOCAL_SETTINGS_API_FALLBACKS = [
+  "http://127.0.0.1:8002",
+  "http://127.0.0.1:8001",
+  "http://127.0.0.1:8000",
+  "http://localhost:8002",
   "http://localhost:8001",
   "http://localhost:8000",
 ];
+
+const SETTINGS_FOCUS_REFRESH_MIN_MS = 90 * 1000;
+let preferredSettingsApiBase = "";
 
 const sanitizeBaseUrl = (value) =>
   String(value || "")
@@ -41,22 +48,29 @@ const buildApiUrlCandidates = (path) => {
     : `/api${normalizedPath}`;
 
   const candidates = [];
+  if (preferredSettingsApiBase) {
+    candidates.push(`${preferredSettingsApiBase}${apiPath}`);
+  }
   if (API_URL) {
     candidates.push(`${API_URL}${apiPath}`);
   }
 
   if (typeof window !== "undefined") {
     const hostname = String(window.location.hostname || "").toLowerCase();
-    const isLocalhostHost = hostname === "localhost" || hostname === "127.0.0.1";
+    const isLocalhostHost =
+      hostname === "localhost" || hostname === "127.0.0.1";
 
     if (isLocalhostHost) {
-      const fallbackBases = LOCAL_SETTINGS_API_FALLBACKS.map(sanitizeBaseUrl).filter(Boolean);
+      const fallbackBases =
+        LOCAL_SETTINGS_API_FALLBACKS.map(sanitizeBaseUrl).filter(Boolean);
 
       if (isLocalhostUrl(API_URL)) {
         candidates.push(
-          ...fallbackBases.filter(
-            (base) => sanitizeBaseUrl(base) !== sanitizeBaseUrl(API_URL),
-          ).map((base) => `${base}${apiPath}`),
+          ...fallbackBases
+            .filter(
+              (base) => sanitizeBaseUrl(base) !== sanitizeBaseUrl(API_URL),
+            )
+            .map((base) => `${base}${apiPath}`),
         );
       } else {
         candidates.push(...fallbackBases.map((base) => `${base}${apiPath}`));
@@ -198,6 +212,7 @@ export const SettingsProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [lastFetched, setLastFetched] = useState(null);
+  const lastFetchedAtRef = useRef(0);
 
   /**
    * Fetch public settings from API
@@ -213,6 +228,12 @@ export const SettingsProvider = ({ children }) => {
       for (const url of candidates) {
         try {
           data = await fetchSettingsPayload(url);
+          try {
+            const parsed = new URL(url);
+            preferredSettingsApiBase = `${parsed.protocol}//${parsed.host}`;
+          } catch {
+            preferredSettingsApiBase = "";
+          }
           lastError = null;
           break;
         } catch (err) {
@@ -230,7 +251,9 @@ export const SettingsProvider = ({ children }) => {
           ...defaultSettings,
           ...data.data,
         });
-        setLastFetched(new Date());
+        const fetchedAt = new Date();
+        setLastFetched(fetchedAt);
+        lastFetchedAtRef.current = fetchedAt.getTime();
       } else {
         throw new Error(data?.message || "Invalid settings response");
       }
@@ -252,6 +275,14 @@ export const SettingsProvider = ({ children }) => {
     if (typeof window === "undefined") return undefined;
 
     const handleWindowFocus = () => {
+      if (document.hidden) return;
+      const lastFetchedAt = Number(lastFetchedAtRef.current || 0);
+      if (
+        lastFetchedAt > 0 &&
+        Date.now() - lastFetchedAt < SETTINGS_FOCUS_REFRESH_MIN_MS
+      ) {
+        return;
+      }
       fetchSettings();
     };
 

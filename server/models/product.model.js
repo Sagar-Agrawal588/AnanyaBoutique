@@ -70,7 +70,10 @@ const variantSchema = new mongoose.Schema({
     type: String,
     default: "",
     trim: true,
-    set: (value) => String(value || "").replace(/\D/g, "").slice(0, 6),
+    set: (value) =>
+      String(value || "")
+        .replace(/\D/g, "")
+        .slice(0, 6),
   },
   price: {
     type: Number,
@@ -217,7 +220,10 @@ const productSchema = new mongoose.Schema(
       type: String,
       default: "",
       trim: true,
-      set: (value) => String(value || "").replace(/\D/g, "").slice(0, 6),
+      set: (value) =>
+        String(value || "")
+          .replace(/\D/g, "")
+          .slice(0, 6),
     },
     barcode: {
       type: String,
@@ -643,6 +649,10 @@ productSchema.index({
 // Compound indexes for common queries
 productSchema.index({ category: 1, isActive: 1, price: 1 });
 productSchema.index({ isFeatured: 1, isActive: 1 });
+productSchema.index({ isActive: 1, updatedAt: -1 });
+productSchema.index({ isActive: 1, sku: 1, updatedAt: -1 });
+productSchema.index({ isActive: 1, slug: 1, updatedAt: -1 });
+productSchema.index({ isActive: 1, tags: 1, updatedAt: -1 });
 productSchema.index({ createdAt: -1 });
 productSchema.index({ soldCount: -1 });
 productSchema.index({ rating: -1 });
