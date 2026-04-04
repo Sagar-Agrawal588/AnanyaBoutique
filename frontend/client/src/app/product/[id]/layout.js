@@ -112,7 +112,7 @@ const resolveProductImage = (product, apiBaseUrl) => {
         const imagePath = toCanonicalPath(parsed.pathname);
         if (isLocalhostHost(parsed.hostname)) {
           if (/^\/uploads\//i.test(imagePath)) {
-            return `${siteUrl}${imagePath}`;
+            return `${apiBaseUrl || siteUrl}${imagePath}`;
           }
           return `${siteUrl}/logo-og-v2.png`;
         }
