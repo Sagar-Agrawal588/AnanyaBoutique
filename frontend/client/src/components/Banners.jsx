@@ -2,7 +2,7 @@
 
 import { FLAVORS, MyContext } from "@/context/ThemeContext";
 import { fetchDataFromApi } from "@/utils/api";
-import { getBannerImageUrl } from "@/utils/imageUtils";
+import { getBannerImageUrl, isCloudinaryUrl } from "@/utils/imageUtils";
 import { motion } from "framer-motion";
 import Image from "next/image";
 import Link from "next/link";
@@ -69,23 +69,28 @@ const BannerMedia = ({ banner, onMuteToggle, isMuted }) => {
   }
 
   if (banner.image) {
+    const desktopSrc = getBannerImageUrl(banner.image);
+    const mobileSrc = getBannerImageUrl(banner.mobileImage || banner.image);
+
     return (
       <div className="relative h-56 sm:h-64 md:h-72 w-full overflow-hidden rounded-3xl">
         <div className="absolute inset-0 hidden md:block">
           <Image
-            src={getBannerImageUrl(banner.image)}
+            src={desktopSrc}
             alt={banner.title}
             fill
             sizes="(max-width: 768px) 100vw, 50vw"
+            unoptimized={isCloudinaryUrl(desktopSrc)}
             className="object-cover transition-transform duration-700 hover:scale-105"
           />
         </div>
         <div className="absolute inset-0 md:hidden">
           <Image
-            src={getBannerImageUrl(banner.mobileImage || banner.image)}
+            src={mobileSrc}
             alt={banner.title}
             fill
             sizes="100vw"
+            unoptimized={isCloudinaryUrl(mobileSrc)}
             className="object-cover transition-transform duration-700 hover:scale-105"
           />
         </div>
@@ -96,14 +101,20 @@ const BannerMedia = ({ banner, onMuteToggle, isMuted }) => {
   return <div className="h-56 w-full rounded-3xl bg-gray-100" />;
 };
 
-const Banners = () => {
-  const [banners, setBanners] = useState([]);
-  const [loading, setLoading] = useState(true);
+const Banners = ({ initialBanners = [] }) => {
+  const [banners, setBanners] = useState(initialBanners);
+  const [loading, setLoading] = useState(initialBanners.length === 0);
   const [activeAudioBannerId, setActiveAudioBannerId] = useState(null);
   const context = useContext(MyContext);
   const flavor = context?.flavor || FLAVORS.creamy;
 
   useEffect(() => {
+    if (initialBanners.length > 0) {
+      setBanners(initialBanners);
+      setLoading(false);
+      return;
+    }
+
     const fetchBanners = async () => {
       try {
         const response = await fetchDataFromApi("/api/banners");
@@ -115,7 +126,7 @@ const Banners = () => {
       }
     };
     fetchBanners();
-  }, []);
+  }, [initialBanners]);
 
   if (loading) return null;
   if (banners.length === 0) return null;
