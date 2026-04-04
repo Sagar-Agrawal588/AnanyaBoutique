@@ -328,34 +328,76 @@ const ProductDetailPage = () => {
     };
   };
 
-  const buildCartProductFromRecommendation = (item) => {
-    const recProduct = item?.product;
+  const getRecommendationPayload = (item) => {
+    const recommendation = item?.recommendation || {};
+    const recProduct = recommendation?.product || item?.product || null;
     if (!recProduct) return null;
-    const variant = item?.variant || null;
-    const price = Number(
-      item?.price ?? variant?.price ?? recProduct?.price ?? 0,
+
+    const variant = recommendation?.variant || item?.variant || null;
+    const fallbackPrice = Number(recProduct?.price ?? 0);
+    const rawPrice = Number(
+      item?.price ?? recommendation?.price ?? variant?.price ?? fallbackPrice,
     );
-    const originalPrice = Number(
+    const safePrice =
+      Number.isFinite(rawPrice) && rawPrice > 0
+        ? rawPrice
+        : Number.isFinite(fallbackPrice) && fallbackPrice > 0
+          ? fallbackPrice
+          : 0;
+
+    const rawOriginalPrice = Number(
       item?.originalPrice ??
+        recommendation?.originalPrice ??
         variant?.originalPrice ??
         recProduct?.originalPrice ??
-        price,
+        safePrice,
     );
+    const safeOriginalPrice = Number.isFinite(rawOriginalPrice)
+      ? Math.max(rawOriginalPrice, safePrice)
+      : safePrice;
+    const finalPrice =
+      safePrice > 0 ? safePrice : safeOriginalPrice > 0 ? safeOriginalPrice : 0;
 
-    if (variant?._id) {
+    return {
+      product: recProduct,
+      variant,
+      variantId: variant?._id || variant?.id || null,
+      label: resolveVariantLabel(variant, recProduct),
+      price: finalPrice,
+      originalPrice: Math.max(safeOriginalPrice, finalPrice),
+      image:
+        item?.image ||
+        recommendation?.image ||
+        variant?.image ||
+        recProduct?.thumbnail ||
+        recProduct?.images?.[0] ||
+        "",
+    };
+  };
+
+  const buildCartProductFromRecommendation = (item) => {
+    const recommendation = getRecommendationPayload(item);
+    if (!recommendation?.product) return null;
+
+    const recProduct = recommendation.product;
+    const variant = recommendation.variant;
+    const price = Number(recommendation.price || 0);
+    const originalPrice = Number(recommendation.originalPrice || price);
+
+    if (recommendation.variantId) {
       return {
         ...recProduct,
         price,
         originalPrice,
         selectedVariant: {
-          _id: variant._id,
-          name: variant.name,
-          sku: variant.sku,
-          price: price,
-          weight: variant.weight,
-          unit: variant.unit,
+          _id: recommendation.variantId,
+          name: variant?.name,
+          sku: variant?.sku,
+          price,
+          weight: variant?.weight,
+          unit: variant?.unit,
         },
-        variantId: variant._id,
+        variantId: recommendation.variantId,
       };
     }
 
@@ -508,6 +550,45 @@ const ProductDetailPage = () => {
       setSnackbar({
         open: true,
         message: "Failed to add bundle items",
+        severity: "error",
+      });
+    }
+  };
+
+  const handleAddSingleRecommendation = async (item) => {
+    const payload = buildCartProductFromRecommendation(item);
+    if (!payload) {
+      setSnackbar({
+        open: true,
+        message: "Unable to add this item right now",
+        severity: "error",
+      });
+      return;
+    }
+
+    const productId = payload?._id || payload?.id;
+    const variantId = payload?.variantId || null;
+
+    if (hasSelectedVariantInCart(productId, variantId)) {
+      setSnackbar({
+        open: true,
+        message: "Item already in your cart",
+        severity: "success",
+      });
+      return;
+    }
+
+    try {
+      await addToCart(payload, 1);
+      setSnackbar({
+        open: true,
+        message: "Added to cart!",
+        severity: "success",
+      });
+    } catch {
+      setSnackbar({
+        open: true,
+        message: "Failed to add item",
         severity: "error",
       });
     }
@@ -1192,21 +1273,35 @@ const ProductDetailPage = () => {
                 </div>
               </div>
 
-              {frequentlyBought.map((item) => {
-                const recProduct = item.product || {};
-                const variant = item.variant || null;
-                const label = resolveVariantLabel(variant, recProduct);
-                const price = Number(item.price || 0);
-                const originalPrice = Number(item.originalPrice || 0);
+              {frequentlyBought.map((item, index) => {
+                const recommendation = getRecommendationPayload(item);
+                if (!recommendation?.product) return null;
+
+                const recProduct = recommendation.product;
+                const price = Number(recommendation.price || 0);
+                const originalPrice = Number(
+                  recommendation.originalPrice || price,
+                );
+                const recProductId =
+                  recProduct._id || recProduct.id || item?.productId || "";
+                const isAdded = hasSelectedVariantInCart(
+                  recProductId,
+                  recommendation.variantId,
+                );
+
                 return (
                   <div
-                    key={item.productId || recProduct._id || recProduct.id}
+                    key={`${String(recProductId)}:${String(recommendation.variantId || "base")}:${index}`}
                     className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm"
                   >
                     <div className="flex items-center gap-3">
                       <div className="w-16 h-16 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-center p-2">
                         <img
-                          src={getImageUrl(item.image || recProduct.thumbnail)}
+                          src={getImageUrl(
+                            recommendation.image ||
+                              recProduct.thumbnail ||
+                              recProduct.images?.[0],
+                          )}
                           alt={recProduct.name || "Recommended product"}
                           className="w-full h-full object-contain"
                         />
@@ -1218,8 +1313,10 @@ const ProductDetailPage = () => {
                         <h4 className="text-sm font-semibold text-gray-900 line-clamp-1">
                           {recProduct.name || recProduct.title}
                         </h4>
-                        {label && (
-                          <p className="text-xs text-gray-500">{label}</p>
+                        {recommendation.label && (
+                          <p className="text-xs text-gray-500">
+                            {recommendation.label}
+                          </p>
                         )}
                         <div className="flex items-center gap-2">
                           {originalPrice > price && (
@@ -1232,6 +1329,33 @@ const ProductDetailPage = () => {
                           </span>
                         </div>
                       </div>
+                    </div>
+                    <div className="mt-3 flex justify-end">
+                      <Button
+                        size="small"
+                        variant={isAdded ? "outlined" : "contained"}
+                        onClick={() => handleAddSingleRecommendation(item)}
+                        disabled={isAdded}
+                        sx={{
+                          textTransform: "none",
+                          borderRadius: "999px",
+                          fontWeight: 600,
+                          minWidth: 120,
+                          ...(isAdded
+                            ? {
+                                color: "#16a34a",
+                                borderColor: "#16a34a",
+                              }
+                            : {
+                                backgroundColor: "var(--primary)",
+                                "&:hover": {
+                                  backgroundColor: "var(--flavor-hover)",
+                                },
+                              }),
+                        }}
+                      >
+                        {isAdded ? "Added" : "Add to Cart"}
+                      </Button>
                     </div>
                   </div>
                 );

@@ -2,8 +2,8 @@
 
 import ComboCard from "@/components/ComboCard";
 import { FLAVORS, MyContext } from "@/context/ThemeContext";
-import { fetchDataFromApi } from "@/utils/api";
 import { trackEvent } from "@/utils/analyticsTracker";
+import { fetchDataFromApi } from "@/utils/api";
 import Link from "next/link";
 import { useContext, useEffect, useMemo, useRef, useState } from "react";
 
@@ -19,12 +19,14 @@ const HomeComboDeals = () => {
     const fetchCombos = async () => {
       setLoading(true);
       try {
-        const response = await fetchDataFromApi("/api/combos?limit=4");
+        const response = await fetchDataFromApi(
+          "/api/combos?sort=priority&limit=10",
+        );
         if (response?.success) {
           const items = Array.isArray(response?.data?.items)
             ? response.data.items
             : response?.data?.items || [];
-          setCombos(items);
+          setCombos(items.slice(0, 4));
         } else {
           setCombos([]);
         }
@@ -56,7 +58,9 @@ const HomeComboDeals = () => {
   const renderedCombos = useMemo(() => {
     const seen = new Set();
     return combos.filter((combo) => {
-      const comboId = String(combo?._id || combo?.id || combo?.slug || "").trim();
+      const comboId = String(
+        combo?._id || combo?.id || combo?.slug || "",
+      ).trim();
       if (!comboId || seen.has(comboId)) return false;
       seen.add(comboId);
       return true;

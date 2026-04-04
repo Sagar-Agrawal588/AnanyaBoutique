@@ -1,3 +1,4 @@
+import compression from "compression";
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -186,6 +187,7 @@ if (accessTokenSecret === refreshTokenSecret) {
 
 // Route imports
 import { initializeFirebaseAdmin } from "./config/firebaseAdmin.js";
+import { startOrderPaymentReminderJob } from "./controllers/order.controller.js";
 import { initializeSettings } from "./controllers/settings.controller.js";
 import { initSocket } from "./realtime/socket.js";
 import aboutPageRouter from "./routes/aboutPage.route.js";
@@ -217,7 +219,6 @@ import membershipPageRouter from "./routes/membershipPage.route.js";
 import newsletterRouter from "./routes/newsletter.route.js";
 import notificationRouter from "./routes/notification.route.js";
 import orderRouter from "./routes/order.route.js";
-import { startOrderPaymentReminderJob } from "./controllers/order.controller.js";
 import partnerApiRouter from "./routes/partnerApi.route.js";
 import policyRouter from "./routes/policy.route.js";
 import popupRouter from "./routes/popup.route.js";
@@ -404,8 +405,14 @@ app.use(
   }),
 );
 
+app.use(
+  compression({
+    threshold: 1024,
+  }),
+);
+
 if (process.env.NODE_ENV === "production") {
-  app.use(morgan("combined"));
+  app.use(morgan("short"));
 } else {
   app.use(morgan("dev"));
 }

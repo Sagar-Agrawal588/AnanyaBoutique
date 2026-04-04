@@ -191,12 +191,17 @@ const Checkout = () => {
           (sum, entry) =>
             sum +
             Number(entry?.price || 0) *
-              Math.max(Number(entry?.quantity || entry?.quantityRequired || 1), 1),
+              Math.max(
+                Number(entry?.quantity || entry?.quantityRequired || 1),
+                1,
+              ),
           0,
         ),
       );
       const comboRulePrice =
-        comboBaseTotal > 0 && Number.isFinite(comboRuleValue) && comboRuleValue > 0
+        comboBaseTotal > 0 &&
+        Number.isFinite(comboRuleValue) &&
+        comboRuleValue > 0
           ? comboRuleType === "fixed_price"
             ? Math.min(comboRuleValue, comboBaseTotal)
             : comboRuleType === "percent_discount"
@@ -211,12 +216,12 @@ const Checkout = () => {
           : Number.isFinite(comboCurrentPrice) && comboCurrentPrice > 0
             ? comboCurrentPrice
             : Number.isFinite(cartLinePrice) && cartLinePrice > 0
-                ? cartLinePrice
-                : Number.isFinite(comboLegacyPrice) && comboLegacyPrice > 0
-                  ? comboLegacyPrice
-                  : Number.isFinite(comboRulePrice) && comboRulePrice > 0
-                    ? comboRulePrice
-                    : Number(item?.price || combo?.comboPrice || 0);
+              ? cartLinePrice
+              : Number.isFinite(comboLegacyPrice) && comboLegacyPrice > 0
+                ? comboLegacyPrice
+                : Number.isFinite(comboRulePrice) && comboRulePrice > 0
+                  ? comboRulePrice
+                  : Number(item?.price || combo?.comboPrice || 0);
       const comboId =
         combo?.comboId ||
         comboSnapshot?.comboId ||
@@ -758,15 +763,34 @@ const Checkout = () => {
   }, [authToken, gstSavedValue]);
 
   useEffect(() => {
+    let isDisposed = false;
+
     const fetchDynamicCheckoutSettings = async () => {
       try {
-        const coinSettingsRes = await fetch(
+        const coinSettingsRequest = fetch(
           `${API_URL}/api/coins/settings/public`,
-        );
+        ).catch(() => null);
+        const coinBalanceRequest = authToken
+          ? fetch(`${API_URL}/api/coins/me`, {
+              headers: {
+                Authorization: `Bearer ${authToken}`,
+              },
+              credentials: "include",
+            }).catch(() => null)
+          : Promise.resolve(null);
+
+        const [coinSettingsRes, coinBalanceRes] = await Promise.all([
+          coinSettingsRequest,
+          coinBalanceRequest,
+        ]);
 
         if (coinSettingsRes?.ok) {
           const coinSettingsData = await coinSettingsRes.json();
-          if (coinSettingsData?.success && coinSettingsData?.data) {
+          if (
+            !isDisposed &&
+            coinSettingsData?.success &&
+            coinSettingsData?.data
+          ) {
             setCoinSettings({
               coinsPerRupee: Number(
                 coinSettingsData.data.coinsPerRupee ?? 0.05,
@@ -782,13 +806,7 @@ const Checkout = () => {
 
         if (authToken) {
           let resolvedCoinBalance = 0;
-          const coinBalanceRes = await fetch(`${API_URL}/api/coins/me`, {
-            headers: {
-              Authorization: `Bearer ${authToken}`,
-            },
-            credentials: "include",
-          });
-          if (coinBalanceRes.ok) {
+          if (coinBalanceRes?.ok) {
             const coinBalanceData = await coinBalanceRes.json();
             if (coinBalanceData?.success) {
               resolvedCoinBalance = Number(
@@ -819,9 +837,13 @@ const Checkout = () => {
             }
           }
 
-          setCoinBalance(Math.max(Number(resolvedCoinBalance || 0), 0));
+          if (!isDisposed) {
+            setCoinBalance(Math.max(Number(resolvedCoinBalance || 0), 0));
+          }
         } else {
-          setCoinBalance(0);
+          if (!isDisposed) {
+            setCoinBalance(0);
+          }
         }
       } catch (error) {
         // Checkout should continue even if optional dynamic services fail.
@@ -829,6 +851,10 @@ const Checkout = () => {
     };
 
     fetchDynamicCheckoutSettings();
+
+    return () => {
+      isDisposed = true;
+    };
   }, [authToken]);
 
   // Address form handlers
@@ -1290,7 +1316,11 @@ const Checkout = () => {
 
   const getCheckoutItemsForSubmit = useCallback(async () => {
     const fallbackItems = Array.isArray(cartItems) ? cartItems : [];
-    if (fallbackItems.length > 0 || !authToken || typeof fetchCart !== "function") {
+    if (
+      fallbackItems.length > 0 ||
+      !authToken ||
+      typeof fetchCart !== "function"
+    ) {
       return {
         items: fallbackItems,
         changed: false,

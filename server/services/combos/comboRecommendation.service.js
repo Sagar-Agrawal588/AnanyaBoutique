@@ -1,6 +1,6 @@
 ﻿import ComboModel from "../../models/combo.model.js";
-import ProductPairingModel from "../../models/productPairing.model.js";
 import ProductModel from "../../models/product.model.js";
+import ProductPairingModel from "../../models/productPairing.model.js";
 import { computeComboAvailability } from "./combo.service.js";
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -50,10 +50,14 @@ const attachAvailability = async (combos = []) => {
 
   const products = productIds.length
     ? await ProductModel.find({ _id: { $in: productIds } })
-        .select("_id stock stock_quantity reserved_quantity track_inventory trackInventory hasVariants variants")
+        .select(
+          "_id stock stock_quantity reserved_quantity track_inventory trackInventory hasVariants variants",
+        )
         .lean()
     : [];
-  const productMap = new Map(products.map((product) => [String(product._id), product]));
+  const productMap = new Map(
+    products.map((product) => [String(product._id), product]),
+  );
 
   const output = [];
   for (const combo of combos) {
@@ -99,14 +103,45 @@ const resolveAvailableStock = (product, variant) => {
 
 const buildProductRecommendation = (product) => {
   if (!product) return null;
-  const variant = resolveDefaultVariant(product);
+  const variants = Array.isArray(product?.variants) ? product.variants : [];
+  const defaultVariant = resolveDefaultVariant(product);
+  const variant =
+    variants.find(
+      (candidate) =>
+        Number(candidate?.price ?? 0) > 0 &&
+        resolveAvailableStock(product, candidate) > 0,
+    ) ||
+    variants.find(
+      (candidate) => resolveAvailableStock(product, candidate) > 0,
+    ) ||
+    defaultVariant;
+
   const availableStock = resolveAvailableStock(product, variant);
   if (availableStock <= 0) return null;
 
-  const price = Number(variant?.price ?? product?.price ?? 0);
-  const originalPrice = Number(
-    variant?.originalPrice ?? product?.originalPrice ?? price,
-  );
+  const productPrice = Number(product?.price ?? 0);
+  const variantPrice = Number(variant?.price ?? 0);
+  const variantOriginalPrice = Number(variant?.originalPrice ?? 0);
+  const productOriginalPrice = Number(product?.originalPrice ?? 0);
+
+  let price =
+    variantPrice > 0
+      ? variantPrice
+      : productPrice > 0
+        ? productPrice
+        : variantOriginalPrice > 0
+          ? variantOriginalPrice
+          : productOriginalPrice;
+
+  if (price <= 0) return null;
+
+  const originalPrice =
+    variantOriginalPrice > 0
+      ? Math.max(variantOriginalPrice, price)
+      : productOriginalPrice > 0
+        ? Math.max(productOriginalPrice, price)
+        : price;
+
   const image =
     variant?.image || product?.thumbnail || product?.images?.[0] || "";
 
@@ -155,7 +190,10 @@ export const getCombosForProduct = async (productId, { limit = 6 } = {}) => {
   return filtered;
 };
 
-export const getFrequentlyBoughtTogether = async (productId, { limit = 4 } = {}) => {
+export const getFrequentlyBoughtTogether = async (
+  productId,
+  { limit = 4 } = {},
+) => {
   if (!productId) return [];
   const cacheKey = getCacheKey("fbt", `${productId}:${limit}`);
   const cached = getCached(cacheKey);
@@ -175,7 +213,9 @@ export const getFrequentlyBoughtTogether = async (productId, { limit = 4 } = {})
         .lean()
     : [];
 
-  const productMap = new Map(products.map((product) => [String(product._id), product]));
+  const productMap = new Map(
+    products.map((product) => [String(product._id), product]),
+  );
   const result = pairs
     .map((pair) => ({
       ...pair,
@@ -187,6 +227,12 @@ export const getFrequentlyBoughtTogether = async (productId, { limit = 4 } = {})
       if (!recommendation) return null;
       return {
         ...pair,
+        product: recommendation.product,
+        variant: recommendation.variant,
+        price: recommendation.price,
+        originalPrice: recommendation.originalPrice,
+        image: recommendation.image,
+        availableStock: recommendation.availableStock,
         recommendation,
       };
     })
@@ -196,7 +242,10 @@ export const getFrequentlyBoughtTogether = async (productId, { limit = 4 } = {})
   return result;
 };
 
-export const getCartUpsellCombos = async (cartItems = [], { limit = 6 } = {}) => {
+export const getCartUpsellCombos = async (
+  cartItems = [],
+  { limit = 6 } = {},
+) => {
   const normalizedItems = Array.isArray(cartItems)
     ? cartItems
         .map((item) => ({
@@ -278,11 +327,15 @@ export const getCartUpsellCombos = async (cartItems = [], { limit = 6 } = {}) =>
       if (a.missingCount !== b.missingCount) {
         return a.missingCount - b.missingCount;
       }
-      return Number(b.combo?.totalSavings || 0) - Number(a.combo?.totalSavings || 0);
+      return (
+        Number(b.combo?.totalSavings || 0) - Number(a.combo?.totalSavings || 0)
+      );
     })
     .slice(0, Math.max(Number(limit || 6), 1));
 
-  const withAvailability = await attachAvailability(sorted.map((entry) => entry.combo));
+  const withAvailability = await attachAvailability(
+    sorted.map((entry) => entry.combo),
+  );
   const response = sorted
     .map((entry, index) => ({
       combo: withAvailability[index] || entry.combo,
@@ -334,7 +387,9 @@ export const getCartUpsellProductSuggestion = async (
         )
         .lean()
     : [];
-  const productMap = new Map(products.map((product) => [String(product._id), product]));
+  const productMap = new Map(
+    products.map((product) => [String(product._id), product]),
+  );
 
   for (const pair of pairs) {
     const product = productMap.get(String(pair.productBId || ""));
@@ -349,7 +404,10 @@ export const getCartUpsellProductSuggestion = async (
   return null;
 };
 
-export const getRecommendedCombosForProduct = async (productId, { limit = 4 } = {}) => {
+export const getRecommendedCombosForProduct = async (
+  productId,
+  { limit = 4 } = {},
+) => {
   const combos = await ComboModel.find({
     ...buildActiveComboFilter(),
     "items.productId": productId,

@@ -9,9 +9,26 @@ const HEALTHY_ONE_GRAM_HOSTS = new Set([
 const LOCAL_API_FALLBACKS = [
   "http://127.0.0.1:8000",
   "http://127.0.0.1:8001",
+  "http://127.0.0.1:8002",
   "http://localhost:8000",
   "http://localhost:8001",
+  "http://localhost:8002",
 ];
+
+const DEFAULT_PUBLIC_GET_CACHE_TTL_MS = Math.max(
+  Number.parseInt(
+    String(process.env.NEXT_PUBLIC_PUBLIC_GET_CACHE_TTL_MS ?? "15000"),
+    10,
+  ) || 15000,
+  0,
+);
+
+const PUBLIC_GET_CACHE_PATH_REGEX =
+  /^\/api\/(?:products|categories|banners|home-slides|combos|settings\/public)(?:\/|\?|$)/i;
+
+const publicGetCacheStore = new Map();
+const inflightGetRequests = new Map();
+let preferredApiBaseUrl = "";
 
 const sanitizeBaseUrl = (value) =>
   String(value || "")
@@ -36,8 +53,37 @@ const isLocalhostUrl = (value) => {
 const normalizeLocalFallbacks = () =>
   LOCAL_API_FALLBACKS.map(sanitizeBaseUrl).filter(Boolean);
 
+const getGetCacheKey = (url) => `GET:${String(url || "").trim()}`;
+
+const shouldUsePublicGetCache = (url) =>
+  PUBLIC_GET_CACHE_PATH_REGEX.test(String(url || ""));
+
+const getCachedGetResponse = (cacheKey) => {
+  const cached = publicGetCacheStore.get(cacheKey);
+  if (!cached) return null;
+  if (Date.now() >= Number(cached.expiresAt || 0)) {
+    publicGetCacheStore.delete(cacheKey);
+    return null;
+  }
+  return cached.data;
+};
+
+const setCachedGetResponse = (cacheKey, data, ttlMs) => {
+  if (!cacheKey || !ttlMs || ttlMs <= 0) return;
+  publicGetCacheStore.set(cacheKey, {
+    data,
+    expiresAt: Date.now() + ttlMs,
+  });
+};
+
+const clearPublicGetCache = () => {
+  publicGetCacheStore.clear();
+};
+
 const resolveApiBaseUrl = () => {
-  const localDevBaseUrl = sanitizeBaseUrl(process.env.NEXT_PUBLIC_LOCAL_API_URL);
+  const localDevBaseUrl = sanitizeBaseUrl(
+    process.env.NEXT_PUBLIC_LOCAL_API_URL,
+  );
   const envCandidates = [
     localDevBaseUrl,
     process.env.NEXT_PUBLIC_APP_API_URL,
@@ -186,14 +232,19 @@ const handleApiError = (error, fallbackMessage) => {
 };
 
 const getApiBaseCandidates = () => {
-  const candidates = [];
+  const preferred = sanitizeBaseUrl(preferredApiBaseUrl);
   const resolvedBase = sanitizeBaseUrl(API_BASE_URL);
+  const candidates = [];
+
+  if (preferred) {
+    candidates.push(preferred);
+  }
 
   if (typeof window !== "undefined") {
     const hostname = String(window.location.hostname || "").toLowerCase();
     const isLocalhost = hostname === "localhost" || hostname === "127.0.0.1";
     if (isLocalhost) {
-      if (resolvedBase && !isLocalhostUrl(resolvedBase)) {
+      if (resolvedBase) {
         candidates.push(resolvedBase);
       }
       candidates.push(...normalizeLocalFallbacks());
@@ -222,6 +273,9 @@ const requestWithRetry = async (config, fallbackMessage) => {
 
     try {
       const response = await axiosClient.request(requestConfig);
+      if (baseURL) {
+        preferredApiBaseUrl = sanitizeBaseUrl(baseURL);
+      }
       return response.data;
     } catch (error) {
       if (error?.response?.status === 401 && !requestConfig._retry) {
@@ -252,8 +306,8 @@ const requestWithRetry = async (config, fallbackMessage) => {
   return handleApiError(lastError, fallbackMessage);
 };
 
-export const postData = async (url, formData) =>
-  requestWithRetry(
+export const postData = async (url, formData) => {
+  const result = await requestWithRetry(
     {
       method: "post",
       url: normalizePath(url),
@@ -261,18 +315,68 @@ export const postData = async (url, formData) =>
     },
     "Failed to submit request",
   );
+  if (result?.error !== true) {
+    clearPublicGetCache();
+  }
+  return result;
+};
 
-export const fetchDataFromApi = async (url) =>
-  requestWithRetry(
+export const fetchDataFromApi = async (url, options = {}) => {
+  const normalizedUrl = normalizePath(url);
+  const cacheKey = getGetCacheKey(normalizedUrl);
+
+  const configuredTtl = Number.parseInt(
+    String(options?.cacheTtlMs ?? "").trim(),
+    10,
+  );
+  const cacheTtlMs = Number.isFinite(configuredTtl)
+    ? Math.max(configuredTtl, 0)
+    : shouldUsePublicGetCache(normalizedUrl)
+      ? DEFAULT_PUBLIC_GET_CACHE_TTL_MS
+      : 0;
+
+  const shouldUseCache = cacheTtlMs > 0 && options?.skipCache !== true;
+  if (shouldUseCache) {
+    const cached = getCachedGetResponse(cacheKey);
+    if (cached) {
+      return cached;
+    }
+  }
+
+  const shouldDedupe = options?.dedupe !== false;
+  if (shouldDedupe) {
+    const pending = inflightGetRequests.get(cacheKey);
+    if (pending) {
+      return pending;
+    }
+  }
+
+  const requestPromise = requestWithRetry(
     {
       method: "get",
-      url: normalizePath(url),
+      url: normalizedUrl,
     },
     "Failed to fetch data",
-  );
+  )
+    .then((result) => {
+      if (shouldUseCache && result?.error !== true) {
+        setCachedGetResponse(cacheKey, result, cacheTtlMs);
+      }
+      return result;
+    })
+    .finally(() => {
+      inflightGetRequests.delete(cacheKey);
+    });
 
-export const putData = async (url, formData) =>
-  requestWithRetry(
+  if (shouldDedupe) {
+    inflightGetRequests.set(cacheKey, requestPromise);
+  }
+
+  return requestPromise;
+};
+
+export const putData = async (url, formData) => {
+  const result = await requestWithRetry(
     {
       method: "put",
       url: normalizePath(url),
@@ -280,12 +384,22 @@ export const putData = async (url, formData) =>
     },
     "Failed to update data",
   );
+  if (result?.error !== true) {
+    clearPublicGetCache();
+  }
+  return result;
+};
 
-export const deleteData = async (url) =>
-  requestWithRetry(
+export const deleteData = async (url) => {
+  const result = await requestWithRetry(
     {
       method: "delete",
       url: normalizePath(url),
     },
     "Failed to delete data",
   );
+  if (result?.error !== true) {
+    clearPublicGetCache();
+  }
+  return result;
+};

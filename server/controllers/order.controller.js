@@ -244,7 +244,16 @@ const resolvePaymentProviderForRequest = async (requestedProvider) => {
   });
 };
 
-const SETTINGS_CACHE_TTL_MS = 5 * 1000;
+const SETTINGS_CACHE_TTL_MS = (() => {
+  const configured = Number.parseInt(
+    String(process.env.SETTINGS_CACHE_TTL_MS || "").trim(),
+    10,
+  );
+  if (Number.isFinite(configured) && configured > 0) {
+    return configured;
+  }
+  return 60 * 1000;
+})();
 const settingsCache = new Map();
 
 const getCachedSetting = async (key) => {

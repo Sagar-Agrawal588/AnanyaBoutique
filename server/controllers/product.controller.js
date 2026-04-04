@@ -151,18 +151,6 @@ export const getProducts = async (req, res) => {
     }
     const exprFilters = [];
 
-    // Debug: Count all products first
-    const totalAllProducts = await ProductModel.countDocuments({});
-    const totalActiveProducts = await ProductModel.countDocuments({
-      isActive: { $ne: false },
-    });
-    debugLog(
-      "[Product Search] Total products in DB:",
-      totalAllProducts,
-      "Active:",
-      totalActiveProducts,
-    );
-
     // Text search - supports 1+ character partial matching with regex
     if (search && search.trim().length >= 1) {
       const searchTerm = search.trim();
@@ -212,25 +200,11 @@ export const getProducts = async (req, res) => {
       filter.$or = searchConditions;
 
       debugLog("[Product Search] Filter:", JSON.stringify(filter));
-
-      // Debug: Test the name search directly
-      const nameMatchTest = await ProductModel.find({
-        name: { $regex: searchRegex },
-        isActive: { $ne: false },
-      })
-        .select("name")
-        .limit(5)
-        .lean();
-      debugLog(
-        "[Product Search] Direct name match test:",
-        nameMatchTest.map((p) => p.name),
-      );
     }
 
     // Category filter - support both ObjectId and slug
     if (category) {
       // Check if it's a valid ObjectId
-      const mongoose = (await import("mongoose")).default;
       const isValidObjectId = mongoose.Types.ObjectId.isValid(category);
 
       if (isValidObjectId) {

@@ -78,6 +78,7 @@ const ProductSlider = ({
   comboLimit = 2,
   sortBy = "createdAt",
   order = "desc",
+  separateVariants = false,
 }) => {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -100,12 +101,25 @@ const ProductSlider = ({
           `sortBy=${encodeURIComponent(String(sortBy || "createdAt"))}`,
         );
         params.push(`order=${encodeURIComponent(String(order || "desc"))}`);
-        params.push("separateVariants=true");
+        if (separateVariants) {
+          params.push("separateVariants=true");
+        }
         params.push("includeCombos=false");
         params.push(`limit=${encodeURIComponent(String(limit || 10))}`);
 
         const productsUrl = `/api/products?${params.join("&")}`;
-        const productResponse = await fetchDataFromApi(productsUrl);
+        const productsRequest = fetchDataFromApi(productsUrl);
+        const combosRequest = includeCombos
+          ? fetchDataFromApi(
+              `/api/combos?sort=priority&limit=${Math.max(comboLimit * 5, 10)}`,
+            )
+          : Promise.resolve(null);
+
+        const [productResponse, combosResponse] = await Promise.all([
+          productsRequest,
+          combosRequest,
+        ]);
+
         const fetchedProducts =
           productResponse?.success && Array.isArray(productResponse?.data)
             ? productResponse.data.filter(
@@ -119,10 +133,6 @@ const ProductSlider = ({
           setProducts(fetchedProducts);
           return;
         }
-
-        const combosResponse = await fetchDataFromApi(
-          `/api/combos?sort=priority&limit=${Math.max(comboLimit * 5, 10)}`,
-        );
         const comboItemsRaw =
           combosResponse?.success && Array.isArray(combosResponse?.data?.items)
             ? combosResponse.data.items
@@ -196,6 +206,7 @@ const ProductSlider = ({
     comboLimit,
     sortBy,
     order,
+    separateVariants,
   ]);
 
   if (loading) {
