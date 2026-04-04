@@ -21,6 +21,36 @@ const stripHtml = (value) =>
     .replace(/\s+/g, " ")
     .trim();
 
+const normalizeImageInput = (imageValue) => {
+  if (!imageValue) return "";
+
+  if (typeof imageValue === "string") {
+    const normalized = imageValue.trim();
+    if (!normalized) return "";
+    const lowered = normalized.toLowerCase();
+    if (
+      lowered === "undefined" ||
+      lowered === "null" ||
+      lowered === "nan" ||
+      lowered === "[object object]"
+    ) {
+      return "";
+    }
+    return normalized;
+  }
+
+  if (typeof imageValue === "object") {
+    if (typeof imageValue.url === "string") return imageValue.url.trim();
+    if (typeof imageValue.secure_url === "string") {
+      return imageValue.secure_url.trim();
+    }
+    if (typeof imageValue.src === "string") return imageValue.src.trim();
+    if (typeof imageValue.image === "string") return imageValue.image.trim();
+  }
+
+  return "";
+};
+
 const safeDecode = (value) => {
   const raw = String(value || "");
   try {
@@ -62,12 +92,10 @@ const getApiCandidates = () => {
 const resolveProductImage = (product, apiBaseUrl) => {
   const siteUrl = getSiteUrl();
   const imageCandidates = [
+    ...(Array.isArray(product?.images) ? product.images : []),
     product?.thumbnail,
     product?.image,
-    ...(Array.isArray(product?.images) ? product.images : []),
-  ]
-    .map((entry) => String(entry || "").trim())
-    .filter(Boolean);
+  ].map(normalizeImageInput).filter(Boolean);
 
   for (const candidate of imageCandidates) {
     if (candidate.startsWith("data:image/")) {
@@ -99,7 +127,7 @@ const resolveProductImage = (product, apiBaseUrl) => {
     if (!normalizedPath) continue;
 
     if (/^\/uploads\//i.test(normalizedPath)) {
-      return `${siteUrl}${normalizedPath}`;
+      return `${apiBaseUrl || siteUrl}${normalizedPath}`;
     }
 
     return `${siteUrl}${normalizedPath}`;
@@ -167,9 +195,13 @@ export async function generateMetadata({ params }) {
       description,
       url,
       type: "product",
+      locale: "en_IN",
+      siteName: "Healthy One Gram",
       images: [
         {
           url: imageUrl,
+          width: 1200,
+          height: 630,
           alt: String(product?.name || "Healthy One Gram Product"),
         },
       ],

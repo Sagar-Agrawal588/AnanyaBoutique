@@ -1,7 +1,7 @@
 "use client";
 
 import { useProducts } from "@/context/ProductContext";
-import { getHeroImageUrl } from "@/utils/imageUtils";
+import { getHeroImageUrl, isCloudinaryUrl } from "@/utils/imageUtils";
 import { AnimatePresence, motion } from "framer-motion";
 import Image from "next/image";
 import Link from "next/link";
@@ -38,31 +38,40 @@ const fallbackSlides = [
   },
 ];
 
-const HomeSlider = () => {
+const formatSlides = (slides = []) =>
+  slides.map((slide) => ({
+    image: slide.image,
+    mobileImage: slide.mobileImage || slide.image,
+    title: slide.title,
+    subtitle: slide.subtitle || slide.description,
+    cta: slide.buttonText || "Shop Now",
+    link: slide.buttonLink || "/products",
+  }));
+
+const HomeSlider = ({ initialSlides = [] }) => {
   const { homeSlides = [], fetchHomeSlides } = useProducts();
-  const [displaySlides, setDisplaySlides] = useState(fallbackSlides);
+  const [displaySlides, setDisplaySlides] = useState(
+    initialSlides.length > 0 ? formatSlides(initialSlides) : fallbackSlides,
+  );
   const [activeIndex, setActiveIndex] = useState(0);
   const swiperRef = useRef(null);
 
   useEffect(() => {
-    if (!homeSlides?.length) {
+    if (!homeSlides?.length && !initialSlides?.length) {
       fetchHomeSlides();
     }
-  }, [fetchHomeSlides, homeSlides?.length]);
+  }, [fetchHomeSlides, homeSlides?.length, initialSlides?.length]);
 
   useEffect(() => {
     if (homeSlides && homeSlides.length > 0) {
-      const formattedSlides = homeSlides.map((slide) => ({
-        image: slide.image,
-        mobileImage: slide.mobileImage || slide.image,
-        title: slide.title,
-        subtitle: slide.subtitle || slide.description,
-        cta: slide.buttonText || "Shop Now",
-        link: slide.buttonLink || "/products",
-      }));
-      setDisplaySlides(formattedSlides);
+      setDisplaySlides(formatSlides(homeSlides));
+      return;
     }
-  }, [homeSlides]);
+
+    if (initialSlides.length > 0) {
+      setDisplaySlides(formatSlides(initialSlides));
+    }
+  }, [homeSlides, initialSlides]);
 
   return (
     <section className="relative w-full h-[60vh] md:h-[85vh] min-h-[400px] md:min-h-[600px] overflow-hidden bg-black p-0">
@@ -89,7 +98,7 @@ const HomeSlider = () => {
         onSwiper={(swiper) => (swiperRef.current = swiper)}
       >
         {displaySlides.map((slide, index) => (
-          <SwiperSlide key={index} className="relative w-full h-full">
+          <SwiperSlide key={`${slide.title || "slide"}-${index}`} className="relative w-full h-full">
             {/* Background Image with Ken Burns zoom */}
             <div className="relative w-full h-full overflow-hidden">
               <motion.div
@@ -98,26 +107,45 @@ const HomeSlider = () => {
                 animate={activeIndex === index ? { scale: 1.08 } : { scale: 1 }}
                 transition={{ duration: 6, ease: "easeOut" }}
               >
+                {(() => {
+                  const desktopSrc = getHeroImageUrl(slide.image);
+                  const mobileSrc = getHeroImageUrl(
+                    slide.mobileImage || slide.image,
+                  );
+                  const desktopCloudinary = isCloudinaryUrl(desktopSrc);
+                  const mobileCloudinary = isCloudinaryUrl(mobileSrc);
+
+                  return (
+                    <>
                 <div className="absolute inset-0 hidden md:block">
                   <Image
-                    src={getHeroImageUrl(slide.image)}
+                    src={desktopSrc}
                     alt={slide.title}
                     fill
                     priority={index === 0}
                     sizes="100vw"
+                    fetchPriority={index === 0 ? "high" : undefined}
+                    loading={index === 0 ? "eager" : "lazy"}
+                    unoptimized={desktopCloudinary}
                     className="object-cover"
                   />
                 </div>
                 <div className="absolute inset-0 md:hidden">
                   <Image
-                    src={getHeroImageUrl(slide.mobileImage || slide.image)}
+                    src={mobileSrc}
                     alt={slide.title}
                     fill
                     priority={index === 0}
                     sizes="100vw"
+                    fetchPriority={index === 0 ? "high" : undefined}
+                    loading={index === 0 ? "eager" : "lazy"}
+                    unoptimized={mobileCloudinary}
                     className="object-cover"
                   />
                 </div>
+                    </>
+                  );
+                })()}
               </motion.div>
               <div
                 className="absolute inset-0"

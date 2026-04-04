@@ -5,7 +5,43 @@ import HomeSlider from "@/components/HomeSlider";
 import MembershipCTA from "@/components/MembershipCTA";
 import PopularProducts from "@/components/PopularProducts";
 
-export default function Home() {
+const sanitizeBaseUrl = (value) =>
+  String(value || "")
+    .trim()
+    .replace(/^['"]|['"]$/g, "")
+    .replace(/\/+$/, "");
+
+const API_BASE_URL = sanitizeBaseUrl(
+  process.env.NEXT_PUBLIC_APP_API_URL || process.env.NEXT_PUBLIC_API_URL,
+);
+
+const getHomepageData = async (path) => {
+  if (!API_BASE_URL) {
+    return [];
+  }
+
+  try {
+    const response = await fetch(`${API_BASE_URL}${path}`, {
+      next: { revalidate: 60 },
+    });
+
+    if (!response.ok) {
+      return [];
+    }
+
+    const payload = await response.json();
+    return Array.isArray(payload?.data) ? payload.data : [];
+  } catch {
+    return [];
+  }
+};
+
+export default async function Home() {
+  const [homeSlides, banners] = await Promise.all([
+    getHomepageData("/api/home-slides"),
+    getHomepageData("/api/banners"),
+  ]);
+
   return (
     <>
       <div
@@ -15,9 +51,9 @@ export default function Home() {
           transition: "background 0.5s cubic-bezier(0.4, 0, 0.2, 1)",
         }}
       >
-        <HomeSlider />
+        <HomeSlider initialSlides={homeSlides} />
         <CatSlider />
-        <Banners />
+        <Banners initialBanners={banners} />
         <HomeComboDeals />
         <PopularProducts />
         <MembershipCTA />
