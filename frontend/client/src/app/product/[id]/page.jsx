@@ -979,7 +979,7 @@ const ProductDetailPage = () => {
                   </div>
                 )}
 
-                <div className="flex items-center gap-3 w-full">
+                <div className="flex items-stretch gap-2 sm:gap-3 w-full">
                   <Button
                     variant="contained"
                     size="large"
@@ -992,6 +992,8 @@ const ProductDetailPage = () => {
                     }
                     className="!flex-1"
                     sx={{
+                      minHeight: "56px",
+                      minWidth: 0,
                       backgroundColor: isInCart(product._id || product.id)
                         ? "#dc2626"
                         : "var(--primary)",
@@ -1000,11 +1002,16 @@ const ProductDetailPage = () => {
                           ? "#b91c1c"
                           : "var(--flavor-hover)",
                       },
-                      padding: "12px 32px",
+                      padding: { xs: "12px 14px", sm: "12px 32px" },
                       borderRadius: "14px",
-                      fontWeight: "bold",
+                      fontWeight: 700,
                       textTransform: "none",
-                      fontSize: "16px",
+                      fontSize: { xs: "15px", sm: "16px" },
+                      whiteSpace: "nowrap",
+                      "& .MuiButton-startIcon": {
+                        marginRight: { xs: "6px", sm: "8px" },
+                        marginLeft: 0,
+                      },
                       boxShadow: isInCart(product._id || product.id)
                         ? "0 16px 30px -20px rgba(220,38,38,0.85)"
                         : "0 16px 30px -20px rgba(var(--flavor-badge),0.85)",
@@ -1024,15 +1031,19 @@ const ProductDetailPage = () => {
                     disabled={isBuyNowDisabled}
                     className="!flex-1"
                     sx={{
+                      minHeight: "56px",
+                      minWidth: 0,
                       backgroundColor: "#dc2626",
                       color: "#fff",
                       "&:hover": {
                         backgroundColor: "#b91c1c",
                       },
-                      padding: "12px 20px",
+                      padding: { xs: "12px 14px", sm: "12px 20px" },
                       borderRadius: "14px",
                       textTransform: "none",
-                      fontWeight: 600,
+                      fontWeight: 700,
+                      fontSize: { xs: "15px", sm: "16px" },
+                      whiteSpace: "nowrap",
                       boxShadow: "0 16px 30px -20px rgba(220,38,38,0.7)",
                     }}
                   >
