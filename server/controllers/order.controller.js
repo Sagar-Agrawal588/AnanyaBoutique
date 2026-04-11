@@ -34,6 +34,7 @@ import {
   applyRedemptionToUser,
   awardCoinsToUser,
 } from "../services/coin.service.js";
+import { captureCrmTouchpointSafely } from "../services/crm/crmTracking.service.js";
 import {
   buildComboOrderSnapshot,
   computeComboAvailability,
@@ -103,6 +104,11 @@ import {
   syncOrderStatus,
   syncOrderToFirestore,
 } from "../utils/orderFirestoreSync.js";
+import {
+  resolveOrderAwb,
+  resolveOrderTrackingUrl,
+} from "../utils/orderTracking.js";
+import { saveDocumentWithTempIdRetry } from "../utils/orderPersistence.js";
 import {
   applyOrderStatusTransition,
   normalizeOrderStatus,
@@ -359,7 +365,19 @@ const parseOrderSequenceNumber = (value, scopePrefix) => {
 const isValidNewsletterEmail = (value) =>
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
 
-const captureOrderEmailInNewsletter = async ({ email, userId }) => {
+const captureOrderEmailInNewsletter = async ({
+  req,
+  email,
+  userId,
+  name,
+  phone,
+  orderId,
+  orderAmount,
+  sessionId,
+  affiliateSource,
+  influencerCode,
+  isSavedOrder = false,
+}) => {
   const normalizedEmail = String(email || "")
     .trim()
     .toLowerCase();
@@ -382,6 +400,30 @@ const captureOrderEmailInNewsletter = async ({ email, userId }) => {
       setDefaultsOnInsert: true,
     },
   );
+
+  if (!orderId) return;
+
+  await captureCrmTouchpointSafely({
+    channel: "website",
+    eventType: "order_created",
+    userId,
+    email: normalizedEmail,
+    phone,
+    name,
+    orderId,
+    orderAmount,
+    sessionId,
+    pageUrl: "/checkout",
+    referrer: req?.headers?.referer || "",
+    happenedAt: new Date(),
+    idempotencyKey: `crm:order:${orderId}:created`,
+    metadata: {
+      source: "order_create",
+      affiliateSource: affiliateSource || null,
+      influencerCode: influencerCode || null,
+      isSavedOrder: Boolean(isSavedOrder),
+    },
+  });
 };
 
 const generateOrderSeriesNumber = async (referenceDate = new Date()) => {
@@ -895,16 +937,73 @@ const resolveDisplayOrderNumber = (order = {}) => {
   return `BOG-${rawOrderId.slice(-8).toUpperCase()}`;
 };
 
+const resolveOrderContactIdentity = (order = {}) => {
+  const billing = order?.billingDetails || {};
+  const guest = order?.guestDetails || {};
+  const delivery = order?.deliveryAddressSnapshot || {};
+
+  return {
+    email:
+      billing?.email ||
+      guest?.email ||
+      delivery?.email ||
+      "",
+    phone:
+      billing?.phone ||
+      billing?.mobile ||
+      guest?.phone ||
+      guest?.mobile ||
+      guest?.mobile_number ||
+      delivery?.order_mobile ||
+      "",
+    name:
+      billing?.fullName ||
+      guest?.name ||
+      guest?.full_name ||
+      delivery?.order_name ||
+      "",
+  };
+};
+
 const emitPurchaseCompletedTrackingEvent = ({
   req,
   order,
   source = "unknown",
 }) => {
   if (!req || !order) return;
-  if (String(order?.analyticsConsent || "").toLowerCase() === "denied") return;
 
   const orderId = String(order?._id || "").trim();
   if (!orderId) return;
+  if (!order?.isDemoOrder) {
+    const contactIdentity = resolveOrderContactIdentity(order);
+
+    void captureCrmTouchpointSafely({
+      channel: "website",
+      eventType: "order_paid",
+      userId: order?.user ? String(order.user) : null,
+      email: contactIdentity.email,
+      phone: contactIdentity.phone,
+      name: contactIdentity.name,
+      orderId,
+      orderAmount: order?.finalAmount || order?.totalAmt || 0,
+      sessionId: String(order?.trackingSessionId || req.analyticsSessionId || ""),
+      pageUrl: "/checkout",
+      referrer: req?.headers?.referer || "",
+      happenedAt: order?.confirmedAt || order?.confirmed_at || new Date(),
+      idempotencyKey: `crm:order:${orderId}:paid`,
+      metadata: {
+        source,
+        paymentMethod: String(order?.paymentMethod || "").trim() || "unknown",
+        paymentStatus: String(order?.payment_status || "").trim() || "unknown",
+        orderStatus: String(order?.order_status || "").trim() || "unknown",
+        influencerCode: String(order?.influencerCode || "").trim() || null,
+        couponCode: String(order?.couponCode || "").trim() || null,
+        affiliateSource: order?.affiliateSource || null,
+      },
+    });
+  }
+
+  if (String(order?.analyticsConsent || "").toLowerCase() === "denied") return;
 
   const lineItems = Array.isArray(order?.products)
     ? order.products.slice(0, 100).map((item) => ({
@@ -1268,60 +1367,8 @@ const sendOrderConfirmationEmail = async (order) => {
       Number(order?.finalAmount || order?.totalAmt || 0),
     );
 
-    const awbNumber = String(
-      order?.awbNo ||
-        order?.awb_no ||
-        order?.awb_number ||
-        order?.awbNumber ||
-        order?.shipment?.awb ||
-        order?.shipping?.awb ||
-        "",
-    ).trim();
-    const applyAwbToXpressbeesUrl = (rawUrl, awb) => {
-      const normalizedUrl = String(rawUrl || "").trim();
-      const normalizedAwb = String(awb || "").trim();
-      if (!normalizedUrl || !normalizedAwb) return normalizedUrl;
-
-      try {
-        const parsed = new URL(normalizedUrl);
-        const host = String(parsed.hostname || "").toLowerCase();
-        if (!host.includes("xpressbees.com")) {
-          return normalizedUrl;
-        }
-
-        parsed.searchParams.delete("awb");
-        parsed.searchParams.set("awbNo", normalizedAwb);
-        return parsed.toString();
-      } catch {
-        return normalizedUrl;
-      }
-    };
-    const trackingUrlTemplate = String(
-      process.env.XPRESSBEES_TRACKING_URL_TEMPLATE ||
-        "https://www.xpressbees.com/shipment/tracking?awbNo=${AWB}",
-    ).trim();
-    const normalizedTrackingTemplate = trackingUrlTemplate.replace(
-      /([?&])awb=\$\{AWB\}/i,
-      "$1awbNo=${AWB}",
-    );
-    const templateWithAwbPlaceholder = normalizedTrackingTemplate.includes(
-      "${AWB}",
-    )
-      ? normalizedTrackingTemplate
-      : trackingUrlTemplate.includes("?")
-        ? `${normalizedTrackingTemplate}&awbNo=${AWB}`
-        : `${normalizedTrackingTemplate}?awbNo=${AWB}`;
-    const trackingUrl =
-      applyAwbToXpressbeesUrl(
-        String(order?.trackingUrl || "").trim(),
-        awbNumber,
-      ) ||
-      (awbNumber
-        ? templateWithAwbPlaceholder.replace(
-            "${AWB}",
-            encodeURIComponent(awbNumber),
-          )
-        : "");
+    const awbNumber = resolveOrderAwb(order);
+    const trackingUrl = resolveOrderTrackingUrl(order);
 
     const estimatedDeliveryDate =
       order?.deliveryDate || order?.delivery_date
@@ -5272,15 +5319,41 @@ export const createOrder = asyncHandler(async (req, res) => {
     try {
       await reserveComboStock(order, "ORDER_CREATE");
       await reserveInventory(order, "ORDER_CREATE");
-      await order.save();
+      await saveDocumentWithTempIdRetry(order, {
+        onDuplicateKey: ({ attempt, maxAttempts, document }) => {
+          logger.warn("createOrder", "Retrying order save after temp_id conflict", {
+            attempt,
+            maxAttempts,
+            tempOrderId: document?.temp_id || null,
+          });
+        },
+      });
 
       void captureOrderEmailInNewsletter({
+        req,
         email:
           checkoutContact?.contact?.email ||
           billingDetails?.email ||
           guestOrderDetails?.email ||
           "",
         userId,
+        name:
+          checkoutContact?.contact?.name ||
+          billingDetails?.fullName ||
+          guestOrderDetails?.name ||
+          "",
+        phone:
+          billingDetails?.phone ||
+          billingDetails?.mobile ||
+          guestOrderDetails?.phone ||
+          guestOrderDetails?.mobile ||
+          "",
+        orderId: order?._id || null,
+        orderAmount: order?.finalAmount || order?.totalAmt || 0,
+        sessionId: order?.trackingSessionId || "",
+        affiliateSource: order?.affiliateSource || null,
+        influencerCode: order?.influencerCode || null,
+        isSavedOrder: Boolean(order?.isSavedOrder),
       }).catch((captureError) => {
         logger.warn("createOrder", "Failed to capture newsletter email", {
           orderId: order?._id,
@@ -5957,15 +6030,45 @@ export const saveOrderForLater = asyncHandler(async (req, res) => {
     try {
       await reserveComboStock(savedOrder, "ORDER_SAVE");
       await reserveInventory(savedOrder, "ORDER_SAVE");
-      await savedOrder.save();
+      await saveDocumentWithTempIdRetry(savedOrder, {
+        onDuplicateKey: ({ attempt, maxAttempts, document }) => {
+          logger.warn(
+            "saveOrderForLater",
+            "Retrying saved-order persistence after temp_id conflict",
+            {
+              attempt,
+              maxAttempts,
+              tempOrderId: document?.temp_id || null,
+            },
+          );
+        },
+      });
 
       void captureOrderEmailInNewsletter({
+        req,
         email:
           checkoutContact?.contact?.email ||
           billingDetails?.email ||
           guestOrderDetails?.email ||
           "",
         userId,
+        name:
+          checkoutContact?.contact?.name ||
+          billingDetails?.fullName ||
+          guestOrderDetails?.name ||
+          "",
+        phone:
+          billingDetails?.phone ||
+          billingDetails?.mobile ||
+          guestOrderDetails?.phone ||
+          guestOrderDetails?.mobile ||
+          "",
+        orderId: savedOrder?._id || null,
+        orderAmount: savedOrder?.finalAmount || savedOrder?.totalAmt || 0,
+        sessionId: savedOrder?.trackingSessionId || "",
+        affiliateSource: savedOrder?.affiliateSource || null,
+        influencerCode: savedOrder?.influencerCode || null,
+        isSavedOrder: Boolean(savedOrder?.isSavedOrder),
       }).catch((captureError) => {
         logger.warn("saveOrderForLater", "Failed to capture newsletter email", {
           orderId: savedOrder?._id,

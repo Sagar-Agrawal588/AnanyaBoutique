@@ -10,6 +10,7 @@ import {
   postData,
   putData,
 } from "@/utils/api";
+import { withAdminBasePath } from "@/utils/basePath";
 import { Button } from "@mui/material";
 import MenuItem from "@mui/material/MenuItem";
 import Pagination from "@mui/material/Pagination";
@@ -171,6 +172,30 @@ const fetchOrdersFromAltPort = async ({ url, token, fallbackPagination }) => {
   }
 };
 
+const buildXpressbeesTrackingUrl = (awb, candidateUrl = "") => {
+  const normalizedAwb = String(awb || "").trim();
+  if (!normalizedAwb) return "";
+
+  const fallbackUrl = `https://www.xpressbees.com/shipment/tracking?awbNo=${encodeURIComponent(normalizedAwb)}`;
+  const explicitUrl = String(candidateUrl || "").trim();
+  if (!explicitUrl) return fallbackUrl;
+
+  try {
+    const parsed = new URL(explicitUrl);
+    const host = String(parsed.hostname || "").toLowerCase();
+    if (!host.includes("xpressbees.com")) return explicitUrl;
+
+    parsed.pathname = "/shipment/tracking";
+    parsed.search = "";
+    parsed.searchParams.set("awbNo", normalizedAwb);
+    return parsed.toString();
+  } catch {
+    return explicitUrl.toLowerCase().includes("xpressbees.com")
+      ? fallbackUrl
+      : explicitUrl;
+  }
+};
+
 const resolveTrackingUrl = (order = {}) => {
   const explicitUrl = String(
     order?.trackingUrl ||
@@ -195,8 +220,7 @@ const resolveTrackingUrl = (order = {}) => {
   ).trim();
 
   if (!explicitUrl) {
-    if (!awb) return "";
-    return `https://www.xpressbees.com/shipment/tracking?awbNo=${encodeURIComponent(awb)}`;
+    return buildXpressbeesTrackingUrl(awb);
   }
 
   if (!awb) return explicitUrl;
@@ -206,12 +230,11 @@ const resolveTrackingUrl = (order = {}) => {
     const host = String(parsed.hostname || "").toLowerCase();
     const isXpressbees = host.includes("xpressbees.com");
     if (!isXpressbees) return explicitUrl;
-
-    parsed.searchParams.delete("awb");
-    parsed.searchParams.set("awbNo", awb);
-    return parsed.toString();
+    return buildXpressbeesTrackingUrl(awb, explicitUrl);
   } catch {
-    return explicitUrl;
+    return explicitUrl.toLowerCase().includes("xpressbees.com")
+      ? buildXpressbeesTrackingUrl(awb, explicitUrl)
+      : explicitUrl;
   }
 };
 
@@ -600,7 +623,9 @@ const OrderRow = ({ order, index, token, onStatusUpdate }) => {
                 >
                   <div className="img rounded-md overflow-hidden w-[80px] h-[80px] bg-gray-100">
                     <img
-                      src={product?.image || "/placeholder.png"}
+                      src={
+                        product?.image || withAdminBasePath("/placeholder.png")
+                      }
                       alt="product"
                       className="w-full h-full object-cover"
                     />

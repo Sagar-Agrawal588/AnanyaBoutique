@@ -5,6 +5,7 @@ import EmailLogModel from "../models/emailLog.model.js";
 import Newsletter from "../models/newsletter.model.js";
 import SettingsModel from "../models/settings.model.js";
 import UserModel from "../models/user.model.js";
+import { captureCrmTouchpointSafely } from "../services/crm/crmTracking.service.js";
 import { logger } from "../utils/errorHandler.js";
 
 const isProduction = process.env.NODE_ENV === "production";
@@ -429,6 +430,23 @@ export const subscribe = async (req, res) => {
       // Send welcome back email (awaited for reliable logging)
       await sendWelcomeEmail(normalizedEmail);
 
+      void captureCrmTouchpointSafely({
+        channel: "email",
+        eventType: "newsletter_subscribed",
+        email: normalizedEmail,
+        source: safeSource,
+        newsletterSource: safeSource,
+        happenedAt: existingSubscriber.subscribedAt || new Date(),
+        idempotencyKey: `crm:newsletter:${existingSubscriber._id}:subscribed:${new Date(existingSubscriber.subscribedAt || Date.now()).getTime()}`,
+        consent: {
+          email: true,
+        },
+        metadata: {
+          source: "newsletter_subscribe",
+          reactivated: true,
+        },
+      });
+
       return res.status(200).json({
         success: true,
         message: "Welcome back! You've been resubscribed to our newsletter.",
@@ -451,6 +469,23 @@ export const subscribe = async (req, res) => {
 
     // Send welcome email to new subscriber (awaited for reliable logging)
     await sendWelcomeEmail(normalizedEmail);
+
+    void captureCrmTouchpointSafely({
+      channel: "email",
+      eventType: "newsletter_subscribed",
+      email: normalizedEmail,
+      source: safeSource,
+      newsletterSource: safeSource,
+      happenedAt: newSubscriber.subscribedAt || new Date(),
+      idempotencyKey: `crm:newsletter:${newSubscriber._id}:subscribed`,
+      consent: {
+        email: true,
+      },
+      metadata: {
+        source: "newsletter_subscribe",
+        newSubscriber: true,
+      },
+    });
 
     res.status(201).json({
       success: true,
@@ -565,6 +600,22 @@ export const unsubscribe = async (req, res) => {
 
     // Also update in Firebase
     await updateFirebaseSubscriber(normalizedEmail, false);
+
+    void captureCrmTouchpointSafely({
+      channel: "email",
+      eventType: "newsletter_unsubscribed",
+      email: normalizedEmail,
+      source: subscriber.source || "other",
+      newsletterSource: subscriber.source || "other",
+      happenedAt: subscriber.unsubscribedAt || new Date(),
+      idempotencyKey: `crm:newsletter:${subscriber._id}:unsubscribed:${new Date(subscriber.unsubscribedAt || Date.now()).getTime()}`,
+      consent: {
+        email: false,
+      },
+      metadata: {
+        source: "newsletter_unsubscribe",
+      },
+    });
 
     return sendResponse(200, {
       success: true,

@@ -351,7 +351,6 @@ const buildEvent = (eventType, metadata = {}, overrides = {}) => {
       overrides.referrer !== undefined
         ? String(overrides.referrer || "")
         : getReferrer(),
-    ipAddress: "0.0.0.0",
     deviceType: resolveDeviceType(),
     browser: resolveBrowser(),
     metadata: sanitizedMetadata,

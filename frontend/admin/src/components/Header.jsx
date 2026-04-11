@@ -2,6 +2,7 @@
 import { useAdmin } from "@/context/AdminContext";
 import { useAdminRealtime } from "@/hooks/useAdminRealtime";
 import { useOrderNotifications } from "@/hooks/useOrderNotifications";
+import { withAdminBasePath } from "@/utils/basePath";
 import { Avatar, Badge, Button, Menu, MenuItem, Tooltip } from "@mui/material";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -89,7 +90,7 @@ const Header = ({ onMenuClick }) => {
           </Badge>
         </Tooltip>
         <Button onClick={handleProfileClick}>
-          <Avatar src="/placeholder.png" />
+          <Avatar src={withAdminBasePath("/placeholder.png")} />
         </Button>
       </div>
 

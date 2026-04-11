@@ -1,5 +1,6 @@
 "use client";
 import { useAdmin } from "@/context/AdminContext";
+import { withAdminBasePath } from "@/utils/basePath";
 import { getData } from "@/utils/api";
 import { getImageUrl } from "@/utils/imageUtils";
 import { Button } from "@mui/material";
@@ -151,7 +152,7 @@ const ViewProduct = () => {
                 onError={(e) => {
                   if (e.currentTarget.dataset.fallbackApplied) return;
                   e.currentTarget.dataset.fallbackApplied = "true";
-                  e.currentTarget.src = "/placeholder.png";
+                  e.currentTarget.src = withAdminBasePath("/placeholder.png");
                 }}
               />
             </div>
@@ -174,7 +175,9 @@ const ViewProduct = () => {
                       onError={(e) => {
                         if (e.currentTarget.dataset.fallbackApplied) return;
                         e.currentTarget.dataset.fallbackApplied = "true";
-                        e.currentTarget.src = "/placeholder.png";
+                        e.currentTarget.src = withAdminBasePath(
+                          "/placeholder.png",
+                        );
                       }}
                     />
                   </button>

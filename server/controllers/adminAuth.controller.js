@@ -1,6 +1,5 @@
 import bcrypt from "bcryptjs";
 import UserModel from "../models/user.model.js";
-import { emitTrackingEvent } from "../services/analytics/trackingEmitter.service.js";
 import generateAccessToken from "../utils/generateAccessToken.js";
 import generateRefreshToken from "../utils/generateRefreshToken.js";
 
@@ -179,17 +178,6 @@ export const adminLoginController = async (req, res) => {
     res.cookie("accessToken", accessToken, accessCookieOptions);
     res.cookie("refreshToken", refreshToken, refreshCookieOptions);
 
-    emitTrackingEvent({
-      req,
-      eventType: "login",
-      userId: String(user?._id || ""),
-      metadata: {
-        method: "email_password",
-        role: "Admin",
-      },
-      async: true,
-    });
-
     return res.json({
       message: "Login successful",
       success: true,
@@ -289,18 +277,6 @@ export const adminGoogleLoginController = async (req, res) => {
 
     res.cookie("accessToken", accessToken, accessCookieOptions);
     res.cookie("refreshToken", refreshToken, refreshCookieOptions);
-
-    emitTrackingEvent({
-      req,
-      eventType: isNewGoogleUser ? "signup" : "login",
-      userId: String(user?._id || ""),
-      metadata: {
-        method: "google_oauth",
-        role: "Admin",
-        isNewUser: isNewGoogleUser,
-      },
-      async: true,
-    });
 
     return res.json({
       message: "Google login successful",

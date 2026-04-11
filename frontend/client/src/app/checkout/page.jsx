@@ -604,6 +604,13 @@ const Checkout = () => {
 
   // Fetch addresses from database
   const fetchAddresses = useCallback(async () => {
+    if (isGuestCheckout) {
+      setAddresses([]);
+      setSelectedAddress(null);
+      setAddressLoading(false);
+      return;
+    }
+
     try {
       const data = await fetchDataFromApi("/api/address");
       if (data?.success) {
@@ -626,7 +633,7 @@ const Checkout = () => {
     } finally {
       setAddressLoading(false);
     }
-  }, []);
+  }, [isGuestCheckout]);
 
   // Initialize affiliate tracking on mount
   useEffect(() => {
