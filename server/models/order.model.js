@@ -218,7 +218,7 @@ const orderSchema = new mongoose.Schema(
     // Final immutable identifier assigned only after successful payment.
     final_id: {
       type: String,
-      default: null,
+      default: undefined,
       trim: true,
       uppercase: true,
     },
@@ -1034,7 +1034,7 @@ orderSchema.pre("validate", async function () {
   ) {
     normalizedFinalId = normalizedLegacyOrderNumber;
   }
-  this.final_id = normalizedFinalId || null;
+  this.final_id = normalizedFinalId || undefined;
 
   if (
     String(this.payment_status || "")
