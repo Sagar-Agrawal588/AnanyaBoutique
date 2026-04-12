@@ -1,6 +1,7 @@
 "use client";
 import { useAdmin } from "@/context/AdminContext";
 import { fetchUnresolvedSupportCount } from "@/services/supportApi";
+import { withAdminBasePath } from "@/utils/basePath";
 import { Button } from "@mui/material";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -17,6 +18,7 @@ import {
   MdNotificationsActive,
   MdOutlineArticle,
   MdOutlineCategory,
+  MdOutlineHub,
   MdOutlineInventory2,
   MdOutlineLocalOffer,
   MdOutlinePictureAsPdf,
@@ -124,6 +126,11 @@ const Sidebar = ({ isOpen = false, onClose }) => {
       icon: <MdSupportAgent size={22} />,
       href: "/customer-care",
       badgeCount: openTicketCount,
+    },
+    {
+      name: "CRM",
+      icon: <MdOutlineHub size={22} />,
+      href: "/crm",
     },
     {
       name: "Coupons",
@@ -243,7 +250,7 @@ const Sidebar = ({ isOpen = false, onClose }) => {
       <div className="p-4 border-b border-gray-100 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2">
           <img
-            src="/logo.png"
+            src={withAdminBasePath("/logo.png")}
             alt="Logo"
             className="h-10 w-auto"
             width={140}

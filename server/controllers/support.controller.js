@@ -13,6 +13,7 @@ import {
   getIstYear,
   parseIstDateBoundary,
 } from "../config/dayjs.js";
+import { captureCrmTouchpointSafely } from "../services/crm/crmTracking.service.js";
 import { logger } from "../utils/errorHandler.js";
 import {
   getOrderDisplayId,
@@ -711,6 +712,28 @@ export const createSupportTicket = async (req, res) => {
       status: "OPEN",
     });
 
+    void captureCrmTouchpointSafely({
+      channel: "support",
+      eventType: "support_ticket_created",
+      userId: createdTicket.userId || null,
+      email: createdTicket.email,
+      phone: createdTicket.phone,
+      name: createdTicket.name,
+      orderId: createdTicket.orderId || null,
+      supportTicketId: createdTicket._id,
+      message: `${createdTicket.subject}\n${createdTicket.message}`.trim(),
+      happenedAt:
+        Number.isFinite(createdTicket.created_at_ts)
+          ? new Date(createdTicket.created_at_ts)
+          : new Date(),
+      idempotencyKey: `crm:support:${createdTicket._id}:created`,
+      metadata: {
+        source: "support_ticket_create",
+        ticketId: createdTicket.ticketId,
+        status: createdTicket.status,
+      },
+    });
+
     let emailSent = false;
     let adminEmailSent = false;
     try {
@@ -978,6 +1001,32 @@ export const updateSupportTicketAdmin = async (req, res) => {
     }
 
     await ticket.save();
+
+    void captureCrmTouchpointSafely({
+      channel: "support",
+      eventType: "support_ticket_updated",
+      userId: ticket.userId || null,
+      email: ticket.email,
+      phone: ticket.phone,
+      name: ticket.name,
+      orderId: ticket.orderId || null,
+      supportTicketId: ticket._id,
+      message: sanitizeText(ticket.adminReply || ticket.message || "", {
+        maxLength: 4000,
+        allowNewLines: true,
+      }),
+      happenedAt:
+        Number.isFinite(ticket.updated_at_ts)
+          ? new Date(ticket.updated_at_ts)
+          : new Date(),
+      idempotencyKey: `crm:support:${ticket._id}:updated:${Number(ticket.updated_at_ts || Date.now())}`,
+      metadata: {
+        source: "support_ticket_admin_update",
+        ticketId: ticket.ticketId,
+        status: ticket.status,
+        hasAdminReply: Boolean(ticket.adminReply),
+      },
+    });
 
     let emailSent = false;
     try {

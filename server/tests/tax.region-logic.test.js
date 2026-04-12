@@ -42,7 +42,7 @@ test("checkout UI shows GST before state entry, then switches to Rajasthan/IGST 
 
   // Tax amount should remain derived from existing values (no business logic change).
   assert.match(source, /const summaryTaxAmount = !hasCheckoutStateInput/);
-  assert.match(source, /\? tax/);
+  assert.match(source, /\? displayTax/);
 });
 
 test("state detection keeps unknown states outside Rajasthan path and preserves state-driven behavior", async () => {
@@ -51,7 +51,8 @@ test("state detection keeps unknown states outside Rajasthan path and preserves 
   // Only exact normalized Rajasthan triggers SGST+CGST label.
   assert.match(source, /const normalizedCheckoutState = normalizeStateValue\(checkoutStateForPreview\);/);
   assert.match(source, /const isRajasthanDelivery = normalizedCheckoutState === "Rajasthan";/);
-  assert.match(source, /const hasCheckoutStateInput = Boolean\(String\(checkoutStateForPreview \|\| ""\)\.trim\(\)\);/);
+  assert.match(source, /const hasCheckoutStateInput = Boolean\(/);
+  assert.match(source, /String\(checkoutStateForPreview \|\| ""\)\.trim\(\)/);
   assert.match(
     source,
     /useShippingDisplayCharge\(\{\s*isRajasthan: isRajasthanDelivery,\s*\}\)/,

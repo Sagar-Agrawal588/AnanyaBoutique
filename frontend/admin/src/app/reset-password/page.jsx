@@ -1,5 +1,6 @@
 "use client";
 import { postData } from "@/utils/api";
+import { withAdminBasePath } from "@/utils/basePath";
 import { Button, CircularProgress } from "@mui/material";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
@@ -70,7 +71,9 @@ const ResetPasswordContent = () => {
       {/* Background */}
       <div
         className="absolute inset-0 bg-repeat bg-center"
-        style={{ backgroundImage: "url('/pattern.png')" }}
+        style={{
+          backgroundImage: `url('${withAdminBasePath("/pattern.png")}')`,
+        }}
       />
 
       {/* Soft overlay */}

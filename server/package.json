@@ -23,6 +23,7 @@
     "migrate:inventory": "node migrations/2026-02-inventory-backfill.mjs",
     "migrate:payment-cleanup": "node migrations/2026-02-payment-provider-cleanup.mjs",
     "backfill:addresses": "node scripts/backfillAddressStructures.mjs",
+    "backfill:crm": "node scripts/backfillCrmContacts.mjs",
     "backfill:order-item-sku-hsn": "node scripts/backfillOrderItemSkuHsn.mjs",
     "invoices:regenerate": "node scripts/regenerateAllInvoices.mjs"
   },
@@ -34,6 +35,7 @@
     "@google-cloud/pubsub": "^5.3.0",
     "bcryptjs": "^3.0.3",
     "cloudinary": "^2.9.0",
+    "compression": "^1.8.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dayjs": "^1.11.19",

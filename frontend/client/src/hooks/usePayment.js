@@ -60,6 +60,13 @@ export const usePayment = () => {
           products: items.map((item) => ({
             productId: item._id || item.id,
             productTitle: item.name || item.title,
+            variantId:
+              item?.variantId ||
+              item?.variant?._id ||
+              item?.variant ||
+              item?.selectedVariant?._id ||
+              null,
+            variantName: item?.variantName || item?.selectedVariant?.name || "",
             quantity: item.quantity,
             price: item.price,
             image: item.image,

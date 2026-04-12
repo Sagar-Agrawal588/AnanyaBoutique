@@ -14,9 +14,31 @@ export const generateUTMLink = (baseUrl, productId, productName, platform) => {
   return url.toString();
 };
 
+const DEFAULT_PUBLIC_SITE_URL = "https://healthyonegram.com";
+
+const sanitizeBaseUrl = (value) =>
+  String(value || "")
+    .trim()
+    .replace(/^['"]|['"]$/g, "")
+    .replace(/\/+$/, "");
+
+const getPublicSiteOrigin = () => {
+  const configured = sanitizeBaseUrl(process.env.NEXT_PUBLIC_SITE_URL);
+  if (configured) return configured;
+
+  if (typeof window === "undefined") return DEFAULT_PUBLIC_SITE_URL;
+
+  const origin = sanitizeBaseUrl(window.location?.origin);
+  const hostname = String(window.location?.hostname || "").toLowerCase();
+  const isLocalhost = hostname === "localhost" || hostname === "127.0.0.1";
+
+  if (!origin || isLocalhost) return DEFAULT_PUBLIC_SITE_URL;
+  return origin;
+};
+
 const getProductShareUrl = (productId, productName = "Product") => {
-  if (typeof window === "undefined") return "";
-  return `${window.location.origin}/product/${productId}`;
+  const origin = getPublicSiteOrigin();
+  return `${origin}/product/${encodeURIComponent(String(productId || "").trim())}`;
 };
 
 const buildTrackedProductUrl = (
@@ -30,7 +52,10 @@ const buildTrackedProductUrl = (
 
   baseUrl.searchParams.set("utm_source", source);
   baseUrl.searchParams.set("utm_medium", medium);
-  baseUrl.searchParams.set("utm_campaign", `product_${String(productId || "")}`);
+  baseUrl.searchParams.set(
+    "utm_campaign",
+    `product_${String(productId || "")}`,
+  );
   baseUrl.searchParams.set("utm_content", productName || "product");
 
   return baseUrl.toString();
@@ -272,7 +297,10 @@ export const shareViaNative = async ({
   sku,
 } = {}) => {
   try {
-    if (typeof navigator === "undefined" || typeof navigator.share !== "function") {
+    if (
+      typeof navigator === "undefined" ||
+      typeof navigator.share !== "function"
+    ) {
       return { ok: false, reason: "not_supported" };
     }
 

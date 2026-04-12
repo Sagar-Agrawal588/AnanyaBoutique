@@ -21,6 +21,7 @@ const isImageCandidate = (value) => {
     normalized.startsWith("res.cloudinary.com/") ||
     normalized.startsWith("/uploads/") ||
     normalized.startsWith("uploads/") ||
+    normalized.startsWith("/") ||
     normalized.startsWith("data:image/")
   );
 };

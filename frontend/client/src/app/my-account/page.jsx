@@ -1,6 +1,5 @@
 "use client";
 
-import { API_BASE_URL, getStoredAccessToken } from "@/utils/api";
 import AccountSidebar from "@/components/AccountSiderbar";
 import AuthenticationMethods from "@/components/AuthenticationMethods";
 import MemberBadge from "@/components/MemberBadge";
@@ -8,6 +7,7 @@ import {
   getAddressDisplayLines,
   mapAddressResponseToForm,
 } from "@/utils/addressForm";
+import { fetchDataFromApi, getStoredAccessToken, putData } from "@/utils/api";
 import { Button } from "@mui/material";
 import TextField from "@mui/material/TextField";
 import cookies from "js-cookie";
@@ -54,8 +54,6 @@ const persistProfileIdentity = ({ name, email }) => {
 };
 
 const MyAccount = () => {
-  const API_URL = API_BASE_URL;
-
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [saving, setSaving] = useState(false);
@@ -91,11 +89,7 @@ const MyAccount = () => {
 
     const fetchProfile = async () => {
       try {
-        const response = await fetch(`${API_URL}/api/user/user-details`, {
-          headers: { Authorization: `Bearer ${token}` },
-          credentials: "include",
-        });
-        const data = await response.json();
+        const data = await fetchDataFromApi("/api/user/user-details");
         if (data.success && data.data) {
           const resolvedName = String(data.data?.name || "").trim();
           const resolvedEmail = String(data.data?.email || "").trim();
@@ -114,7 +108,8 @@ const MyAccount = () => {
             : null;
           setIsMember(
             Boolean(data.data?.isMember) &&
-              (!expiry || !Number.isNaN(expiry.getTime()) && expiry > new Date()),
+              (!expiry ||
+                (!Number.isNaN(expiry.getTime()) && expiry > new Date())),
           );
         }
       } catch (err) {
@@ -124,11 +119,7 @@ const MyAccount = () => {
 
     const fetchPrimaryPhone = async () => {
       try {
-        const response = await fetch(`${API_URL}/api/address`, {
-          headers: { Authorization: `Bearer ${token}` },
-          credentials: "include",
-        });
-        const data = await response.json();
+        const data = await fetchDataFromApi("/api/address");
         if (data.success && Array.isArray(data.data)) {
           const preferred =
             data.data.find((addr) => addr.selected) || data.data[0];
@@ -141,7 +132,7 @@ const MyAccount = () => {
 
     fetchProfile();
     fetchPrimaryPhone();
-  }, [API_URL]);
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -149,16 +140,15 @@ const MyAccount = () => {
     setMessage("");
     setError("");
     const normalizedName = String(fullName || "").trim();
-    const normalizedEmail = String(email || "").trim().toLowerCase();
+    const normalizedEmail = String(email || "")
+      .trim()
+      .toLowerCase();
     const snapshotName = String(profileSnapshot.name || "").trim();
     const snapshotEmail = String(profileSnapshot.email || "")
       .trim()
       .toLowerCase();
 
-    if (
-      normalizedName === snapshotName &&
-      normalizedEmail === snapshotEmail
-    ) {
+    if (normalizedName === snapshotName && normalizedEmail === snapshotEmail) {
       setSaving(false);
       setMessage("No changes to update.");
       return;
@@ -172,20 +162,10 @@ const MyAccount = () => {
     }
 
     try {
-      const response = await fetch(`${API_URL}/api/user/profile`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        credentials: "include",
-        body: JSON.stringify({
-          name: normalizedName,
-          email: normalizedEmail,
-        }),
+      const data = await putData("/api/user/profile", {
+        name: normalizedName,
+        email: normalizedEmail,
       });
-
-      const data = await response.json();
       if (data.success && data.data) {
         const updatedName = String(data.data?.name || normalizedName).trim();
         const updatedEmail = String(data.data?.email || normalizedEmail).trim();
@@ -327,7 +307,8 @@ const MyAccount = () => {
                         - {primaryAddress.pincode}
                       </p>
                       <p className="text-[14px] text-gray-700 font-[500] mt-2">
-                        +91 {primaryAddress.mobile_number || primaryAddress.mobile}
+                        +91{" "}
+                        {primaryAddress.mobile_number || primaryAddress.mobile}
                       </p>
                     </div>
                   );

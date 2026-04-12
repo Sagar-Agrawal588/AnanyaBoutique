@@ -12,10 +12,11 @@ import {
 } from "../controllers/apiDocument.controller.js";
 import auth from "../middlewares/auth.js";
 import admin from "../middlewares/admin.js";
+import { UPLOAD_ROOT } from "../middlewares/upload.js";
 
 const router = express.Router();
 
-const docsDir = path.resolve(process.cwd(), "uploads", "api-docs");
+const docsDir = path.resolve(UPLOAD_ROOT, "api-docs");
 if (!fs.existsSync(docsDir)) {
   fs.mkdirSync(docsDir, { recursive: true });
 }

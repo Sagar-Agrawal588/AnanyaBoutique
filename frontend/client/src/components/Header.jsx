@@ -35,7 +35,10 @@ const resolveUserPhotoUrl = (photo, apiUrl) => {
   return value;
 };
 
-const normalizeIdentity = (value) => String(value || "").trim().toLowerCase();
+const normalizeIdentity = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase();
 const getStoredAuthToken = () => {
   if (typeof window === "undefined") return cookies.get("accessToken") || "";
   return (
@@ -217,6 +220,8 @@ const Header = () => {
   const coinDesktopRef = useRef(null);
   const coinMobileRef = useRef(null);
   const coinAnimationRef = useRef(0);
+  const coinFetchInFlightRef = useRef(null);
+  const coinFetchStartedAtRef = useRef(0);
   const router = useRouter();
   const API_URL = (
     process.env.NEXT_PUBLIC_APP_API_URL ||
@@ -266,7 +271,9 @@ const Header = () => {
     const accessToken = getStoredAuthToken();
     const userEmailCookie =
       cookies.get("userEmail") ||
-      (typeof window !== "undefined" ? localStorage.getItem("userEmail") : "") ||
+      (typeof window !== "undefined"
+        ? localStorage.getItem("userEmail")
+        : "") ||
       "";
     const userNameCookie =
       cookies.get("userName") ||
@@ -274,7 +281,9 @@ const Header = () => {
       "";
     const userPhotoCookie =
       cookies.get("userPhoto") ||
-      (typeof window !== "undefined" ? localStorage.getItem("userPhoto") : "") ||
+      (typeof window !== "undefined"
+        ? localStorage.getItem("userPhoto")
+        : "") ||
       "";
     const removalOverride = isPhotoRemovalOverride(userEmailCookie);
     const userPhotoLocal = getStoredPhotoForUser(userEmailCookie);
@@ -303,29 +312,54 @@ const Header = () => {
   };
 
   const fetchCoinSummary = useCallback(async () => {
+    const now = Date.now();
+    if (coinFetchInFlightRef.current) {
+      return coinFetchInFlightRef.current;
+    }
+    if (now - coinFetchStartedAtRef.current < 1200) {
+      return null;
+    }
+
+    coinFetchStartedAtRef.current = now;
+
     if (!getStoredAuthToken()) {
       setCoinSummary(DEFAULT_COIN_SUMMARY);
       setCoinLoading(false);
+      coinFetchInFlightRef.current = null;
       return;
     }
 
     setCoinLoading(true);
-    try {
-      const primaryResponse = await fetchDataFromApi("/api/user/coins-summary");
-      if (primaryResponse?.success && primaryResponse?.data) {
-        setCoinSummary(normalizeCoinSummary(primaryResponse.data));
-        return;
-      }
+    const requestPromise = (async () => {
+      try {
+        const primaryResponse = await fetchDataFromApi(
+          "/api/user/coins-summary",
+        );
+        if (primaryResponse?.success && primaryResponse?.data) {
+          setCoinSummary(normalizeCoinSummary(primaryResponse.data));
+          return;
+        }
 
-      const fallbackResponse = await fetchDataFromApi("/api/coins/summary");
-      if (fallbackResponse?.success && fallbackResponse?.data) {
-        setCoinSummary(normalizeCoinSummary(fallbackResponse.data));
+        const fallbackResponse = await fetchDataFromApi("/api/coins/summary");
+        if (fallbackResponse?.success && fallbackResponse?.data) {
+          setCoinSummary(normalizeCoinSummary(fallbackResponse.data));
+        }
+      } catch (error) {
+        // Keep header resilient if coin service is unavailable.
+      } finally {
+        setCoinLoading(false);
       }
-    } catch (error) {
-      // Keep header resilient if coin service is unavailable.
+    })();
+
+    coinFetchInFlightRef.current = requestPromise;
+
+    try {
+      await requestPromise;
     } finally {
-      setCoinLoading(false);
+      coinFetchInFlightRef.current = null;
     }
+
+    return requestPromise;
   }, []);
 
   const closeCoinPanel = useCallback(() => {
@@ -437,17 +471,46 @@ const Header = () => {
   useEffect(() => {
     if (!isLoggedIn) return;
 
-    const refresh = () => fetchCoinSummary();
-    const poll = window.setInterval(refresh, 10000);
+    let poll = null;
+
+    const refresh = () => {
+      if (document.hidden) return;
+      fetchCoinSummary();
+    };
+
+    const startPolling = () => {
+      if (poll) window.clearInterval(poll);
+      poll = window.setInterval(() => {
+        if (!document.hidden) {
+          fetchCoinSummary();
+        }
+      }, 15000);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        if (poll) {
+          window.clearInterval(poll);
+          poll = null;
+        }
+        return;
+      }
+      fetchCoinSummary();
+      startPolling();
+    };
+
+    startPolling();
     window.addEventListener("focus", refresh);
     window.addEventListener("coinBalanceRefresh", refresh);
-    document.addEventListener("visibilitychange", refresh);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
-      window.clearInterval(poll);
+      if (poll) {
+        window.clearInterval(poll);
+      }
       window.removeEventListener("focus", refresh);
       window.removeEventListener("coinBalanceRefresh", refresh);
-      document.removeEventListener("visibilitychange", refresh);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [isLoggedIn, fetchCoinSummary]);
 
@@ -509,7 +572,8 @@ const Header = () => {
   }, [pathname]);
 
   useEffect(() => {
-    if (typeof document === "undefined" || typeof window === "undefined") return;
+    if (typeof document === "undefined" || typeof window === "undefined")
+      return;
     const headerNode = headerRootRef.current;
     if (!headerNode) return;
 
@@ -652,10 +716,11 @@ const Header = () => {
 
   const renderCoinDropdown = (anchor) => (
     <div
-      className={`${anchor === "mobile"
-        ? "fixed left-1/2 -translate-x-1/2 z-[100] top-[calc(var(--header-height,100px)+18px)] w-[min(92vw,300px)]"
-        : "absolute right-0 z-40 mt-3 w-[280px]"
-        } rounded-2xl border shadow-xl`}
+      className={`${
+        anchor === "mobile"
+          ? "fixed left-1/2 -translate-x-1/2 z-[100] top-[calc(var(--header-height,100px)+18px)] w-[min(92vw,300px)]"
+          : "absolute right-0 z-40 mt-3 w-[280px]"
+      } rounded-2xl border shadow-xl`}
       style={{
         backgroundColor: "var(--flavor-card-bg, #fffbf5)",
         borderColor:
@@ -717,8 +782,9 @@ const Header = () => {
       {/* Main Header Container */}
       <div
         ref={headerRootRef}
-        className={`site-header-root fixed top-0 left-0 right-0 w-full z-50 transition-all duration-300 backdrop-blur-xl ${scrolled ? "shadow-md border-b" : "border-b border-transparent"
-          } ${hideHeader ? "-translate-y-full" : "translate-y-0"}`}
+        className={`site-header-root fixed top-0 left-0 right-0 w-full z-50 transition-all duration-300 backdrop-blur-xl ${
+          scrolled ? "shadow-md border-b" : "border-b border-transparent"
+        } ${hideHeader ? "-translate-y-full" : "translate-y-0"}`}
         style={{
           backgroundColor: scrolled
             ? "color-mix(in srgb, var(--header-bg-color, var(--flavor-card-bg, #fffbf5)) 85%, transparent)"
@@ -730,10 +796,11 @@ const Header = () => {
       >
         {/* ================= TOP HEADER ================= */}
         <div
-          className={`w-full transition-all duration-300 overflow-hidden md:overflow-visible ${scrolled
-            ? "max-h-0 opacity-0 -mt-2 md:max-h-[220px] md:opacity-100 md:mt-0"
-            : "max-h-[220px] opacity-100 mt-0"
-            }`}
+          className={`w-full transition-all duration-300 overflow-hidden md:overflow-visible ${
+            scrolled
+              ? "max-h-0 opacity-0 -mt-2 md:max-h-[220px] md:opacity-100 md:mt-0"
+              : "max-h-[220px] opacity-100 mt-0"
+          }`}
         >
           {/* Removed Decorative Top Line Gradient */}
           <div className="site-header-shell w-full px-3 sm:px-4 md:px-6 py-0.5">
@@ -768,8 +835,9 @@ const Header = () => {
                 >
                   <div className="site-header-logo-wrap site-header-logo-wrap-mobile relative flex items-center justify-center">
                     <div
-                      className={`site-header-logo-shield-mobile pointer-events-none absolute inset-0 rounded-full bg-white shadow-[0_2px_8px_rgba(0,0,0,0.16)] transition-opacity duration-200 ${showLogoProtection ? "opacity-100" : "opacity-0"
-                        }`}
+                      className={`site-header-logo-shield-mobile pointer-events-none absolute inset-0 rounded-full bg-white shadow-[0_2px_8px_rgba(0,0,0,0.16)] transition-opacity duration-200 ${
+                        showLogoProtection ? "opacity-100" : "opacity-0"
+                      }`}
                     />
                     <Image
                       src="/logo-header.png"
@@ -794,22 +862,22 @@ const Header = () => {
                   {wishlistCount > 0 && (
                     <div
                       className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-bold w-4 h-4 flex items-center justify-center rounded-full"
-                      style={{ boxShadow: "0 0 0 2px var(--flavor-card-bg, #fffbf5)" }}
+                      style={{
+                        boxShadow: "0 0 0 2px var(--flavor-card-bg, #fffbf5)",
+                      }}
                     >
                       {wishlistCount > 99 ? "99+" : wishlistCount}
                     </div>
                   )}
                   <FaRegHeart size={18} className="text-gray-600" />
                 </Link>
-                <Link
-                  href="/cart"
-                  className="relative p-1.5"
-                  aria-label="Cart"
-                >
+                <Link href="/cart" className="relative p-1.5" aria-label="Cart">
                   {cartCount > 0 && (
                     <div
                       className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-bold w-4 h-4 flex items-center justify-center rounded-full"
-                      style={{ boxShadow: "0 0 0 2px var(--flavor-card-bg, #fffbf5)" }}
+                      style={{
+                        boxShadow: "0 0 0 2px var(--flavor-card-bg, #fffbf5)",
+                      }}
                     >
                       {cartCount > 99 ? "99+" : cartCount}
                     </div>
@@ -835,8 +903,9 @@ const Header = () => {
                 >
                   <div className="site-header-logo-wrap site-header-logo-wrap-desktop relative flex items-center justify-center">
                     <div
-                      className={`site-header-logo-shield-desktop pointer-events-none absolute inset-0 rounded-full bg-white shadow-[0_4px_14px_rgba(0,0,0,0.18)] transition-opacity duration-200 ${showLogoProtection ? "opacity-100" : "opacity-0"
-                        }`}
+                      className={`site-header-logo-shield-desktop pointer-events-none absolute inset-0 rounded-full bg-white shadow-[0_4px_14px_rgba(0,0,0,0.18)] transition-opacity duration-200 ${
+                        showLogoProtection ? "opacity-100" : "opacity-0"
+                      }`}
                     />
                     <Image
                       src="/logo-header.png"
@@ -869,14 +938,15 @@ const Header = () => {
                         key={item.name}
                         href={item.href}
                         // Keep nav labels like "About Us" on one line under browser zoom
-                        className={`site-header-nav-pill whitespace-nowrap flex-shrink-0 font-semibold text-base px-3 py-1.5 rounded-full border transition ${isActive
-                          ? useHighContrastNav
-                            ? "site-header-nav-pill-active site-header-nav-pill-contrast-active"
-                            : "site-header-nav-pill-active"
-                          : useHighContrastNav
-                            ? "site-header-nav-pill-contrast"
-                            : "site-header-nav-pill-idle"
-                          }`}
+                        className={`site-header-nav-pill whitespace-nowrap flex-shrink-0 font-semibold text-base px-3 py-1.5 rounded-full border transition ${
+                          isActive
+                            ? useHighContrastNav
+                              ? "site-header-nav-pill-active site-header-nav-pill-contrast-active"
+                              : "site-header-nav-pill-active"
+                            : useHighContrastNav
+                              ? "site-header-nav-pill-contrast"
+                              : "site-header-nav-pill-idle"
+                        }`}
                       >
                         {item.name}
                       </Link>
@@ -946,7 +1016,9 @@ const Header = () => {
                   >
                     <MdInfoOutline size={12} />
                   </button>
-                  {isCoinPanelOpen && coinPanelAnchor === "desktop" && isLoggedIn
+                  {isCoinPanelOpen &&
+                  coinPanelAnchor === "desktop" &&
+                  isLoggedIn
                     ? renderCoinDropdown("desktop")
                     : null}
                 </div>
@@ -1058,7 +1130,10 @@ const Header = () => {
                     <button
                       onClick={handleClick}
                       className="site-header-profile-chip hidden md:flex items-center gap-2.5 px-4 py-2 rounded-full border hover:shadow-md transition-all duration-200 group"
-                      style={{ background: `linear-gradient(to right, color-mix(in srgb, var(--flavor-color) 10%, transparent), color-mix(in srgb, var(--flavor-hover) 10%, transparent))`, borderColor: `color-mix(in srgb, var(--flavor-color) 30%, transparent)` }}
+                      style={{
+                        background: `linear-gradient(to right, color-mix(in srgb, var(--flavor-color) 10%, transparent), color-mix(in srgb, var(--flavor-hover) 10%, transparent))`,
+                        borderColor: `color-mix(in srgb, var(--flavor-color) 30%, transparent)`,
+                      }}
                     >
                       {userPhoto ? (
                         <img
@@ -1073,7 +1148,9 @@ const Header = () => {
                       ) : null}
                       <div
                         className={`flex items-center justify-center w-8 h-8 rounded-full text-white ${userPhoto ? "hidden" : "flex"}`}
-                        style={{ background: `linear-gradient(to bottom right, var(--flavor-color), var(--flavor-hover))` }}
+                        style={{
+                          background: `linear-gradient(to bottom right, var(--flavor-color), var(--flavor-hover))`,
+                        }}
                       >
                         <FaUser size={14} />
                       </div>
@@ -1212,10 +1289,11 @@ const Header = () => {
         {/* ============ MOBILE DROPDOWN MENU ============ */}
         {/* Backdrop - Mobile only */}
         <div
-          className={`md:hidden fixed inset-0 bg-black/40 backdrop-blur-[2px] transition-opacity duration-300 ${mobileMenuOpen
-            ? "opacity-100 pointer-events-auto"
-            : "opacity-0 pointer-events-none"
-            }`}
+          className={`md:hidden fixed inset-0 bg-black/40 backdrop-blur-[2px] transition-opacity duration-300 ${
+            mobileMenuOpen
+              ? "opacity-100 pointer-events-auto"
+              : "opacity-0 pointer-events-none"
+          }`}
           style={{ zIndex: 9997 }}
           onClick={() => setMobileMenuOpen(false)}
           aria-hidden="true"
@@ -1223,10 +1301,11 @@ const Header = () => {
 
         {/* Dropdown Panel - Mobile only */}
         <div
-          className={`md:hidden fixed left-0 right-0 transition-all duration-300 ease-out ${mobileMenuOpen
-            ? "translate-y-0 opacity-100 pointer-events-auto"
-            : "-translate-y-4 opacity-0 pointer-events-none"
-            }`}
+          className={`md:hidden fixed left-0 right-0 transition-all duration-300 ease-out ${
+            mobileMenuOpen
+              ? "translate-y-0 opacity-100 pointer-events-auto"
+              : "-translate-y-4 opacity-0 pointer-events-none"
+          }`}
           style={{
             top: "calc(var(--header-height, 100px) - 8px)",
             zIndex: 9998,
@@ -1252,10 +1331,11 @@ const Header = () => {
                   <Link
                     key={item.name}
                     href={item.href}
-                    className={`flex items-center gap-3 mx-2 px-4 py-3 rounded-xl text-[15px] font-semibold transition-all duration-200 ${isActive
-                      ? "text-[var(--flavor-color)] bg-[var(--flavor-glass)]"
-                      : "text-gray-700 hover:bg-[var(--flavor-glass)] hover:text-[var(--flavor-color)] active:bg-[var(--flavor-glass)]"
-                      }`}
+                    className={`flex items-center gap-3 mx-2 px-4 py-3 rounded-xl text-[15px] font-semibold transition-all duration-200 ${
+                      isActive
+                        ? "text-[var(--flavor-color)] bg-[var(--flavor-glass)]"
+                        : "text-gray-700 hover:bg-[var(--flavor-glass)] hover:text-[var(--flavor-color)] active:bg-[var(--flavor-glass)]"
+                    }`}
                     onClick={() => setMobileMenuOpen(false)}
                   >
                     <span className="text-lg w-6 text-center">{item.icon}</span>
@@ -1268,7 +1348,8 @@ const Header = () => {
                 type="button"
                 className="w-[calc(100%-1rem)] mx-2 mt-1 flex items-center justify-between px-4 py-3 rounded-xl text-[15px] font-semibold text-gray-700 hover:bg-[var(--flavor-glass)] hover:text-[var(--flavor-color)] active:bg-[var(--flavor-glass)] transition-all duration-200"
                 style={{
-                  border: "1px solid color-mix(in srgb, var(--flavor-color, #f5c16c) 24%, transparent)",
+                  border:
+                    "1px solid color-mix(in srgb, var(--flavor-color, #f5c16c) 24%, transparent)",
                   background:
                     "color-mix(in srgb, var(--flavor-color, #f5c16c) 8%, var(--flavor-card-bg, #fffbf5))",
                 }}
@@ -1309,9 +1390,18 @@ const Header = () => {
                   <Link
                     href="/login"
                     className="flex-1 py-2.5 text-center text-[14px] font-bold rounded-xl active:scale-[0.98] transition-all duration-200"
-                    style={{ color: 'var(--flavor-color)', border: '2px solid var(--flavor-color)' }}
-                    onMouseEnter={e => { e.currentTarget.style.background = 'var(--flavor-color)'; e.currentTarget.style.color = 'white'; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--flavor-color)'; }}
+                    style={{
+                      color: "var(--flavor-color)",
+                      border: "2px solid var(--flavor-color)",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = "var(--flavor-color)";
+                      e.currentTarget.style.color = "white";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = "transparent";
+                      e.currentTarget.style.color = "var(--flavor-color)";
+                    }}
                     onClick={() => setMobileMenuOpen(false)}
                   >
                     Login
@@ -1335,7 +1425,10 @@ const Header = () => {
                       src={userPhoto}
                       alt="Profile"
                       className="w-10 h-10 rounded-full object-cover ring-2"
-                      style={{ '--tw-ring-color': 'color-mix(in srgb, var(--flavor-color) 30%, transparent)' }}
+                      style={{
+                        "--tw-ring-color":
+                          "color-mix(in srgb, var(--flavor-color) 30%, transparent)",
+                      }}
                     />
                   ) : (
                     <div
@@ -1359,9 +1452,19 @@ const Header = () => {
                   <Link
                     href="/my-account"
                     className="px-3 py-1.5 text-xs font-bold rounded-lg transition-all"
-                    style={{ color: 'var(--flavor-color)', border: '1px solid color-mix(in srgb, var(--flavor-color) 50%, transparent)' }}
-                    onMouseEnter={e => { e.currentTarget.style.background = 'var(--flavor-color)'; e.currentTarget.style.color = 'white'; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--flavor-color)'; }}
+                    style={{
+                      color: "var(--flavor-color)",
+                      border:
+                        "1px solid color-mix(in srgb, var(--flavor-color) 50%, transparent)",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = "var(--flavor-color)";
+                      e.currentTarget.style.color = "white";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = "transparent";
+                      e.currentTarget.style.color = "var(--flavor-color)";
+                    }}
                     onClick={() => setMobileMenuOpen(false)}
                   >
                     Account
@@ -1416,13 +1519,14 @@ const Header = () => {
                   </span>{" "}
                   per coin.
                 </p>
-                <p>
-                  Coins can only be redeemed on membership subscriptions.
-                </p>
+                <p>Coins can only be redeemed on membership subscriptions.</p>
                 <p>
                   Coins expire after{" "}
                   <span className="font-semibold">
-                    {Math.max(Math.floor(Number(coinSettings.expiryDays || 0)), 0)}
+                    {Math.max(
+                      Math.floor(Number(coinSettings.expiryDays || 0)),
+                      0,
+                    )}
                   </span>{" "}
                   days.
                 </p>
@@ -1445,10 +1549,11 @@ const Header = () => {
 
       {/* Floating Search Bar - Shows when header is hidden */}
       <div
-        className={`fixed left-0 right-0 z-50 transition-all duration-300 ${hideHeader
-          ? "translate-y-0 opacity-100"
-          : "-translate-y-full opacity-0 pointer-events-none"
-          }`}
+        className={`fixed left-0 right-0 z-50 transition-all duration-300 ${
+          hideHeader
+            ? "translate-y-0 opacity-100"
+            : "-translate-y-full opacity-0 pointer-events-none"
+        }`}
         style={{ top: 0 }}
       >
         <div

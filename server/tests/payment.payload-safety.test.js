@@ -12,13 +12,20 @@ const checkoutPagePath = path.resolve(
   "../../frontend/client/src/app/checkout/page.jsx",
 );
 
-test("payment payload wiring keeps shipping display-only (payable shipping forced to zero)", async () => {
+test("payment payload wiring uses preview shipping and gateway amount as the canonical checkout values", async () => {
   const source = await fs.readFile(checkoutPagePath, "utf8");
 
   assert.match(source, /const payableShipping = 0;/);
   assert.match(source, /shippingCost: payableShipping,/);
-  assert.match(source, /const originalAmount = round2\(subtotal \+ tax \+ payableShipping\);/);
-  assert.match(source, /shipping: payableShipping,/);
+  assert.match(
+    source,
+    /const shipping = round2\(Number\(previewPricing\?\.shipping \?\? payableShipping\)\);/,
+  );
+  assert.match(
+    source,
+    /const displayTotal = round2\(\s*Number\(previewPricing\?\.gatewayPayableAmount \?\? total\),/,
+  );
+  assert.match(source, /shipping: shippingForSubmit,/);
 
   // Guard against accidental inclusion of strike-through display amount in payment payload.
   assert.doesNotMatch(source, /shipping:\s*displayShippingCharge/);
@@ -59,7 +66,7 @@ test("multi-item cart with coupon keeps payable total independent of display shi
   );
 });
 
-test("address switch Rajasthan <-> other state changes only display path, not payable total", async () => {
+test("address switch Rajasthan <-> other state keeps display logic state-aware while payable total stays server-driven", async () => {
   const source = await fs.readFile(checkoutPagePath, "utf8");
 
   // State-driven display branch exists.
@@ -69,9 +76,13 @@ test("address switch Rajasthan <-> other state changes only display path, not pa
     /useShippingDisplayCharge\(\{\s*isRajasthan: isRajasthanDelivery,\s*\}\)/,
   );
 
-  // Payable total comes from finalTotals and remains state-agnostic because
-  // shippingCost is locked to payableShipping (0).
-  assert.match(source, /const total = finalTotals\.totalPayable;/);
+  // Payable total is driven by server preview/gateway pricing instead of a
+  // local display-only shipping assumption.
+  assert.match(source, /const total = round2\(Number\(previewPricing\?\.finalAmount \?\? localTotal\)\);/);
+  assert.match(
+    source,
+    /const displayTotal = round2\(\s*Number\(previewPricing\?\.gatewayPayableAmount \?\? total\),/,
+  );
 
   const sampleTotalsA = calculateCheckoutTotals({
     items: [{ price: 105, quantity: 4 }],

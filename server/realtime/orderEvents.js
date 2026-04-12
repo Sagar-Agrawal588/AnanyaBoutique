@@ -12,7 +12,7 @@ export const emitOrderStatusUpdate = (order, source = "SYSTEM") => {
     order.displayOrderId ||
     order.orderNumber ||
     order.order_id ||
-    `BOG-${orderId.slice(-8).toUpperCase()}`;
+    orderId.slice(-8).toUpperCase();
 
   const total = Number(
     order.finalAmount ??

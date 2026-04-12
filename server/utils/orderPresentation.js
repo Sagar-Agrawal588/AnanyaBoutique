@@ -44,9 +44,24 @@ const deriveSubtotalFromProducts = (order) => {
 };
 
 export const getOrderDisplayId = (orderOrId) => {
+  if (orderOrId && typeof orderOrId === "object") {
+    const explicitDisplayId = String(
+      orderOrId.final_id ||
+        orderOrId.temp_id ||
+        orderOrId.displayOrderId ||
+        orderOrId.orderNumber ||
+        orderOrId.order_id ||
+        orderOrId.orderId ||
+        "",
+    ).trim();
+    if (explicitDisplayId) {
+      return explicitDisplayId.toUpperCase();
+    }
+  }
+
   const orderId = extractOrderId(orderOrId);
   if (!orderId) return "";
-  return String(orderId).slice(0, 8).toUpperCase();
+  return String(orderId).slice(-8).toUpperCase();
 };
 
 export const resolveOrderDisplayTotal = (order = {}) => {
@@ -67,7 +82,9 @@ export const resolveOrderDisplayTotal = (order = {}) => {
 
   const subtotalField = toSafeNumber(order?.subtotal, 0);
   const subtotal =
-    subtotalField > 0 ? clampNonNegative(subtotalField) : deriveSubtotalFromProducts(order);
+    subtotalField > 0
+      ? clampNonNegative(subtotalField)
+      : deriveSubtotalFromProducts(order);
 
   const discount = clampNonNegative(order?.discount);
   const comboDiscount = clampNonNegative(order?.comboDiscount);
@@ -87,11 +104,13 @@ export const resolveOrderDisplayTotal = (order = {}) => {
     computedWithoutShipping > 0;
 
   if (dualPersistedAmountsMismatch) {
-    const lowMatchesComputed = Math.abs(computedWithoutShipping - persistedLow) <= 1;
+    const lowMatchesComputed =
+      Math.abs(computedWithoutShipping - persistedLow) <= 1;
     const highLooksShippingInflated =
       storedShipping > 0 &&
-      Math.abs(round2(computedWithoutShipping + storedShipping) - persistedHigh) <=
-        Math.max(1, storedShipping * 0.35);
+      Math.abs(
+        round2(computedWithoutShipping + storedShipping) - persistedHigh,
+      ) <= Math.max(1, storedShipping * 0.35);
 
     if (lowMatchesComputed || highLooksShippingInflated) {
       return round2(persistedLow);
@@ -102,8 +121,9 @@ export const resolveOrderDisplayTotal = (order = {}) => {
     computedWithoutShipping > 0 &&
     storedShipping > 0 &&
     persistedHigh > 0 &&
-    Math.abs(round2(computedWithoutShipping + storedShipping) - round2(persistedHigh)) <=
-      1;
+    Math.abs(
+      round2(computedWithoutShipping + storedShipping) - round2(persistedHigh),
+    ) <= 1;
 
   if (shippingInflatedLegacyTotal) {
     return computedWithoutShipping;

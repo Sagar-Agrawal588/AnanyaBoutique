@@ -311,50 +311,93 @@ const ProductDetailPage = () => {
   const buildCartProduct = () => {
     if (!product) return null;
     if (!selectedVariant) return product;
+    const selectedVariantId = selectedVariant._id || selectedVariant.id;
     return {
       ...product,
       price: selectedVariant.price,
       originalPrice: selectedVariant.originalPrice || product.originalPrice,
       selectedVariant: {
-        _id: selectedVariant._id,
+        _id: selectedVariantId,
         name: selectedVariant.name,
         sku: selectedVariant.sku,
         price: selectedVariant.price,
         weight: selectedVariant.weight,
         unit: selectedVariant.unit,
       },
-      variantId: selectedVariant._id,
+      variantId: selectedVariantId,
+    };
+  };
+
+  const getRecommendationPayload = (item) => {
+    const recommendation = item?.recommendation || {};
+    const recProduct = recommendation?.product || item?.product || null;
+    if (!recProduct) return null;
+
+    const variant = recommendation?.variant || item?.variant || null;
+    const fallbackPrice = Number(recProduct?.price ?? 0);
+    const rawPrice = Number(
+      item?.price ?? recommendation?.price ?? variant?.price ?? fallbackPrice,
+    );
+    const safePrice =
+      Number.isFinite(rawPrice) && rawPrice > 0
+        ? rawPrice
+        : Number.isFinite(fallbackPrice) && fallbackPrice > 0
+          ? fallbackPrice
+          : 0;
+
+    const rawOriginalPrice = Number(
+      item?.originalPrice ??
+        recommendation?.originalPrice ??
+        variant?.originalPrice ??
+        recProduct?.originalPrice ??
+        safePrice,
+    );
+    const safeOriginalPrice = Number.isFinite(rawOriginalPrice)
+      ? Math.max(rawOriginalPrice, safePrice)
+      : safePrice;
+    const finalPrice =
+      safePrice > 0 ? safePrice : safeOriginalPrice > 0 ? safeOriginalPrice : 0;
+
+    return {
+      product: recProduct,
+      variant,
+      variantId: variant?._id || variant?.id || null,
+      label: resolveVariantLabel(variant, recProduct),
+      price: finalPrice,
+      originalPrice: Math.max(safeOriginalPrice, finalPrice),
+      image:
+        item?.image ||
+        recommendation?.image ||
+        variant?.image ||
+        recProduct?.thumbnail ||
+        recProduct?.images?.[0] ||
+        "",
     };
   };
 
   const buildCartProductFromRecommendation = (item) => {
-    const recProduct = item?.product;
-    if (!recProduct) return null;
-    const variant = item?.variant || null;
-    const price = Number(
-      item?.price ?? variant?.price ?? recProduct?.price ?? 0,
-    );
-    const originalPrice = Number(
-      item?.originalPrice ??
-        variant?.originalPrice ??
-        recProduct?.originalPrice ??
-        price,
-    );
+    const recommendation = getRecommendationPayload(item);
+    if (!recommendation?.product) return null;
 
-    if (variant?._id) {
+    const recProduct = recommendation.product;
+    const variant = recommendation.variant;
+    const price = Number(recommendation.price || 0);
+    const originalPrice = Number(recommendation.originalPrice || price);
+
+    if (recommendation.variantId) {
       return {
         ...recProduct,
         price,
         originalPrice,
         selectedVariant: {
-          _id: variant._id,
-          name: variant.name,
-          sku: variant.sku,
-          price: price,
-          weight: variant.weight,
-          unit: variant.unit,
+          _id: recommendation.variantId,
+          name: variant?.name,
+          sku: variant?.sku,
+          price,
+          weight: variant?.weight,
+          unit: variant?.unit,
         },
-        variantId: variant._id,
+        variantId: recommendation.variantId,
       };
     }
 
@@ -393,11 +436,13 @@ const ProductDetailPage = () => {
       if (!product) return;
 
       const productId = product._id || product.id;
+      const selectedVariantId =
+        selectedVariant?._id || selectedVariant?.id || null;
 
       // Check if already in cart
-      if (isInCart(productId)) {
+      if (isInCart(productId, selectedVariantId)) {
         // Remove from cart
-        await removeFromCart(productId, selectedVariant?._id || null);
+        await removeFromCart(productId, selectedVariantId);
         setSnackbar({
           open: true,
           message: "Removed from cart!",
@@ -433,7 +478,7 @@ const ProductDetailPage = () => {
     try {
       if (!product) return;
       const productId = product._id || product.id;
-      const variantId = selectedVariant?._id || null;
+      const variantId = selectedVariant?._id || selectedVariant?.id || null;
       const hasVariant = hasSelectedVariantInCart(productId, variantId);
 
       if (!hasVariant) {
@@ -505,6 +550,45 @@ const ProductDetailPage = () => {
       setSnackbar({
         open: true,
         message: "Failed to add bundle items",
+        severity: "error",
+      });
+    }
+  };
+
+  const handleAddSingleRecommendation = async (item) => {
+    const payload = buildCartProductFromRecommendation(item);
+    if (!payload) {
+      setSnackbar({
+        open: true,
+        message: "Unable to add this item right now",
+        severity: "error",
+      });
+      return;
+    }
+
+    const productId = payload?._id || payload?.id;
+    const variantId = payload?.variantId || null;
+
+    if (hasSelectedVariantInCart(productId, variantId)) {
+      setSnackbar({
+        open: true,
+        message: "Item already in your cart",
+        severity: "success",
+      });
+      return;
+    }
+
+    try {
+      await addToCart(payload, 1);
+      setSnackbar({
+        open: true,
+        message: "Added to cart!",
+        severity: "success",
+      });
+    } catch {
+      setSnackbar({
+        open: true,
+        message: "Failed to add item",
         severity: "error",
       });
     }
@@ -586,7 +670,7 @@ const ProductDetailPage = () => {
   const productId = product?._id || product?.id;
   const isVariantInCart = hasSelectedVariantInCart(
     productId,
-    selectedVariant?._id || null,
+    selectedVariant?._id || selectedVariant?.id || null,
   );
   const isBuyNowDisabled = !isVariantInCart && availableQty === 0;
 
@@ -895,7 +979,7 @@ const ProductDetailPage = () => {
                   </div>
                 )}
 
-                <div className="flex items-center gap-3 w-full">
+                <div className="flex items-stretch gap-2 sm:gap-3 w-full">
                   <Button
                     variant="contained"
                     size="large"
@@ -908,6 +992,8 @@ const ProductDetailPage = () => {
                     }
                     className="!flex-1"
                     sx={{
+                      minHeight: "56px",
+                      minWidth: 0,
                       backgroundColor: isInCart(product._id || product.id)
                         ? "#dc2626"
                         : "var(--primary)",
@@ -916,11 +1002,16 @@ const ProductDetailPage = () => {
                           ? "#b91c1c"
                           : "var(--flavor-hover)",
                       },
-                      padding: "12px 32px",
+                      padding: { xs: "12px 14px", sm: "12px 32px" },
                       borderRadius: "14px",
-                      fontWeight: "bold",
+                      fontWeight: 700,
                       textTransform: "none",
-                      fontSize: "16px",
+                      fontSize: { xs: "15px", sm: "16px" },
+                      whiteSpace: "nowrap",
+                      "& .MuiButton-startIcon": {
+                        marginRight: { xs: "6px", sm: "8px" },
+                        marginLeft: 0,
+                      },
                       boxShadow: isInCart(product._id || product.id)
                         ? "0 16px 30px -20px rgba(220,38,38,0.85)"
                         : "0 16px 30px -20px rgba(var(--flavor-badge),0.85)",
@@ -940,15 +1031,19 @@ const ProductDetailPage = () => {
                     disabled={isBuyNowDisabled}
                     className="!flex-1"
                     sx={{
+                      minHeight: "56px",
+                      minWidth: 0,
                       backgroundColor: "#dc2626",
                       color: "#fff",
                       "&:hover": {
                         backgroundColor: "#b91c1c",
                       },
-                      padding: "12px 20px",
+                      padding: { xs: "12px 14px", sm: "12px 20px" },
                       borderRadius: "14px",
                       textTransform: "none",
-                      fontWeight: 600,
+                      fontWeight: 700,
+                      fontSize: { xs: "15px", sm: "16px" },
+                      whiteSpace: "nowrap",
                       boxShadow: "0 16px 30px -20px rgba(220,38,38,0.7)",
                     }}
                   >
@@ -1189,21 +1284,35 @@ const ProductDetailPage = () => {
                 </div>
               </div>
 
-              {frequentlyBought.map((item) => {
-                const recProduct = item.product || {};
-                const variant = item.variant || null;
-                const label = resolveVariantLabel(variant, recProduct);
-                const price = Number(item.price || 0);
-                const originalPrice = Number(item.originalPrice || 0);
+              {frequentlyBought.map((item, index) => {
+                const recommendation = getRecommendationPayload(item);
+                if (!recommendation?.product) return null;
+
+                const recProduct = recommendation.product;
+                const price = Number(recommendation.price || 0);
+                const originalPrice = Number(
+                  recommendation.originalPrice || price,
+                );
+                const recProductId =
+                  recProduct._id || recProduct.id || item?.productId || "";
+                const isAdded = hasSelectedVariantInCart(
+                  recProductId,
+                  recommendation.variantId,
+                );
+
                 return (
                   <div
-                    key={item.productId || recProduct._id || recProduct.id}
+                    key={`${String(recProductId)}:${String(recommendation.variantId || "base")}:${index}`}
                     className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm"
                   >
                     <div className="flex items-center gap-3">
                       <div className="w-16 h-16 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-center p-2">
                         <img
-                          src={getImageUrl(item.image || recProduct.thumbnail)}
+                          src={getImageUrl(
+                            recommendation.image ||
+                              recProduct.thumbnail ||
+                              recProduct.images?.[0],
+                          )}
                           alt={recProduct.name || "Recommended product"}
                           className="w-full h-full object-contain"
                         />
@@ -1215,8 +1324,10 @@ const ProductDetailPage = () => {
                         <h4 className="text-sm font-semibold text-gray-900 line-clamp-1">
                           {recProduct.name || recProduct.title}
                         </h4>
-                        {label && (
-                          <p className="text-xs text-gray-500">{label}</p>
+                        {recommendation.label && (
+                          <p className="text-xs text-gray-500">
+                            {recommendation.label}
+                          </p>
                         )}
                         <div className="flex items-center gap-2">
                           {originalPrice > price && (
@@ -1229,6 +1340,33 @@ const ProductDetailPage = () => {
                           </span>
                         </div>
                       </div>
+                    </div>
+                    <div className="mt-3 flex justify-end">
+                      <Button
+                        size="small"
+                        variant={isAdded ? "outlined" : "contained"}
+                        onClick={() => handleAddSingleRecommendation(item)}
+                        disabled={isAdded}
+                        sx={{
+                          textTransform: "none",
+                          borderRadius: "999px",
+                          fontWeight: 600,
+                          minWidth: 120,
+                          ...(isAdded
+                            ? {
+                                color: "#16a34a",
+                                borderColor: "#16a34a",
+                              }
+                            : {
+                                backgroundColor: "var(--primary)",
+                                "&:hover": {
+                                  backgroundColor: "var(--flavor-hover)",
+                                },
+                              }),
+                        }}
+                      >
+                        {isAdded ? "Added" : "Add to Cart"}
+                      </Button>
                     </div>
                   </div>
                 );

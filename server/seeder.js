@@ -5,9 +5,17 @@ dotenv.config();
 import bcrypt from "bcryptjs";
 import BannerModel from "./models/banner.model.js";
 import CategoryModel from "./models/category.model.js";
+import ComboItemModel from "./models/comboItem.model.js";
+import ComboModel from "./models/combo.model.js";
 import HomeSlideModel from "./models/homeSlide.model.js";
 import ProductModel from "./models/product.model.js";
 import UserModel from "./models/user.model.js";
+import {
+  buildComboItemsSnapshot,
+  buildComboPricing,
+  buildComboSkuFromItems,
+  upsertComboItems,
+} from "./services/combos/combo.service.js";
 
 /**
  * Database Seeder
@@ -28,6 +36,16 @@ const connectDB = async () => {
     process.exit(1);
   }
 };
+
+const SEED_PUBLIC_IMAGES = [
+  "/prodImage1.png",
+  "/prodImage2.png",
+  "/prodImage3.png",
+  "/product_1.png",
+];
+
+const resolveSeedPublicImage = (index = 0) =>
+  SEED_PUBLIC_IMAGES[index % SEED_PUBLIC_IMAGES.length];
 
 // Peanut Butter Categories
 const categories = [
@@ -427,42 +445,45 @@ const seedProducts = async (createdCategories) => {
   }
 
   // Add category IDs to products
-  const productsWithCategories = products.map((product, index) => ({
-    name: product.name,
-    slug: product.slug,
-    description: product.description,
-    shortDescription: product.shortDescription,
-    brand: product.brand,
-    price: product.price,
-    originalPrice: product.originalPrice,
-    discount: Math.round(
-      ((product.originalPrice - product.price) / product.originalPrice) * 100,
-    ),
-    // Use local images from client public folder - admin can upload custom images
-    images: [`/product_1.png`],
-    thumbnail: `/product_1.png`,
-    category: categoryMap[product.categorySlug],
-    stock: product.stock,
-    rating: product.rating,
-    numReviews: product.numReviews,
-    isFeatured: product.isFeatured || false,
-    isNewArrival: product.isNewArrival || false,
-    isBestSeller: product.isBestSeller || false,
-    isOnSale: product.originalPrice > product.price,
-    tags: product.tags,
-    specifications: {
-      Weight: `${product.weight}${product.unit}`,
-      "Shelf Life": "6 months",
-      Storage: "Store in a cool, dry place",
-    },
-    ingredients: "Roasted Peanuts",
-    nutritionalInfo: {
-      Protein: "25g per 100g",
-      Fat: "50g per 100g",
-      Carbs: "20g per 100g",
-      Fiber: "8g per 100g",
-    },
-  }));
+  const productsWithCategories = products.map((product, index) => {
+    const seededImage = resolveSeedPublicImage(index);
+    return {
+      name: product.name,
+      slug: product.slug,
+      description: product.description,
+      shortDescription: product.shortDescription,
+      brand: product.brand,
+      price: product.price,
+      originalPrice: product.originalPrice,
+      discount: Math.round(
+        ((product.originalPrice - product.price) / product.originalPrice) * 100,
+      ),
+      // Use local images from client public folder - admin can upload custom images
+      images: [seededImage],
+      thumbnail: seededImage,
+      category: categoryMap[product.categorySlug],
+      stock: product.stock,
+      rating: product.rating,
+      numReviews: product.numReviews,
+      isFeatured: product.isFeatured || false,
+      isNewArrival: product.isNewArrival || false,
+      isBestSeller: product.isBestSeller || false,
+      isOnSale: product.originalPrice > product.price,
+      tags: product.tags,
+      specifications: {
+        Weight: `${product.weight}${product.unit}`,
+        "Shelf Life": "6 months",
+        Storage: "Store in a cool, dry place",
+      },
+      ingredients: "Roasted Peanuts",
+      nutritionalInfo: {
+        Protein: "25g per 100g",
+        Fat: "50g per 100g",
+        Carbs: "20g per 100g",
+        Fiber: "8g per 100g",
+      },
+    };
+  });
 
   const createdProducts = await ProductModel.insertMany(productsWithCategories);
   console.log(`✅ ${createdProducts.length} peanut butter products seeded`);
@@ -474,8 +495,150 @@ const seedProducts = async (createdCategories) => {
       productCount: count,
     });
   }
+
+  return createdProducts;
 };
 
+const seedCombos = async (createdProducts = []) => {
+  await ComboModel.deleteMany({});
+  await ComboItemModel.deleteMany({});
+
+  const productBySlug = new Map(
+    (Array.isArray(createdProducts) ? createdProducts : []).map((product) => [
+      String(product?.slug || "").trim(),
+      product,
+    ]),
+  );
+
+  const getProductId = (slug) => productBySlug.get(String(slug || ""))?._id;
+
+  const comboSeeds = [
+    {
+      name: "Classic Duo Combo",
+      slug: "classic-duo-combo",
+      shortDescription: "Creamy + Crunchy â€” save more together",
+      description:
+        "Our two all-time classics bundled together for better value and everyday use.",
+      tags: ["best_seller", "featured"],
+      priority: 60,
+      isFeatured: true,
+      isBestSeller: true,
+      pricing: { type: "percent_discount", value: 12 },
+      items: [
+        { productId: getProductId("classic-creamy-peanut-butter"), quantity: 1 },
+        {
+          productId: getProductId("classic-crunchy-peanut-butter"),
+          quantity: 1,
+        },
+      ],
+    },
+    {
+      name: "Breakfast Flavors Combo",
+      slug: "breakfast-flavors-combo",
+      shortDescription: "Chocolate + Honey + Maple Cinnamon bundle",
+      description:
+        "Three sweet favorites that go perfectly with toast, oats, and smoothies.",
+      tags: ["trending", "recommended"],
+      priority: 50,
+      isFeatured: true,
+      pricing: { type: "percent_discount", value: 10 },
+      items: [
+        { productId: getProductId("chocolate-peanut-butter"), quantity: 1 },
+        { productId: getProductId("honey-peanut-butter"), quantity: 1 },
+        {
+          productId: getProductId("maple-cinnamon-peanut-butter"),
+          quantity: 1,
+        },
+      ],
+    },
+    {
+      name: "Protein Duo Combo",
+      slug: "protein-duo-combo",
+      shortDescription: "High Protein + Chocolate Protein pack",
+      description:
+        "A gym-friendly duo with extra protein â€” perfect for pre or post workout.",
+      tags: ["high_demand", "featured"],
+      priority: 45,
+      isBestSeller: true,
+      pricing: { type: "percent_discount", value: 15 },
+      items: [
+        { productId: getProductId("high-protein-peanut-butter"), quantity: 1 },
+        {
+          productId: getProductId("protein-peanut-butter-chocolate"),
+          quantity: 1,
+        },
+      ],
+    },
+    {
+      name: "Organic Essentials Combo",
+      slug: "organic-essentials-combo",
+      shortDescription: "Organic Unsweetened + Stone Ground bundle",
+      description:
+        "Two clean, single-ingredient picks for a more natural peanut butter routine.",
+      tags: ["recommended"],
+      priority: 40,
+      pricing: { type: "percent_discount", value: 8 },
+      items: [
+        {
+          productId: getProductId("organic-peanut-butter-unsweetened"),
+          quantity: 1,
+        },
+        { productId: getProductId("stone-ground-peanut-butter"), quantity: 1 },
+      ],
+    },
+  ];
+
+  const createdCombos = [];
+
+  for (const comboSeed of comboSeeds) {
+    const filteredItems = (
+      Array.isArray(comboSeed?.items) ? comboSeed.items : []
+    ).filter((item) => item?.productId);
+    if (filteredItems.length === 0) continue;
+
+    const { snapshots } = await buildComboItemsSnapshot({ items: filteredItems });
+    const pricing = comboSeed?.pricing || { type: "fixed_price", value: 0 };
+    const pricingResult = buildComboPricing({ items: snapshots, pricing });
+    const comboImage = snapshots.map((entry) => entry?.image).find(Boolean) || "";
+
+    const combo = await ComboModel.create({
+      name: comboSeed.name,
+      slug: comboSeed.slug,
+      shortDescription: comboSeed.shortDescription || "",
+      description: comboSeed.description || "",
+      brand: "Buy One Gram",
+      sku: buildComboSkuFromItems(snapshots),
+      comboType: "fixed_bundle",
+      items: snapshots,
+      pricing,
+      comboImages: snapshots
+        .map((entry) => entry?.image)
+        .filter(Boolean)
+        .slice(0, 6),
+      comboThumbnail: comboImage,
+      image: comboImage,
+      thumbnail: comboImage,
+      originalTotal: pricingResult.originalTotal,
+      comboPrice: pricingResult.comboPrice,
+      totalSavings: pricingResult.totalSavings,
+      discountPercentage: pricingResult.discountPercentage,
+      priority: Number(comboSeed.priority || 0),
+      tags: Array.isArray(comboSeed.tags) ? comboSeed.tags : [],
+      isFeatured: Boolean(comboSeed.isFeatured),
+      isBestSeller: Boolean(comboSeed.isBestSeller),
+      isActive: true,
+      isVisible: true,
+      status: "active",
+    });
+
+    await upsertComboItems(combo._id, snapshots);
+    createdCombos.push(combo);
+  }
+
+  console.log(`âœ… ${createdCombos.length} combos seeded`);
+};
+
+// Seed home slides
 const seedSlides = async () => {
   await HomeSlideModel.deleteMany({});
   const createdSlides = await HomeSlideModel.insertMany(homeSlides);
@@ -518,7 +681,8 @@ const seedDatabase = async () => {
     console.log("\n🌱 Seeding database...\n");
 
     const createdCategories = await seedCategories();
-    await seedProducts(createdCategories);
+    const createdProducts = await seedProducts(createdCategories);
+    await seedCombos(createdProducts);
     await seedSlides();
     await seedBanners();
     await seedAdminUser();
@@ -540,6 +704,8 @@ const destroyData = async () => {
 
     await CategoryModel.deleteMany({});
     await ProductModel.deleteMany({});
+    await ComboModel.deleteMany({});
+    await ComboItemModel.deleteMany({});
     await HomeSlideModel.deleteMany({});
     await BannerModel.deleteMany({});
 

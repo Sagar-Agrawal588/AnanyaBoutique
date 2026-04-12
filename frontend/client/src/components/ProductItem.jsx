@@ -47,14 +47,17 @@ const ProductItem = (props) => {
   const context = useContext(MyContext);
   const flavor = context?.flavor || FLAVORS.creamy;
 
-  const productId = id || _id || product?._id || product?.id;
   const resolvedItemType = String(
     itemType || product?.itemType || "product",
   ).toLowerCase();
   const isComboItem = resolvedItemType === "combo";
+  const productCardId = isComboItem
+    ? id || _id || product?.comboId || product?._id || product?.id
+    : product?.parentProductId || id || _id || product?._id || product?.id;
+  const productVariantId = product?.variantId || null;
   const alreadyInCart = isComboItem
-    ? isComboInCart(productId)
-    : isInCart(productId);
+    ? isComboInCart(productCardId)
+    : isInCart(productCardId, productVariantId);
 
   const productData = product || {
     _id: id || _id || product?.id || 1,
@@ -110,8 +113,8 @@ const ProductItem = (props) => {
   const wishlistVariantId = defaultVariant?._id || null;
   const wishlistItemType = isComboItem ? "combo" : "product";
   const isWishlisted = isInWishlist(
-    productId,
-    wishlistVariantId,
+    productCardId,
+    productVariantId || wishlistVariantId,
     wishlistItemType,
   );
 
@@ -120,7 +123,7 @@ const ProductItem = (props) => {
     e.stopPropagation();
     await toggleWishlist(productData, {
       itemType: wishlistItemType,
-      variantId: wishlistVariantId,
+      variantId: productVariantId || wishlistVariantId,
       variantName: defaultVariant?.name || "",
       quantity: 1,
     });
@@ -135,9 +138,9 @@ const ProductItem = (props) => {
       setIsAddingToCart(true);
       try {
         if (isComboItem) {
-          await removeComboFromCart(productId);
+          await removeComboFromCart(productCardId);
         } else {
-          await removeFromCart(productId);
+          await removeFromCart(productCardId, productVariantId);
         }
       } catch (error) {
         console.error(error);
@@ -153,6 +156,7 @@ const ProductItem = (props) => {
           const cartPayload = defaultVariant
             ? {
                 ...productData,
+                parentProductId: productCardId,
                 price: defaultVariant.price,
                 originalPrice:
                   defaultVariant.originalPrice || productData.originalPrice,
@@ -166,7 +170,10 @@ const ProductItem = (props) => {
                 },
                 variantId: defaultVariant._id,
               }
-            : productData;
+            : {
+                ...productData,
+                parentProductId: productCardId,
+              };
           await addToCart(cartPayload, 1);
         }
       } catch (error) {
@@ -193,11 +200,11 @@ const ProductItem = (props) => {
 
   return (
     <Link
-      href={isComboItem ? `/combo/${productId}` : `/product/${productId}`}
-      className="group relative flex h-full w-full flex-col rounded-3xl bg-white p-3 transition-all hover:shadow-xl hover:-translate-y-1 border border-gray-100"
+      href={isComboItem ? `/combo/${productCardId}` : `/product/${productCardId}`}
+      className="group relative flex h-full w-full min-w-0 flex-col rounded-3xl border border-gray-100 bg-white p-2.5 sm:p-3 transition-all hover:-translate-y-1 hover:shadow-xl"
     >
       {/* Image Container */}
-      <div className="relative mb-3 h-40 w-full overflow-hidden rounded-2xl bg-gray-50 flex items-center justify-center">
+      <div className="relative mb-3 flex h-32 w-full items-center justify-center overflow-hidden rounded-2xl bg-gray-50 sm:h-40">
         <ProductCardBadges
           isBestSeller={Boolean(productData.isBestSeller)}
           showDiscountBadge={showDiscountBadge}
@@ -223,7 +230,7 @@ const ProductItem = (props) => {
           className="absolute right-2 top-12 z-10"
         >
           <ShareButton
-            productId={productId}
+            productId={productCardId}
             productName={productData.name}
             variant="icon"
             iconSizeClass="h-8 w-8"
@@ -236,7 +243,7 @@ const ProductItem = (props) => {
           alt={productData.name}
           fill
           sizes="(max-width: 640px) 45vw, (max-width: 1024px) 25vw, 220px"
-          className="object-contain p-4 transition-transform duration-500 group-hover:scale-110 mix-blend-multiply"
+          className="object-contain p-3 sm:p-4 transition-transform duration-500 group-hover:scale-110 mix-blend-multiply"
         />
       </div>
 
@@ -245,10 +252,10 @@ const ProductItem = (props) => {
         <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">
           {productData.brand}
         </p>
-        <h3 className="line-clamp-2 min-h-10 text-sm font-bold text-gray-900 group-hover:text-primary transition-colors">
+        <h3 className="min-h-[2.75rem] line-clamp-2 text-sm font-bold text-gray-900 transition-colors group-hover:text-primary sm:min-h-10">
           {productData.name}
         </h3>
-        <div className="mt-1 min-h-8">
+        <div className="mt-1 min-h-7 sm:min-h-8">
           {productData.shortDescription ? (
             <p className="line-clamp-2 text-[11px] font-medium text-gray-500">
               {productData.shortDescription}
@@ -279,7 +286,7 @@ const ProductItem = (props) => {
         </div>
 
         {/* Price & Cart */}
-        <div className="mt-auto flex items-end justify-between pt-3">
+        <div className="mt-auto flex items-end justify-between gap-2 pt-3">
           <ProductCardPriceBlock
             originalPrice={displayOriginalPrice}
             finalPrice={displayPrice}
@@ -288,7 +295,7 @@ const ProductItem = (props) => {
           <button
             onClick={handleAddToCart}
             disabled={isAddingToCart || (!alreadyInCart && isOutOfStock)}
-            className={`flex h-10 w-10 items-center justify-center rounded-full shadow-md transition-all active:scale-90 hover:shadow-lg disabled:opacity-70 disabled:cursor-not-allowed ${
+            className={`shrink-0 flex h-10 w-10 items-center justify-center rounded-full shadow-md transition-all active:scale-90 hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-70 ${
               alreadyInCart
                 ? "bg-linear-to-r from-red-500 to-pink-500 text-white"
                 : isOutOfStock

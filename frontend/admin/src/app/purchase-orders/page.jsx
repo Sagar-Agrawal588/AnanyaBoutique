@@ -46,7 +46,11 @@ const EMPTY_ITEM = {
 
 const createEmptyVendorRate = () => ({
   productId: "",
+  variantId: "",
+  variantName: "",
+  packing: "",
   rate: "",
+  rateByVariant: {},
 });
 
 const createEmptyVendorForm = () => ({
@@ -110,15 +114,147 @@ const buildVariantPackingMeta = (variant) => {
   };
 };
 
-const getVendorProductRate = (vendor, productId) => {
-  const normalizedProductId = String(productId || "").trim();
-  if (!vendor || !normalizedProductId) return "";
+const normalizeRateMatchKey = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .replace(/(\d)\.0+(?=[a-z]|$)/g, "$1");
 
-  const matchedRate = (vendor.productRates || []).find(
+const resolveProductVariantMeta = (product, variantId = "") => {
+  const variants = Array.isArray(product?.variants) ? product.variants : [];
+  const selectedVariant = variants.find(
+    (variant) => String(variant?._id || "") === String(variantId || ""),
+  );
+  if (!selectedVariant) return null;
+  const meta = buildVariantPackingMeta(selectedVariant);
+  return {
+    variantId: String(selectedVariant?._id || ""),
+    variantName: meta.variantName,
+    packing: meta.packing,
+  };
+};
+
+const hasProductVariants = (product) =>
+  Array.isArray(product?.variants) && product.variants.length > 0;
+
+const getVendorProductRate = (vendor, rateTarget = {}, options = {}) => {
+  const normalizedProductId = String(rateTarget?.productId || "").trim();
+  if (!vendor || !normalizedProductId) return "";
+  const strictVariantMatch = Boolean(options?.strictVariantMatch);
+
+  const vendorRates = Array.isArray(vendor?.productRates)
+    ? vendor.productRates
+    : [];
+  const productRates = vendorRates.filter(
     (entry) => String(entry?.productId || "").trim() === normalizedProductId,
   );
-  const numericRate = Number(matchedRate?.rate);
+  if (productRates.length === 0) return "";
 
+  const normalizedVariantId = String(rateTarget?.variantId || "").trim();
+  const targetPackingKey = normalizeRateMatchKey(rateTarget?.packing || "");
+  const targetVariantNameKey = normalizeRateMatchKey(
+    rateTarget?.variantName || "",
+  );
+
+  let matchedRate = null;
+
+  if (normalizedVariantId) {
+    matchedRate = productRates.find((entry) => {
+      return String(entry?.variantId || "").trim() === normalizedVariantId;
+    });
+  }
+
+  if (strictVariantMatch) {
+    if (!matchedRate && targetPackingKey) {
+      matchedRate = productRates.find((entry) => {
+        const entryPackingKey = normalizeRateMatchKey(entry?.packing || "");
+        return Boolean(entryPackingKey) && entryPackingKey === targetPackingKey;
+      });
+    }
+
+    const strictNumericRate = Number(matchedRate?.rate);
+    return Number.isFinite(strictNumericRate) ? String(strictNumericRate) : "";
+  }
+
+  const candidatePackingKeys = new Set(
+    [targetPackingKey, targetVariantNameKey].filter(Boolean),
+  );
+
+  if (!matchedRate && candidatePackingKeys.size > 0) {
+    matchedRate = productRates.find((entry) => {
+      const entryPackingKey = normalizeRateMatchKey(
+        entry?.packing || entry?.variantName || "",
+      );
+      return (
+        Boolean(entryPackingKey) && candidatePackingKeys.has(entryPackingKey)
+      );
+    });
+  }
+
+  if (!matchedRate) {
+    matchedRate = productRates.find((entry) => {
+      const entryVariantId = String(entry?.variantId || "").trim();
+      const entryPackingKey = normalizeRateMatchKey(
+        entry?.packing || entry?.variantName || "",
+      );
+      return !entryVariantId && !entryPackingKey;
+    });
+  }
+
+  if (!matchedRate && productRates.length === 1) {
+    matchedRate = productRates[0];
+  }
+
+  const rawMatchedRate = matchedRate?.rate;
+  if (
+    rawMatchedRate === "" ||
+    rawMatchedRate === null ||
+    typeof rawMatchedRate === "undefined"
+  ) {
+    return "";
+  }
+
+  const numericRate = Number(rawMatchedRate);
+  return Number.isFinite(numericRate) ? String(numericRate) : "";
+};
+
+const getVariantRateKey = (variantId = "") =>
+  String(variantId || "").trim() || "__base__";
+
+const getDraftVendorRate = ({
+  rates = [],
+  productId = "",
+  variantId = "",
+  currentIndex = -1,
+  requireVariant = false,
+}) => {
+  const normalizedProductId = String(productId || "").trim();
+  const normalizedVariantId = String(variantId || "").trim();
+
+  if (!normalizedProductId) return "";
+  if (requireVariant && !normalizedVariantId) return "";
+
+  const matched = (Array.isArray(rates) ? rates : []).find((entry, index) => {
+    if (index === currentIndex) return false;
+    const entryProductId = String(entry?.productId || "").trim();
+    const entryVariantId = String(entry?.variantId || "").trim();
+    return (
+      entryProductId === normalizedProductId &&
+      entryVariantId === normalizedVariantId
+    );
+  });
+
+  const rawMatchedRate = matched?.rate;
+  if (
+    rawMatchedRate === "" ||
+    rawMatchedRate === null ||
+    typeof rawMatchedRate === "undefined"
+  ) {
+    return "";
+  }
+
+  const numericRate = Number(rawMatchedRate);
   return Number.isFinite(numericRate) ? String(numericRate) : "";
 };
 
@@ -202,8 +338,9 @@ export default function PurchaseOrdersPage() {
 
   const selectedVendor = useMemo(
     () =>
-      vendors.find((vendor) => String(vendor._id) === String(selectedVendorId)) ||
-      null,
+      vendors.find(
+        (vendor) => String(vendor._id) === String(selectedVendorId),
+      ) || null,
     [vendors, selectedVendorId],
   );
 
@@ -224,13 +361,72 @@ export default function PurchaseOrdersPage() {
       state: vendor.state || "",
       gst: vendor.gst || "",
       productRates: Array.isArray(vendor.productRates)
-        ? vendor.productRates.map((entry) => ({
-            productId: String(entry?.productId || ""),
-            rate:
-              entry?.rate === 0 || entry?.rate
-                ? String(entry.rate)
-                : "",
-          }))
+        ? vendor.productRates.map((entry) => {
+            const productId = String(entry?.productId || "");
+            const selectedProduct = products.find(
+              (product) => String(product?._id || "") === productId,
+            );
+            const variants = Array.isArray(selectedProduct?.variants)
+              ? selectedProduct.variants
+              : [];
+            const explicitVariantId = String(entry?.variantId || "");
+            let resolvedMeta = resolveProductVariantMeta(
+              selectedProduct,
+              explicitVariantId,
+            );
+
+            if (!resolvedMeta && variants.length > 0) {
+              const candidateKey = normalizeRateMatchKey(
+                entry?.packing || entry?.variantName || "",
+              );
+              if (candidateKey) {
+                const matchedVariant = variants.find((variant) => {
+                  const meta = buildVariantPackingMeta(variant);
+                  const keys = [meta.packing, meta.variantName, meta.label].map(
+                    normalizeRateMatchKey,
+                  );
+                  return keys.includes(candidateKey);
+                });
+                if (matchedVariant?._id) {
+                  resolvedMeta = resolveProductVariantMeta(
+                    selectedProduct,
+                    String(matchedVariant._id),
+                  );
+                }
+              }
+            }
+
+            if (!resolvedMeta && variants.length > 0) {
+              const defaultVariant =
+                variants.find((variant) => variant?.isDefault) || variants[0];
+              resolvedMeta = resolveProductVariantMeta(
+                selectedProduct,
+                String(defaultVariant?._id || ""),
+              );
+            }
+
+            const resolvedVariantId = String(
+              resolvedMeta?.variantId || explicitVariantId || "",
+            );
+            const resolvedRate =
+              entry?.rate === 0 || entry?.rate ? String(entry.rate) : "";
+
+            return {
+              productId,
+              variantId: resolvedVariantId,
+              variantName: String(
+                resolvedMeta?.variantName || entry?.variantName || "",
+              ),
+              packing: String(resolvedMeta?.packing || entry?.packing || ""),
+              rate: resolvedRate,
+              rateByVariant:
+                resolvedRate !== ""
+                  ? {
+                      [getVariantRateKey(resolvedVariantId)]: resolvedRate,
+                    }
+                  : {},
+            };
+          })
         : [],
     });
     setVendorDialogOpen(true);
@@ -241,20 +437,143 @@ export default function PurchaseOrdersPage() {
       toast.error("Vendor name is required");
       return;
     }
+
+    const invalidVariantRate = (vendorForm.productRates || []).find((entry) => {
+      const product = products.find(
+        (candidate) =>
+          String(candidate?._id || "") === String(entry?.productId || ""),
+      );
+      return (
+        hasProductVariants(product) && !String(entry?.variantId || "").trim()
+      );
+    });
+
+    if (invalidVariantRate) {
+      const invalidProduct = products.find(
+        (candidate) =>
+          String(candidate?._id || "") ===
+          String(invalidVariantRate?.productId || ""),
+      );
+      toast.error(
+        `Select weight variant for ${invalidProduct?.name || "this product"}`,
+      );
+      return;
+    }
+
+    const expandedVendorRates = (vendorForm.productRates || []).flatMap(
+      (entry) => {
+        const productId = String(entry?.productId || "").trim();
+        if (!productId) return [];
+
+        const selectedProduct = products.find(
+          (candidate) => String(candidate?._id || "") === productId,
+        );
+        const nextRateMap = new Map();
+
+        const upsertRate = ({
+          variantId = "",
+          variantName = "",
+          packing = "",
+          rate = "",
+        }) => {
+          const normalizedVariantId = String(variantId || "").trim();
+          const normalizedRate = String(rate ?? "").trim();
+          if (!normalizedRate) return;
+
+          if (normalizedVariantId) {
+            const variantMeta = resolveProductVariantMeta(
+              selectedProduct,
+              normalizedVariantId,
+            );
+            const resolvedVariantName = String(
+              variantMeta?.variantName || variantName || "",
+            ).trim();
+            const resolvedPacking = String(
+              variantMeta?.packing || packing || resolvedVariantName,
+            ).trim();
+            nextRateMap.set(`${productId}:${normalizedVariantId}`, {
+              productId,
+              variantId: normalizedVariantId,
+              variantName: resolvedVariantName,
+              packing: resolvedPacking,
+              rate: normalizedRate,
+            });
+            return;
+          }
+
+          const basePacking = String(packing || "").trim();
+          const baseVariantName = String(variantName || "").trim();
+          const baseKey = `${productId}:__base__`;
+          nextRateMap.set(baseKey, {
+            productId,
+            variantId: "",
+            variantName: baseVariantName,
+            packing: basePacking,
+            rate: normalizedRate,
+          });
+        };
+
+        const cachedRates =
+          entry &&
+          typeof entry.rateByVariant === "object" &&
+          entry.rateByVariant
+            ? entry.rateByVariant
+            : {};
+
+        Object.entries(cachedRates).forEach(([variantKey, rateValue]) => {
+          const resolvedVariantId =
+            String(variantKey || "") === "__base__"
+              ? ""
+              : String(variantKey || "");
+          upsertRate({
+            variantId: resolvedVariantId,
+            rate: rateValue,
+          });
+        });
+
+        upsertRate({
+          variantId: entry?.variantId || "",
+          variantName: entry?.variantName || "",
+          packing: entry?.packing || "",
+          rate: entry?.rate === 0 || entry?.rate ? String(entry.rate) : "",
+        });
+
+        return Array.from(nextRateMap.values());
+      },
+    );
+
+    const vendorPayload = {
+      ...vendorForm,
+      productRates: expandedVendorRates,
+    };
+
     setVendorSaving(true);
     try {
       let res;
       if (editingVendorId) {
         res = await putData(
           `/api/vendors/${editingVendorId}`,
-          vendorForm,
+          vendorPayload,
           token,
         );
       } else {
-        res = await postData("/api/vendors", vendorForm, token);
+        res = await postData("/api/vendors", vendorPayload, token);
       }
       if (res.success) {
         const savedVendor = res.data || null;
+        if (savedVendor?._id) {
+          setVendors((prev) => {
+            const existingIndex = prev.findIndex(
+              (entry) => String(entry?._id || "") === String(savedVendor._id),
+            );
+            if (existingIndex === -1) {
+              return [savedVendor, ...prev];
+            }
+            const next = [...prev];
+            next[existingIndex] = savedVendor;
+            return next;
+          });
+        }
         if (
           savedVendor?._id &&
           String(selectedVendorId || "") === String(savedVendor._id)
@@ -271,9 +590,31 @@ export default function PurchaseOrdersPage() {
           setItems((prev) =>
             prev.map((item) => {
               if (!item?.productId) return item;
+              const product = products.find(
+                (candidate) =>
+                  String(candidate?._id || "") === String(item.productId || ""),
+              );
+              const resolvedRate = getVendorProductRate(
+                savedVendor,
+                {
+                  productId: item.productId,
+                  variantId: item.variantId,
+                  packing: item.packing,
+                  variantName: item.variantName,
+                },
+                {
+                  strictVariantMatch: hasProductVariants(product),
+                },
+              );
+              const strictVariantRate = hasProductVariants(product);
               return {
                 ...item,
-                price: getVendorProductRate(savedVendor, item.productId),
+                price:
+                  resolvedRate !== ""
+                    ? resolvedRate
+                    : strictVariantRate
+                      ? ""
+                      : item.price,
               };
             }),
           );
@@ -316,10 +657,128 @@ export default function PurchaseOrdersPage() {
   const handleVendorRateChange = (index, field, value) => {
     setVendorForm((prev) => {
       const nextRates = [...(prev.productRates || [])];
-      nextRates[index] = {
+      const currentRateEntry = {
         ...(nextRates[index] || createEmptyVendorRate()),
-        [field]: value,
       };
+      const updatedRate = {
+        ...currentRateEntry,
+        [field]: value,
+        rateByVariant: {
+          ...(currentRateEntry.rateByVariant || {}),
+        },
+      };
+
+      if (field === "rate") {
+        const targetVariantKey = getVariantRateKey(updatedRate.variantId);
+        const nextRate = String(value ?? "").trim();
+        if (nextRate) {
+          updatedRate.rateByVariant[targetVariantKey] = nextRate;
+        } else {
+          delete updatedRate.rateByVariant[targetVariantKey];
+        }
+
+        nextRates[index] = updatedRate;
+        return {
+          ...prev,
+          productRates: nextRates,
+        };
+      }
+
+      if (field === "productId") {
+        // Product changed, so reset cached variant rates for this row.
+        updatedRate.rateByVariant = {};
+
+        const selectedProduct = products.find(
+          (product) => String(product?._id || "") === String(value || ""),
+        );
+        const variantList = Array.isArray(selectedProduct?.variants)
+          ? selectedProduct.variants
+          : [];
+        if (variantList.length > 0) {
+          const defaultVariant =
+            variantList.find((variant) => variant?.isDefault) || variantList[0];
+          const variantMeta = resolveProductVariantMeta(
+            selectedProduct,
+            String(defaultVariant?._id || ""),
+          );
+          updatedRate.variantId = variantMeta?.variantId || "";
+          updatedRate.variantName = variantMeta?.variantName || "";
+          updatedRate.packing = variantMeta?.packing || "";
+          updatedRate.rate = getDraftVendorRate({
+            rates: nextRates,
+            productId: String(value || ""),
+            variantId: updatedRate.variantId,
+            currentIndex: index,
+            requireVariant: true,
+          });
+          if (String(updatedRate.rate || "").trim()) {
+            updatedRate.rateByVariant[
+              getVariantRateKey(updatedRate.variantId)
+            ] = String(updatedRate.rate).trim();
+          }
+        } else {
+          updatedRate.variantId = "";
+          updatedRate.variantName = "";
+          updatedRate.packing = "";
+          updatedRate.rate = getDraftVendorRate({
+            rates: nextRates,
+            productId: String(value || ""),
+            variantId: "",
+            currentIndex: index,
+            requireVariant: false,
+          });
+          if (String(updatedRate.rate || "").trim()) {
+            updatedRate.rateByVariant[getVariantRateKey("")] = String(
+              updatedRate.rate,
+            ).trim();
+          }
+        }
+      }
+
+      if (field === "variantId") {
+        const previousVariantKey = getVariantRateKey(
+          currentRateEntry.variantId,
+        );
+        const previousRate = String(currentRateEntry.rate ?? "").trim();
+        if (previousRate) {
+          updatedRate.rateByVariant[previousVariantKey] = previousRate;
+        } else {
+          delete updatedRate.rateByVariant[previousVariantKey];
+        }
+
+        const selectedProduct = products.find(
+          (product) =>
+            String(product?._id || "") === String(updatedRate.productId || ""),
+        );
+        const variantMeta = resolveProductVariantMeta(selectedProduct, value);
+        updatedRate.variantId = variantMeta?.variantId || "";
+        updatedRate.variantName = variantMeta?.variantName || "";
+        updatedRate.packing = variantMeta?.packing || "";
+
+        const selectedVariantKey = getVariantRateKey(updatedRate.variantId);
+        const cachedVariantRate = String(
+          updatedRate.rateByVariant[selectedVariantKey] || "",
+        ).trim();
+        const draftVariantRate = getDraftVendorRate({
+          rates: nextRates,
+          productId: updatedRate.productId,
+          variantId: updatedRate.variantId,
+          currentIndex: index,
+          requireVariant: true,
+        });
+
+        const resolvedRate = cachedVariantRate || draftVariantRate || "";
+        updatedRate.rate = resolvedRate;
+
+        if (resolvedRate) {
+          updatedRate.rateByVariant[selectedVariantKey] =
+            String(resolvedRate).trim();
+        } else {
+          delete updatedRate.rateByVariant[selectedVariantKey];
+        }
+      }
+
+      nextRates[index] = updatedRate;
       return {
         ...prev,
         productRates: nextRates,
@@ -348,9 +807,31 @@ export default function PurchaseOrdersPage() {
     setItems((prev) =>
       prev.map((item) => {
         if (!item?.productId) return item;
+        const product = products.find(
+          (candidate) =>
+            String(candidate?._id || "") === String(item.productId || ""),
+        );
+        const resolvedRate = getVendorProductRate(
+          vendor,
+          {
+            productId: item.productId,
+            variantId: item.variantId,
+            packing: item.packing,
+            variantName: item.variantName,
+          },
+          {
+            strictVariantMatch: hasProductVariants(product),
+          },
+        );
+        const strictVariantRate = hasProductVariants(product);
         return {
           ...item,
-          price: getVendorProductRate(vendor, item.productId),
+          price:
+            resolvedRate !== ""
+              ? resolvedRate
+              : strictVariantRate
+                ? ""
+                : item.price,
         };
       }),
     );
@@ -381,7 +862,6 @@ export default function PurchaseOrdersPage() {
           (candidate) => String(candidate._id) === String(value || ""),
         );
         const nextProductId = String(value || "");
-        const matchedVendorRate = getVendorProductRate(selectedVendor, nextProductId);
         const updated = {
           ...current,
           productId: value,
@@ -390,10 +870,6 @@ export default function PurchaseOrdersPage() {
           packing: "",
           packWeight: "",
           packUnit: "g",
-          price:
-            String(current.productId || "") !== nextProductId
-              ? matchedVendorRate
-              : current.price,
         };
 
         const variantList = Array.isArray(product?.variants)
@@ -426,6 +902,25 @@ export default function PurchaseOrdersPage() {
           );
         }
 
+        const shouldRefreshRate =
+          String(current.productId || "") !== nextProductId ||
+          String(current.price ?? "").trim() === "";
+        if (shouldRefreshRate) {
+          const strictVariantMatch = variantList.length > 0;
+          updated.price = getVendorProductRate(
+            selectedVendor,
+            {
+              productId: nextProductId,
+              variantId: updated.variantId,
+              packing: updated.packing,
+              variantName: updated.variantName,
+            },
+            {
+              strictVariantMatch,
+            },
+          );
+        }
+
         next[index] = updated;
         return next;
       }
@@ -443,24 +938,39 @@ export default function PurchaseOrdersPage() {
             variantId: "",
             variantName: "",
             packing: "",
+            price: "",
           };
           return next;
         }
         const variantMeta = buildVariantPackingMeta(selectedVariant);
+        const resolvedVariantRate = getVendorProductRate(
+          selectedVendor,
+          {
+            productId: current.productId,
+            variantId: String(selectedVariant._id || ""),
+            packing: variantMeta.packing,
+            variantName: variantMeta.variantName,
+          },
+          {
+            strictVariantMatch: true,
+          },
+        );
         next[index] = {
           ...current,
           variantId: String(selectedVariant._id || ""),
           variantName: variantMeta.variantName,
           packing: variantMeta.packing,
+          price: resolvedVariantRate,
           packWeight:
             Number(selectedVariant?.weight || 0) > 0
               ? String(selectedVariant.weight)
               : current.packWeight,
-          packUnit: normalizePackingUnit(
-            selectedVariant?.unit || current.packUnit || "g",
-          ) === "kg"
-            ? "kg"
-            : "g",
+          packUnit:
+            normalizePackingUnit(
+              selectedVariant?.unit || current.packUnit || "g",
+            ) === "kg"
+              ? "kg"
+              : "g",
         };
         return next;
       }
@@ -571,7 +1081,12 @@ export default function PurchaseOrdersPage() {
     const weight = Number(product?.weight || 0);
     const unit = String(product?.unit || "").toLowerCase();
     if (weight > 0) {
-      if (unit === "g" || unit === "gm" || unit === "gram" || unit === "grams") {
+      if (
+        unit === "g" ||
+        unit === "gm" ||
+        unit === "gram" ||
+        unit === "grams"
+      ) {
         return weight >= 1000 ? `${weight / 1000}kg` : `${weight}g`;
       }
       if (unit === "kg" || unit === "kilogram" || unit === "kilograms") {
@@ -588,9 +1103,7 @@ export default function PurchaseOrdersPage() {
       toast.error("Add at least one product");
       return;
     }
-    if (
-      validItems.some((row) => String(row.priceInput ?? "").trim() === "")
-    ) {
+    if (validItems.some((row) => String(row.priceInput ?? "").trim() === "")) {
       toast.error("Enter rate for each selected item");
       return;
     }
@@ -1230,7 +1743,9 @@ export default function PurchaseOrdersPage() {
                   </div>
                 </div>
                 <div>
-                  <span className="text-gray-500 text-xs uppercase">Address</span>
+                  <span className="text-gray-500 text-xs uppercase">
+                    Address
+                  </span>
                   <div className="font-medium">
                     {selectedOrderData.guestDetails?.address || "N/A"}
                   </div>
@@ -1311,7 +1826,9 @@ export default function PurchaseOrdersPage() {
                 <div className="text-right">
                   <div className="font-semibold">
                     Total: ₹
-                    {Number(selectedOrderData.total || 0).toLocaleString("en-IN")}
+                    {Number(selectedOrderData.total || 0).toLocaleString(
+                      "en-IN",
+                    )}
                   </div>
                 </div>
               </div>
@@ -1372,13 +1889,12 @@ export default function PurchaseOrdersPage() {
               const rowKey = [
                 item.productId || "product",
                 item.variantId || item.variantName || item.packing || "base",
-                Number.isFinite(Number(item.lineIndex)) ? Number(item.lineIndex) : index,
+                Number.isFinite(Number(item.lineIndex))
+                  ? Number(item.lineIndex)
+                  : index,
               ].join(":");
               return (
-                <div
-                  key={rowKey}
-                  className="border rounded-lg p-4 bg-gray-50"
-                >
+                <div key={rowKey} className="border rounded-lg p-4 bg-gray-50">
                   <div className="flex items-center justify-between mb-2">
                     <div className="font-semibold text-gray-800">
                       {item.productTitle || "Product"}
@@ -1567,59 +2083,122 @@ export default function PurchaseOrdersPage() {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {(vendorForm.productRates || []).map((entry, index) => (
-                    <div
-                      key={`${editingVendorId || "new"}-rate-${index}`}
-                      className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center"
-                    >
-                      <div className="md:col-span-7">
-                        <TextField
-                          select
-                          label="Product"
-                          size="small"
-                          fullWidth
-                          value={entry.productId || ""}
-                          onChange={(e) =>
-                            handleVendorRateChange(
-                              index,
-                              "productId",
-                              e.target.value,
-                            )
-                          }
-                        >
-                          <MenuItem value="">Select product</MenuItem>
-                          {products.map((product) => (
-                            <MenuItem key={product._id} value={product._id}>
-                              {product.name}
-                            </MenuItem>
-                          ))}
-                        </TextField>
+                  {(vendorForm.productRates || []).map((entry, index) => {
+                    const selectedProduct = products.find(
+                      (product) =>
+                        String(product?._id || "") ===
+                        String(entry?.productId || ""),
+                    );
+                    const variantOptions = Array.isArray(
+                      selectedProduct?.variants,
+                    )
+                      ? selectedProduct.variants
+                          .map((variant) => {
+                            const meta = buildVariantPackingMeta(variant);
+                            return {
+                              id: String(variant?._id || ""),
+                              label: meta.label,
+                            };
+                          })
+                          .filter((variant) => variant.id)
+                      : [];
+
+                    return (
+                      <div
+                        key={`${editingVendorId || "new"}-rate-${index}`}
+                        className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center"
+                      >
+                        <div className="md:col-span-5">
+                          <TextField
+                            select
+                            label="Product"
+                            size="small"
+                            fullWidth
+                            value={entry.productId || ""}
+                            onChange={(e) =>
+                              handleVendorRateChange(
+                                index,
+                                "productId",
+                                e.target.value,
+                              )
+                            }
+                          >
+                            <MenuItem value="">Select product</MenuItem>
+                            {products.map((product) => (
+                              <MenuItem key={product._id} value={product._id}>
+                                {product.name}
+                              </MenuItem>
+                            ))}
+                          </TextField>
+                        </div>
+                        <div className="md:col-span-4">
+                          <TextField
+                            select
+                            label="Weight Variant"
+                            size="small"
+                            fullWidth
+                            value={entry.variantId || ""}
+                            onChange={(e) =>
+                              handleVendorRateChange(
+                                index,
+                                "variantId",
+                                e.target.value,
+                              )
+                            }
+                            disabled={
+                              !entry.productId || variantOptions.length === 0
+                            }
+                          >
+                            {!entry.productId ? (
+                              <MenuItem value="">Select product first</MenuItem>
+                            ) : variantOptions.length === 0 ? (
+                              <MenuItem value="">
+                                No variants (base rate)
+                              </MenuItem>
+                            ) : (
+                              [
+                                <MenuItem key="select-variant" value="">
+                                  Select weight variant
+                                </MenuItem>,
+                                ...variantOptions.map((variant) => (
+                                  <MenuItem key={variant.id} value={variant.id}>
+                                    {variant.label}
+                                  </MenuItem>
+                                )),
+                              ]
+                            )}
+                          </TextField>
+                        </div>
+                        <div className="md:col-span-2">
+                          <TextField
+                            label="Rate"
+                            size="small"
+                            fullWidth
+                            type="number"
+                            value={entry.rate || ""}
+                            onChange={(e) =>
+                              handleVendorRateChange(
+                                index,
+                                "rate",
+                                e.target.value,
+                              )
+                            }
+                            inputProps={{ min: 0, step: "any" }}
+                          />
+                        </div>
+                        <div className="md:col-span-1 flex justify-end">
+                          <button
+                            type="button"
+                            className="text-red-500 hover:text-red-700 p-2"
+                            onClick={() => handleRemoveVendorRate(index)}
+                            title="Remove rate"
+                          >
+                            <FaTrash size={14} />
+                          </button>
+                        </div>
                       </div>
-                      <div className="md:col-span-4">
-                        <TextField
-                          label="Rate"
-                          size="small"
-                          fullWidth
-                          type="number"
-                          value={entry.rate || ""}
-                          onChange={(e) =>
-                            handleVendorRateChange(index, "rate", e.target.value)
-                          }
-                          inputProps={{ min: 0, step: "any" }}
-                        />
-                      </div>
-                      <div className="md:col-span-1 flex justify-end">
-                        <button
-                          type="button"
-                          className="text-red-500 hover:text-red-700 p-2"
-                          onClick={() => handleRemoveVendorRate(index)}
-                          title="Remove rate"
-                        >
-                          <FaTrash size={14} />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>

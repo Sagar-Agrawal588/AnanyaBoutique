@@ -1,5 +1,6 @@
 import AdminLayout from "@/components/AdminLayout";
 import { AdminProvider } from "@/context/AdminContext";
+import { withAdminBasePath } from "@/utils/basePath";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "react-hot-toast";
 import "./globals.css";
@@ -32,7 +33,7 @@ export const metadata = {
     type: "website",
     images: [
       {
-        url: "/logo-og-v2.png",
+        url: withAdminBasePath("/logo-og-v2.png"),
         width: 512,
         height: 512,
         alt: "BuyOneGram Admin",
@@ -43,15 +44,23 @@ export const metadata = {
     card: "summary_large_image",
     title: "BuyOneGram Admin Panel",
     description: "Admin dashboard for BuyOneGram Peanut Butter Store",
-    images: ["/logo-og-v2.png"],
+    images: [withAdminBasePath("/logo-og-v2.png")],
   },
   icons: {
     icon: [
-      { url: "/logo.png", type: "image/png", sizes: "32x32" },
-      { url: "/logo.png", type: "image/png", sizes: "192x192" },
+      {
+        url: withAdminBasePath("/logo.png"),
+        type: "image/png",
+        sizes: "32x32",
+      },
+      {
+        url: withAdminBasePath("/logo.png"),
+        type: "image/png",
+        sizes: "192x192",
+      },
     ],
-    shortcut: "/logo.png",
-    apple: "/logo.png",
+    shortcut: withAdminBasePath("/logo.png"),
+    apple: withAdminBasePath("/logo.png"),
   },
 };
 

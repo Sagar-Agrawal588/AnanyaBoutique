@@ -33,6 +33,10 @@ const seedPartner = async ({
   rateLimitPerMinute,
   visibleProductFields,
 } = {}) => {
+  const normalizedRateLimit = Number.isFinite(Number(rateLimitPerMinute))
+    ? Math.max(10, Math.floor(Number(rateLimitPerMinute)))
+    : undefined;
+
   const partner = await Partner.create({
     name: `Partner ${Date.now()}`,
     contactEmail: `partner-${Date.now()}@example.com`,
@@ -41,7 +45,24 @@ const seedPartner = async ({
     ...(Array.isArray(visibleProductFields)
       ? { visibleProductFields }
       : {}),
-    ...(rateLimitPerMinute !== undefined ? { rateLimitPerMinute } : {}),
+    ...(normalizedRateLimit !== undefined
+      ? {
+          rateLimitPerMinute: normalizedRateLimit,
+          rateLimitPlan: {
+            tier: "custom",
+            baseRPM: normalizedRateLimit,
+            burstRPM: normalizedRateLimit,
+            dailyLimit: 20000,
+            minDynamicRPM: normalizedRateLimit,
+            maxDynamicRPM: normalizedRateLimit,
+            scalingEnabled: false,
+          },
+          dynamicControls: {
+            lockScaling: true,
+            manualOverrideRPM: normalizedRateLimit,
+          },
+        }
+      : {}),
   });
 
   const key = buildPartnerApiKey();

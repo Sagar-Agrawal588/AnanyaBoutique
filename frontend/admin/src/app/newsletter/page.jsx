@@ -4,6 +4,7 @@ import { useAdmin } from "@/context/AdminContext";
 import {
   deleteData,
   getData,
+  postData,
   postMultipartData,
   putData,
   uploadFile,
@@ -635,7 +636,7 @@ const NewsletterPage = () => {
     if (!confirm("Send targeted promotional campaign now?")) return;
 
     setSendingSegmentCampaign(true);
-    const response = await postMultipartData(
+    const response = await postData(
       "/api/email/admin/campaign/send",
       {
         subject: templateSubject,

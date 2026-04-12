@@ -65,9 +65,15 @@ const buildStableNotificationId = ({
   if (dbId) return `offer:${dbId}`;
 
   const safeSentAt = Number(sentAtMs || 0) || 0;
-  const safeTitle = String(title || "").trim().toLowerCase();
-  const safeBody = String(body || "").trim().toLowerCase();
-  const safeCoupon = String(couponCode || "").trim().toUpperCase();
+  const safeTitle = String(title || "")
+    .trim()
+    .toLowerCase();
+  const safeBody = String(body || "")
+    .trim()
+    .toLowerCase();
+  const safeCoupon = String(couponCode || "")
+    .trim()
+    .toUpperCase();
   return `offer:fallback:${safeSentAt}:${safeTitle}:${safeBody}:${safeCoupon}`;
 };
 
@@ -110,8 +116,7 @@ const NotificationHandler = () => {
       const token =
         cookies.get("accessToken") ||
         (typeof window !== "undefined"
-          ? localStorage.getItem("accessToken") ||
-            localStorage.getItem("token")
+          ? localStorage.getItem("accessToken") || localStorage.getItem("token")
           : null);
       setIsLoggedIn(!!token);
     };
@@ -136,10 +141,9 @@ const NotificationHandler = () => {
     isSupported,
     permission,
     requestPermission,
-  } =
-    useNotifications({
-      userType: isLoggedIn ? "user" : "guest",
-    });
+  } = useNotifications({
+    userType: isLoggedIn ? "user" : "guest",
+  });
 
   // Auto-show browser permission prompt after the first user interaction.
   // Browsers block silent prompts, so this keeps it compliant.
@@ -287,14 +291,17 @@ const NotificationHandler = () => {
         if (!response.ok) return;
 
         const payload = await response.json();
-        const offers = Array.isArray(payload?.data?.offers) ? payload.data.offers : [];
+        const offers = Array.isArray(payload?.data?.offers)
+          ? payload.data.offers
+          : [];
 
         for (const offer of offers) {
           if (isDisposed) return;
           const liveData =
             offer?.data && typeof offer.data === "object" ? offer.data : {};
           const offerTimestamp =
-            Number(offer?.sentAtMs || Date.parse(offer?.sentAt || "") || 0) || 0;
+            Number(offer?.sentAtMs || Date.parse(offer?.sentAt || "") || 0) ||
+            0;
           const notificationId = buildStableNotificationId({
             notificationId: offer?.notificationId || liveData.notificationId,
             fallbackId: offer?._id,
@@ -332,14 +339,50 @@ const NotificationHandler = () => {
       }
     };
 
-    void pollLiveFeed();
-    pollInterval = window.setInterval(pollLiveFeed, 10000);
+    const refresh = () => {
+      if (document.hidden) return;
+      void pollLiveFeed();
+    };
+
+    const startPolling = () => {
+      if (pollInterval) {
+        window.clearInterval(pollInterval);
+      }
+      pollInterval = window.setInterval(() => {
+        if (!document.hidden) {
+          void pollLiveFeed();
+        }
+      }, 15000);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        if (pollInterval) {
+          window.clearInterval(pollInterval);
+          pollInterval = null;
+        }
+        return;
+      }
+
+      void pollLiveFeed();
+      startPolling();
+    };
+
+    if (!document.hidden) {
+      void pollLiveFeed();
+      startPolling();
+    }
+
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
       isDisposed = true;
       if (pollInterval) {
         window.clearInterval(pollInterval);
       }
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [rememberNotification]);
 

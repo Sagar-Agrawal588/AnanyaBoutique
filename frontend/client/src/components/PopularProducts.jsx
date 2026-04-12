@@ -82,12 +82,12 @@ const PopularProducts = () => {
           className="relative rounded-3xl p-4 sm:p-6 bg-white shadow-xl shadow-gray-200/50 border border-gray-100"
         >
           <ProductSlider
-            limit={100}
+            limit={120}
             sortBy="soldCount"
             order="desc"
             includeCombos={true}
-            productLimit={5}
-            comboLimit={2}
+            productLimit={10}
+            comboLimit={4}
           />
         </motion.div>
       </div>

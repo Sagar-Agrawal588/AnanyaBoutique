@@ -8,6 +8,7 @@
  */
 
 import { API_BASE_URL } from "@/utils/api";
+import { withAdminBasePath } from "@/utils/basePath";
 
 const API_URL = API_BASE_URL;
 
@@ -36,7 +37,10 @@ const normalizeImageInput = (imageValue) => {
  * @param {string} fallback - Fallback image path
  * @returns {string} - Resolved image URL
  */
-export const getImageUrl = (imageUrl, fallback = "/placeholder.png") => {
+export const getImageUrl = (
+  imageUrl,
+  fallback = withAdminBasePath("/placeholder.png"),
+) => {
   const normalizedValue = normalizeImageInput(imageUrl);
   if (!normalizedValue) return fallback;
 
@@ -70,12 +74,12 @@ export const getImageUrl = (imageUrl, fallback = "/placeholder.png") => {
 
   // Local public folder image (like /product_1.png)
   if (normalizedPath.startsWith("/")) {
-    return normalizedPath;
+    return withAdminBasePath(normalizedPath);
   }
 
   // Fallback for values like "product_1.png"
   if (!normalizedPath.includes("/")) {
-    return `/${normalizedPath}`;
+    return withAdminBasePath(`/${normalizedPath}`);
   }
 
   return fallback;
@@ -91,7 +95,7 @@ export const getOptimizedImageUrl = (
   imageUrl,
   { width = 400, height = 400, quality = "auto", format = "auto" } = {},
 ) => {
-  if (!imageUrl) return "/placeholder.png";
+  if (!imageUrl) return withAdminBasePath("/placeholder.png");
 
   // Only apply transformations to Cloudinary URLs
   if (imageUrl.includes("res.cloudinary.com")) {

@@ -78,6 +78,7 @@ const ProductSlider = ({
   comboLimit = 2,
   sortBy = "createdAt",
   order = "desc",
+  separateVariants = false,
 }) => {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -100,12 +101,25 @@ const ProductSlider = ({
           `sortBy=${encodeURIComponent(String(sortBy || "createdAt"))}`,
         );
         params.push(`order=${encodeURIComponent(String(order || "desc"))}`);
-        params.push("separateVariants=true");
+        if (separateVariants) {
+          params.push("separateVariants=true");
+        }
         params.push("includeCombos=false");
         params.push(`limit=${encodeURIComponent(String(limit || 10))}`);
 
         const productsUrl = `/api/products?${params.join("&")}`;
-        const productResponse = await fetchDataFromApi(productsUrl);
+        const productsRequest = fetchDataFromApi(productsUrl);
+        const combosRequest = includeCombos
+          ? fetchDataFromApi(
+              `/api/combos?sort=priority&limit=${Math.max(comboLimit * 5, 10)}`,
+            )
+          : Promise.resolve(null);
+
+        const [productResponse, combosResponse] = await Promise.all([
+          productsRequest,
+          combosRequest,
+        ]);
+
         const fetchedProducts =
           productResponse?.success && Array.isArray(productResponse?.data)
             ? productResponse.data.filter(
@@ -119,10 +133,6 @@ const ProductSlider = ({
           setProducts(fetchedProducts);
           return;
         }
-
-        const combosResponse = await fetchDataFromApi(
-          `/api/combos?sort=priority&limit=${Math.max(comboLimit * 5, 10)}`,
-        );
         const comboItemsRaw =
           combosResponse?.success && Array.isArray(combosResponse?.data?.items)
             ? combosResponse.data.items
@@ -196,6 +206,7 @@ const ProductSlider = ({
     comboLimit,
     sortBy,
     order,
+    separateVariants,
   ]);
 
   if (loading) {
@@ -218,8 +229,10 @@ const ProductSlider = ({
 
   const totalProducts = products.length;
   const useStaticGrid = totalProducts <= 4;
+  const navBtnBase =
+    "absolute top-1/2 -translate-y-1/2 z-10 w-9 h-9 md:w-11 md:h-11 rounded-full flex items-center justify-center transition-all duration-300 cursor-pointer";
   const responsiveSlides = {
-    480: { slidesPerView: clampSlides(2, totalProducts) },
+    480: { slidesPerView: Math.min(2.2, totalProducts) },
     640: { slidesPerView: clampSlides(3, totalProducts) },
     768: { slidesPerView: clampSlides(4, totalProducts) },
     1024: { slidesPerView: clampSlides(5, totalProducts) },
@@ -237,11 +250,92 @@ const ProductSlider = ({
           </h3>
         )}
 
-        <div
-          className="grid gap-4"
+        <button
+          ref={prevRef}
+          className={navBtnBase + " left-1 sm:left-0 md:-left-4"}
           style={{
-            gridTemplateColumns: `repeat(${Math.max(1, totalProducts)}, minmax(0, 1fr))`,
+            backgroundColor: hoverPrev ? flavor.color : "white",
+            color: hoverPrev ? "white" : flavor.color,
+            borderWidth: "2px",
+            borderStyle: "solid",
+            borderColor: hoverPrev ? flavor.color : flavor.glass,
+            boxShadow: hoverPrev
+              ? `0 4px 15px ${flavor.glass}`
+              : "0 2px 8px rgba(0,0,0,0.08)",
+            transform: `translateY(-50%) scale(${hoverPrev ? 1.1 : 1})`,
           }}
+          onMouseEnter={() => setHoverPrev(true)}
+          onMouseLeave={() => setHoverPrev(false)}
+          aria-label="Previous"
+        >
+          <FiChevronLeft size={18} />
+        </button>
+        <button
+          ref={nextRef}
+          className={navBtnBase + " right-1 sm:right-0 md:-right-4"}
+          style={{
+            backgroundColor: hoverNext ? flavor.color : "white",
+            color: hoverNext ? "white" : flavor.color,
+            borderWidth: "2px",
+            borderStyle: "solid",
+            borderColor: hoverNext ? flavor.color : flavor.glass,
+            boxShadow: hoverNext
+              ? `0 4px 15px ${flavor.glass}`
+              : "0 2px 8px rgba(0,0,0,0.08)",
+            transform: `translateY(-50%) scale(${hoverNext ? 1.1 : 1})`,
+          }}
+          onMouseEnter={() => setHoverNext(true)}
+          onMouseLeave={() => setHoverNext(false)}
+          aria-label="Next"
+        >
+          <FiChevronRight size={18} />
+        </button>
+
+        <div className="sm:hidden">
+          <Swiper
+            modules={[Navigation, Autoplay]}
+            spaceBetween={12}
+            slidesPerView={Math.min(2.05, totalProducts)}
+            navigation={{
+              prevEl: prevRef.current,
+              nextEl: nextRef.current,
+            }}
+            onBeforeInit={(swiper) => {
+              swiper.params.navigation.prevEl = prevRef.current;
+              swiper.params.navigation.nextEl = nextRef.current;
+            }}
+            autoplay={{ delay: 4000, disableOnInteraction: false }}
+            breakpoints={responsiveSlides}
+            className="px-0.5"
+          >
+            {products.map((product) => (
+              <SwiperSlide key={product._id} className="h-auto!">
+                <div className="h-full">
+                  <ProductItem
+                    id={product._id}
+                    name={product.name}
+                    brand={product.brand || "Buy One Gram"}
+                    price={product.price}
+                    originalPrice={product.originalPrice}
+                    discount={product.discount}
+                    rating={product.rating}
+                    image={product.thumbnail || product.images?.[0]}
+                    product={product}
+                  />
+                </div>
+              </SwiperSlide>
+            ))}
+          </Swiper>
+        </div>
+
+        <div
+          className={`hidden sm:grid gap-3 sm:gap-4 ${
+            totalProducts === 1
+              ? "grid-cols-1"
+              : totalProducts === 2
+                ? "grid-cols-2"
+                : "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4"
+          }`}
         >
           {products.map((product) => (
             <div key={product._id} className="h-full">
@@ -263,9 +357,6 @@ const ProductSlider = ({
     );
   }
 
-  const navBtnBase =
-    "absolute top-1/2 -translate-y-1/2 z-10 w-9 h-9 md:w-11 md:h-11 rounded-full flex items-center justify-center transition-all duration-300 cursor-pointer";
-
   return (
     <div className="productSlider py-5 relative">
       {title && (
@@ -280,7 +371,7 @@ const ProductSlider = ({
       {/* Custom Navigation Arrows — always visible, flavor-colored on hover */}
       <button
         ref={prevRef}
-        className={navBtnBase + " left-0 md:-left-4"}
+        className={navBtnBase + " left-1 sm:left-0 md:-left-4"}
         style={{
           backgroundColor: hoverPrev ? flavor.color : "white",
           color: hoverPrev ? "white" : flavor.color,
@@ -300,7 +391,7 @@ const ProductSlider = ({
       </button>
       <button
         ref={nextRef}
-        className={navBtnBase + " right-0 md:-right-4"}
+        className={navBtnBase + " right-1 sm:right-0 md:-right-4"}
         style={{
           backgroundColor: hoverNext ? flavor.color : "white",
           color: hoverNext ? "white" : flavor.color,
@@ -321,8 +412,8 @@ const ProductSlider = ({
 
       <Swiper
         modules={[Navigation, Autoplay]}
-        spaceBetween={16}
-        slidesPerView={clampSlides(2, totalProducts)}
+        spaceBetween={12}
+        slidesPerView={Math.min(2.05, totalProducts)}
         navigation={{
           prevEl: prevRef.current,
           nextEl: nextRef.current,
@@ -334,7 +425,7 @@ const ProductSlider = ({
         onSwiper={() => setSwiperReady(true)}
         autoplay={{ delay: 4000, disableOnInteraction: false }}
         breakpoints={responsiveSlides}
-        className="px-1!"
+        className="px-0.5 sm:px-1!"
       >
         {products.map((product) => (
           <SwiperSlide key={product._id} className="h-auto!">

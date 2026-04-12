@@ -1,6 +1,7 @@
 "use client";
 import OtpBox from "@/components/OtpBox";
 import { postData } from "@/utils/api";
+import { withAdminBasePath } from "@/utils/basePath";
 import { Button, CircularProgress } from "@mui/material";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -65,7 +66,9 @@ const VerifyContent = () => {
       {/* Background */}
       <div
         className="absolute inset-0 bg-repeat bg-center"
-        style={{ backgroundImage: "url('/pattern.png')" }}
+        style={{
+          backgroundImage: `url('${withAdminBasePath("/pattern.png")}')`,
+        }}
       />
 
       {/* Soft overlay */}

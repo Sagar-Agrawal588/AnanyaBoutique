@@ -103,6 +103,20 @@ const toValidIsoTimestamp = (value) => {
   return candidate.toISOString();
 };
 
+const isPlaceholderIpAddress = (value) => {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase();
+
+  return (
+    !normalized ||
+    normalized === "0.0.0.0" ||
+    normalized === "::" ||
+    normalized === "unknown" ||
+    normalized === "[redacted]"
+  );
+};
+
 const extractIpAddress = (req) => {
   const forwarded = String(req.headers["x-forwarded-for"] || "")
     .split(",")
@@ -418,7 +432,11 @@ export const buildTrackingEvent = ({
       ) || "unknown",
     ipAddress:
       toSmallString(
-        maskIpAddress(parsedEvent.ipAddress || extractIpAddress(req)),
+        maskIpAddress(
+          isPlaceholderIpAddress(parsedEvent.ipAddress)
+            ? extractIpAddress(req)
+            : parsedEvent.ipAddress,
+        ),
         UNKNOWN_VALUE,
       ) || UNKNOWN_VALUE,
     userAgent,

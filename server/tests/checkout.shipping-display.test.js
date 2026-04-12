@@ -79,7 +79,7 @@ test("display shipping metrics stay zero with default/fallback config as well", 
   assert.equal(metrics.maxIndiaDisplayCharge, 0);
 });
 
-test("UI summary renders strike-through shipping and free label on checkout/cart/drawer", async () => {
+test("UI summary renders shipping UI for checkout/cart/drawer without using strike-through values in payment payloads", async () => {
   const [checkoutSource, cartSource, drawerSource] = await Promise.all([
     fs.readFile(checkoutPagePath, "utf8"),
     fs.readFile(cartPagePath, "utf8"),
@@ -95,12 +95,13 @@ test("UI summary renders strike-through shipping and free label on checkout/cart
 
   // Checkout + cart + drawer should all show display shipping struck-through
   // with a free-shipping label.
-  assertFreeShippingLabel(checkoutSource);
   assertFreeShippingLabel(cartSource);
   assertFreeShippingLabel(drawerSource);
 
-  // Checkout specifically uses FREE label in current UI.
+  // Checkout keeps the free-shipping display branch but can also show
+  // a real server-calculated shipping amount.
   assert.match(checkoutSource, /displayShippingCharge > 0/);
-  assert.match(checkoutSource, /line-through/);
+  assert.match(checkoutSource, /shipping > 0 \?/);
+  assert.match(checkoutSource, /shipping\.toFixed\(2\)/);
   assert.match(checkoutSource, />FREE</);
 });

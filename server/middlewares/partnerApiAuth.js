@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
+import { getRedisClient, isRedisConfigured } from "../config/redisClient.js";
 import Partner from "../models/partner.model.js";
 import PartnerApiKey from "../models/partnerApiKey.model.js";
-import { getRedisClient, isRedisConfigured } from "../config/redisClient.js";
 import {
   getPartnerDynamicLimitSnapshot,
   getPartnerDynamicRedisKeys,
@@ -14,10 +14,26 @@ const PARTNER_RATE_LIMIT_MAX_MAX = 5000;
 const PARTNER_DAILY_LIMIT_DEFAULT_MAX = 20000;
 const PARTNER_DAILY_LIMIT_MIN_MAX = 100;
 const PARTNER_DAILY_LIMIT_MAX_MAX = 5000000;
+const PARTNER_AUTH_CACHE_TTL_MS = Math.max(
+  Number.parseInt(
+    String(process.env.PARTNER_AUTH_CACHE_TTL_MS ?? "5000"),
+    10,
+  ) || 5000,
+  0,
+);
+const PARTNER_LAST_USED_WRITE_INTERVAL_MS = Math.max(
+  Number.parseInt(
+    String(process.env.PARTNER_LAST_USED_WRITE_INTERVAL_MS ?? "60000"),
+    10,
+  ) || 60000,
+  1000,
+);
 
 const partnerRateLimitStore = new Map();
 const partnerDailyLimitStore = new Map();
 const partnerUsageStore = new Map();
+const partnerAuthStore = new Map();
+const partnerLastUsedWriteStore = new Map();
 const PARTNER_BUCKET_MIN_DELAY_MS = 10;
 
 const PARTNER_TOKEN_BUCKET_LUA = `
@@ -92,7 +108,8 @@ const toClampedDailyLimit = (value) => {
   );
 };
 
-const getPartnerRedisKeys = (keyPrefix) => getPartnerDynamicRedisKeys(keyPrefix);
+const getPartnerRedisKeys = (keyPrefix) =>
+  getPartnerDynamicRedisKeys(keyPrefix);
 
 const secondsUntilNextUtcDay = () => {
   const now = new Date();
@@ -146,7 +163,9 @@ const evaluateTokenBucketMemory = ({
     };
   }
 
-  const waitMs = Math.ceil(((1 - bucket.tokens) / Math.max(refillPerSecond, 0.001)) * 1000);
+  const waitMs = Math.ceil(
+    ((1 - bucket.tokens) / Math.max(refillPerSecond, 0.001)) * 1000,
+  );
   return {
     allowed: false,
     tokensRemaining: Math.max(bucket.tokens, 0),
@@ -161,7 +180,10 @@ const evaluateTokenBucketRedis = async ({
   refillPerSecond,
   capacity,
 }) => {
-  const ttlSeconds = Math.max(60, Math.ceil((capacity / Math.max(refillPerSecond, 0.001)) * 2));
+  const ttlSeconds = Math.max(
+    60,
+    Math.ceil((capacity / Math.max(refillPerSecond, 0.001)) * 2),
+  );
 
   const [allowedRaw, tokensRaw, waitMsRaw] = await redis.eval(
     PARTNER_TOKEN_BUCKET_LUA,
@@ -184,7 +206,10 @@ const evaluateTokenBucketRedis = async ({
 const sweepPartnerRateLimitStore = () => {
   const now = Date.now();
   for (const [key, entry] of partnerRateLimitStore.entries()) {
-    if (!entry || now - Number(entry.lastRefillAt || 0) > 10 * PARTNER_RATE_LIMIT_WINDOW_MS) {
+    if (
+      !entry ||
+      now - Number(entry.lastRefillAt || 0) > 10 * PARTNER_RATE_LIMIT_WINDOW_MS
+    ) {
       partnerRateLimitStore.delete(key);
     }
   }
@@ -199,8 +224,40 @@ const sweepPartnerDailyLimitStore = () => {
   }
 };
 
+const sweepPartnerAuthStore = () => {
+  if (PARTNER_AUTH_CACHE_TTL_MS <= 0) {
+    partnerAuthStore.clear();
+    return;
+  }
+
+  const now = Date.now();
+  for (const [key, entry] of partnerAuthStore.entries()) {
+    if (
+      !entry ||
+      now - Number(entry.cachedAt || 0) > PARTNER_AUTH_CACHE_TTL_MS
+    ) {
+      partnerAuthStore.delete(key);
+    }
+  }
+};
+
+const sweepPartnerLastUsedWriteStore = () => {
+  const now = Date.now();
+  const sweepAfterMs = Math.max(
+    PARTNER_LAST_USED_WRITE_INTERVAL_MS * 5,
+    5 * 60 * 1000,
+  );
+  for (const [key, lastWriteAt] of partnerLastUsedWriteStore.entries()) {
+    if (!lastWriteAt || now - Number(lastWriteAt) > sweepAfterMs) {
+      partnerLastUsedWriteStore.delete(key);
+    }
+  }
+};
+
 setInterval(sweepPartnerRateLimitStore, 5 * 60 * 1000).unref?.();
 setInterval(sweepPartnerDailyLimitStore, 60 * 60 * 1000).unref?.();
+setInterval(sweepPartnerAuthStore, 60 * 1000).unref?.();
+setInterval(sweepPartnerLastUsedWriteStore, 5 * 60 * 1000).unref?.();
 
 export const getPartnerRateLimitSnapshot = async ({
   partnerId,
@@ -219,9 +276,11 @@ export const getPartnerRateLimitSnapshot = async ({
         partner,
         keyPrefix: safeKeyPrefix,
       });
-      effectiveLimit = Math.max(Number(dynamicSnapshot?.effectiveRPM || limit), 1);
-    } catch {
-    }
+      effectiveLimit = Math.max(
+        Number(dynamicSnapshot?.effectiveRPM || limit),
+        1,
+      );
+    } catch {}
   }
 
   if (!safePartnerId || !safeKeyPrefix) {
@@ -253,7 +312,10 @@ export const getPartnerRateLimitSnapshot = async ({
         isLimited: remaining <= 0,
       };
     } catch (error) {
-      console.warn("Redis snapshot read failed for partner RPM; falling back to memory.", error?.message || error);
+      console.warn(
+        "Redis snapshot read failed for partner RPM; falling back to memory.",
+        error?.message || error,
+      );
     }
   }
 
@@ -276,7 +338,7 @@ export const getPartnerRateLimitSnapshot = async ({
   const tokens = Math.max(Number(bucket.tokens || 0), 0);
   const refillPerSecond = Math.max(effectiveLimit / 60, 0.001);
   const used = Math.max(effectiveLimit - Math.floor(tokens), 0);
-  const resetInSeconds = Math.max(1, Math.ceil((1 / refillPerSecond)));
+  const resetInSeconds = Math.max(1, Math.ceil(1 / refillPerSecond));
   const remaining = Math.max(Math.floor(tokens), 0);
 
   return {
@@ -305,9 +367,11 @@ export const getPartnerDailyLimitSnapshot = async ({
         partner,
         keyPrefix: safeKeyPrefix,
       });
-      effectiveDailyLimit = Math.max(Number(dynamicSnapshot?.dailyLimit || limit), 1);
-    } catch {
-    }
+      effectiveDailyLimit = Math.max(
+        Number(dynamicSnapshot?.dailyLimit || limit),
+        1,
+      );
+    } catch {}
   }
 
   if (!safePartnerId || !safeKeyPrefix) {
@@ -324,9 +388,7 @@ export const getPartnerDailyLimitSnapshot = async ({
   if (redis) {
     try {
       const keys = getPartnerRedisKeys(safeKeyPrefix);
-      const [usedRaw] = await Promise.all([
-        redis.get(keys.daily),
-      ]);
+      const [usedRaw] = await Promise.all([redis.get(keys.daily)]);
       const used = Math.max(Number(usedRaw || 0), 0);
       const remaining = Math.max(effectiveDailyLimit - used, 0);
       return {
@@ -337,7 +399,10 @@ export const getPartnerDailyLimitSnapshot = async ({
         isLimited: remaining <= 0,
       };
     } catch (error) {
-      console.warn("Redis snapshot read failed for partner daily limit; falling back to memory.", error?.message || error);
+      console.warn(
+        "Redis snapshot read failed for partner daily limit; falling back to memory.",
+        error?.message || error,
+      );
     }
   }
 
@@ -367,7 +432,10 @@ export const getPartnerDailyLimitSnapshot = async ({
 };
 
 const hashApiKey = (value) =>
-  crypto.createHash("sha256").update(String(value || "")).digest("hex");
+  crypto
+    .createHash("sha256")
+    .update(String(value || ""))
+    .digest("hex");
 
 const extractApiKey = (req) => {
   const authHeader = String(req.headers?.authorization || "").trim();
@@ -381,10 +449,182 @@ const extractApiKey = (req) => {
   return "";
 };
 
+const cloneKeyRecordForRequest = (keyRecord) => {
+  if (!keyRecord) return null;
+  return {
+    ...keyRecord,
+  };
+};
+
+const clonePartnerForRequest = (partner) => {
+  if (!partner) return null;
+  return {
+    ...partner,
+    scopes: Array.isArray(partner.scopes) ? [...partner.scopes] : [],
+    allowedOrigins: Array.isArray(partner.allowedOrigins)
+      ? [...partner.allowedOrigins]
+      : [],
+    visibleProductFields: Array.isArray(partner.visibleProductFields)
+      ? [...partner.visibleProductFields]
+      : [],
+    rateLimitPlan: partner.rateLimitPlan
+      ? { ...partner.rateLimitPlan }
+      : undefined,
+    dynamicControls: partner.dynamicControls
+      ? { ...partner.dynamicControls }
+      : undefined,
+  };
+};
+
+const getKeyStatusError = (keyRecord) => {
+  if (!keyRecord) {
+    return {
+      httpStatus: 401,
+      code: "UNAUTHORIZED",
+      message: "Invalid API Key",
+    };
+  }
+
+  if (keyRecord.status === "paused") {
+    return {
+      httpStatus: 403,
+      code: "KEY_PAUSED",
+      message: "API key is paused",
+    };
+  }
+
+  if (keyRecord.status === "revoked") {
+    return {
+      httpStatus: 403,
+      code: "KEY_REVOKED",
+      message: "API key has been revoked",
+    };
+  }
+
+  if (keyRecord.status !== "active") {
+    return {
+      httpStatus: 401,
+      code: "UNAUTHORIZED",
+      message: "Invalid API Key",
+    };
+  }
+
+  if (keyRecord.expiresAt && new Date(keyRecord.expiresAt) < new Date()) {
+    return {
+      httpStatus: 401,
+      code: "KEY_EXPIRED",
+      message: "API key expired",
+    };
+  }
+
+  return null;
+};
+
+const getPartnerStatusError = (partner) => {
+  if (!partner) {
+    return {
+      httpStatus: 403,
+      code: "PARTNER_INACTIVE",
+      message: "Partner access not available",
+    };
+  }
+
+  if (partner.status === "paused") {
+    return {
+      httpStatus: 403,
+      code: "PARTNER_PAUSED",
+      message: "Partner access is paused",
+    };
+  }
+
+  if (partner.status === "revoked") {
+    return {
+      httpStatus: 403,
+      code: "PARTNER_REVOKED",
+      message: "Partner access has been revoked",
+    };
+  }
+
+  if (partner.status !== "active") {
+    return {
+      httpStatus: 403,
+      code: "PARTNER_INACTIVE",
+      message: "Partner access not available",
+    };
+  }
+
+  return null;
+};
+
+const getCachedPartnerAuth = ({ keyPrefix, incomingHash }) => {
+  if (PARTNER_AUTH_CACHE_TTL_MS <= 0 || !keyPrefix || !incomingHash)
+    return null;
+
+  const cached = partnerAuthStore.get(keyPrefix);
+  if (!cached) return null;
+
+  const isExpired =
+    Date.now() - Number(cached.cachedAt || 0) > PARTNER_AUTH_CACHE_TTL_MS;
+  if (isExpired || cached.keyHash !== incomingHash) {
+    partnerAuthStore.delete(keyPrefix);
+    return null;
+  }
+
+  return {
+    keyRecord: cloneKeyRecordForRequest(cached.keyRecord),
+    partner: clonePartnerForRequest(cached.partner),
+  };
+};
+
+const setCachedPartnerAuth = ({
+  keyPrefix,
+  incomingHash,
+  keyRecord,
+  partner,
+}) => {
+  if (
+    PARTNER_AUTH_CACHE_TTL_MS <= 0 ||
+    !keyPrefix ||
+    !incomingHash ||
+    !keyRecord ||
+    !partner
+  ) {
+    return;
+  }
+
+  partnerAuthStore.set(keyPrefix, {
+    cachedAt: Date.now(),
+    keyHash: incomingHash,
+    keyRecord: cloneKeyRecordForRequest(keyRecord),
+    partner: clonePartnerForRequest(partner),
+  });
+};
+
+const shouldPersistLastUsed = ({ partnerId, keyPrefix }) => {
+  const safePartnerId = String(partnerId || "").trim();
+  const safeKeyPrefix = String(keyPrefix || "").trim();
+  if (!safePartnerId || !safeKeyPrefix) return false;
+
+  const trackerKey = `${safePartnerId}:${safeKeyPrefix}`;
+  const now = Date.now();
+  const lastWriteAt = Number(partnerLastUsedWriteStore.get(trackerKey) || 0);
+  if (
+    lastWriteAt > 0 &&
+    now - lastWriteAt < PARTNER_LAST_USED_WRITE_INTERVAL_MS
+  ) {
+    return false;
+  }
+
+  partnerLastUsedWriteStore.set(trackerKey, now);
+  return true;
+};
+
 const hasScope = (partner, requiredScope) => {
   const scopes = Array.isArray(partner?.scopes) ? partner.scopes : [];
   if (scopes.includes("*")) return true;
-  const required = PARTNER_SCOPE_ALIASES[String(requiredScope || "")] || [requiredScope];
+  const required = PARTNER_SCOPE_ALIASES[String(requiredScope || "")] || [
+    requiredScope,
+  ];
   return required.some((scope) => scopes.includes(scope));
 };
 
@@ -436,153 +676,114 @@ export const partnerApiAuth = async (req, res, next) => {
       });
     }
 
-    const keyRecord = await PartnerApiKey.findOne({
-      keyPrefix,
-    }).lean();
+    const incomingHash = hashApiKey(apiKey);
+    const cachedAuth = getCachedPartnerAuth({ keyPrefix, incomingHash });
+
+    let keyRecord = cachedAuth?.keyRecord || null;
+    let partner = cachedAuth?.partner || null;
 
     if (!keyRecord) {
-      res.locals.partnerErrorCode = "UNAUTHORIZED";
-      return res.status(401).json({
-        success: false,
-        error: {
-          code: "UNAUTHORIZED",
-          message: "Invalid API Key",
-          details: null,
-        },
-      });
-    }
+      keyRecord = await PartnerApiKey.findOne({
+        keyPrefix,
+      }).lean();
 
-    if (keyRecord.status === "paused") {
-      res.locals.partnerErrorCode = "KEY_PAUSED";
-      return res.status(403).json({
-        success: false,
-        error: {
-          code: "KEY_PAUSED",
-          message: "API key is paused",
-          details: null,
-        },
-      });
-    }
+      const keyStatusError = getKeyStatusError(keyRecord);
+      if (keyStatusError) {
+        res.locals.partnerErrorCode = keyStatusError.code;
+        return res.status(keyStatusError.httpStatus).json({
+          success: false,
+          error: {
+            code: keyStatusError.code,
+            message: keyStatusError.message,
+            details: null,
+          },
+        });
+      }
 
-    if (keyRecord.status === "revoked") {
-      res.locals.partnerErrorCode = "KEY_REVOKED";
-      return res.status(403).json({
-        success: false,
-        error: {
-          code: "KEY_REVOKED",
-          message: "API key has been revoked",
-          details: null,
-        },
-      });
-    }
+      if (incomingHash !== keyRecord.keyHash) {
+        res.locals.partnerErrorCode = "UNAUTHORIZED";
+        return res.status(401).json({
+          success: false,
+          error: {
+            code: "UNAUTHORIZED",
+            message: "Invalid API Key",
+            details: null,
+          },
+        });
+      }
 
-    if (keyRecord.status !== "active") {
-      res.locals.partnerErrorCode = "UNAUTHORIZED";
-      return res.status(401).json({
-        success: false,
-        error: {
-          code: "UNAUTHORIZED",
-          message: "Invalid API Key",
-          details: null,
-        },
-      });
-    }
+      partner = await Partner.findById(keyRecord.partnerId).lean();
+      const partnerStatusError = getPartnerStatusError(partner);
+      if (partnerStatusError) {
+        res.locals.partnerErrorCode = partnerStatusError.code;
+        return res.status(partnerStatusError.httpStatus).json({
+          success: false,
+          error: {
+            code: partnerStatusError.code,
+            message: partnerStatusError.message,
+            details: null,
+          },
+        });
+      }
 
-    if (keyRecord.expiresAt && new Date(keyRecord.expiresAt) < new Date()) {
-      res.locals.partnerErrorCode = "KEY_EXPIRED";
-      return res.status(401).json({
-        success: false,
-        error: {
-          code: "KEY_EXPIRED",
-          message: "API key expired",
-          details: null,
-        },
+      setCachedPartnerAuth({
+        keyPrefix,
+        incomingHash,
+        keyRecord,
+        partner,
       });
-    }
+    } else {
+      const keyStatusError = getKeyStatusError(keyRecord);
+      if (keyStatusError) {
+        res.locals.partnerErrorCode = keyStatusError.code;
+        return res.status(keyStatusError.httpStatus).json({
+          success: false,
+          error: {
+            code: keyStatusError.code,
+            message: keyStatusError.message,
+            details: null,
+          },
+        });
+      }
 
-    const incomingHash = hashApiKey(apiKey);
-    if (incomingHash !== keyRecord.keyHash) {
-      res.locals.partnerErrorCode = "UNAUTHORIZED";
-      return res.status(401).json({
-        success: false,
-        error: {
-          code: "UNAUTHORIZED",
-          message: "Invalid API Key",
-          details: null,
-        },
-      });
-    }
-
-    const partner = await Partner.findById(keyRecord.partnerId).lean();
-    if (!partner) {
-      res.locals.partnerErrorCode = "PARTNER_INACTIVE";
-      return res.status(403).json({
-        success: false,
-        error: {
-          code: "PARTNER_INACTIVE",
-          message: "Partner access not available",
-          details: null,
-        },
-      });
-    }
-
-    if (partner.status === "paused") {
-      res.locals.partnerErrorCode = "PARTNER_PAUSED";
-      return res.status(403).json({
-        success: false,
-        error: {
-          code: "PARTNER_PAUSED",
-          message: "Partner access is paused",
-          details: null,
-        },
-      });
-    }
-
-    if (partner.status === "revoked") {
-      res.locals.partnerErrorCode = "PARTNER_REVOKED";
-      return res.status(403).json({
-        success: false,
-        error: {
-          code: "PARTNER_REVOKED",
-          message: "Partner access has been revoked",
-          details: null,
-        },
-      });
-    }
-
-    if (partner.status !== "active") {
-      res.locals.partnerErrorCode = "PARTNER_INACTIVE";
-      return res.status(403).json({
-        success: false,
-        error: {
-          code: "PARTNER_INACTIVE",
-          message: "Partner access not available",
-          details: null,
-        },
-      });
+      const partnerStatusError = getPartnerStatusError(partner);
+      if (partnerStatusError) {
+        res.locals.partnerErrorCode = partnerStatusError.code;
+        return res.status(partnerStatusError.httpStatus).json({
+          success: false,
+          error: {
+            code: partnerStatusError.code,
+            message: partnerStatusError.message,
+            details: null,
+          },
+        });
+      }
     }
 
     req.partner = partner;
     req.partnerKey = keyRecord;
 
-    PartnerApiKey.updateOne(
-      { _id: keyRecord._id },
-      {
-        $set: {
-          lastUsedAt: new Date(),
-          lastUsedIp: String(req.ip || req.socket?.remoteAddress || ""),
+    if (shouldPersistLastUsed({ partnerId: partner?._id, keyPrefix })) {
+      const now = new Date();
+      PartnerApiKey.updateOne(
+        { _id: keyRecord._id },
+        {
+          $set: {
+            lastUsedAt: now,
+            lastUsedIp: String(req.ip || req.socket?.remoteAddress || ""),
+          },
         },
-      },
-    ).catch(() => null);
+      ).catch(() => null);
 
-    Partner.updateOne(
-      { _id: partner._id },
-      {
-        $set: {
-          lastUsedAt: new Date(),
+      Partner.updateOne(
+        { _id: partner._id },
+        {
+          $set: {
+            lastUsedAt: now,
+          },
         },
-      },
-    ).catch(() => null);
+      ).catch(() => null);
+    }
 
     return next();
   } catch (error) {
@@ -614,7 +815,10 @@ export const partnerRuntimeLimiter = async (req, res, next) => {
     });
 
     const limit = Math.max(Number(dynamicSnapshot?.effectiveRPM || 0), 1);
-    const burstLimit = Math.max(Number(dynamicSnapshot?.burstRPM || limit), limit);
+    const burstLimit = Math.max(
+      Number(dynamicSnapshot?.burstRPM || limit),
+      limit,
+    );
     const dailyLimit = Math.max(Number(dynamicSnapshot?.dailyLimit || 0), 1);
     const refillPerSecond = Math.max(limit / 60, 0.001);
 
@@ -638,9 +842,13 @@ export const partnerRuntimeLimiter = async (req, res, next) => {
         });
 
         if (!tokenResult.allowed) {
-          const retryAfterSeconds = Math.max(1, Math.ceil(tokenResult.waitMs / 1000));
-          const shouldDelay = tokenResult.waitMs >= PARTNER_BUCKET_MIN_DELAY_MS
-            && tokenResult.waitMs <= 350;
+          const retryAfterSeconds = Math.max(
+            1,
+            Math.ceil(tokenResult.waitMs / 1000),
+          );
+          const shouldDelay =
+            tokenResult.waitMs >= PARTNER_BUCKET_MIN_DELAY_MS &&
+            tokenResult.waitMs <= 350;
 
           if (shouldDelay) {
             await sleep(tokenResult.waitMs);
@@ -661,13 +869,26 @@ export const partnerRuntimeLimiter = async (req, res, next) => {
               ]);
 
               res.setHeader("Retry-After", String(retryAfterSeconds));
-              res.setHeader("X-RateLimit-Remaining", String(Math.floor(secondTry.tokensRemaining)));
-              res.setHeader("RateLimit-Remaining", String(Math.floor(secondTry.tokensRemaining)));
+              res.setHeader("X-RateLimit-Limit", String(limit));
+              res.setHeader("RateLimit-Limit", `${limit};w=60`);
+              res.setHeader("X-RateLimit-Reset", String(retryAfterSeconds));
+              res.setHeader("RateLimit-Reset", String(retryAfterSeconds));
+              res.setHeader(
+                "X-RateLimit-Remaining",
+                String(Math.floor(secondTry.tokensRemaining)),
+              );
+              res.setHeader(
+                "RateLimit-Remaining",
+                String(Math.floor(secondTry.tokensRemaining)),
+              );
               res.setHeader("X-DailyLimit-Limit", String(dailyLimit));
               res.setHeader("X-DailyLimit-Remaining", String(dailyLimit));
               res.setHeader("X-RateLimit-Mode", "dynamic-token-bucket");
               res.setHeader("X-RateLimit-Burst", String(burstLimit));
-              res.setHeader("X-RateLimit-Policy", String(dynamicSnapshot?.state?.policy || "auto"));
+              res.setHeader(
+                "X-RateLimit-Policy",
+                String(dynamicSnapshot?.state?.policy || "auto"),
+              );
 
               res.locals.partnerErrorCode = "RATE_LIMIT_EXCEEDED";
               return res.status(429).json({
@@ -699,13 +920,26 @@ export const partnerRuntimeLimiter = async (req, res, next) => {
             ]);
 
             res.setHeader("Retry-After", String(retryAfterSeconds));
-            res.setHeader("X-RateLimit-Remaining", String(Math.floor(tokenResult.tokensRemaining)));
-            res.setHeader("RateLimit-Remaining", String(Math.floor(tokenResult.tokensRemaining)));
+            res.setHeader("X-RateLimit-Limit", String(limit));
+            res.setHeader("RateLimit-Limit", `${limit};w=60`);
+            res.setHeader("X-RateLimit-Reset", String(retryAfterSeconds));
+            res.setHeader("RateLimit-Reset", String(retryAfterSeconds));
+            res.setHeader(
+              "X-RateLimit-Remaining",
+              String(Math.floor(tokenResult.tokensRemaining)),
+            );
+            res.setHeader(
+              "RateLimit-Remaining",
+              String(Math.floor(tokenResult.tokensRemaining)),
+            );
             res.setHeader("X-DailyLimit-Limit", String(dailyLimit));
             res.setHeader("X-DailyLimit-Remaining", String(dailyLimit));
             res.setHeader("X-RateLimit-Mode", "dynamic-token-bucket");
             res.setHeader("X-RateLimit-Burst", String(burstLimit));
-            res.setHeader("X-RateLimit-Policy", String(dynamicSnapshot?.state?.policy || "auto"));
+            res.setHeader(
+              "X-RateLimit-Policy",
+              String(dynamicSnapshot?.state?.policy || "auto"),
+            );
 
             res.locals.partnerErrorCode = "RATE_LIMIT_EXCEEDED";
             return res.status(429).json({
@@ -728,7 +962,12 @@ export const partnerRuntimeLimiter = async (req, res, next) => {
           }
         }
 
-        const [[, rpmCountRaw], [, rpmTtlRaw], [, dailyCountRaw], [, dailyTtlRaw]] = await redis
+        const [
+          [, rpmCountRaw],
+          [, rpmTtlRaw],
+          [, dailyCountRaw],
+          [, dailyTtlRaw],
+        ] = await redis
           .multi()
           .incr(keys.rpm)
           .ttl(keys.rpm)
@@ -751,13 +990,18 @@ export const partnerRuntimeLimiter = async (req, res, next) => {
 
         pending.push(redis.hincrby(keys.usageDaily, "total", 1));
         pending.push(redis.expire(keys.usageDaily, dailyExpirySeconds));
-        pending.push(redis.hset(keys.meta, {
-          lastRequestAt: new Date().toISOString(),
-          lastEndpoint: String(req.originalUrl || req.url || "").slice(0, 240),
-          dynamicRPM: String(limit),
-          burstRPM: String(burstLimit),
-          policy: String(dynamicSnapshot?.state?.policy || "auto"),
-        }));
+        pending.push(
+          redis.hset(keys.meta, {
+            lastRequestAt: new Date().toISOString(),
+            lastEndpoint: String(req.originalUrl || req.url || "").slice(
+              0,
+              240,
+            ),
+            dynamicRPM: String(limit),
+            burstRPM: String(burstLimit),
+            policy: String(dynamicSnapshot?.state?.policy || "auto"),
+          }),
+        );
 
         await Promise.all(pending);
 
@@ -769,7 +1013,9 @@ export const partnerRuntimeLimiter = async (req, res, next) => {
           "RateLimit-Reset": String(resetInSeconds),
           "X-RateLimit-Burst": String(burstLimit),
           "X-RateLimit-Mode": "dynamic-token-bucket",
-          "X-RateLimit-Policy": String(dynamicSnapshot?.state?.policy || "auto"),
+          "X-RateLimit-Policy": String(
+            dynamicSnapshot?.state?.policy || "auto",
+          ),
         };
 
         if (dailyCount > dailyLimit) {
@@ -780,8 +1026,14 @@ export const partnerRuntimeLimiter = async (req, res, next) => {
             redis.expire(keys.errors, dailyExpirySeconds),
           ]);
 
-          res.setHeader("X-RateLimit-Remaining", String(Math.floor(tokenResult.tokensRemaining)));
-          res.setHeader("RateLimit-Remaining", String(Math.floor(tokenResult.tokensRemaining)));
+          res.setHeader(
+            "X-RateLimit-Remaining",
+            String(Math.floor(tokenResult.tokensRemaining)),
+          );
+          res.setHeader(
+            "RateLimit-Remaining",
+            String(Math.floor(tokenResult.tokensRemaining)),
+          );
           res.setHeader("X-DailyLimit-Limit", String(dailyLimit));
           res.setHeader("X-DailyLimit-Remaining", "0");
           res.locals.partnerErrorCode = "DAILY_LIMIT_EXCEEDED";
@@ -803,7 +1055,10 @@ export const partnerRuntimeLimiter = async (req, res, next) => {
           });
         }
 
-        const tokenRemaining = Math.max(Math.floor(tokenResult.tokensRemaining), 0);
+        const tokenRemaining = Math.max(
+          Math.floor(tokenResult.tokensRemaining),
+          0,
+        );
         const dailyRemaining = Math.max(dailyLimit - dailyCount, 0);
 
         res.setHeader("X-RateLimit-Remaining", String(tokenRemaining));
@@ -847,8 +1102,7 @@ export const partnerRuntimeLimiter = async (req, res, next) => {
             } else {
               await redis.hincrby(keys.usageDaily, "success", 1);
             }
-          } catch {
-          }
+          } catch {}
         };
 
         res.on("finish", finalizeUsage);
@@ -856,8 +1110,16 @@ export const partnerRuntimeLimiter = async (req, res, next) => {
 
         return next();
       } catch (error) {
-        console.error("Redis limiter error, switching to safe in-memory fallback:", error?.message || error);
-        res.setHeader("X-RateLimit-Mode", isRedisConfigured() ? "fallback-memory-token-bucket" : "memory-token-bucket");
+        console.error(
+          "Redis limiter error, switching to safe in-memory fallback:",
+          error?.message || error,
+        );
+        res.setHeader(
+          "X-RateLimit-Mode",
+          isRedisConfigured()
+            ? "fallback-memory-token-bucket"
+            : "memory-token-bucket",
+        );
       }
     }
 
@@ -883,12 +1145,25 @@ export const partnerRuntimeLimiter = async (req, res, next) => {
         if (!retry.allowed) {
           const retryAfterSeconds = Math.max(1, Math.ceil(retry.waitMs / 1000));
           res.setHeader("Retry-After", String(retryAfterSeconds));
-          res.setHeader("X-RateLimit-Remaining", String(Math.floor(retry.tokensRemaining)));
-          res.setHeader("RateLimit-Remaining", String(Math.floor(retry.tokensRemaining)));
+          res.setHeader("X-RateLimit-Limit", String(limit));
+          res.setHeader("RateLimit-Limit", `${limit};w=60`);
+          res.setHeader("X-RateLimit-Reset", String(retryAfterSeconds));
+          res.setHeader("RateLimit-Reset", String(retryAfterSeconds));
+          res.setHeader(
+            "X-RateLimit-Remaining",
+            String(Math.floor(retry.tokensRemaining)),
+          );
+          res.setHeader(
+            "RateLimit-Remaining",
+            String(Math.floor(retry.tokensRemaining)),
+          );
           res.setHeader("X-DailyLimit-Limit", String(dailyLimit));
           res.setHeader("X-DailyLimit-Remaining", String(dailyLimit));
           res.setHeader("X-RateLimit-Burst", String(burstLimit));
-          res.setHeader("X-RateLimit-Policy", String(dynamicSnapshot?.state?.policy || "auto"));
+          res.setHeader(
+            "X-RateLimit-Policy",
+            String(dynamicSnapshot?.state?.policy || "auto"),
+          );
           res.locals.partnerErrorCode = "RATE_LIMIT_EXCEEDED";
 
           return res.status(429).json({
@@ -912,12 +1187,25 @@ export const partnerRuntimeLimiter = async (req, res, next) => {
       } else {
         const retryAfterSeconds = Math.max(1, Math.ceil(waitMs / 1000));
         res.setHeader("Retry-After", String(retryAfterSeconds));
-        res.setHeader("X-RateLimit-Remaining", String(Math.floor(bucket.tokensRemaining)));
-        res.setHeader("RateLimit-Remaining", String(Math.floor(bucket.tokensRemaining)));
+        res.setHeader("X-RateLimit-Limit", String(limit));
+        res.setHeader("RateLimit-Limit", `${limit};w=60`);
+        res.setHeader("X-RateLimit-Reset", String(retryAfterSeconds));
+        res.setHeader("RateLimit-Reset", String(retryAfterSeconds));
+        res.setHeader(
+          "X-RateLimit-Remaining",
+          String(Math.floor(bucket.tokensRemaining)),
+        );
+        res.setHeader(
+          "RateLimit-Remaining",
+          String(Math.floor(bucket.tokensRemaining)),
+        );
         res.setHeader("X-DailyLimit-Limit", String(dailyLimit));
         res.setHeader("X-DailyLimit-Remaining", String(dailyLimit));
         res.setHeader("X-RateLimit-Burst", String(burstLimit));
-        res.setHeader("X-RateLimit-Policy", String(dynamicSnapshot?.state?.policy || "auto"));
+        res.setHeader(
+          "X-RateLimit-Policy",
+          String(dynamicSnapshot?.state?.policy || "auto"),
+        );
         res.locals.partnerErrorCode = "RATE_LIMIT_EXCEEDED";
 
         return res.status(429).json({
@@ -986,7 +1274,11 @@ export const partnerRuntimeLimiter = async (req, res, next) => {
 
     dailyBucket.count += 1;
     const usageFallbackKey = `usage:${partnerId}:${keyPrefix}:${dailyBucketKey}`;
-    const usage = partnerUsageStore.get(usageFallbackKey) || { total: 0, success: 0, errors: 0 };
+    const usage = partnerUsageStore.get(usageFallbackKey) || {
+      total: 0,
+      success: 0,
+      errors: 0,
+    };
     usage.total += 1;
     partnerUsageStore.set(usageFallbackKey, usage);
 
@@ -999,7 +1291,10 @@ export const partnerRuntimeLimiter = async (req, res, next) => {
     res.on("finish", finalizeFallbackUsage);
     res.on("close", finalizeFallbackUsage);
 
-    const remaining = Math.max(Math.floor(Number(memoryBucket?.tokens || 0)), 0);
+    const remaining = Math.max(
+      Math.floor(Number(memoryBucket?.tokens || 0)),
+      0,
+    );
     const dailyRemaining = Math.max(dailyLimit - dailyBucket.count, 0);
     res.setHeader("X-RateLimit-Remaining", String(remaining));
     res.setHeader("RateLimit-Remaining", String(remaining));

@@ -1,3 +1,8 @@
+import {
+  resolveOrderAwb,
+  resolveOrderTrackingUrl,
+} from "./orderTracking.js";
+
 const round2 = (value) =>
   Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
 
@@ -8,6 +13,8 @@ const toSafeNumber = (value) => {
 
 const resolveOrderDisplayId = (order = {}) => {
   const explicitId =
+    order?.final_id ||
+    order?.temp_id ||
     order?.displayOrderId ||
     order?.orderNumber ||
     order?.order_id ||
@@ -19,14 +26,18 @@ const resolveOrderDisplayId = (order = {}) => {
 
   const mongoId = String(order?._id || "").trim();
   if (!mongoId) return "N/A";
-  return `BOG-${mongoId.slice(-8).toUpperCase()}`;
+  return mongoId.slice(-8).toUpperCase();
 };
 
 const toCanonicalShipmentStatus = (order = {}) => {
-  const explicit = String(order?.shipmentStatus || "").trim().toLowerCase();
+  const explicit = String(order?.shipmentStatus || "")
+    .trim()
+    .toLowerCase();
   if (explicit) return explicit;
 
-  const legacy = String(order?.shipment_status || "").trim().toLowerCase();
+  const legacy = String(order?.shipment_status || "")
+    .trim()
+    .toLowerCase();
   if (!legacy) return "pending";
 
   if (legacy === "booked") return "shipment_created";
@@ -59,7 +70,10 @@ export const calculateOrderTotal = (order = {}) => {
   const shipping = Math.max(round2(toSafeNumber(order?.shipping)), 0);
   const tax = Math.max(round2(toSafeNumber(order?.tax)), 0);
   const discount = Math.max(round2(toSafeNumber(order?.discount)), 0);
-  const couponDiscount = Math.max(round2(toSafeNumber(order?.discountAmount)), 0);
+  const couponDiscount = Math.max(
+    round2(toSafeNumber(order?.discountAmount)),
+    0,
+  );
   const membershipDiscount = Math.max(
     round2(toSafeNumber(order?.membershipDiscount)),
     0,
@@ -76,7 +90,10 @@ export const calculateOrderTotal = (order = {}) => {
 
   const subtotalStored = Math.max(round2(toSafeNumber(order?.subtotal)), 0);
   const totalAmtStored = Math.max(round2(toSafeNumber(order?.totalAmt)), 0);
-  const finalAmountStored = Math.max(round2(toSafeNumber(order?.finalAmount)), 0);
+  const finalAmountStored = Math.max(
+    round2(toSafeNumber(order?.finalAmount)),
+    0,
+  );
 
   // Prefer explicit final amount, then totalAmt; fallback to computed pieces.
   const total =
@@ -96,7 +113,10 @@ export const calculateOrderTotal = (order = {}) => {
     discount > 0
       ? discount
       : round2(
-          membershipDiscount + influencerDiscount + couponDiscount + comboDiscount,
+          membershipDiscount +
+            influencerDiscount +
+            couponDiscount +
+            comboDiscount,
         );
 
   return {
@@ -110,12 +130,18 @@ export const calculateOrderTotal = (order = {}) => {
     finalAmount: total,
     totalDiscount,
     couponDiscount,
+    comboDiscount,
     membershipDiscount,
     influencerDiscount,
     coinRedemptionAmount,
     couponCode: order?.couponCode || null,
     influencerCode: order?.influencerCode || null,
-    source: finalAmountStored > 0 ? "finalAmount" : totalAmtStored > 0 ? "totalAmt" : "derived",
+    source:
+      finalAmountStored > 0
+        ? "finalAmount"
+        : totalAmtStored > 0
+          ? "totalAmt"
+          : "derived",
   };
 };
 
@@ -124,14 +150,16 @@ export const normalizeOrderForResponse = (order) => {
   const base =
     typeof order.toObject === "function" ? order.toObject() : { ...order };
   const pricing = calculateOrderTotal(base);
-  const awbNumber = base.awbNumber || base.awb_number || null;
+  const awbNumber = resolveOrderAwb(base) || null;
   const shipmentStatus = toCanonicalShipmentStatus(base);
   const courierName =
     String(base.courierName || "").trim() ||
-    (String(base.shipping_provider || "").trim().toUpperCase() === "XPRESSBEES"
+    (String(base.shipping_provider || "")
+      .trim()
+      .toUpperCase() === "XPRESSBEES"
       ? "Xpressbees"
       : "");
-  const trackingUrl = base.trackingUrl || null;
+  const trackingUrl = resolveOrderTrackingUrl(base) || null;
   const manifestId = base.manifestId || base.shipping_manifest || null;
   const invoiceUrl = base.invoiceUrl || base.invoicePath || null;
   const isInvoiceGenerated = Boolean(base.isInvoiceGenerated || invoiceUrl);

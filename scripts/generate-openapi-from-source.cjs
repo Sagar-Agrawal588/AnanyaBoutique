@@ -420,6 +420,9 @@ const params = (ep, p) => {
 const sec = (ep) => {
   const lm = ep.mids.map((m) => m.toLowerCase());
   if (lm.includes("influencerauth")) return [{ influencerBearerAuth: [] }];
+  if (lm.includes("partnerapiauth")) {
+    return [{ partnerApiKey: [] }, { partnerApiBearerAuth: [] }];
+  }
   if (lm.includes("auth") || lm.includes("admin") || lm.includes("isadmin")) return [{ bearerAuth: [] }];
   return [];
 };
@@ -464,6 +467,18 @@ const spec = {
     securitySchemes: {
       bearerAuth: { type: "http", scheme: "bearer", bearerFormat: "JWT", description: "JWT bearer token for authenticated/admin endpoints." },
       influencerBearerAuth: { type: "http", scheme: "bearer", bearerFormat: "JWT", description: "Influencer portal JWT token." },
+      partnerApiKey: {
+        type: "apiKey",
+        in: "header",
+        name: "x-api-key",
+        description: "Partner API key for /api/v1/partner endpoints. Alternatively send the same token as Authorization: Bearer <key>.",
+      },
+      partnerApiBearerAuth: {
+        type: "http",
+        scheme: "bearer",
+        bearerFormat: "Partner API key",
+        description: "Partner API key sent as Authorization: Bearer <key> for /api/v1/partner endpoints.",
+      },
     },
     schemas: {
       ApiSuccessEnvelope: { type: "object", properties: { error: { type: "boolean", enum: [false] }, success: { type: "boolean", enum: [true] }, message: { type: "string" }, data: { type: "object", additionalProperties: true } }, required: ["error", "success"], additionalProperties: true },

@@ -15,18 +15,6 @@ const sanitizeBaseUrl = (value) =>
 
 const isHttpUrl = (value) => /^https?:\/\//i.test(String(value || ""));
 
-const isLocalhostUrl = (value) => {
-  try {
-    const parsed = new URL(String(value || ""));
-    return (
-      parsed.hostname.toLowerCase() === "localhost" ||
-      parsed.hostname === "127.0.0.1"
-    );
-  } catch {
-    return false;
-  }
-};
-
 const isNetworkLevelError = (error) => {
   if (error?.response) return false;
   const message = String(error?.message || "").toLowerCase();
@@ -59,7 +47,15 @@ const resolveAlternateLocalhostBaseUrl = (value) => {
 };
 
 const resolveApiBaseUrl = () => {
-  const envBaseUrl = sanitizeBaseUrl(process.env.NEXT_PUBLIC_API_URL);
+  const localDevBaseUrl = sanitizeBaseUrl(process.env.NEXT_PUBLIC_LOCAL_API_URL);
+  const envCandidates = [
+    localDevBaseUrl,
+    process.env.NEXT_PUBLIC_APP_API_URL,
+    process.env.NEXT_PUBLIC_API_URL,
+  ]
+    .map(sanitizeBaseUrl)
+    .filter(Boolean);
+  const envBaseUrl = envCandidates.find(isHttpUrl) || "";
 
   if (typeof window !== "undefined") {
     const hostname = String(window.location.hostname || "").toLowerCase();
@@ -67,7 +63,9 @@ const resolveApiBaseUrl = () => {
     const isLocalhost = hostname === "localhost" || hostname === "127.0.0.1";
 
     if (isLocalhost) {
-      if (isHttpUrl(envBaseUrl) && isLocalhostUrl(envBaseUrl)) {
+      // In local admin development there are no `/api` rewrites, so an
+      // explicitly configured backend URL must win over the localhost fallback.
+      if (envBaseUrl) {
         return envBaseUrl;
       }
       return LOCAL_API_FALLBACK;

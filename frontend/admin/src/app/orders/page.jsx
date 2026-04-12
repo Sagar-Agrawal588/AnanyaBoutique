@@ -10,6 +10,7 @@ import {
   postData,
   putData,
 } from "@/utils/api";
+import { withAdminBasePath } from "@/utils/basePath";
 import { Button } from "@mui/material";
 import MenuItem from "@mui/material/MenuItem";
 import Pagination from "@mui/material/Pagination";
@@ -36,7 +37,57 @@ const ORDER_TABLE_COLUMNS = [
   "96px",
 ];
 
-const extractOrdersPayload = (input) => {
+const toPositiveInt = (value, fallback) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  const normalized = Math.floor(parsed);
+  return normalized > 0 ? normalized : fallback;
+};
+
+const buildFallbackPagination = ({
+  source = {},
+  fallback = {},
+  orderCount = 0,
+} = {}) => {
+  const page = toPositiveInt(
+    source?.page ?? fallback?.page,
+    toPositiveInt(fallback?.page, 1),
+  );
+  const limit = toPositiveInt(
+    source?.limit ?? fallback?.limit,
+    toPositiveInt(fallback?.limit, Math.max(orderCount, 1)),
+  );
+  const total = toPositiveInt(
+    source?.total ?? source?.totalCount ?? source?.count ?? fallback?.total,
+    Math.max(orderCount, 0),
+  );
+  const computedTotalPages = Math.max(
+    1,
+    Math.ceil(total / Math.max(limit, 1)) || 1,
+  );
+  const totalPages = toPositiveInt(
+    source?.totalPages ?? source?.pages ?? fallback?.totalPages,
+    computedTotalPages,
+  );
+  const hasNextPage =
+    typeof source?.hasNextPage === "boolean"
+      ? source.hasNextPage
+      : page < totalPages;
+  const hasPrevPage =
+    typeof source?.hasPrevPage === "boolean" ? source.hasPrevPage : page > 1;
+
+  return {
+    total,
+    page,
+    limit,
+    totalPages,
+    hasNextPage,
+    hasPrevPage,
+  };
+};
+
+const extractOrdersPayload = (input, options = {}) => {
+  const fallbackPagination = options?.fallbackPagination || {};
   if (!input || typeof input !== "object") return null;
 
   const queue = [input];
@@ -48,10 +99,21 @@ const extractOrdersPayload = (input) => {
     if (visited.has(current)) continue;
     visited.add(current);
 
-    if (Array.isArray(current?.orders) && current?.pagination) {
+    if (Array.isArray(current?.orders)) {
+      const paginationSource =
+        current?.pagination && typeof current.pagination === "object"
+          ? {
+              ...current,
+              ...current.pagination,
+            }
+          : current;
       return {
         orders: current.orders,
-        pagination: current.pagination,
+        pagination: buildFallbackPagination({
+          source: paginationSource,
+          fallback: fallbackPagination,
+          orderCount: current.orders.length,
+        }),
       };
     }
 
@@ -85,7 +147,7 @@ const resolveAlternateLocalhostBase = () => {
   }
 };
 
-const fetchOrdersFromAltPort = async ({ url, token }) => {
+const fetchOrdersFromAltPort = async ({ url, token, fallbackPagination }) => {
   const altBase = resolveAlternateLocalhostBase();
   if (!altBase) return null;
 
@@ -103,10 +165,34 @@ const fetchOrdersFromAltPort = async ({ url, token }) => {
 
     if (!response.ok) return null;
     const payload = await response.json().catch(() => null);
-    return extractOrdersPayload(payload);
+    return extractOrdersPayload(payload, { fallbackPagination });
   } catch {
     // Alternate port probing is best-effort only.
     return null;
+  }
+};
+
+const buildXpressbeesTrackingUrl = (awb, candidateUrl = "") => {
+  const normalizedAwb = String(awb || "").trim();
+  if (!normalizedAwb) return "";
+
+  const fallbackUrl = `https://www.xpressbees.com/shipment/tracking?awbNo=${encodeURIComponent(normalizedAwb)}`;
+  const explicitUrl = String(candidateUrl || "").trim();
+  if (!explicitUrl) return fallbackUrl;
+
+  try {
+    const parsed = new URL(explicitUrl);
+    const host = String(parsed.hostname || "").toLowerCase();
+    if (!host.includes("xpressbees.com")) return explicitUrl;
+
+    parsed.pathname = "/shipment/tracking";
+    parsed.search = "";
+    parsed.searchParams.set("awbNo", normalizedAwb);
+    return parsed.toString();
+  } catch {
+    return explicitUrl.toLowerCase().includes("xpressbees.com")
+      ? fallbackUrl
+      : explicitUrl;
   }
 };
 
@@ -134,8 +220,7 @@ const resolveTrackingUrl = (order = {}) => {
   ).trim();
 
   if (!explicitUrl) {
-    if (!awb) return "";
-    return `https://www.xpressbees.com/shipment/tracking?awbNo=${encodeURIComponent(awb)}`;
+    return buildXpressbeesTrackingUrl(awb);
   }
 
   if (!awb) return explicitUrl;
@@ -145,12 +230,11 @@ const resolveTrackingUrl = (order = {}) => {
     const host = String(parsed.hostname || "").toLowerCase();
     const isXpressbees = host.includes("xpressbees.com");
     if (!isXpressbees) return explicitUrl;
-
-    parsed.searchParams.delete("awb");
-    parsed.searchParams.set("awbNo", awb);
-    return parsed.toString();
+    return buildXpressbeesTrackingUrl(awb, explicitUrl);
   } catch {
-    return explicitUrl;
+    return explicitUrl.toLowerCase().includes("xpressbees.com")
+      ? buildXpressbeesTrackingUrl(awb, explicitUrl)
+      : explicitUrl;
   }
 };
 
@@ -539,7 +623,9 @@ const OrderRow = ({ order, index, token, onStatusUpdate }) => {
                 >
                   <div className="img rounded-md overflow-hidden w-[80px] h-[80px] bg-gray-100">
                     <img
-                      src={product?.image || "/placeholder.png"}
+                      src={
+                        product?.image || withAdminBasePath("/placeholder.png")
+                      }
                       alt="product"
                       className="w-full h-full object-cover"
                     />
@@ -742,6 +828,7 @@ const Orders = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [repairingPaidOrders, setRepairingPaidOrders] = useState(false);
+  const [removingPendingOrders, setRemovingPendingOrders] = useState(false);
   const { intervalMs } = useLiveRefreshSetting();
   const refreshConfig = useMemo(
     () => ({
@@ -765,8 +852,12 @@ const Orders = () => {
           url += `&status=${statusFilter}`;
         }
 
+        const fallbackPagination = {
+          page,
+          limit: 20,
+        };
         const response = await getData(url, token);
-        let payload = extractOrdersPayload(response);
+        let payload = extractOrdersPayload(response, { fallbackPagination });
 
         const shouldProbeAltPort =
           (!payload ||
@@ -777,7 +868,11 @@ const Orders = () => {
           (!statusFilter || statusFilter === "all");
 
         if (shouldProbeAltPort) {
-          const altPayload = await fetchOrdersFromAltPort({ url, token });
+          const altPayload = await fetchOrdersFromAltPort({
+            url,
+            token,
+            fallbackPagination,
+          });
           if (
             altPayload &&
             Array.isArray(altPayload.orders) &&
@@ -796,10 +891,20 @@ const Orders = () => {
           setTotalPages(nextTotalPages > 0 ? nextTotalPages : 1);
         } else {
           // Keep existing rows if request failed; avoid false empty state flashes.
-          console.error("Orders API returned an invalid payload:", response);
+          if (process.env.NODE_ENV !== "production") {
+            console.warn(
+              "Orders API returned an invalid payload shape; keeping current rows.",
+              {
+                message: response?.message || "Unknown response",
+                response,
+              },
+            );
+          }
         }
       } catch (error) {
-        console.error("Failed to fetch orders:", error);
+        if (process.env.NODE_ENV !== "production") {
+          console.warn("Failed to fetch orders; keeping existing rows.", error);
+        }
         // Preserve current data on transient failures.
       }
       setIsLoading(false);
@@ -896,6 +1001,62 @@ const Orders = () => {
     }
   };
 
+  const handleRemovePendingOrders = async () => {
+    if (!token) {
+      toast.error("Admin session missing");
+      return;
+    }
+
+    const confirmed =
+      typeof window === "undefined"
+        ? true
+        : window.confirm(
+            "Remove all pending orders? This permanently deletes pending, pending payment, and in warehouse orders.",
+          );
+    if (!confirmed) return;
+
+    setRemovingPendingOrders(true);
+    try {
+      const response = await deleteData("/api/orders/admin/pending", token);
+      if (response?.success) {
+        const deletedCount = Number(response?.data?.deletedCount || 0);
+        const skippedCount = Number(response?.data?.skippedCount || 0);
+
+        if (deletedCount > 0) {
+          toast.success(
+            `Removed ${deletedCount} pending order${deletedCount === 1 ? "" : "s"}`,
+          );
+        } else {
+          toast.success("No pending orders found");
+        }
+
+        if (skippedCount > 0) {
+          toast.error(
+            `${skippedCount} pending order${skippedCount === 1 ? " was" : "s were"} skipped. Check server logs.`,
+          );
+        }
+
+        const params = new URLSearchParams(searchParams?.toString() || "");
+        params.delete("status");
+        const query = params.toString();
+
+        setStatusFilter("all");
+        setPage(1);
+        router.replace(query ? `/orders?${query}` : "/orders");
+
+        if (statusFilter === "all") {
+          fetchOrders();
+        }
+      } else {
+        toast.error(response?.message || "Failed to remove pending orders");
+      }
+    } catch {
+      toast.error("Failed to remove pending orders");
+    } finally {
+      setRemovingPendingOrders(false);
+    }
+  };
+
   if (loading || !isAuthenticated) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -923,7 +1084,7 @@ const Orders = () => {
               variant="outlined"
               size="small"
               onClick={handleRepairPaidOrders}
-              disabled={repairingPaidOrders}
+              disabled={repairingPaidOrders || removingPendingOrders}
               sx={{
                 textTransform: "none",
                 borderRadius: "10px",
@@ -934,6 +1095,23 @@ const Orders = () => {
               {repairingPaidOrders
                 ? "Repairing Paid Orders..."
                 : "Repair Paid Orders"}
+            </Button>
+            <Button
+              variant="contained"
+              color="error"
+              size="small"
+              onClick={handleRemovePendingOrders}
+              disabled={removingPendingOrders || repairingPaidOrders}
+              sx={{
+                textTransform: "none",
+                borderRadius: "10px",
+                px: 2,
+                py: 0.8,
+              }}
+            >
+              {removingPendingOrders
+                ? "Removing Pending Orders..."
+                : "Remove Pending Orders"}
             </Button>
             <Button
               variant="outlined"

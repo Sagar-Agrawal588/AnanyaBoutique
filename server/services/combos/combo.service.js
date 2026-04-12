@@ -94,6 +94,120 @@ const resolveProductPrices = (product, variant) => {
   };
 };
 
+export const resolveComboUnitBaseTotal = (combo = {}) => {
+  const items = Array.isArray(combo?.items) ? combo.items : [];
+  return round2(
+    items.reduce(
+      (sum, item) =>
+        sum +
+        Number(item?.price || 0) * Math.max(Number(item?.quantity || 1), 1),
+      0,
+    ),
+  );
+};
+
+export const resolveComboUnitOriginalTotal = (combo = {}) => {
+  const items = Array.isArray(combo?.items) ? combo.items : [];
+  const itemOriginalTotal = round2(
+    items.reduce(
+      (sum, item) =>
+        sum +
+        Number(item?.originalPrice ?? item?.price ?? 0) *
+          Math.max(Number(item?.quantity || item?.quantityRequired || 1), 1),
+      0,
+    ),
+  );
+  if (itemOriginalTotal > 0) return itemOriginalTotal;
+
+  const baseTotal = resolveComboUnitBaseTotal(combo);
+  if (baseTotal > 0) return baseTotal;
+  return round2(Number(combo?.originalPrice ?? combo?.originalTotal ?? 0));
+};
+
+const resolveRuleBasedComboUnitPrice = ({
+  baseTotal = 0,
+  pricingType = "fixed_price",
+  pricingValue = 0,
+} = {}) => {
+  const safeBaseTotal = Math.max(round2(Number(baseTotal || 0)), 0);
+  const safePricingType = String(pricingType || "fixed_price")
+    .trim()
+    .toLowerCase();
+  const safePricingValue = Math.max(Number(pricingValue || 0), 0);
+
+  let comboPrice = safeBaseTotal;
+  if (safePricingType === "fixed_price") {
+    comboPrice = safePricingValue > 0 ? safePricingValue : safeBaseTotal;
+  } else if (safePricingType === "percent_discount") {
+    comboPrice = round2(safeBaseTotal * (1 - safePricingValue / 100));
+  } else if (safePricingType === "fixed_discount") {
+    comboPrice = round2(safeBaseTotal - safePricingValue);
+  }
+
+  comboPrice = Math.max(round2(comboPrice), 0);
+  if (safeBaseTotal > 0 && comboPrice > safeBaseTotal) {
+    comboPrice = safeBaseTotal;
+  }
+  return comboPrice;
+};
+
+export const resolveEffectiveComboUnitPrice = (combo = {}) => {
+  const baseTotal = resolveComboUnitOriginalTotal(combo);
+  const pricingType = String(combo?.pricing?.type || "")
+    .trim()
+    .toLowerCase();
+  const pricingValue = Math.max(Number(combo?.pricing?.value || 0), 0);
+  const explicitComboPrice = Math.max(
+    round2(Number(combo?.comboPrice ?? 0)),
+    0,
+  );
+  const legacyComboPrice = Math.max(round2(Number(combo?.price ?? 0)), 0);
+
+  const ruleBasedPrice = resolveRuleBasedComboUnitPrice({
+    baseTotal,
+    pricingType,
+    pricingValue,
+  });
+
+  if (explicitComboPrice > 0) {
+    return baseTotal > 0
+      ? Math.min(explicitComboPrice, baseTotal)
+      : explicitComboPrice;
+  }
+
+  if (legacyComboPrice > 0) {
+    return baseTotal > 0
+      ? Math.min(legacyComboPrice, baseTotal)
+      : legacyComboPrice;
+  }
+
+  return ruleBasedPrice;
+};
+
+export const normalizeComboPricingFields = (combo = {}) => {
+  if (!combo || typeof combo !== "object") return combo;
+
+  const normalizedComboPrice = round2(resolveEffectiveComboUnitPrice(combo));
+  const normalizedOriginalPrice = round2(resolveComboUnitOriginalTotal(combo));
+  const normalizedSavings = round2(
+    Math.max(normalizedOriginalPrice - normalizedComboPrice, 0),
+  );
+  const normalizedDiscountPercentage =
+    normalizedOriginalPrice > 0
+      ? round2((normalizedSavings / normalizedOriginalPrice) * 100)
+      : 0;
+
+  return {
+    ...combo,
+    comboPrice: normalizedComboPrice,
+    price: normalizedComboPrice,
+    originalPrice: normalizedOriginalPrice,
+    originalTotal: normalizedOriginalPrice,
+    totalSavings: normalizedSavings,
+    discountPercentage: normalizedDiscountPercentage,
+  };
+};
+
 const resolveAvailableUnitsForProduct = (product, variant) => {
   if (!product) return 0;
 
@@ -139,23 +253,24 @@ export const buildComboPricing = ({ items = [], pricing = {} } = {}) => {
   const pricingType = String(pricing?.type || "fixed_price").trim();
   const pricingValue = Math.max(Number(pricing?.value || 0), 0);
 
-  let comboPrice = baseTotal;
-  if (pricingType === "fixed_price") {
-    comboPrice = pricingValue > 0 ? pricingValue : baseTotal;
-  } else if (pricingType === "percent_discount") {
-    comboPrice = round2(baseTotal * (1 - pricingValue / 100));
-  } else if (pricingType === "fixed_discount") {
-    comboPrice = round2(baseTotal - pricingValue);
-  }
+  let comboPrice = resolveRuleBasedComboUnitPrice({
+    baseTotal,
+    pricingType,
+    pricingValue,
+  });
 
   comboPrice = Math.max(round2(comboPrice), 0);
-  if (originalTotal > 0 && comboPrice > originalTotal) {
-    comboPrice = originalTotal;
+  const maxAllowedComboPrice = baseTotal > 0 ? baseTotal : originalTotal;
+  if (maxAllowedComboPrice > 0 && comboPrice > maxAllowedComboPrice) {
+    comboPrice = maxAllowedComboPrice;
   }
 
-  const totalSavings = round2(Math.max(originalTotal - comboPrice, 0));
+  const savingsReferenceTotal = baseTotal > 0 ? baseTotal : originalTotal;
+  const totalSavings = round2(Math.max(savingsReferenceTotal - comboPrice, 0));
   const discountPercentage =
-    originalTotal > 0 ? round2((totalSavings / originalTotal) * 100) : 0;
+    savingsReferenceTotal > 0
+      ? round2((totalSavings / savingsReferenceTotal) * 100)
+      : 0;
 
   return {
     originalTotal,
@@ -461,7 +576,11 @@ export const expandComboToOrderProducts = (combo, quantity = 1) => {
 
   return items.map((item, index) => {
     const lineQty = Math.max(Number(item.quantity || 1) * comboQty, 1);
-    const unitPrice = round2(Number(item.price || 0));
+    const resolvedCurrentPrice = Number(item?.price || 0);
+    const resolvedOriginalPrice = Number(item?.originalPrice || 0);
+    const unitPrice = round2(
+      resolvedCurrentPrice > 0 ? resolvedCurrentPrice : resolvedOriginalPrice,
+    );
     const subTotal = round2(unitPrice * lineQty);
 
     return {
@@ -473,7 +592,9 @@ export const expandComboToOrderProducts = (combo, quantity = 1) => {
       productTitle: item.productTitle || "Product",
       variantId: item.variantId ? String(item.variantId) : null,
       variantName: item.variantName || "",
-      sku: String(item.variantSku || "").trim().toUpperCase(),
+      sku: String(item.variantSku || "")
+        .trim()
+        .toUpperCase(),
       hsnCode: String(item.hsnCode || "").trim(),
       quantity: lineQty,
       price: unitPrice,
@@ -511,20 +632,35 @@ export const buildComboOrderSnapshot = (combo, quantity = 1) => {
     image: item.image || "",
   }));
 
+  const unitBaseTotal = round2(
+    items.reduce(
+      (sum, item) =>
+        sum + Number(item.price || 0) * Math.max(Number(item.quantity || 1), 1),
+      0,
+    ),
+  );
+  const comboUnitPrice = resolveEffectiveComboUnitPrice(combo);
+  const totalBaseAmount = round2(unitBaseTotal * comboQty);
+  const totalComboAmount = round2(comboUnitPrice * comboQty);
+  const dynamicSavings = round2(
+    Math.max(totalBaseAmount - totalComboAmount, 0),
+  );
+
   return {
     comboId: String(combo._id || ""),
     comboName: combo.name || "Combo",
     comboSlug: combo.slug || "",
     comboSku: String(combo.sku || "").trim(),
     comboType: combo.comboType || "",
+    stockMode: combo.stockMode || "manual",
     thumbnail: comboImage,
     image: comboImage,
     quantity: comboQty,
-    comboPrice: round2(Number(combo.comboPrice || 0)),
+    comboPrice: comboUnitPrice,
     originalPrice: round2(
       Number(combo.originalPrice ?? combo.originalTotal ?? 0),
     ),
-    savings: round2(Number(combo.totalSavings || 0)),
+    savings: dynamicSavings,
     items,
     productsInsideCombo: items,
     variantIds: items.map((item) => item.variantId).filter(Boolean),
@@ -604,6 +740,13 @@ export const reserveComboStock = async (order, source = "ORDER_CREATE") => {
       const comboId = combo?.comboId || combo?._id;
       if (!comboId) continue;
       const quantity = Math.max(Number(combo?.quantity || 1), 1);
+      const comboStockMode = String(combo?.stockMode || "")
+        .trim()
+        .toLowerCase();
+
+      if (comboStockMode && comboStockMode !== "manual") {
+        continue;
+      }
 
       const filter = {
         _id: comboId,
@@ -623,9 +766,23 @@ export const reserveComboStock = async (order, source = "ORDER_CREATE") => {
       if (result.modifiedCount === 1) {
         applied.push({ comboId, quantity });
       } else {
+        const comboRecord = await ComboModel.findById(comboId)
+          .select("stockMode stockQuantity reservedQuantity")
+          .lean();
+
+        if (String(comboRecord?.stockMode || "").toLowerCase() !== "manual") {
+          continue;
+        }
+
         throw new AppError("INSUFFICIENT_STOCK", {
           comboId,
           source,
+          requested: quantity,
+          available: Math.max(
+            Number(comboRecord?.stockQuantity || 0) -
+              Number(comboRecord?.reservedQuantity || 0),
+            0,
+          ),
         });
       }
     }
@@ -815,8 +972,9 @@ export const attachComboAvailability = async (combos = []) => {
   return Promise.all(
     combos.map(async (combo) => {
       const availability = await computeComboAvailability(combo, productMap);
+      const normalizedCombo = normalizeComboPricingFields(combo);
       return {
-        ...combo,
+        ...normalizedCombo,
         availableStock: availability.available,
         stockMode: availability.stockMode,
       };

@@ -1,5 +1,6 @@
 "use client";
 import { postData } from "@/utils/api";
+import { withAdminBasePath } from "@/utils/basePath";
 import { Button } from "@mui/material";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -47,7 +48,9 @@ const ForgotPassword = () => {
       {/* Background */}
       <div
         className="absolute inset-0 bg-repeat bg-center"
-        style={{ backgroundImage: "url('/pattern.png')" }}
+        style={{
+          backgroundImage: `url('${withAdminBasePath("/pattern.png")}')`,
+        }}
       />
 
       {/* Soft overlay */}
@@ -56,7 +59,11 @@ const ForgotPassword = () => {
       {/* Header */}
       <div className="fixed top-0 left-0 w-full py-4 z-50">
         <div className="w-[90%] mx-auto flex items-center justify-between">
-          <img src="/logo.png" alt="logo" className="w-[150px]" />
+          <img
+            src={withAdminBasePath("/logo.png")}
+            alt="logo"
+            className="w-[150px]"
+          />
 
           <div className="flex gap-3">
             <Link href={"/login"}>

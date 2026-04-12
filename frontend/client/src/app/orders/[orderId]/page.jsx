@@ -182,10 +182,66 @@ const normalizeStatus = (status) => {
   return value;
 };
 
+const toMoneyNumber = (value, fallback = 0) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const sanitizeMoney = (value, fallback = 0) =>
+  Math.max(toMoneyNumber(value, fallback), 0);
+
+const round2 = (value) =>
+  Math.round((toMoneyNumber(value, 0) + Number.EPSILON) * 100) / 100;
+
+const resolveOrderGstRatePercent = ({ order, subtotal, tax }) => {
+  const pricing =
+    order?.pricing && typeof order.pricing === "object" ? order.pricing : null;
+  const fromOrder = toMoneyNumber(
+    order?.gst?.rate ?? pricing?.gstRate ?? pricing?.gstRatePercent,
+    NaN,
+  );
+  if (Number.isFinite(fromOrder) && fromOrder > 0) return fromOrder;
+
+  const safeSubtotal = toMoneyNumber(subtotal, 0);
+  const safeTax = toMoneyNumber(tax, 0);
+  if (safeSubtotal > 0 && safeTax >= 0) {
+    const derivedRate = (safeTax * 100) / safeSubtotal;
+    if (Number.isFinite(derivedRate) && derivedRate > 0 && derivedRate < 100) {
+      return derivedRate;
+    }
+  }
+
+  return 5;
+};
+
 const getStepIndex = (status) => {
   const normalized = normalizeStatus(status);
   const index = STATUS_STEPS.findIndex((step) => step.key === normalized);
   return index === -1 ? 0 : index;
+};
+
+const buildXpressbeesTrackingUrl = (awb, candidateUrl = "") => {
+  const normalizedAwb = String(awb || "").trim();
+  if (!normalizedAwb) return "";
+
+  const fallbackUrl = `https://www.xpressbees.com/shipment/tracking?awbNo=${encodeURIComponent(normalizedAwb)}`;
+  const explicitUrl = String(candidateUrl || "").trim();
+  if (!explicitUrl) return fallbackUrl;
+
+  try {
+    const parsed = new URL(explicitUrl);
+    const host = String(parsed.hostname || "").toLowerCase();
+    if (!host.includes("xpressbees.com")) return explicitUrl;
+
+    parsed.pathname = "/shipment/tracking";
+    parsed.search = "";
+    parsed.searchParams.set("awbNo", normalizedAwb);
+    return parsed.toString();
+  } catch {
+    return explicitUrl.toLowerCase().includes("xpressbees.com")
+      ? fallbackUrl
+      : explicitUrl;
+  }
 };
 
 const resolveTrackingUrl = (order = {}) => {
@@ -212,8 +268,7 @@ const resolveTrackingUrl = (order = {}) => {
   ).trim();
 
   if (!explicitUrl) {
-    if (!awb) return "";
-    return `https://www.xpressbees.com/shipment/tracking?awbNo=${encodeURIComponent(awb)}`;
+    return buildXpressbeesTrackingUrl(awb);
   }
 
   if (!awb) return explicitUrl;
@@ -223,12 +278,11 @@ const resolveTrackingUrl = (order = {}) => {
     const host = String(parsed.hostname || "").toLowerCase();
     const isXpressbees = host.includes("xpressbees.com");
     if (!isXpressbees) return explicitUrl;
-
-    parsed.searchParams.delete("awb");
-    parsed.searchParams.set("awbNo", awb);
-    return parsed.toString();
+    return buildXpressbeesTrackingUrl(awb, explicitUrl);
   } catch {
-    return explicitUrl;
+    return explicitUrl.toLowerCase().includes("xpressbees.com")
+      ? buildXpressbeesTrackingUrl(awb, explicitUrl)
+      : explicitUrl;
   }
 };
 
@@ -840,9 +894,90 @@ const OrderDetailsPage = () => {
         (a, b) => new Date(a.timestamp) - new Date(b.timestamp),
       )
     : [];
-  const orderTotals = calculateOrderTotals(
+  const calculatedOrderTotals = calculateOrderTotals(
     buildSavedOrderCalculationInput(order, { payableShipping: 0 }),
   );
+  const orderCombos = Array.isArray(order?.combos) ? order.combos : [];
+  const orderProducts = Array.isArray(order?.products) ? order.products : [];
+  const hasOrderCombos = orderCombos.length > 0;
+  const standaloneProducts = orderProducts.filter(
+    (item) => !String(item?.comboId || "").trim(),
+  );
+  const displayedProducts = hasOrderCombos ? standaloneProducts : orderProducts;
+  const displayItemCount = hasOrderCombos
+    ? standaloneProducts.length + orderCombos.length
+    : orderProducts.length;
+  const pricingFromServer =
+    order?.pricing && typeof order.pricing === "object" ? order.pricing : null;
+  const orderTotals = pricingFromServer
+    ? {
+        ...calculatedOrderTotals,
+        subtotal: sanitizeMoney(
+          pricingFromServer.subtotal,
+          calculatedOrderTotals.subtotal,
+        ),
+        discountedSubtotal: sanitizeMoney(
+          pricingFromServer.taxableAmount,
+          calculatedOrderTotals.discountedSubtotal,
+        ),
+        totalDiscount: sanitizeMoney(
+          pricingFromServer.totalDiscount,
+          calculatedOrderTotals.totalDiscount,
+        ),
+        coinRedemptionAmount: sanitizeMoney(
+          pricingFromServer.coinRedemptionAmount,
+          calculatedOrderTotals.coinRedemptionAmount,
+        ),
+        tax: sanitizeMoney(pricingFromServer.tax, calculatedOrderTotals.tax),
+        shipping: sanitizeMoney(
+          pricingFromServer.shipping,
+          calculatedOrderTotals.shipping,
+        ),
+        total: sanitizeMoney(
+          pricingFromServer.total ?? pricingFromServer.finalAmount,
+          calculatedOrderTotals.total,
+        ),
+      }
+    : calculatedOrderTotals;
+  const couponCode = String(
+    order?.couponCode || pricingFromServer?.couponCode || "",
+  ).trim();
+  const couponDiscountRaw = sanitizeMoney(
+    pricingFromServer?.couponDiscount ?? order?.discountAmount,
+    0,
+  );
+  const couponDiscount = couponCode ? couponDiscountRaw : 0;
+  const discountBreakdown = {
+    combo: sanitizeMoney(
+      pricingFromServer?.comboDiscount ?? order?.comboDiscount,
+      0,
+    ),
+    coupon: couponDiscount,
+  };
+  const visibleDiscountTotal = round2(discountBreakdown.coupon);
+  const discountedSubtotalRaw = sanitizeMoney(
+    orderTotals.discountedSubtotal,
+    sanitizeMoney(
+      Number(orderTotals.subtotal || 0) - Number(discountBreakdown.combo || 0),
+      0,
+    ),
+  );
+  const displayTotal = Math.max(Math.round(Number(orderTotals.total || 0)), 0);
+  const gstRatePercent = resolveOrderGstRatePercent({
+    order,
+    subtotal: discountedSubtotalRaw,
+    tax: orderTotals.tax,
+  });
+  const displaySubtotal =
+    displayTotal > 0
+      ? round2(displayTotal / (1 + gstRatePercent / 100))
+      : round2(discountedSubtotalRaw);
+  const displayTax =
+    displayTotal > 0
+      ? round2(displayTotal - displaySubtotal)
+      : round2(orderTotals.tax);
+  const displaySummarySubtotal = round2(displaySubtotal + visibleDiscountTotal);
+  const hasVisibleDiscount = visibleDiscountTotal > 0.009;
   const normalizedOrderStatus = normalizeStatus(order?.order_status);
   const hasDeliveredTimelineStatus = Array.isArray(order?.statusTimeline)
     ? order.statusTimeline.some((entry) => {
@@ -893,6 +1028,48 @@ const OrderDetailsPage = () => {
       productTitle: product?.productTitle || "Product",
     });
     setReviewForm({ rating: 5, comment: "" });
+  };
+
+  const renderReviewCta = (item) => {
+    const productId = getItemProductId(item);
+    const existingReview = productId ? getReviewByProductId(productId) : null;
+
+    if (existingReview) {
+      return (
+        <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
+          <p className="text-xs font-semibold text-emerald-700">
+            Your Review • {Number(existingReview.rating || 0).toFixed(1)}★
+          </p>
+          <p className="text-xs text-emerald-800 mt-1 break-words">
+            {existingReview.comment}
+          </p>
+        </div>
+      );
+    }
+
+    if (!isReviewEligibleOrder || !productId) return null;
+
+    return (
+      <Button
+        onClick={() => openReviewDialog(item)}
+        size="small"
+        variant="outlined"
+        sx={{
+          mt: 1.5,
+          borderColor: "#ea580c",
+          color: "#ea580c",
+          textTransform: "none",
+          fontWeight: 600,
+          borderRadius: "999px",
+          "&:hover": {
+            borderColor: "#c2410c",
+            backgroundColor: "#fff7ed",
+          },
+        }}
+      >
+        Write Review
+      </Button>
+    );
   };
 
   const closeReviewDialog = (force = false) => {
@@ -1188,12 +1365,73 @@ const OrderDetailsPage = () => {
           <div className="bg-white rounded-xl shadow-sm p-5 md:p-6 mb-6">
             <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
               <FiPackage className="text-orange-500" />
-              Items ({order.products?.length || 0})
+              Items ({displayItemCount})
             </h2>
             <div className="space-y-4">
-              {order.products?.map((item, index) => (
+              {orderCombos.map((combo, index) => {
+                const quantity = Math.max(Number(combo?.quantity || 1), 1);
+                const unitPrice = Math.max(Number(combo?.comboPrice || 0), 0);
+                const lineTotal = unitPrice * quantity;
+                const savingsPerCombo = Math.max(Number(combo?.savings || 0), 0);
+                const savingsTotal = savingsPerCombo * quantity;
+                const comboItems = Array.isArray(combo?.items) ? combo.items : [];
+                const comboTitle = combo?.comboName || "Combo Bundle";
+                const comboImage =
+                  combo?.thumbnail || combo?.image || "/placeholder.png";
+
+                const includesPreview = comboItems
+                  .slice(0, 2)
+                  .map((entry) =>
+                    [
+                      String(entry?.productTitle || "").trim(),
+                      String(entry?.variantName || "").trim(),
+                    ]
+                      .filter(Boolean)
+                      .join(" • "),
+                  )
+                  .filter(Boolean)
+                  .join(", ");
+                const remainingCount = Math.max(comboItems.length - 2, 0);
+
+                return (
+                  <div
+                    key={`combo-${combo?.comboId || index}`}
+                    className="flex items-center gap-4 pb-4 border-b border-gray-100 last:border-0 last:pb-0"
+                  >
+                    <img
+                      src={comboImage}
+                      alt={comboTitle}
+                      className="w-20 h-20 object-cover rounded-lg bg-gray-100"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-medium text-gray-800 truncate">
+                        {comboTitle}
+                      </h3>
+                      {comboItems.length > 0 && (
+                        <p className="text-gray-500 text-xs mt-1 truncate">
+                          Includes: {includesPreview}
+                          {remainingCount > 0 ? ` +${remainingCount} more` : ""}
+                        </p>
+                      )}
+                      <p className="text-gray-500 text-sm">
+                        Qty: {quantity} × ₹{unitPrice.toFixed(2)}
+                      </p>
+                      {savingsTotal > 0 && (
+                        <p className="text-emerald-700 text-xs mt-1 font-semibold">
+                          You save ₹{savingsTotal.toFixed(2)}
+                        </p>
+                      )}
+                    </div>
+                    <span className="font-semibold text-gray-800">
+                      ₹{lineTotal.toFixed(2)}
+                    </span>
+                  </div>
+                );
+              })}
+
+              {displayedProducts.map((item, index) => (
                 <div
-                  key={item.productId || index}
+                  key={`${getItemProductId(item)}::${String(item?.variantId || "")}::${String(item?.comboId || "")}::${index}`}
                   className="flex items-center gap-4 pb-4 border-b border-gray-100 last:border-0 last:pb-0"
                 >
                   <img
@@ -1205,53 +1443,15 @@ const OrderDetailsPage = () => {
                     <h3 className="font-medium text-gray-800 truncate">
                       {item.productTitle}
                     </h3>
+                    {String(item?.variantName || "").trim() && (
+                      <p className="text-gray-500 text-xs mt-1">
+                        {String(item.variantName).trim()}
+                      </p>
+                    )}
                     <p className="text-gray-500 text-sm">
                       Qty: {item.quantity} × ₹{item.price?.toFixed(2)}
                     </p>
-                    {(() => {
-                      const productId = getItemProductId(item);
-                      const existingReview = productId
-                        ? getReviewByProductId(productId)
-                        : null;
-
-                      if (existingReview) {
-                        return (
-                          <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
-                            <p className="text-xs font-semibold text-emerald-700">
-                              Your Review •{" "}
-                              {Number(existingReview.rating || 0).toFixed(1)}★
-                            </p>
-                            <p className="text-xs text-emerald-800 mt-1 break-words">
-                              {existingReview.comment}
-                            </p>
-                          </div>
-                        );
-                      }
-
-                      if (!isReviewEligibleOrder || !productId) return null;
-
-                      return (
-                        <Button
-                          onClick={() => openReviewDialog(item)}
-                          size="small"
-                          variant="outlined"
-                          sx={{
-                            mt: 1.5,
-                            borderColor: "#ea580c",
-                            color: "#ea580c",
-                            textTransform: "none",
-                            fontWeight: 600,
-                            borderRadius: "999px",
-                            "&:hover": {
-                              borderColor: "#c2410c",
-                              backgroundColor: "#fff7ed",
-                            },
-                          }}
-                        >
-                          Write Review
-                        </Button>
-                      );
-                    })()}
+                    {renderReviewCta(item)}
                   </div>
                   <span className="font-semibold text-gray-800">
                     ₹
@@ -1272,14 +1472,20 @@ const OrderDetailsPage = () => {
             <div className="space-y-3 text-base">
               <div className="flex justify-between text-gray-600">
                 <span>Subtotal</span>
-                <span>₹{orderTotals.subtotal.toFixed(2)}</span>
+                <span>₹{displaySummarySubtotal.toFixed(2)}</span>
               </div>
-              {orderTotals.totalDiscount > 0 && (
+              {discountBreakdown.coupon > 0 && (
                 <div className="flex justify-between text-primary">
                   <span>
-                    Discount {order.couponCode && `(${order.couponCode})`}
+                    Coupon {order?.couponCode ? `(${order.couponCode})` : ""}
                   </span>
-                  <span>-₹{orderTotals.totalDiscount.toFixed(2)}</span>
+                  <span>-₹{discountBreakdown.coupon.toFixed(2)}</span>
+                </div>
+              )}
+              {hasVisibleDiscount && (
+                <div className="flex justify-between text-gray-600 border-t border-gray-100 pt-2">
+                  <span>Discounted Subtotal</span>
+                  <span>₹{displaySubtotal.toFixed(2)}</span>
                 </div>
               )}
               {orderTotals.coinRedemptionAmount > 0 && (
@@ -1292,8 +1498,8 @@ const OrderDetailsPage = () => {
                 </div>
               )}
               <div className="flex justify-between text-gray-600">
-                <span>Tax</span>
-                <span>₹{orderTotals.tax.toFixed(2)}</span>
+                <span>GST</span>
+                <span>₹{displayTax.toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-gray-600">
                 <span className="flex items-center gap-2">
@@ -1316,7 +1522,7 @@ const OrderDetailsPage = () => {
               <div className="border-t border-gray-200 pt-3 flex justify-between font-bold text-gray-800">
                 <span className="text-lg">Total</span>
                 <span className="text-xl text-orange-600">
-                  ₹{orderTotals.total.toFixed(2)}
+                  ₹{displayTotal.toFixed(2)}
                 </span>
               </div>
             </div>

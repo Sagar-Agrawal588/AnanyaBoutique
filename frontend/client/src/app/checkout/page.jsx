@@ -1,6 +1,11 @@
 "use client";
 
-import { API_BASE_URL, getStoredAccessToken } from "@/utils/api";
+import {
+  API_BASE_URL,
+  fetchDataFromApi,
+  getStoredAccessToken,
+  postData,
+} from "@/utils/api";
 
 import PaymentUnavailableModal from "@/components/PaymentUnavailableModal";
 import UseCurrentLocationGoogleMaps from "@/components/UseCurrentLocationGoogleMaps";
@@ -66,6 +71,7 @@ const API_URL = API_BASE_URL.endsWith("/api")
 const ORDER_PENDING_PAYMENT_KEY = "orderPaymentPending";
 const TEST_INVOICE_STORAGE_KEY = "bog_test_invoices";
 const CHECKOUT_GST_RATE_PERCENT = 5;
+const MONGODB_OBJECT_ID_REGEX = /^[a-f\d]{24}$/i;
 
 const decodeJwtPayload = (token) => {
   try {
@@ -99,6 +105,31 @@ const buildAuthHeaders = (extraHeaders = {}) => {
     : extraHeaders;
 };
 
+const normalizeObjectId = (value) => {
+  const normalized = String(value || "").trim();
+  return MONGODB_OBJECT_ID_REGEX.test(normalized) ? normalized : null;
+};
+
+const resolveCheckoutProductId = (value) =>
+  normalizeObjectId(
+    value?.productId ||
+      value?.parentProductId ||
+      value?.product?._id ||
+      value?.product?.id ||
+      value?._id ||
+      value?.id,
+  );
+
+const resolveCheckoutComboId = (value) =>
+  normalizeObjectId(
+    value?.comboId ||
+      value?.combo?._id ||
+      value?.combo?.id ||
+      value?.comboSnapshot?.comboId ||
+      value?._id ||
+      value?.id,
+  );
+
 /**
  * Checkout Page
  *
@@ -111,7 +142,8 @@ const buildAuthHeaders = (extraHeaders = {}) => {
  */
 const Checkout = () => {
   const context = useContext(MyContext);
-  const { cartItems, clearCart, orderNote, setOrderNote } = useCart();
+  const { cartItems, clearCart, orderNote, setOrderNote, fetchCart } =
+    useCart();
   const router = useRouter();
   const authToken = getValidAccessToken();
   const isGuestCheckout = !authToken;
@@ -146,6 +178,50 @@ const Checkout = () => {
         ...comboSnapshot,
       };
       const comboItems = Array.isArray(combo?.items) ? combo.items : [];
+      const cartLinePrice = Number(item?.price);
+      const comboCurrentPrice = Number(comboDoc?.comboPrice);
+      const comboLegacyPrice = Number(comboDoc?.price);
+      const comboSnapshotPrice = Number(comboSnapshot?.comboPrice);
+      const comboRuleType = String(combo?.pricing?.type || "")
+        .trim()
+        .toLowerCase();
+      const comboRuleValue = Number(combo?.pricing?.value || 0);
+      const comboBaseTotal = round2(
+        comboItems.reduce(
+          (sum, entry) =>
+            sum +
+            Number(entry?.price || 0) *
+              Math.max(
+                Number(entry?.quantity || entry?.quantityRequired || 1),
+                1,
+              ),
+          0,
+        ),
+      );
+      const comboRulePrice =
+        comboBaseTotal > 0 &&
+        Number.isFinite(comboRuleValue) &&
+        comboRuleValue > 0
+          ? comboRuleType === "fixed_price"
+            ? Math.min(comboRuleValue, comboBaseTotal)
+            : comboRuleType === "percent_discount"
+              ? round2(Math.max(comboBaseTotal * (1 - comboRuleValue / 100), 0))
+              : comboRuleType === "fixed_discount"
+                ? round2(Math.max(comboBaseTotal - comboRuleValue, 0))
+                : 0
+          : 0;
+      const resolvedComboPrice =
+        Number.isFinite(comboSnapshotPrice) && comboSnapshotPrice > 0
+          ? comboSnapshotPrice
+          : Number.isFinite(comboCurrentPrice) && comboCurrentPrice > 0
+            ? comboCurrentPrice
+            : Number.isFinite(cartLinePrice) && cartLinePrice > 0
+              ? cartLinePrice
+              : Number.isFinite(comboLegacyPrice) && comboLegacyPrice > 0
+                ? comboLegacyPrice
+                : Number.isFinite(comboRulePrice) && comboRulePrice > 0
+                  ? comboRulePrice
+                  : Number(item?.price || combo?.comboPrice || 0);
       const comboId =
         combo?.comboId ||
         comboSnapshot?.comboId ||
@@ -158,6 +234,7 @@ const Checkout = () => {
 
       return {
         id: comboId,
+        cartKey: `combo:${String(comboId || "")}`,
         name: combo?.comboName || combo?.name || "Combo Bundle",
         image:
           comboSnapshot?.comboThumbnail ||
@@ -175,7 +252,7 @@ const Checkout = () => {
           comboItems?.[0]?.image ||
           item?.image ||
           "/product_1.png",
-        price: item?.price ?? combo?.comboPrice ?? 0,
+        price: resolvedComboPrice,
         quantity: item?.quantity || 1,
         demandStatus: "NORMAL",
         availableQuantity: Number.MAX_SAFE_INTEGER,
@@ -186,13 +263,55 @@ const Checkout = () => {
       };
     }
 
-    // Check if item.product is an object (API) or ID (localStorage fallback)
-    // If it's a string, we must use item.productData. If it's an object, we use it.
     const product =
       typeof item.product === "object" && item.product
         ? item.product
         : item.productData || item;
-
+    const rawItemVariant =
+      typeof item?.variant === "object" && item?.variant ? item.variant : null;
+    const stringItemVariantId =
+      typeof item?.variant === "string" ? item.variant : null;
+    const productId =
+      product?.parentProductId ||
+      item?.parentProductId ||
+      product?._id ||
+      product?.id ||
+      item?._id ||
+      item?.id;
+    const variantId =
+      rawItemVariant?._id ||
+      rawItemVariant?.id ||
+      stringItemVariantId ||
+      item?.variantId ||
+      product?.variantId ||
+      item?.selectedVariant?._id ||
+      item?.selectedVariant?.id ||
+      product?.variant?._id ||
+      product?.variant?.id ||
+      (typeof product?.variant === "string" ? product.variant : null) ||
+      product?.selectedVariant?._id ||
+      product?.selectedVariant?.id ||
+      null;
+    const variants = Array.isArray(product?.variants) ? product.variants : [];
+    const selectedVariant =
+      rawItemVariant ||
+      item?.selectedVariant ||
+      product?.selectedVariant ||
+      (typeof product?.variant === "object" && product?.variant
+        ? product.variant
+        : null) ||
+      variants.find(
+        (variant) => String(variant?._id || "") === String(variantId || ""),
+      ) ||
+      null;
+    const variantName =
+      item?.variantName ||
+      item?.variant?.name ||
+      item?.selectedVariant?.name ||
+      product?.variantName ||
+      product?.selectedVariant?.name ||
+      selectedVariant?.name ||
+      "";
     const availableQuantity =
       typeof product?.available_quantity === "number"
         ? product.available_quantity
@@ -201,10 +320,24 @@ const Checkout = () => {
               Number(product?.reserved_quantity ?? 0),
             0,
           );
+    const displayName =
+      variantName &&
+      product?.name &&
+      !String(product.name)
+        .toLowerCase()
+        .includes(String(variantName).toLowerCase())
+        ? `${product.name} - ${variantName}`
+        : product?.name || item.name || item.title || "Product";
     return {
-      id: product?._id || product?.id || item._id || item.id,
-      name: product?.name || item.name || item.title || "Product",
+      id: productId,
+      productId,
+      variantId: variantId ? String(variantId) : null,
+      variantName,
+      cartKey: `${String(productId || "")}:${String(variantId || "base")}`,
+      name: displayName,
       image:
+        selectedVariant?.image ||
+        selectedVariant?.images?.[0] ||
         product?.thumbnail ||
         product?.images?.[0] ||
         item.image ||
@@ -214,6 +347,8 @@ const Checkout = () => {
       quantity: item.quantity || 1,
       demandStatus: product?.demandStatus || item.demandStatus || "NORMAL",
       availableQuantity,
+      variantId,
+      variantName,
       itemType: "product",
     };
   };
@@ -249,6 +384,7 @@ const Checkout = () => {
     expiryDays: 365,
   });
   const [coinBalance, setCoinBalance] = useState(0);
+  const [previewPricing, setPreviewPricing] = useState(null);
 
   // Address State - Real addresses from database
   const [addresses, setAddresses] = useState([]);
@@ -270,6 +406,7 @@ const Checkout = () => {
   const [gstSaving, setGstSaving] = useState(false);
   const [gstSavedValue, setGstSavedValue] = useState("");
   const checkoutStartTrackedRef = useRef(false);
+  const checkoutCartSyncRef = useRef(false);
 
   const {
     lookup: addressPincodeLookup,
@@ -317,7 +454,9 @@ const Checkout = () => {
   const checkoutStateForPreview = isGuestCheckout
     ? guestDetails.state
     : addresses.find((a) => a._id === selectedAddress)?.state || "";
-  const hasCheckoutStateInput = Boolean(String(checkoutStateForPreview || "").trim());
+  const hasCheckoutStateInput = Boolean(
+    String(checkoutStateForPreview || "").trim(),
+  );
   const normalizedCheckoutState = normalizeStateValue(checkoutStateForPreview);
   const isRajasthanDelivery = normalizedCheckoutState === "Rajasthan";
   const { displayShippingCharge } = useShippingDisplayCharge({
@@ -391,29 +530,30 @@ const Checkout = () => {
     baseDiscountBeforeCoupon: tradeDiscountBeforeCoupon,
   };
   const totalsBeforeCoin = calculateOrderTotals(checkoutTotalsInput);
-  const couponDiscount = totalsBeforeCoin.couponDiscount;
-  const subtotal = totalsBeforeCoin.discountedSubtotal; // GST-exclusive after coupon
-  const tax = totalsBeforeCoin.tax; // GST on discounted base
+  const localCouponDiscount = totalsBeforeCoin.couponDiscount;
+  const localSubtotal = totalsBeforeCoin.discountedSubtotal; // GST-exclusive after coupon
+  const localTax = totalsBeforeCoin.tax; // GST on discounted base
   const payableShipping = 0;
-  const hasSubtotalReduction = cartBaseSubtotal - subtotal > 0.009;
+  const previewDiscountBreakdown =
+    previewPricing && typeof previewPricing === "object"
+      ? previewPricing.discountBreakdown || {}
+      : {};
+  const couponDiscount = round2(
+    Number(previewDiscountBreakdown.coupon ?? localCouponDiscount),
+  );
+  const referralDiscountDisplay = round2(
+    Number(previewDiscountBreakdown.influencer ?? referralDiscount),
+  );
+  const subtotal = round2(
+    Number(previewPricing?.taxableAmount ?? localSubtotal),
+  );
+  const tax = round2(Number(previewPricing?.gstAmount ?? localTax));
+  const shipping = round2(Number(previewPricing?.shipping ?? payableShipping));
+  const summarySubtotal = round2(
+    Number(previewPricing?.subtotal ?? cartBaseSubtotal),
+  );
 
   const productCostAfterCoupon = round2(subtotal + tax); // GST-inclusive after coupon (no shipping)
-
-  // DISPLAY-ONLY GST breakup for summary labels (payable tax stays `tax`).
-  const displayTaxBreakup = getDisplayTaxBreakup({
-    taxAmount: tax,
-    isRajasthan: isRajasthanDelivery,
-  });
-  const summaryTaxLabel = !hasCheckoutStateInput
-    ? "GST"
-    : isRajasthanDelivery
-      ? "GST (S.GST+C.GST)"
-      : "IGST";
-  const summaryTaxAmount = !hasCheckoutStateInput
-    ? tax
-    : isRajasthanDelivery
-      ? round2(displayTaxBreakup.cgst + displayTaxBreakup.sgst)
-      : displayTaxBreakup.igst;
 
   // Coins are earned from orders, but redemption is restricted to membership checkout.
   const effectiveRedeemCoins = 0;
@@ -428,38 +568,72 @@ const Checkout = () => {
     },
     coinRedeemAmount,
   });
-  const total = finalTotals.totalPayable;
+  const localTotal = finalTotals.totalPayable;
+  const total = round2(Number(previewPricing?.finalAmount ?? localTotal));
+  const displayTotal = round2(
+    Number(previewPricing?.gatewayPayableAmount ?? total),
+  );
+  const displaySubtotal = subtotal;
+  const displayTax = tax;
+  const displayDiscountTotal = round2(couponDiscount + referralDiscountDisplay);
+  const displaySummarySubtotal = summarySubtotal;
+  const hasDisplaySubtotalReduction =
+    displaySummarySubtotal - displaySubtotal > 0.009;
+
+  // DISPLAY-ONLY GST breakup for summary labels (payable tax stays `tax`).
+  const displayTaxBreakup = getDisplayTaxBreakup({
+    taxAmount: displayTax,
+    isRajasthan: isRajasthanDelivery,
+  });
+  const summaryTaxLabel = !hasCheckoutStateInput
+    ? "GST"
+    : isRajasthanDelivery
+      ? "GST (S.GST+C.GST)"
+      : "IGST";
+  const summaryTaxAmount = !hasCheckoutStateInput
+    ? displayTax
+    : isRajasthanDelivery
+      ? round2(displayTaxBreakup.cgst + displayTaxBreakup.sgst)
+      : displayTaxBreakup.igst;
+  const originalAmountForSubmit = round2(
+    Number(
+      previewPricing?.originalAmount ??
+        productCostAfterCoupon + payableShipping,
+    ),
+  );
 
   // Fetch addresses from database
   const fetchAddresses = useCallback(async () => {
-    try {
-      const response = await fetch(`${API_URL}/api/address`, {
-        headers: buildAuthHeaders(),
-        credentials: "include",
-      });
+    if (isGuestCheckout) {
+      setAddresses([]);
+      setSelectedAddress(null);
+      setAddressLoading(false);
+      return;
+    }
 
-      if (response.status === 401) {
-        setAddresses([]);
+    try {
+      const data = await fetchDataFromApi("/api/address");
+      if (data?.success) {
+        const nextAddresses = Array.isArray(data.data) ? data.data : [];
+        setAddresses(nextAddresses);
+        // Auto-select the default address or first one
+        const defaultAddr = nextAddresses.find((a) => a.selected);
+        if (defaultAddr) {
+          setSelectedAddress(defaultAddr._id);
+        } else if (nextAddresses.length > 0) {
+          setSelectedAddress(nextAddresses[0]._id);
+        }
         return;
       }
 
-      const data = await response.json();
-      if (data.success) {
-        setAddresses(data.data || []);
-        // Auto-select the default address or first one
-        const defaultAddr = data.data?.find((a) => a.selected);
-        if (defaultAddr) {
-          setSelectedAddress(defaultAddr._id);
-        } else if (data.data?.length > 0) {
-          setSelectedAddress(data.data[0]._id);
-        }
-      }
+      setAddresses([]);
     } catch (error) {
       console.error("Error fetching addresses:", error);
+      setAddresses([]);
     } finally {
       setAddressLoading(false);
     }
-  }, []);
+  }, [isGuestCheckout]);
 
   // Initialize affiliate tracking on mount
   useEffect(() => {
@@ -469,6 +643,19 @@ const Checkout = () => {
     }
     fetchAddresses();
   }, [fetchAddresses]);
+
+  useEffect(() => {
+    if (checkoutCartSyncRef.current) return;
+    if (Array.isArray(cartItems) && cartItems.length > 0) {
+      checkoutCartSyncRef.current = true;
+      return;
+    }
+
+    if (typeof fetchCart === "function") {
+      checkoutCartSyncRef.current = true;
+      fetchCart();
+    }
+  }, [cartItems, fetchCart]);
 
   useEffect(() => {
     if (checkoutStartTrackedRef.current) return;
@@ -494,8 +681,7 @@ const Checkout = () => {
 
     const fetchPaymentGatewayStatus = async () => {
       try {
-        const response = await fetch(`${API_URL}/api/orders/payment-status`);
-        const data = await response.json();
+        const data = await fetchDataFromApi("/api/orders/payment-status");
         if (!active) return;
 
         const payload = data?.data || {};
@@ -514,28 +700,38 @@ const Checkout = () => {
               .toUpperCase(),
           )
           .filter(Boolean);
+        const fallbackProviders = ["PHONEPE", "PAYTM"];
+        const resolvedProviders = Array.from(
+          new Set([
+            ...(enabledProviders.length > 0 ? enabledProviders : []),
+            ...fallbackProviders,
+          ]),
+        );
         const defaultProvider = String(
           payload?.defaultProvider ||
             payload?.provider ||
             enabledProviders[0] ||
+            resolvedProviders[0] ||
             "PHONEPE",
         )
           .trim()
           .toUpperCase();
 
-        setPaymentGatewayEnabled(Boolean(payload?.paymentEnabled));
-        setPaymentProviders(enabledProviders);
+        setPaymentGatewayEnabled(
+          data?.success ? Boolean(payload?.paymentEnabled) : true,
+        );
+        setPaymentProviders(resolvedProviders);
         setSelectedPaymentProvider((prev) => {
-          if (enabledProviders.includes(prev)) return prev;
-          if (enabledProviders.includes(defaultProvider))
+          if (resolvedProviders.includes(prev)) return prev;
+          if (resolvedProviders.includes(defaultProvider))
             return defaultProvider;
-          return enabledProviders[0] || "PHONEPE";
+          return resolvedProviders[0] || "PHONEPE";
         });
       } catch (error) {
         if (!active) return;
         // Keep checkout usable even if the status endpoint is unreachable.
         setPaymentGatewayEnabled(true);
-        setPaymentProviders(["PHONEPE"]);
+        setPaymentProviders(["PHONEPE", "PAYTM"]);
         setSelectedPaymentProvider("PHONEPE");
       }
     };
@@ -574,15 +770,34 @@ const Checkout = () => {
   }, [authToken, gstSavedValue]);
 
   useEffect(() => {
+    let isDisposed = false;
+
     const fetchDynamicCheckoutSettings = async () => {
       try {
-        const coinSettingsRes = await fetch(
+        const coinSettingsRequest = fetch(
           `${API_URL}/api/coins/settings/public`,
-        );
+        ).catch(() => null);
+        const coinBalanceRequest = authToken
+          ? fetch(`${API_URL}/api/coins/me`, {
+              headers: {
+                Authorization: `Bearer ${authToken}`,
+              },
+              credentials: "include",
+            }).catch(() => null)
+          : Promise.resolve(null);
+
+        const [coinSettingsRes, coinBalanceRes] = await Promise.all([
+          coinSettingsRequest,
+          coinBalanceRequest,
+        ]);
 
         if (coinSettingsRes?.ok) {
           const coinSettingsData = await coinSettingsRes.json();
-          if (coinSettingsData?.success && coinSettingsData?.data) {
+          if (
+            !isDisposed &&
+            coinSettingsData?.success &&
+            coinSettingsData?.data
+          ) {
             setCoinSettings({
               coinsPerRupee: Number(
                 coinSettingsData.data.coinsPerRupee ?? 0.05,
@@ -598,13 +813,7 @@ const Checkout = () => {
 
         if (authToken) {
           let resolvedCoinBalance = 0;
-          const coinBalanceRes = await fetch(`${API_URL}/api/coins/me`, {
-            headers: {
-              Authorization: `Bearer ${authToken}`,
-            },
-            credentials: "include",
-          });
-          if (coinBalanceRes.ok) {
+          if (coinBalanceRes?.ok) {
             const coinBalanceData = await coinBalanceRes.json();
             if (coinBalanceData?.success) {
               resolvedCoinBalance = Number(
@@ -635,9 +844,13 @@ const Checkout = () => {
             }
           }
 
-          setCoinBalance(Math.max(Number(resolvedCoinBalance || 0), 0));
+          if (!isDisposed) {
+            setCoinBalance(Math.max(Number(resolvedCoinBalance || 0), 0));
+          }
         } else {
-          setCoinBalance(0);
+          if (!isDisposed) {
+            setCoinBalance(0);
+          }
         }
       } catch (error) {
         // Checkout should continue even if optional dynamic services fail.
@@ -645,6 +858,10 @@ const Checkout = () => {
     };
 
     fetchDynamicCheckoutSettings();
+
+    return () => {
+      isDisposed = true;
+    };
   }, [authToken]);
 
   // Address form handlers
@@ -1041,28 +1258,38 @@ const Checkout = () => {
     });
   };
 
-  const buildOrderProductsPayload = () =>
-    (cartItems || [])
+  const buildOrderProductsPayload = (sourceItems = cartItems) =>
+    (sourceItems || [])
       .filter((item) => !isComboItem(item))
       .map((item) => {
         const data = getItemData(item);
+        const productId =
+          resolveCheckoutProductId(data) || resolveCheckoutProductId(item);
+        const variantId = normalizeObjectId(data.variantId);
         return {
-          productId: data.id,
+          productId,
           productTitle: data.name,
+          ...(variantId ? { variantId } : {}),
+          ...(variantId && data.variantName
+            ? { variantName: data.variantName }
+            : {}),
           quantity: data.quantity,
           price: data.price,
           image: data.image,
           subTotal: data.price * data.quantity,
         };
-      });
+      })
+      .filter((item) => item.productId);
 
-  const buildOrderCombosPayload = () =>
-    (cartItems || [])
+  const buildOrderCombosPayload = (sourceItems = cartItems) =>
+    (sourceItems || [])
       .filter((item) => isComboItem(item))
       .map((item) => {
         const data = getItemData(item);
+        const comboId =
+          resolveCheckoutComboId(data) || resolveCheckoutComboId(item);
         return {
-          comboId: data.id,
+          comboId,
           comboName: data.name,
           comboSlug: data.comboSlug || "",
           comboType: data.comboType || "",
@@ -1071,12 +1298,16 @@ const Checkout = () => {
       })
       .filter((entry) => entry.comboId);
 
-  const buildOrderComboLineItems = () =>
-    buildOrderCombosPayload().map((combo) => {
-      const match = (cartItems || []).find(
+  const buildOrderComboLineItems = (sourceItems = cartItems) =>
+    buildOrderCombosPayload(sourceItems).map((combo) => {
+      const match = (sourceItems || []).find(
         (item) =>
           isComboItem(item) &&
-          String(getItemData(item).id) === String(combo.comboId),
+          String(
+            resolveCheckoutComboId(getItemData(item)) ||
+              resolveCheckoutComboId(item) ||
+              "",
+          ) === String(combo.comboId),
       );
       const matchData = match ? getItemData(match) : null;
       const unitPrice = round2(matchData?.price || 0);
@@ -1089,6 +1320,37 @@ const Checkout = () => {
         lineTotal: round2(unitPrice * quantity),
       };
     });
+
+  const getCheckoutItemsForSubmit = useCallback(async () => {
+    const fallbackItems = Array.isArray(cartItems) ? cartItems : [];
+    if (
+      fallbackItems.length > 0 ||
+      !authToken ||
+      typeof fetchCart !== "function"
+    ) {
+      return {
+        items: fallbackItems,
+        changed: false,
+      };
+    }
+
+    try {
+      const refreshed = await fetchCart();
+      if (Array.isArray(refreshed?.items)) {
+        return {
+          items: refreshed.items,
+          changed: false,
+        };
+      }
+    } catch {
+      // Best effort only; continue with current in-memory cart.
+    }
+
+    return {
+      items: fallbackItems,
+      changed: false,
+    };
+  }, [authToken, cartItems, fetchCart]);
 
   const getSelectedAddressForm = (address) =>
     address ? mapAddressResponseToForm(address) : createEmptyAddressForm();
@@ -1143,6 +1405,64 @@ const Checkout = () => {
     }
     return {};
   };
+
+  const buildCheckoutPreviewPayload = (sourceItems = cartItems) => {
+    const isValidObjectId =
+      selectedAddress && /^[a-f\d]{24}$/i.test(selectedAddress);
+
+    return {
+      products: buildOrderProductsPayload(sourceItems),
+      combos: buildOrderCombosPayload(sourceItems),
+      delivery_address:
+        !isGuestCheckout && isValidObjectId ? selectedAddress : null,
+      guestDetails: buildGuestDetailsPayload(),
+      couponCode: appliedCoupon?.code || null,
+      influencerCode: activeInfluencerCode || null,
+      coinRedeem: {
+        coins: 0,
+      },
+      paymentType: "prepaid",
+    };
+  };
+
+  useEffect(() => {
+    let active = true;
+
+    const syncPreviewPricing = async () => {
+      if (!Array.isArray(cartItems) || cartItems.length === 0) {
+        if (active) setPreviewPricing(null);
+        return;
+      }
+
+      const previewPayload = buildCheckoutPreviewPayload(cartItems);
+
+      const response = await postData("/api/orders/preview", previewPayload);
+      if (!active) return;
+
+      if (response?.success && response?.data) {
+        setPreviewPricing(response.data);
+      } else {
+        setPreviewPricing(null);
+      }
+    };
+
+    syncPreviewPricing().catch(() => {
+      if (active) {
+        setPreviewPricing(null);
+      }
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [
+    activeInfluencerCode,
+    appliedCoupon?.code,
+    cartItems,
+    guestDetails,
+    isGuestCheckout,
+    selectedAddress,
+  ]);
 
   const persistTestInvoice = ({ orderPayload, responseData, mode }) => {
     if (typeof window === "undefined") return;
@@ -1201,11 +1521,11 @@ const Checkout = () => {
         localDiskInvoice: responseData?.localDiskInvoice || null,
         totals: {
           originalSubtotal: round2(
-            apiTotals.originalSubtotal ?? cartBaseSubtotal,
+            apiTotals.originalSubtotal ?? summarySubtotal,
           ),
           subtotal: round2(apiTotals.subtotal ?? subtotal),
           influencerDiscount: round2(
-            apiTotals.influencerDiscount ?? referralDiscount,
+            apiTotals.influencerDiscount ?? referralDiscountDisplay,
           ),
           couponDiscount: round2(apiTotals.couponDiscount ?? couponDiscount),
           gst: round2(apiTotals.gst ?? tax),
@@ -1235,7 +1555,10 @@ const Checkout = () => {
         TEST_INVOICE_STORAGE_KEY,
         JSON.stringify(nextInvoices),
       );
-      localStorage.setItem("bog_last_test_invoice", JSON.stringify(invoiceRecord));
+      localStorage.setItem(
+        "bog_last_test_invoice",
+        JSON.stringify(invoiceRecord),
+      );
 
       const token = getStoredAccessToken();
       fetch(`${API_URL}/api/orders/test/save-invoice`, {
@@ -1265,7 +1588,10 @@ const Checkout = () => {
             TEST_INVOICE_STORAGE_KEY,
             JSON.stringify(updatedInvoices),
           );
-          localStorage.setItem("bog_last_test_invoice", JSON.stringify(updatedInvoice));
+          localStorage.setItem(
+            "bog_last_test_invoice",
+            JSON.stringify(updatedInvoice),
+          );
         })
         .catch(() => {
           // Disk-sync is best-effort.
@@ -1291,6 +1617,19 @@ const Checkout = () => {
 
     setIsPayButtonDisabled(true);
     try {
+      const { items: checkoutItemsForSubmit, changed: refreshedCartDiffers } =
+        await getCheckoutItemsForSubmit();
+
+      if (refreshedCartDiffers) {
+        setSnackbar({
+          open: true,
+          message:
+            "Cart prices were updated from server. Please review total and tap Pay Now again.",
+          severity: "info",
+        });
+        return;
+      }
+
       if (isGuestCheckout && !validateGuestCheckoutForm()) {
         throw new Error("Please complete all required guest details");
       }
@@ -1298,7 +1637,7 @@ const Checkout = () => {
         throw new Error("Please select or add a delivery address");
       }
 
-      const insufficientItems = (cartItems || [])
+      const insufficientItems = (checkoutItemsForSubmit || [])
         .map((item) => getItemData(item))
         .filter((data) => data.quantity > data.availableQuantity);
       if (insufficientItems.length > 0) {
@@ -1311,13 +1650,21 @@ const Checkout = () => {
         return;
       }
 
-      const statusRes = await fetch(`${API_URL}/api/orders/payment-status`);
-      const statusData = await statusRes.json();
-      const statusPayload = statusData?.data || {};
+      let statusPayload = null;
+      try {
+        const statusData = await fetchDataFromApi("/api/orders/payment-status");
+        if (statusData?.success && statusData?.data) {
+          statusPayload = statusData.data;
+        }
+      } catch {
+        statusPayload = null;
+      }
+
       const runtimeEnabledProviders = (
-        Array.isArray(statusPayload?.enabledProviders)
+        Array.isArray(statusPayload?.enabledProviders) &&
+        statusPayload.enabledProviders.length > 0
           ? statusPayload.enabledProviders
-          : []
+          : paymentProviders
       )
         .map((provider) =>
           String(provider || "")
@@ -1325,19 +1672,60 @@ const Checkout = () => {
             .toUpperCase(),
         )
         .filter(Boolean);
+      const fallbackProviders = ["PHONEPE", "PAYTM"];
+      const resolvedEnabledProviders =
+        runtimeEnabledProviders.length > 0
+          ? runtimeEnabledProviders
+          : fallbackProviders;
       const runtimeDefaultProvider = String(
         statusPayload?.defaultProvider ||
           statusPayload?.provider ||
-          runtimeEnabledProviders[0] ||
+          resolvedEnabledProviders[0] ||
           selectedPaymentProvider ||
           "PHONEPE",
       )
         .trim()
         .toUpperCase();
+      const runtimePaymentEnabled =
+        typeof statusPayload?.paymentEnabled === "boolean"
+          ? statusPayload.paymentEnabled
+          : paymentGatewayEnabled;
 
-      if (!statusPayload?.paymentEnabled) {
+      if (!runtimePaymentEnabled) {
         setShowPaymentModal(true);
         return;
+      }
+
+      let runtimePreviewPricing = null;
+      try {
+        const previewResponse = await postData(
+          "/api/orders/preview",
+          buildCheckoutPreviewPayload(checkoutItemsForSubmit),
+        );
+        if (previewResponse?.success && previewResponse?.data) {
+          runtimePreviewPricing = previewResponse.data;
+          setPreviewPricing(previewResponse.data);
+        }
+      } catch {
+        runtimePreviewPricing = null;
+      }
+
+      if (runtimePreviewPricing) {
+        const runtimeTotal = round2(
+          Number(
+            runtimePreviewPricing.gatewayPayableAmount ??
+              runtimePreviewPricing.finalAmount ??
+              0,
+          ),
+        );
+        if (runtimeTotal > 0 && Math.abs(runtimeTotal - displayTotal) > 0.01) {
+          setSnackbar({
+            open: true,
+            message: `Checkout total updated to Rs.${runtimeTotal.toFixed(2)} from latest pricing. Please verify and tap Pay Now again.`,
+            severity: "info",
+          });
+          return;
+        }
       }
 
       const token = authToken;
@@ -1346,22 +1734,35 @@ const Checkout = () => {
       const selectedAddrObj = addresses.find((a) => a._id === selectedAddress);
 
       const currentAffiliate = getStoredAffiliateData();
-      const originalAmount = round2(subtotal + tax + payableShipping);
+      const effectivePricing = runtimePreviewPricing || previewPricing || null;
+      const orderTotalForSubmit = round2(
+        Number(effectivePricing?.finalAmount ?? total),
+      );
+      const shippingForSubmit = round2(
+        Number(effectivePricing?.shipping ?? shipping),
+      );
+      const taxForSubmit = round2(Number(effectivePricing?.gstAmount ?? tax));
+      const couponDiscountForSubmit = round2(
+        Number(effectivePricing?.discountBreakdown?.coupon ?? couponDiscount),
+      );
+      const originalAmount = round2(
+        Number(effectivePricing?.originalAmount ?? originalAmountForSubmit),
+      );
 
       const orderData = {
-        products: buildOrderProductsPayload(),
-        combos: buildOrderCombosPayload(),
-        totalAmt: total,
+        products: buildOrderProductsPayload(checkoutItemsForSubmit),
+        combos: buildOrderCombosPayload(checkoutItemsForSubmit),
+        totalAmt: orderTotalForSubmit,
         originalAmount,
-        finalAmount: total,
+        finalAmount: orderTotalForSubmit,
         delivery_address: isValidObjectId ? selectedAddress : null,
         location: isGuestCheckout ? guestLocationPayload : null,
         notes: orderNote,
-        tax,
-        shipping: payableShipping,
+        tax: taxForSubmit,
+        shipping: shippingForSubmit,
         // Coupon details (backend will revalidate)
         couponCode: appliedCoupon?.code || null,
-        discountAmount: couponDiscount,
+        discountAmount: couponDiscountForSubmit,
         // Influencer/Referral tracking
         influencerCode: activeInfluencerCode || null,
         // Legacy affiliate tracking
@@ -1371,7 +1772,7 @@ const Checkout = () => {
           coins: 0,
         },
         paymentType: "prepaid",
-        paymentProvider: runtimeEnabledProviders.includes(
+        paymentProvider: resolvedEnabledProviders.includes(
           selectedPaymentProvider,
         )
           ? selectedPaymentProvider
@@ -1380,17 +1781,8 @@ const Checkout = () => {
         shippingAddress: buildShippingAddressPayload(selectedAddrObj),
       };
 
-      const response = await fetch(`${API_URL}/api/orders`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token && { Authorization: `Bearer ${token}` }),
-        },
-        body: JSON.stringify(orderData),
-      });
-
-      const data = await response.json();
-      if (!data.success) {
+      const data = await postData("/api/orders", orderData);
+      if (!data?.success) {
         if (String(data?.code || "").toUpperCase() === "INSUFFICIENT_STOCK") {
           throw new Error("Stock changed. Please update your cart.");
         }
@@ -1443,6 +1835,19 @@ const Checkout = () => {
     setIsSavingOrder(true);
 
     try {
+      const { items: checkoutItemsForSubmit, changed: refreshedCartDiffers } =
+        await getCheckoutItemsForSubmit();
+
+      if (refreshedCartDiffers) {
+        setSnackbar({
+          open: true,
+          message:
+            "Cart prices were updated from server. Please review total and save again.",
+          severity: "info",
+        });
+        return;
+      }
+
       if (isGuestCheckout && !validateGuestCheckoutForm()) {
         throw new Error("Please complete all required guest details");
       }
@@ -1450,7 +1855,7 @@ const Checkout = () => {
         throw new Error("Please select or add a delivery address");
       }
 
-      const insufficientItems = (cartItems || [])
+      const insufficientItems = (checkoutItemsForSubmit || [])
         .map((item) => getItemData(item))
         .filter((data) => data.quantity > data.availableQuantity);
       if (insufficientItems.length > 0) {
@@ -1474,8 +1879,8 @@ const Checkout = () => {
       const selectedAddrObj = addresses.find((a) => a._id === selectedAddress);
 
       const orderData = {
-        products: buildOrderProductsPayload(),
-        combos: buildOrderCombosPayload(),
+        products: buildOrderProductsPayload(checkoutItemsForSubmit),
+        combos: buildOrderCombosPayload(checkoutItemsForSubmit),
         totalAmt: total,
         delivery_address: isValidObjectId ? selectedAddress : null,
         location: isGuestCheckout ? guestLocationPayload : null,
@@ -1570,7 +1975,20 @@ const Checkout = () => {
 
     setIsCreatingDemoOrder(true);
     try {
-      const insufficientItems = (cartItems || [])
+      const { items: checkoutItemsForSubmit, changed: refreshedCartDiffers } =
+        await getCheckoutItemsForSubmit();
+
+      if (refreshedCartDiffers) {
+        setSnackbar({
+          open: true,
+          message:
+            "Cart prices were updated from server. Please review total and retry demo order.",
+          severity: "info",
+        });
+        return;
+      }
+
+      const insufficientItems = (checkoutItemsForSubmit || [])
         .map((item) => getItemData(item))
         .filter((data) => data.quantity > data.availableQuantity);
       if (insufficientItems.length > 0) {
@@ -1588,8 +2006,8 @@ const Checkout = () => {
       const selectedAddrObj = addresses.find((a) => a._id === selectedAddress);
       const guestPayload = buildGuestDetailsPayload();
       const demoPayload = {
-        products: buildOrderProductsPayload(),
-        combos: buildOrderCombosPayload(),
+        products: buildOrderProductsPayload(checkoutItemsForSubmit),
+        combos: buildOrderCombosPayload(checkoutItemsForSubmit),
         influencerCode: activeInfluencerCode,
         state: selectedAddrObj?.state || guestPayload.state || "",
         pincode: selectedAddrObj?.pincode || guestPayload.pincode || "",
@@ -2078,7 +2496,7 @@ const Checkout = () => {
                     const data = getItemData(item);
                     return (
                       <div
-                        key={data.id || index}
+                        key={`${data.itemType}::${data.id || index}::${String(data?.variantId || "")}::${index}`}
                         className="flex gap-4 p-4 rounded-3xl bg-white border border-gray-50 items-center"
                       >
                         <div className="w-20 h-20 rounded-2xl bg-gray-50 flex items-center justify-center p-2 shrink-0">
@@ -2092,6 +2510,12 @@ const Checkout = () => {
                           <h3 className="font-bold text-gray-900 truncate">
                             {data.name}
                           </h3>
+                          {data.itemType === "product" &&
+                            String(data?.variantName || "").trim() && (
+                              <p className="text-xs text-gray-500 mt-1">
+                                {String(data.variantName).trim()}
+                              </p>
+                            )}
                           {data.demandStatus === "HIGH" && (
                             <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full mt-1">
                               <HiOutlineFire /> High Demand
@@ -2147,7 +2571,7 @@ const Checkout = () => {
                     <div className="flex justify-between text-gray-400 font-bold uppercase tracking-widest text-xs">
                       <span>Subtotal</span>
                       <span className="text-white">
-                        ₹{cartBaseSubtotal.toFixed(2)}
+                        ₹{displaySummarySubtotal.toFixed(2)}
                       </span>
                     </div>
 
@@ -2165,15 +2589,15 @@ const Checkout = () => {
                         <span className="flex items-center gap-1">
                           <FiTag /> Influencer ({activeInfluencerCode})
                         </span>
-                        <span>-₹{referralDiscount.toFixed(2)}</span>
+                        <span>-₹{referralDiscountDisplay.toFixed(2)}</span>
                       </div>
                     )}
 
-                    {hasSubtotalReduction && (
+                    {hasDisplaySubtotalReduction && (
                       <div className="flex justify-between text-gray-300 font-bold uppercase tracking-widest text-xs">
                         <span>Discounted Subtotal</span>
                         <span className="text-white">
-                          ₹{subtotal.toFixed(2)}
+                          ₹{displaySubtotal.toFixed(2)}
                         </span>
                       </div>
                     )}
@@ -2194,14 +2618,20 @@ const Checkout = () => {
                     <div className="flex justify-between text-gray-400 font-bold uppercase tracking-widest text-xs">
                       <span>Shipping</span>
                       {hasCheckoutStateInput ? (
-                        <span className="text-primary flex items-center gap-2">
-                          {displayShippingCharge > 0 && (
-                            <span className="line-through text-gray-500">
-                              &#8377;{displayShippingCharge.toFixed(2)}
-                            </span>
-                          )}
-                          <span>FREE</span>
-                        </span>
+                        shipping > 0 ? (
+                          <span className="text-white">
+                            &#8377;{shipping.toFixed(2)}
+                          </span>
+                        ) : (
+                          <span className="text-primary flex items-center gap-2">
+                            {displayShippingCharge > 0 && (
+                              <span className="line-through text-gray-500">
+                                &#8377;{displayShippingCharge.toFixed(2)}
+                              </span>
+                            )}
+                            <span>FREE</span>
+                          </span>
+                        )
                       ) : (
                         <span className="text-gray-500">--</span>
                       )}
@@ -2213,7 +2643,7 @@ const Checkout = () => {
                           Total Payable
                         </p>
                         <p className="text-3xl font-black text-white tracking-tight">
-                          ₹{total.toFixed(0)}
+                          ₹{displayTotal.toFixed(2)}
                         </p>
                       </div>
                     </div>
@@ -2295,7 +2725,7 @@ const Checkout = () => {
                             </p>
                             <p className="text-xs text-primary font-semibold mt-1">
                               Discount on subtotal: ₹
-                              {referralDiscount.toFixed(2)}
+                              {referralDiscountDisplay.toFixed(2)}
                             </p>
                             {Number(referralData?.maxDiscountAmount || 0) >
                               0 && (

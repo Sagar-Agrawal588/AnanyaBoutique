@@ -1,3 +1,4 @@
+import compression from "compression";
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -103,6 +104,13 @@ const isHttpOrigin = (origin) =>
   /^https?:\/\/[^/\s]+$/i.test(normalizeOrigin(origin));
 const isDevLocalhostOrigin = (origin) =>
   /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(normalizeOrigin(origin));
+const isLocalRequestHost = (value) =>
+  /(^|\/\/)(localhost|127\.0\.0\.1|\[::1\]|::1|0\.0\.0\.0)(:\d+)?$/i.test(
+    normalizeOrigin(value).replace(/\/+$/, ""),
+  ) ||
+  /^(localhost|127\.0\.0\.1|\[::1\]|::1|0\.0\.0\.0)(:\d+)?$/i.test(
+    String(value || "").trim(),
+  );
 const parseOriginList = (value) =>
   String(normalizeEnvValue(value) || "")
     .split(",")
@@ -179,12 +187,14 @@ if (accessTokenSecret === refreshTokenSecret) {
 
 // Route imports
 import { initializeFirebaseAdmin } from "./config/firebaseAdmin.js";
+import { startOrderPaymentReminderJob } from "./controllers/order.controller.js";
 import { initializeSettings } from "./controllers/settings.controller.js";
 import { initSocket } from "./realtime/socket.js";
 import aboutPageRouter from "./routes/aboutPage.route.js";
 import addressRouter from "./routes/address.route.js";
 import adminAnalyticsRouter from "./routes/adminAnalytics.route.js";
 import adminAuthRouter from "./routes/adminAuth.route.js";
+import adminCrmRouter from "./routes/adminCrm.route.js";
 import adminEmailTemplatesRouter from "./routes/adminEmailTemplates.route.js";
 import adminMembershipRouter from "./routes/adminMembership.route.js";
 import adminOrdersRouter from "./routes/adminOrders.js";
@@ -199,6 +209,7 @@ import categoryRouter from "./routes/category.route.js";
 import coinRouter from "./routes/coin.route.js";
 import comboRouter from "./routes/combo.route.js";
 import couponRouter from "./routes/coupon.route.js";
+import crmRouter from "./routes/crm.route.js";
 import emailAutomationRouter from "./routes/emailAutomation.route.js";
 import homeMembershipContentRouter from "./routes/homeMembershipContent.route.js";
 import homeSlideRouter from "./routes/homeSlide.route.js";
@@ -260,28 +271,40 @@ app.use((req, res, next) => {
 });
 
 app.use(
-  cors({
-    origin: function (origin, callback) {
-      const normalized = normalizeOrigin(origin);
-      if (
-        !origin ||
-        allowedOrigins.includes(normalized) ||
-        (!isProductionEnv && isDevLocalhostOrigin(normalized))
-      ) {
-        callback(null, true);
-      } else {
-        callback(new Error("Not allowed by CORS"));
-      }
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: [
-      "Content-Type",
-      "Authorization",
-      "X-Session-Id",
-      "X-Analytics-Consent",
-      "X-Page-Url",
-    ],
+  cors((req, callback) => {
+    const origin = req.header("Origin");
+    const normalizedOrigin = normalizeOrigin(origin);
+    const requestHost =
+      req?.headers?.host || req?.hostname || req?.socket?.localAddress || "";
+    const allowLocalDevOrigin =
+      isDevLocalhostOrigin(normalizedOrigin) &&
+      (!isProductionEnv || isLocalRequestHost(requestHost));
+
+    const corsOptions = {
+      credentials: true,
+      methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+      allowedHeaders: [
+        "Content-Type",
+        "Authorization",
+        "X-Session-Id",
+        "X-Analytics-Consent",
+        "X-Page-Url",
+      ],
+    };
+
+    if (
+      !origin ||
+      allowedOrigins.includes(normalizedOrigin) ||
+      allowLocalDevOrigin
+    ) {
+      callback(null, {
+        ...corsOptions,
+        origin: true,
+      });
+      return;
+    }
+
+    callback(new Error("Not allowed by CORS"));
   }),
 );
 
@@ -384,8 +407,14 @@ app.use(
   }),
 );
 
+app.use(
+  compression({
+    threshold: 1024,
+  }),
+);
+
 if (process.env.NODE_ENV === "production") {
-  app.use(morgan("combined"));
+  app.use(morgan("short"));
 } else {
   app.use(morgan("dev"));
 }
@@ -418,6 +447,7 @@ app.use("/api/blogs", adminLimiter, blogRouter);
 app.use("/api/orders", generalLimiter, orderRouter);
 app.use("/api/admin/orders", adminLimiter, adminOrdersRouter);
 app.use("/api/admin/analytics", adminLimiter, adminAnalyticsRouter);
+app.use("/api/admin/crm", adminLimiter, adminCrmRouter);
 app.use("/api/admin/email-templates", adminLimiter, adminEmailTemplatesRouter);
 app.use("/api/admin", adminLimiter, adminMembershipRouter);
 app.use("/api/cart", generalLimiter, cartRouter);
@@ -438,6 +468,7 @@ app.use("/api/influencers", generalLimiter, influencerRouter);
 app.use("/api/invoices", generalLimiter, invoiceRouter);
 app.use("/api/notifications", generalLimiter, notificationRouter);
 app.use("/api/newsletter", generalLimiter, newsletterRouter);
+app.use("/api/crm", generalLimiter, crmRouter);
 app.use("/api/email", generalLimiter, emailAutomationRouter);
 app.use("/api/v1/partner", generalLimiter, partnerApiRouter);
 app.use("/api/settings", generalLimiter, settingsRouter);
@@ -621,6 +652,7 @@ connectDb()
     startInventoryReservationExpiryJob();
     startMembershipExpiryJob();
     startEmailAutomationJob();
+    startOrderPaymentReminderJob();
     startFrequentlyBoughtTogetherJob();
     startComboAnalysisJob();
     startPartnerDynamicScalingEngine();

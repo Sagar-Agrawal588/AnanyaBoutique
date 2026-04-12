@@ -11,6 +11,7 @@ import {
   getPaymentGatewayStatus,
   getUserOrderById,
   getUserOrders,
+  handlePaytmWebhook,
   handlePhonePeChargebackWebhook,
   handlePhonePeRefundAcceptWebhook,
   handlePhonePeRefundSuccessWebhook,
@@ -18,8 +19,8 @@ import {
   handlePhonePeWebhook,
   initiatePayOrderPayment,
   previewOrderPricing,
+  removeAllPendingOrders,
   repairPaidOrders,
-  handlePaytmWebhook,
   retryOrderPayment,
   saveClientTestInvoiceToDisk,
   saveOrderForLater,
@@ -28,14 +29,14 @@ import {
 import admin from "../middlewares/admin.js";
 import auth from "../middlewares/auth.js";
 import optionalAuth from "../middlewares/optionalAuth.js";
-import { paymentLimiter } from "../middlewares/rateLimiter.js";
 import {
   validateCreateOrderRequest,
-  validateSaveOrderRequest,
-  validateUpdateOrderStatusRequest,
   validateGetOrderRequest,
   validatePaginationQuery,
+  validateSaveOrderRequest,
+  validateUpdateOrderStatusRequest,
 } from "../middlewares/orderValidation.js";
+import { paymentLimiter } from "../middlewares/rateLimiter.js";
 
 const router = express.Router();
 
@@ -59,10 +60,16 @@ router.get("/webhook/paytm", handlePaytmWebhook);
 router.post("/webhook/paytm", handlePaytmWebhook);
 // PhonePe webhook (state verified server-side against PhonePe status API)
 router.post("/webhook/phonepe", handlePhonePeWebhook);
-router.post("/webhook/phonepe/refund-success", handlePhonePeRefundSuccessWebhook);
+router.post(
+  "/webhook/phonepe/refund-success",
+  handlePhonePeRefundSuccessWebhook,
+);
 router.post("/webhook/phonepe/refund-accept", handlePhonePeRefundAcceptWebhook);
 router.post("/webhook/phonepe/chargeback", handlePhonePeChargebackWebhook);
-router.post("/webhook/phonepe/subscription", handlePhonePeSubscriptionPreWebhook);
+router.post(
+  "/webhook/phonepe/subscription",
+  handlePhonePeSubscriptionPreWebhook,
+);
 
 // ==================== PUBLIC ROUTES ====================
 
@@ -70,15 +77,10 @@ router.post("/webhook/phonepe/subscription", handlePhonePeSubscriptionPreWebhook
 router.get("/payment-status", getPaymentGatewayStatus);
 
 // Secure guest pay-now flow
-router.get(
-  "/pay-order/:orderId",
-  validateGetOrderRequest,
-  getPayOrderDetails,
-);
+router.get("/pay-order/:orderId", getPayOrderDetails);
 router.post(
   "/pay-order/:orderId/initiate",
   paymentLimiter,
-  validateGetOrderRequest,
   initiatePayOrderPayment,
 );
 
@@ -93,7 +95,7 @@ router.post(
   paymentLimiter,
   optionalAuth,
   validateCreateOrderRequest,
-  createOrder
+  createOrder,
 );
 
 // Save order for later - with validation
@@ -102,7 +104,7 @@ router.post(
   paymentLimiter,
   optionalAuth,
   validateSaveOrderRequest,
-  saveOrderForLater
+  saveOrderForLater,
 );
 
 // Get user's orders
@@ -116,16 +118,11 @@ router.get(
   "/user/order/:orderId",
   auth,
   validateGetOrderRequest,
-  getUserOrderById
+  getUserOrderById,
 );
 
 // Retry payment for an existing unpaid order
-router.post(
-  "/:orderId/retry-payment",
-  auth,
-  validateGetOrderRequest,
-  retryOrderPayment,
-);
+router.post("/:orderId/retry-payment", auth, retryOrderPayment);
 
 // Download invoice (user own order or admin any order)
 router.get("/:orderId/invoice", auth, downloadOrderInvoice);
@@ -141,13 +138,7 @@ if (process.env.NODE_ENV !== "production") {
 // ==================== ADMIN ROUTES ====================
 
 // Get all orders (admin)
-router.get(
-  "/admin/all",
-  auth,
-  admin,
-  validatePaginationQuery,
-  getAllOrders
-);
+router.get("/admin/all", auth, admin, validatePaginationQuery, getAllOrders);
 
 // Get order statistics
 router.get("/admin/stats", auth, admin, getOrderStats);
@@ -158,13 +149,11 @@ router.get("/admin/dashboard-stats", auth, admin, getDashboardStats);
 // Repair paid orders missing shipment/invoice artifacts
 router.post("/admin/repair-paid", auth, admin, repairPaidOrders);
 
+// Remove all pending orders from admin orders page
+router.delete("/admin/pending", auth, admin, removeAllPendingOrders);
+
 // Get single order (admin or order owner)
-router.get(
-  "/:id",
-  auth,
-  validateGetOrderRequest,
-  getOrderById
-);
+router.get("/:id", auth, validateGetOrderRequest, getOrderById);
 
 // Update order status
 router.put(
@@ -172,7 +161,7 @@ router.put(
   auth,
   admin,
   validateUpdateOrderStatusRequest,
-  updateOrderStatus
+  updateOrderStatus,
 );
 
 // Admin status update via PATCH (Zod validated)
