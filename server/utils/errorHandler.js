@@ -278,9 +278,16 @@ export function sendError(
 
   if (error instanceof AppError) {
     errorCode = error.code;
-    message = error.message;
     statusCode = error.status;
     details = error.details;
+
+    const detailMessage =
+      details && typeof details === "object"
+        ? String(details.message || "").trim()
+        : "";
+    const useDetailMessage =
+      detailMessage.length > 0 && statusCode >= 400 && statusCode < 500;
+    message = useDetailMessage ? detailMessage : error.message;
 
     logger.error("AppError", message, {
       code: errorCode,
@@ -493,7 +500,15 @@ export function handleDatabaseError(error, context = "Database Operation") {
   }
 
   if (error.code === 11000) {
-    const field = Object.keys(error.keyPattern)[0];
+    const keyPattern =
+      error.keyPattern && typeof error.keyPattern === "object"
+        ? error.keyPattern
+        : null;
+    const keyValue =
+      error.keyValue && typeof error.keyValue === "object"
+        ? error.keyValue
+        : null;
+    const field = Object.keys(keyPattern || keyValue || {})[0] || "resource";
     return new AppError("CONFLICT", {
       field,
       message: `${field} already exists`,

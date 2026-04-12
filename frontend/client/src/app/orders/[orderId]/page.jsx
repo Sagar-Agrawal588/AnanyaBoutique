@@ -2,6 +2,7 @@
 import { API_BASE_URL } from "@/utils/api";
 
 import { useShippingDisplayCharge } from "@/hooks/useShippingDisplayCharge";
+import { getImageUrl } from "@/utils/imageUtils";
 import {
   buildSavedOrderCalculationInput,
   calculateOrderTotals,
@@ -284,6 +285,46 @@ const resolveTrackingUrl = (order = {}) => {
       ? buildXpressbeesTrackingUrl(awb, explicitUrl)
       : explicitUrl;
   }
+};
+
+const resolveComboImage = (combo = {}) => {
+  const comboItems = Array.isArray(combo?.items) ? combo.items : [];
+  const primaryImage =
+    combo?.thumbnail ||
+    combo?.image ||
+    combo?.comboImages?.[0] ||
+    comboItems?.[0]?.image ||
+    comboItems?.[0]?.thumbnail ||
+    "";
+
+  return getImageUrl(primaryImage, "/placeholder.png");
+};
+
+const resolveOrderItemImage = (item = {}) => {
+  const productRef =
+    item?.product && typeof item.product === "object"
+      ? item.product
+      : item?.productId && typeof item.productId === "object"
+        ? item.productId
+        : null;
+
+  const primaryImage =
+    item?.image ||
+    item?.thumbnail ||
+    item?.productImage ||
+    item?.variantImage ||
+    item?.images?.[0] ||
+    productRef?.thumbnail ||
+    productRef?.images?.[0] ||
+    "";
+
+  return getImageUrl(primaryImage, "/placeholder.png");
+};
+
+const handleOrderImageFallback = (event) => {
+  if (!event?.currentTarget) return;
+  event.currentTarget.onerror = null;
+  event.currentTarget.src = "/placeholder.png";
 };
 
 /**
@@ -1376,8 +1417,7 @@ const OrderDetailsPage = () => {
                 const savingsTotal = savingsPerCombo * quantity;
                 const comboItems = Array.isArray(combo?.items) ? combo.items : [];
                 const comboTitle = combo?.comboName || "Combo Bundle";
-                const comboImage =
-                  combo?.thumbnail || combo?.image || "/placeholder.png";
+                const comboImage = resolveComboImage(combo);
 
                 const includesPreview = comboItems
                   .slice(0, 2)
@@ -1401,6 +1441,7 @@ const OrderDetailsPage = () => {
                     <img
                       src={comboImage}
                       alt={comboTitle}
+                      onError={handleOrderImageFallback}
                       className="w-20 h-20 object-cover rounded-lg bg-gray-100"
                     />
                     <div className="flex-1 min-w-0">
@@ -1435,8 +1476,9 @@ const OrderDetailsPage = () => {
                   className="flex items-center gap-4 pb-4 border-b border-gray-100 last:border-0 last:pb-0"
                 >
                   <img
-                    src={item.image || "/placeholder.png"}
+                    src={resolveOrderItemImage(item)}
                     alt={item.productTitle}
+                    onError={handleOrderImageFallback}
                     className="w-20 h-20 object-cover rounded-lg bg-gray-100"
                   />
                   <div className="flex-1 min-w-0">
