@@ -34,7 +34,6 @@ import {
   applyRedemptionToUser,
   awardCoinsToUser,
 } from "../services/coin.service.js";
-import { captureCrmTouchpointSafely } from "../services/crm/crmTracking.service.js";
 import {
   buildComboOrderSnapshot,
   computeComboAvailability,
@@ -49,6 +48,7 @@ import {
   resolveUserSegment,
   restoreComboStock,
 } from "../services/combos/combo.service.js";
+import { captureCrmTouchpointSafely } from "../services/crm/crmTracking.service.js";
 import { createEmailLog } from "../services/emailAutomation.service.js";
 import {
   confirmInventory,
@@ -104,16 +104,16 @@ import {
   syncOrderStatus,
   syncOrderToFirestore,
 } from "../utils/orderFirestoreSync.js";
-import {
-  resolveOrderAwb,
-  resolveOrderTrackingUrl,
-} from "../utils/orderTracking.js";
 import { saveDocumentWithTempIdRetry } from "../utils/orderPersistence.js";
 import {
   applyOrderStatusTransition,
   normalizeOrderStatus,
   ORDER_STATUS,
 } from "../utils/orderStatus.js";
+import {
+  resolveOrderAwb,
+  resolveOrderTrackingUrl,
+} from "../utils/orderTracking.js";
 import {
   calculateInfluencerCommission,
   calculateReferralDiscount,
@@ -943,11 +943,7 @@ const resolveOrderContactIdentity = (order = {}) => {
   const delivery = order?.deliveryAddressSnapshot || {};
 
   return {
-    email:
-      billing?.email ||
-      guest?.email ||
-      delivery?.email ||
-      "",
+    email: billing?.email || guest?.email || delivery?.email || "",
     phone:
       billing?.phone ||
       billing?.mobile ||
@@ -986,7 +982,9 @@ const emitPurchaseCompletedTrackingEvent = ({
       name: contactIdentity.name,
       orderId,
       orderAmount: order?.finalAmount || order?.totalAmt || 0,
-      sessionId: String(order?.trackingSessionId || req.analyticsSessionId || ""),
+      sessionId: String(
+        order?.trackingSessionId || req.analyticsSessionId || "",
+      ),
       pageUrl: "/checkout",
       referrer: req?.headers?.referer || "",
       happenedAt: order?.confirmedAt || order?.confirmed_at || new Date(),
@@ -1182,19 +1180,11 @@ const stringifyOrderItemsForEmail = (order) => {
 };
 
 const resolveOrderRecipient = async (order) => {
+  const contactIdentity = resolveOrderContactIdentity(order);
+  const preferredName = String(contactIdentity?.name || "").trim();
   const fallbackName =
-    String(
-      order?.billingDetails?.fullName ||
-        order?.guestDetails?.fullName ||
-        order?.user?.name ||
-        "Customer",
-    ).trim() || "Customer";
-  const directEmail = String(
-    order?.billingDetails?.email ||
-      order?.guestDetails?.email ||
-      order?.user?.email ||
-      "",
-  )
+    preferredName || String(order?.user?.name || "").trim() || "Customer";
+  const directEmail = String(contactIdentity?.email || order?.user?.email || "")
     .trim()
     .toLowerCase();
 
@@ -1213,7 +1203,7 @@ const resolveOrderRecipient = async (order) => {
       .trim()
       .toLowerCase();
     const resolvedName =
-      String(user?.name || fallbackName || "Customer").trim() || "Customer";
+      preferredName || String(user?.name || "").trim() || "Customer";
     return { email: resolvedEmail, name: resolvedName };
   } catch {
     return { email: "", name: fallbackName };
@@ -4039,6 +4029,8 @@ export const getAllOrders = asyncHandler(async (req, res) => {
     const filter = {
       // Keep purchase orders out of the regular orders listing.
       purchaseOrder: null,
+      // Hide test/demo orders from the production admin orders screen.
+      isDemoOrder: { $ne: true },
     };
     const andFilters = [];
     const normalizedStatus = String(status || "all")
@@ -4312,6 +4304,150 @@ export const removeAllPendingOrders = asyncHandler(async (req, res) => {
     }
 
     const dbError = handleDatabaseError(error, "removeAllPendingOrders");
+    return sendError(res, dbError);
+  }
+});
+
+/**
+ * Remove all demo orders (Admin)
+ * @route DELETE /api/orders/admin/demo-orders
+ * @access Admin
+ */
+export const removeAllDemoOrders = asyncHandler(async (req, res) => {
+  try {
+    const demoOrders = await OrderModel.find({ isDemoOrder: true })
+      .select("_id inventoryStatus products combos")
+      .lean();
+
+    if (demoOrders.length === 0) {
+      return sendSuccess(
+        res,
+        {
+          totalMatched: 0,
+          deletedCount: 0,
+          skippedCount: 0,
+          releasedInventoryCount: 0,
+          releasedComboCount: 0,
+          restoredInventoryCount: 0,
+          restoredComboCount: 0,
+          deletedComboOrdersCount: 0,
+          deletedInvoicesCount: 0,
+        },
+        "No demo orders found",
+      );
+    }
+
+    let deletedCount = 0;
+    let skippedCount = 0;
+    let releasedInventoryCount = 0;
+    let releasedComboCount = 0;
+    let restoredInventoryCount = 0;
+    let restoredComboCount = 0;
+    let deletedComboOrdersCount = 0;
+    let deletedInvoicesCount = 0;
+    const skippedOrderIds = [];
+
+    for (const order of demoOrders) {
+      try {
+        const inventoryStatus = String(order?.inventoryStatus || "")
+          .trim()
+          .toLowerCase();
+
+        if (inventoryStatus === "reserved") {
+          const inventoryRelease = await releaseInventory(
+            order,
+            "ADMIN_DEMO_PURGE",
+          );
+          if (inventoryRelease?.status === "released") {
+            releasedInventoryCount += 1;
+          }
+
+          const comboRelease = await releaseComboStock(
+            order,
+            "ADMIN_DEMO_PURGE",
+          );
+          if (comboRelease?.status === "released") {
+            releasedComboCount += 1;
+          }
+        } else if (inventoryStatus === "deducted") {
+          const inventoryRestore = await restoreInventory(
+            order,
+            "ADMIN_DEMO_PURGE",
+          );
+          if (inventoryRestore?.status === "restored") {
+            restoredInventoryCount += 1;
+          }
+
+          const comboRestore = await restoreComboStock(
+            order,
+            "ADMIN_DEMO_PURGE",
+          );
+          if (comboRestore?.status === "restored") {
+            restoredComboCount += 1;
+          }
+        }
+
+        const [comboDeleteResult, invoiceDeleteResult] = await Promise.all([
+          ComboOrderModel.deleteMany({ orderId: order._id }),
+          InvoiceModel.deleteMany({ orderId: order._id }),
+        ]);
+
+        deletedComboOrdersCount += Number(comboDeleteResult?.deletedCount || 0);
+        deletedInvoicesCount += Number(invoiceDeleteResult?.deletedCount || 0);
+
+        const deleteResult = await OrderModel.deleteOne({ _id: order._id });
+        if (Number(deleteResult?.deletedCount || 0) === 1) {
+          deletedCount += 1;
+        } else {
+          skippedCount += 1;
+          skippedOrderIds.push(String(order._id));
+        }
+      } catch (cleanupError) {
+        skippedCount += 1;
+        skippedOrderIds.push(String(order._id));
+        logger.error("removeAllDemoOrders", "Failed to remove demo order", {
+          orderId: order?._id,
+          error: cleanupError?.message || String(cleanupError),
+        });
+      }
+    }
+
+    logger.info("removeAllDemoOrders", "Demo order cleanup finished", {
+      totalMatched: demoOrders.length,
+      deletedCount,
+      skippedCount,
+      releasedInventoryCount,
+      releasedComboCount,
+      restoredInventoryCount,
+      restoredComboCount,
+      deletedComboOrdersCount,
+      deletedInvoicesCount,
+    });
+
+    return sendSuccess(
+      res,
+      {
+        totalMatched: demoOrders.length,
+        deletedCount,
+        skippedCount,
+        releasedInventoryCount,
+        releasedComboCount,
+        restoredInventoryCount,
+        restoredComboCount,
+        deletedComboOrdersCount,
+        deletedInvoicesCount,
+        skippedOrderIds,
+      },
+      deletedCount > 0
+        ? `Removed ${deletedCount} demo orders`
+        : "No demo orders were removed",
+    );
+  } catch (error) {
+    if (error instanceof AppError) {
+      return sendError(res, error);
+    }
+
+    const dbError = handleDatabaseError(error, "removeAllDemoOrders");
     return sendError(res, dbError);
   }
 });
@@ -5320,12 +5456,22 @@ export const createOrder = asyncHandler(async (req, res) => {
       await reserveComboStock(order, "ORDER_CREATE");
       await reserveInventory(order, "ORDER_CREATE");
       await saveDocumentWithTempIdRetry(order, {
-        onDuplicateKey: ({ attempt, maxAttempts, document }) => {
-          logger.warn("createOrder", "Retrying order save after temp_id conflict", {
-            attempt,
-            maxAttempts,
-            tempOrderId: document?.temp_id || null,
-          });
+        onDuplicateKey: ({
+          attempt,
+          maxAttempts,
+          document,
+          duplicateFields,
+        }) => {
+          logger.warn(
+            "createOrder",
+            "Retrying order save after identity key conflict",
+            {
+              attempt,
+              maxAttempts,
+              duplicateFields,
+              tempOrderId: document?.temp_id || null,
+            },
+          );
         },
       });
 
@@ -6031,13 +6177,19 @@ export const saveOrderForLater = asyncHandler(async (req, res) => {
       await reserveComboStock(savedOrder, "ORDER_SAVE");
       await reserveInventory(savedOrder, "ORDER_SAVE");
       await saveDocumentWithTempIdRetry(savedOrder, {
-        onDuplicateKey: ({ attempt, maxAttempts, document }) => {
+        onDuplicateKey: ({
+          attempt,
+          maxAttempts,
+          document,
+          duplicateFields,
+        }) => {
           logger.warn(
             "saveOrderForLater",
-            "Retrying saved-order persistence after temp_id conflict",
+            "Retrying saved-order persistence after identity key conflict",
             {
               attempt,
               maxAttempts,
+              duplicateFields,
               tempOrderId: document?.temp_id || null,
             },
           );
@@ -6482,9 +6634,6 @@ export const initiatePayOrderPayment = asyncHandler(async (req, res) => {
     const contact = order.billingDetails || order.guestDetails || {};
 
     let mutated = false;
-    if (await linkOrderToUserByEmail(order)) {
-      mutated = true;
-    }
 
     if (selectedPaymentProvider === PAYMENT_PROVIDERS.PAYTM) {
       const merchantTransactionId =
@@ -7799,14 +7948,28 @@ export const handlePaytmWebhook = asyncHandler(async (req, res) => {
             orderId: order._id,
             paymentState: clientPaymentState,
           })
-        : sendSuccess(res, {}, "Webhook already processed");
+        : sendSuccess(
+            res,
+            {
+              orderId: String(order?._id || ""),
+              paymentState: clientPaymentState,
+            },
+            "Webhook already processed",
+          );
     }
     return wantsBrowserRedirect
       ? redirectPaytmWebhookToClient(req, res, {
           orderId: order._id,
           paymentState: clientPaymentState,
         })
-      : sendSuccess(res, {}, "Webhook processed");
+      : sendSuccess(
+          res,
+          {
+            orderId: String(order?._id || ""),
+            paymentState: clientPaymentState,
+          },
+          "Webhook processed",
+        );
   } catch (error) {
     logger.error("handlePaytmWebhook", "Webhook processing error", {
       error: error.message,
@@ -8074,11 +8237,32 @@ export const handlePhonePeWebhook = asyncHandler(async (req, res) => {
       });
     }
 
-    if (resolution.skipped) {
-      return sendSuccess(res, {}, "Webhook already processed");
+    let clientPaymentState = String(order.payment_status || "pending")
+      .toLowerCase()
+      .trim();
+    if (clientPaymentState === "failed" && failureKind === "cancelled") {
+      clientPaymentState = "cancelled";
     }
 
-    return sendSuccess(res, {}, "Webhook processed");
+    if (resolution.skipped) {
+      return sendSuccess(
+        res,
+        {
+          orderId: String(order?._id || ""),
+          paymentState: clientPaymentState,
+        },
+        "Webhook already processed",
+      );
+    }
+
+    return sendSuccess(
+      res,
+      {
+        orderId: String(order?._id || ""),
+        paymentState: clientPaymentState,
+      },
+      "Webhook processed",
+    );
   } catch (error) {
     logger.error("handlePhonePeWebhook", "Webhook processing error", {
       error: error.message,
@@ -8150,6 +8334,8 @@ export const createTestOrder = asyncHandler(async (req, res) => {
 
     let normalizedProducts = [];
     const requestedProducts = Array.isArray(body.products) ? body.products : [];
+    const requestedCombos = Array.isArray(body.combos) ? body.combos : [];
+
     if (requestedProducts.length > 0) {
       validateProductsArray(requestedProducts, "products");
       const normalizedResult = await fetchAndNormalizeOrderProducts(
@@ -8157,7 +8343,15 @@ export const createTestOrder = asyncHandler(async (req, res) => {
         "createTestOrder",
       );
       normalizedProducts = normalizedResult.normalizedProducts;
-    } else {
+    }
+
+    const comboPayload = await fetchAndNormalizeOrderCombos({
+      combos: requestedCombos,
+      userId: effectiveUserId,
+      logContext: "createTestOrder",
+    });
+
+    if (requestedProducts.length === 0 && requestedCombos.length === 0) {
       const products = await ProductModel.find().limit(3);
       if (products.length === 0) {
         logger.warn("createTestOrder", "No products found in database");
@@ -8182,6 +8376,18 @@ export const createTestOrder = asyncHandler(async (req, res) => {
           image: product.images?.[0] || product.thumbnail || "",
           subTotal: round2(price * quantity),
         };
+      });
+    }
+
+    const mergedProducts = [
+      ...normalizedProducts,
+      ...comboPayload.expandedProducts,
+    ];
+
+    if (!mergedProducts.length) {
+      throw new AppError("MISSING_FIELD", {
+        field: "products|combos",
+        message: "At least one product or combo is required",
       });
     }
 
@@ -8210,7 +8416,9 @@ export const createTestOrder = asyncHandler(async (req, res) => {
     };
 
     const pricing = await calculateCheckoutPricing({
-      normalizedProducts,
+      normalizedProducts: mergedProducts,
+      comboDiscount: comboPayload.comboDiscount,
+      comboOriginalAmount: comboPayload.comboOriginalAmount,
       userId: effectiveUserId,
       couponCode: null,
       influencerCode: influencerCode || null,
@@ -8241,7 +8449,8 @@ export const createTestOrder = asyncHandler(async (req, res) => {
     // Create test order (paid + accepted), but shipping-suppressed.
     const testOrder = new OrderModel({
       user: effectiveUserId,
-      products: normalizedProducts,
+      products: mergedProducts,
+      combos: comboPayload.normalizedCombos,
       totalAmt: finalAmount,
       subtotal: taxableAmount,
       tax: gstAmount,
@@ -8265,6 +8474,9 @@ export const createTestOrder = asyncHandler(async (req, res) => {
       ],
       paymentId: `TEST_${Date.now()}`,
       originalPrice: round2(Number(pricing.originalAmount || finalAmount)),
+      comboDiscount: round2(
+        Number(pricing.comboDiscountInclusive ?? pricing.comboDiscount ?? 0),
+      ),
       couponCode: pricing.normalizedCouponCode || null,
       discountAmount: round2(Number(pricing.couponDiscount || 0)),
       discount: round2(Number(pricing.totalDiscount || 0)),
@@ -8379,18 +8591,31 @@ export const createTestOrder = asyncHandler(async (req, res) => {
       totals: {
         originalSubtotal: round2(Number(pricing.subtotal || 0)),
         subtotal: taxableAmount,
+        comboDiscount: round2(
+          Number(pricing.comboDiscountInclusive ?? pricing.comboDiscount ?? 0),
+        ),
         influencerDiscount: round2(Number(pricing.influencerDiscount || 0)),
         couponDiscount: round2(Number(pricing.couponDiscount || 0)),
         gst: gstAmount,
         shipping: shippingCharge,
         total: finalAmount,
       },
-      items: normalizedProducts.map((item) => ({
+      items: mergedProducts.map((item) => ({
         productId: item.productId || null,
         name: item.productTitle || "Product",
         quantity: Math.max(Number(item.quantity || 0), 0),
         unitPrice: round2(Number(item.price || 0)),
         lineTotal: round2(Number(item.subTotal || 0)),
+        comboId: item.comboId || null,
+        comboName: item.comboName || "",
+      })),
+      combos: (comboPayload.normalizedCombos || []).map((combo) => ({
+        comboId: combo.comboId || null,
+        comboName: combo.comboName || "Combo",
+        quantity: Math.max(Number(combo.quantity || 0), 0),
+        comboPrice: round2(Number(combo.comboPrice || 0)),
+        originalPrice: round2(Number(combo.originalPrice || 0)),
+        savings: round2(Number(combo.savings || 0)),
       })),
     };
 
@@ -8423,6 +8648,7 @@ export const createTestOrder = asyncHandler(async (req, res) => {
       influencerCode: testOrder.influencerCode || null,
       influencerCommission: testOrder.influencerCommission || 0,
       influencerStatsSynced,
+      comboCount: Array.isArray(testOrder.combos) ? testOrder.combos.length : 0,
       shippingSuppressed,
       invoiceNumber: testOrder.invoiceNumber || null,
       localInvoiceJsonPath: localDiskInvoice?.jsonPath || null,

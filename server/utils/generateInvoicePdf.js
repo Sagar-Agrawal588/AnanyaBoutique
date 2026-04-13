@@ -1252,6 +1252,19 @@ export const getAbsolutePathFromStoredInvoicePath = (invoicePath) => {
   if (/^\/?uploads\//i.test(normalizedPath)) {
     const uploadRelative = normalizedPath.replace(/^\/?uploads\/?/i, "");
     pushCandidate(path.join(UPLOAD_ROOT, uploadRelative));
+
+    // Dev/test often stores invoices under ACTIVE_INVOICE_DIR while preserving
+    // a public uploads/invoices relative path in DB records.
+    if (/^invoices\//i.test(uploadRelative)) {
+      const invoiceRelativeFromUploads = uploadRelative.replace(
+        /^invoices\/?/i,
+        "",
+      );
+      pushCandidate(path.join(ACTIVE_INVOICE_DIR, invoiceRelativeFromUploads));
+      pushCandidate(
+        path.join(SERVER_ROOT, "invoices", invoiceRelativeFromUploads),
+      );
+    }
   }
 
   if (/^\/?invoices\//i.test(normalizedPath)) {

@@ -1781,6 +1781,10 @@ const Checkout = () => {
         shippingAddress: buildShippingAddressPayload(selectedAddrObj),
       };
 
+      if (typeof window !== "undefined") {
+        localStorage.removeItem(ORDER_PENDING_PAYMENT_KEY);
+      }
+
       const data = await postData("/api/orders", orderData);
       if (!data?.success) {
         if (String(data?.code || "").toUpperCase() === "INSUFFICIENT_STOCK") {
@@ -1818,9 +1822,19 @@ const Checkout = () => {
 
       window.location.href = paymentUrl;
     } catch (error) {
+      const normalizedErrorMessage = String(error?.message || "").trim();
+      const isResourceConflict = /resource conflict/i.test(
+        normalizedErrorMessage,
+      );
+      if (isResourceConflict && typeof window !== "undefined") {
+        localStorage.removeItem(ORDER_PENDING_PAYMENT_KEY);
+      }
       setSnackbar({
         open: true,
-        message: error.message || "Failed to initiate payment",
+        message:
+          (isResourceConflict
+            ? "Checkout session conflicted with a previous attempt. Please tap Pay Now again."
+            : normalizedErrorMessage) || "Failed to initiate payment",
         severity: "error",
       });
     } finally {

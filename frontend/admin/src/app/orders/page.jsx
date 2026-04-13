@@ -277,45 +277,53 @@ const OrderRow = ({ order, index, token, onStatusUpdate }) => {
   const billingDetails = order?.billingDetails || {};
   const addressSnapshot = order?.deliveryAddressSnapshot || {};
   const deliveryAddress = order?.delivery_address || null;
+  const snapshotAddressLine1 =
+    addressSnapshot.address_line1 || addressSnapshot.full_address || "";
+  const snapshotAddressCity = addressSnapshot.order_city || "";
+  const snapshotAddressState = addressSnapshot.order_state || "";
+  const snapshotAddressPincode = addressSnapshot.order_pincode || "";
+  const snapshotSource = String(addressSnapshot.source || "")
+    .trim()
+    .toLowerCase();
   const customerName =
-    order?.user?.name ||
     guestDetails.fullName ||
+    guestDetails.name ||
     billingDetails.fullName ||
     addressSnapshot.order_name ||
+    order?.user?.name ||
     "Guest";
   const customerEmail =
-    order?.user?.email ||
-    guestDetails.email ||
     billingDetails.email ||
+    guestDetails.email ||
     addressSnapshot.email ||
+    order?.user?.email ||
     "N/A";
   const customerPhone =
-    order?.user?.mobile ||
-    guestDetails.phone ||
     billingDetails.phone ||
+    guestDetails.phone ||
     addressSnapshot.order_mobile ||
     deliveryAddress?.mobile ||
     deliveryAddress?.mobile_number ||
+    order?.user?.mobile ||
     "N/A";
   const addressLine1 =
+    snapshotAddressLine1 ||
+    billingDetails.address ||
+    guestDetails.address ||
     deliveryAddress?.address_line1 ||
     deliveryAddress?.address_line ||
-    addressSnapshot.address_line1 ||
-    addressSnapshot.full_address ||
-    guestDetails.address ||
-    billingDetails.address ||
     "";
   const addressCity =
-    deliveryAddress?.city ||
-    addressSnapshot.order_city ||
-    guestDetails.city ||
+    snapshotAddressCity ||
     billingDetails.city ||
+    guestDetails.city ||
+    deliveryAddress?.city ||
     "";
   const addressState =
-    deliveryAddress?.state ||
-    addressSnapshot.order_state ||
-    guestDetails.state ||
+    snapshotAddressState ||
     billingDetails.state ||
+    guestDetails.state ||
+    deliveryAddress?.state ||
     "";
   const addressDisplay = addressLine1
     ? `${addressLine1}${
@@ -325,12 +333,18 @@ const OrderRow = ({ order, index, token, onStatusUpdate }) => {
       }`
     : "No address";
   const addressTypeLabel =
-    deliveryAddress?.addressType || (addressLine1 ? "Guest" : "Home");
+    snapshotSource === "saved_address"
+      ? deliveryAddress?.addressType || "Saved"
+      : snapshotSource === "guest_manual"
+        ? "Guest"
+        : snapshotSource === "registered_manual"
+          ? "Manual"
+          : deliveryAddress?.addressType || (addressLine1 ? "Guest" : "Home");
   const pincodeDisplay =
-    deliveryAddress?.pincode ||
-    addressSnapshot.order_pincode ||
-    guestDetails.pincode ||
+    snapshotAddressPincode ||
     billingDetails.pincode ||
+    guestDetails.pincode ||
+    deliveryAddress?.pincode ||
     "N/A";
 
   const copyToClipboard = async (value, label = "value") => {
@@ -829,6 +843,7 @@ const Orders = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [repairingPaidOrders, setRepairingPaidOrders] = useState(false);
   const [removingPendingOrders, setRemovingPendingOrders] = useState(false);
+  const [removingDemoOrders, setRemovingDemoOrders] = useState(false);
   const { intervalMs } = useLiveRefreshSetting();
   const refreshConfig = useMemo(
     () => ({
@@ -1057,6 +1072,62 @@ const Orders = () => {
     }
   };
 
+  const handleRemoveDemoOrders = async () => {
+    if (!token) {
+      toast.error("Admin session missing");
+      return;
+    }
+
+    const confirmed =
+      typeof window === "undefined"
+        ? true
+        : window.confirm(
+            "Remove all demo orders? This permanently deletes demo orders from the database.",
+          );
+    if (!confirmed) return;
+
+    setRemovingDemoOrders(true);
+    try {
+      const response = await deleteData("/api/orders/admin/demo-orders", token);
+      if (response?.success) {
+        const deletedCount = Number(response?.data?.deletedCount || 0);
+        const skippedCount = Number(response?.data?.skippedCount || 0);
+
+        if (deletedCount > 0) {
+          toast.success(
+            `Removed ${deletedCount} demo order${deletedCount === 1 ? "" : "s"}`,
+          );
+        } else {
+          toast.success("No demo orders found");
+        }
+
+        if (skippedCount > 0) {
+          toast.error(
+            `${skippedCount} demo order${skippedCount === 1 ? " was" : "s were"} skipped. Check server logs.`,
+          );
+        }
+
+        const params = new URLSearchParams(searchParams?.toString() || "");
+        params.delete("status");
+        const query = params.toString();
+
+        setStatusFilter("all");
+        setPage(1);
+        router.replace(query ? `/orders?${query}` : "/orders");
+
+        if (statusFilter === "all") {
+          fetchOrders();
+        }
+      } else {
+        toast.error(response?.message || "Failed to remove demo orders");
+      }
+    } catch {
+      toast.error("Failed to remove demo orders");
+    } finally {
+      setRemovingDemoOrders(false);
+    }
+  };
+
   if (loading || !isAuthenticated) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -1084,7 +1155,11 @@ const Orders = () => {
               variant="outlined"
               size="small"
               onClick={handleRepairPaidOrders}
-              disabled={repairingPaidOrders || removingPendingOrders}
+              disabled={
+                repairingPaidOrders ||
+                removingPendingOrders ||
+                removingDemoOrders
+              }
               sx={{
                 textTransform: "none",
                 borderRadius: "10px",
@@ -1101,7 +1176,11 @@ const Orders = () => {
               color="error"
               size="small"
               onClick={handleRemovePendingOrders}
-              disabled={removingPendingOrders || repairingPaidOrders}
+              disabled={
+                removingPendingOrders ||
+                repairingPaidOrders ||
+                removingDemoOrders
+              }
               sx={{
                 textTransform: "none",
                 borderRadius: "10px",
@@ -1112,6 +1191,27 @@ const Orders = () => {
               {removingPendingOrders
                 ? "Removing Pending Orders..."
                 : "Remove Pending Orders"}
+            </Button>
+            <Button
+              variant="outlined"
+              color="error"
+              size="small"
+              onClick={handleRemoveDemoOrders}
+              disabled={
+                removingDemoOrders ||
+                removingPendingOrders ||
+                repairingPaidOrders
+              }
+              sx={{
+                textTransform: "none",
+                borderRadius: "10px",
+                px: 2,
+                py: 0.8,
+              }}
+            >
+              {removingDemoOrders
+                ? "Removing Demo Orders..."
+                : "Remove Demo Orders"}
             </Button>
             <Button
               variant="outlined"

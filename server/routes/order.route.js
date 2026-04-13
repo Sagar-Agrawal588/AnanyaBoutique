@@ -19,6 +19,7 @@ import {
   handlePhonePeWebhook,
   initiatePayOrderPayment,
   previewOrderPricing,
+  removeAllDemoOrders,
   removeAllPendingOrders,
   repairPaidOrders,
   retryOrderPayment,
@@ -151,6 +152,9 @@ router.post("/admin/repair-paid", auth, admin, repairPaidOrders);
 
 // Remove all pending orders from admin orders page
 router.delete("/admin/pending", auth, admin, removeAllPendingOrders);
+
+// Remove all demo orders from admin orders page and database
+router.delete("/admin/demo-orders", auth, admin, removeAllDemoOrders);
 
 // Get single order (admin or order owner)
 router.get("/:id", auth, validateGetOrderRequest, getOrderById);

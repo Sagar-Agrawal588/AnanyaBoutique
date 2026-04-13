@@ -19,7 +19,10 @@ export const isDuplicateKeyForField = (error, fieldName) => {
   }
 
   const keyValue = error?.keyValue;
-  if (keyValue && Object.prototype.hasOwnProperty.call(keyValue, normalizedField)) {
+  if (
+    keyValue &&
+    Object.prototype.hasOwnProperty.call(keyValue, normalizedField)
+  ) {
     return true;
   }
 
@@ -46,8 +49,19 @@ export const saveDocumentWithTempIdRetry = async (
     try {
       return await document.save();
     } catch (error) {
+      const isDuplicateKey = isDuplicateKeyError(error);
+      const duplicateFields = [
+        "temp_id",
+        "final_id",
+        "orderNumber",
+        "displayOrderId",
+      ].filter((fieldName) => isDuplicateKeyForField(error, fieldName));
+      // Some Mongo versions omit keyPattern/keyValue for dup-key errors.
+      // Treat any duplicate-key as retriable and regenerate derived IDs.
+      const hasRetriableIdentityConflict =
+        duplicateFields.length > 0 || isDuplicateKey;
       const shouldRetry =
-        isDuplicateKeyForField(error, "temp_id") && attempt < totalAttempts;
+        hasRetriableIdentityConflict && attempt < totalAttempts;
 
       if (!shouldRetry) {
         throw error;
@@ -59,10 +73,15 @@ export const saveDocumentWithTempIdRetry = async (
           maxAttempts: totalAttempts,
           error,
           document,
+          duplicateFields,
         });
       }
 
+      // Regenerate all derived identifiers from a fresh temp_id candidate.
       document.temp_id = undefined;
+      document.orderNumber = undefined;
+      document.displayOrderId = undefined;
+      document.final_id = undefined;
     }
   }
 

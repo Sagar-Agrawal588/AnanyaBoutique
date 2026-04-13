@@ -13,7 +13,9 @@ const getStoredAuthToken = () => {
   const cookieToken = cookies.get("accessToken");
   if (cookieToken) return cookieToken;
   if (typeof window === "undefined") return "";
-  return localStorage.getItem("accessToken") || localStorage.getItem("token") || "";
+  return (
+    localStorage.getItem("accessToken") || localStorage.getItem("token") || ""
+  );
 };
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -33,6 +35,52 @@ const normalizePaymentState = (value) =>
   String(value || "")
     .trim()
     .toLowerCase();
+
+const normalizeMerchantTransactionId = (value) =>
+  String(value || "")
+    .trim()
+    .toUpperCase();
+
+const readPendingOrderContext = (expectedMerchantTransactionId = "") => {
+  if (typeof window === "undefined") {
+    return { orderId: "", merchantTransactionId: "", valid: false };
+  }
+
+  const raw = localStorage.getItem(ORDER_PENDING_PAYMENT_KEY);
+  if (!raw) {
+    return { orderId: "", merchantTransactionId: "", valid: false };
+  }
+
+  let pending = null;
+  try {
+    pending = JSON.parse(raw);
+  } catch {
+    localStorage.removeItem(ORDER_PENDING_PAYMENT_KEY);
+    return { orderId: "", merchantTransactionId: "", valid: false };
+  }
+
+  const orderId = String(pending?.orderId || "").trim();
+  const merchantTransactionId = normalizeMerchantTransactionId(
+    pending?.merchantTransactionId,
+  );
+  const expected = normalizeMerchantTransactionId(
+    expectedMerchantTransactionId,
+  );
+  const createdAt = Number(pending?.createdAt || 0);
+  const isExpired =
+    Number.isFinite(createdAt) &&
+    createdAt > 0 &&
+    Date.now() - createdAt > 6 * 60 * 60 * 1000;
+  const merchantMatches = !expected || merchantTransactionId === expected;
+  const valid = Boolean(orderId) && merchantMatches && !isExpired;
+
+  if (!valid) {
+    localStorage.removeItem(ORDER_PENDING_PAYMENT_KEY);
+    return { orderId: "", merchantTransactionId, valid: false };
+  }
+
+  return { orderId, merchantTransactionId, valid: true };
+};
 
 const inferPaymentStateFromSearch = (search) => {
   if (!search) return "";
@@ -111,7 +159,10 @@ const buildMembershipReturnUrl = (params) => {
     target.searchParams.set("coins", params.coins);
   }
   if (params.paymentState) {
-    target.searchParams.set("paymentState", normalizePaymentState(params.paymentState));
+    target.searchParams.set(
+      "paymentState",
+      normalizePaymentState(params.paymentState),
+    );
   }
   return target.toString();
 };
@@ -175,7 +226,9 @@ const PhonePeReturn = () => {
       ).trim(),
       orderId: String(search.get("orderId") || "").trim(),
       planId: String(search.get("planId") || "").trim(),
-      paymentProvider: normalizeProvider(search.get("paymentProvider") || "PHONEPE"),
+      paymentProvider: normalizeProvider(
+        search.get("paymentProvider") || "PHONEPE",
+      ),
       coins: String(search.get("coins") || "").trim(),
       paymentState: inferPaymentStateFromSearch(search),
       flow: String(search.get("flow") || "order")
@@ -183,7 +236,9 @@ const PhonePeReturn = () => {
         .toLowerCase(),
       returnPath: sanitizePath(
         search.get("returnPath"),
-        search.get("flow") === "membership" ? "/membership/checkout" : "/my-orders",
+        search.get("flow") === "membership"
+          ? "/membership/checkout"
+          : "/my-orders",
       ),
     };
   }, []);
@@ -232,17 +287,9 @@ const PhonePeReturn = () => {
       if (params.flow !== "order") return false;
 
       let orderId = String(params.orderId || "").trim();
-      const raw = localStorage.getItem(ORDER_PENDING_PAYMENT_KEY);
-      if (raw) {
-        try {
-          const pending = JSON.parse(raw);
-          const pendingOrderId = String(pending?.orderId || "").trim();
-          if (pendingOrderId) {
-            orderId = pendingOrderId;
-          }
-        } catch {
-          localStorage.removeItem(ORDER_PENDING_PAYMENT_KEY);
-        }
+      const pendingContext = readPendingOrderContext(params.merchantOrderId);
+      if (pendingContext.orderId) {
+        orderId = pendingContext.orderId;
       }
 
       if (!orderId) {
@@ -258,12 +305,15 @@ const PhonePeReturn = () => {
         if (disposed) return true;
 
         try {
-          const response = await fetch(`${API_URL}/api/orders/user/order/${orderId}`, {
-            headers: {
-              Authorization: `Bearer ${token}`,
+          const response = await fetch(
+            `${API_URL}/api/orders/user/order/${orderId}`,
+            {
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+              credentials: "include",
             },
-            credentials: "include",
-          });
+          );
 
           if (response.ok) {
             const data = await response.json();
@@ -362,12 +412,17 @@ const PhonePeReturn = () => {
       }
 
       if (isFailureState(params.paymentState)) {
+        const pendingContext = readPendingOrderContext(params.merchantOrderId);
         localStorage.removeItem(ORDER_PENDING_PAYMENT_KEY);
         const syncedFailure = await syncPhonePeReturnToServer(API_URL, params);
         const syncedState =
-          syncedFailure.paymentState || normalizePaymentState(params.paymentState);
+          syncedFailure.paymentState ||
+          normalizePaymentState(params.paymentState);
         const resolvedOrderId = String(
-          syncedFailure.orderId || params.orderId || "",
+          syncedFailure.orderId ||
+            params.orderId ||
+            pendingContext.orderId ||
+            "",
         ).trim();
         setMessage(getFailureMessage(syncedState));
         if (!redirectedRef.current) {
@@ -389,7 +444,9 @@ const PhonePeReturn = () => {
       const verified = await verifyPendingOrder();
       if (verified || disposed) return;
 
-      setMessage("Payment status is being updated. Please check your orders shortly.");
+      setMessage(
+        "Payment status is being updated. Please check your orders shortly.",
+      );
     };
 
     void checkStatus();
@@ -418,10 +475,16 @@ const PhonePeReturn = () => {
         <p className="text-gray-600 mb-6">{message}</p>
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
           <Link
-            href={params.flow === "membership" ? "/membership/checkout" : "/my-orders"}
+            href={
+              params.flow === "membership"
+                ? "/membership/checkout"
+                : "/my-orders"
+            }
             className="inline-flex items-center justify-center px-6 py-3 bg-primary text-white font-semibold rounded-lg hover:brightness-110"
           >
-            {params.flow === "membership" ? "Back to Membership" : "View My Orders"}
+            {params.flow === "membership"
+              ? "Back to Membership"
+              : "View My Orders"}
           </Link>
           <Link
             href="/"

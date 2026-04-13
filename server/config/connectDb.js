@@ -1,5 +1,6 @@
-import mongoose from "mongoose";
 import dotenv from "dotenv";
+import mongoose from "mongoose";
+import { ensureOrderIdentityIndexes } from "../utils/orderIdentityIndexes.js";
 dotenv.config();
 
 const normalizeEnvValue = (value) => {
@@ -51,6 +52,29 @@ async function connectDb() {
   try {
     await mongoose.connect(mongoUri);
     console.log("Connected to MongoDB");
+
+    // Best-effort startup guard against legacy/non-sparse identity indexes
+    // that can break checkout with duplicate-key conflicts.
+    try {
+      const indexResults = await ensureOrderIdentityIndexes({ log: console });
+      const summary = indexResults
+        .map((entry) => {
+          const changed =
+            Number(entry.cleaned || 0) +
+            Number(entry.dropped?.length || 0) +
+            (entry.created ? 1 : 0);
+          return `${entry.field}:${changed > 0 ? "updated" : "ok"}`;
+        })
+        .join(", ");
+      console.log(
+        `[startup] Order identity index check complete (${summary}).`,
+      );
+    } catch (indexError) {
+      console.warn(
+        "[startup] Order identity index check failed:",
+        indexError?.message || indexError,
+      );
+    }
   } catch (error) {
     console.error("Error connecting to MongoDB:", error);
     throw error;

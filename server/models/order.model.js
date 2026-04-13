@@ -992,6 +992,10 @@ orderSchema.pre("validate", async function () {
     this.payment_status = "paid";
   }
 
+  const normalizedPaymentStatus = String(this.payment_status || "")
+    .trim()
+    .toLowerCase();
+
   if (this.confirmedAt && !this.confirmed_at) {
     this.confirmed_at = this.confirmedAt;
   }
@@ -1028,7 +1032,13 @@ orderSchema.pre("validate", async function () {
   const normalizedLegacyOrderNumber = String(this.orderNumber || "")
     .trim()
     .toUpperCase();
-  if (
+  const allowsFinalId =
+    normalizedPaymentStatus === "paid" ||
+    normalizedPaymentStatus === "confirmed";
+
+  if (!allowsFinalId) {
+    normalizedFinalId = "";
+  } else if (
     !normalizedFinalId &&
     FINAL_ORDER_ID_PATTERN.test(normalizedLegacyOrderNumber)
   ) {
@@ -1036,12 +1046,7 @@ orderSchema.pre("validate", async function () {
   }
   this.final_id = normalizedFinalId || undefined;
 
-  if (
-    String(this.payment_status || "")
-      .trim()
-      .toLowerCase() === "paid" &&
-    !this.confirmed_at
-  ) {
+  if (normalizedPaymentStatus === "paid" && !this.confirmed_at) {
     const confirmedAt = this.paymentCompletedAt || new Date();
     this.confirmed_at = confirmedAt;
     this.confirmedAt = confirmedAt;
