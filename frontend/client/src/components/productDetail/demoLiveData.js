@@ -13,10 +13,10 @@ const demoProduct = {
   adminStarRating: 4.8,
   reviewCount: 148,
   shortDescription:
-    "A polished demo product page with layered imagery, premium copy blocks, strong CTAs, and review cards positioned closer to the buying moment.",
+    "A polished product page with layered imagery, stronger CTAs, and review cards positioned closer to the buying moment.",
   description: `
     <p><strong>Pure protein. Cleaner storytelling. Better conversion energy.</strong></p>
-    <p>This demo live page is designed to feel closer to a premium DTC product detail experience. The layout gives the main product image more presence, keeps pricing and purchase controls highly visible, and adds richer description content that feels editorial instead of plain.</p>
+    <p>This page is designed to feel closer to a premium DTC product detail experience. The layout gives the main product image more presence, keeps pricing and purchase controls highly visible, and adds richer description content that feels editorial instead of plain.</p>
     <p>Shoppers can move from image discovery to variant selection, delivery preview, feature scanning, and social proof without losing context. The result is a more confident, more visual product page that feels ready for a modern wellness or nutrition catalog.</p>
   `,
   sku: "CWPI-2200-CHOC-DEMO",
@@ -34,6 +34,8 @@ const demoProduct = {
       originalPrice: 999,
       weight: 0.37,
       unit: "lb",
+      stock: 14,
+      stock_quantity: 14,
     },
     {
       _id: "demo-22lb",
@@ -44,6 +46,8 @@ const demoProduct = {
       weight: 2.2,
       unit: "lb",
       isDefault: true,
+      stock: 26,
+      stock_quantity: 26,
     },
     {
       _id: "demo-refill",
@@ -53,6 +57,8 @@ const demoProduct = {
       originalPrice: 4299,
       weight: 2.2,
       unit: "lb",
+      stock: 18,
+      stock_quantity: 18,
     },
   ],
   images: [
@@ -100,7 +106,7 @@ const demoReviews = [
     city: "Bengaluru",
     rating: 5,
     comment:
-      "Using a dedicated demo route is smart. It gives us a stable preview for design reviews without depending on live product data.",
+      "The page feels much more polished now. Images, pricing, and reviews all sit in a more natural order.",
     createdAt: "2026-04-05T10:00:00.000Z",
     avatar: "/Profile1.png",
   },

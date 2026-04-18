@@ -37,6 +37,92 @@ const ORDER_TABLE_COLUMNS = [
   "96px",
 ];
 
+const PENDING_ORDER_STATUSES = new Set([
+  "pending",
+  "pending_payment",
+  "in_warehouse",
+]);
+
+const PENDING_PAYMENT_STATUSES = new Set(["pending", "pending_payment"]);
+
+const normalizeOrderStatus = (status) => {
+  if (!status) return "pending";
+  const value = String(status).trim().toLowerCase().replace(/\s+/g, "_");
+  return value === "confirmed" ? "accepted" : value;
+};
+
+const formatStatusLabel = (status, fallback = "Pending") => {
+  const normalized = String(status || "").trim();
+  if (!normalized) return fallback;
+  return normalized
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+};
+
+const resolvePaymentReference = (order = {}) => {
+  const candidates = [
+    order?.paymentId,
+    order?.paytmTransactionId,
+    order?.phonepeTransactionId,
+    order?.paytmOrderId,
+    order?.phonepeMerchantOrderId,
+    order?.phonepeOrderId,
+  ];
+
+  return String(
+    candidates.find((value) => String(value || "").trim()) || "",
+  ).trim();
+};
+
+const resolvePaymentProviderLabel = (order = {}) => {
+  const paymentMethod = String(
+    order?.paymentMethod || order?.payment_method || "",
+  )
+    .trim()
+    .toLowerCase();
+
+  if (paymentMethod.includes("phonepe")) return "PhonePe";
+  if (paymentMethod.includes("paytm")) return "Paytm";
+  if (paymentMethod) return formatStatusLabel(paymentMethod, "Gateway");
+
+  if (String(order?.phonepeMerchantOrderId || order?.phonepeOrderId || "").trim()) {
+    return "PhonePe";
+  }
+  if (String(order?.paytmOrderId || order?.paytmTransactionId || "").trim()) {
+    return "Paytm";
+  }
+  return "Manual / Unknown";
+};
+
+const isPendingQueueOrder = (order = {}) => {
+  const normalizedOrderStatus = normalizeOrderStatus(
+    order?.order_status || order?.status,
+  );
+  const normalizedPaymentStatus = normalizeOrderStatus(order?.payment_status);
+
+  return (
+    PENDING_ORDER_STATUSES.has(normalizedOrderStatus) ||
+    PENDING_PAYMENT_STATUSES.has(normalizedPaymentStatus)
+  );
+};
+
+const getPendingQueueReason = (order = {}) => {
+  const normalizedOrderStatus = normalizeOrderStatus(
+    order?.order_status || order?.status,
+  );
+  const normalizedPaymentStatus = normalizeOrderStatus(order?.payment_status);
+
+  if (PENDING_ORDER_STATUSES.has(normalizedOrderStatus)) {
+    return formatStatusLabel(normalizedOrderStatus);
+  }
+  if (PENDING_PAYMENT_STATUSES.has(normalizedPaymentStatus)) {
+    return "Payment Pending";
+  }
+  return "Needs Review";
+};
+
 const toPositiveInt = (value, fallback) => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
@@ -239,23 +325,27 @@ const resolveTrackingUrl = (order = {}) => {
 };
 
 const OrderRow = ({ order, index, token, onStatusUpdate }) => {
-  const normalizeStatus = (status) => {
-    if (!status) return "pending";
-    const value = String(status).trim().toLowerCase().replace(/\s+/g, "_");
-    return value === "confirmed" ? "accepted" : value;
-  };
   const [expandIndex, setExpandIndex] = useState(false);
   const [orderStatus, setOrderStatus] = useState(
-    normalizeStatus(order?.order_status) || "pending",
+    normalizeOrderStatus(order?.order_status) || "pending",
   );
   const [updating, setUpdating] = useState(false);
   const [downloadingInvoice, setDownloadingInvoice] = useState(false);
   const [orderReviews, setOrderReviews] = useState([]);
   const [reviewsLoading, setReviewsLoading] = useState(false);
   const trackingUrl = resolveTrackingUrl(order);
+  const paymentReference = resolvePaymentReference(order) || "N/A";
+  const paymentProviderLabel = resolvePaymentProviderLabel(order);
+  const merchantReference = String(
+    order?.paytmOrderId || order?.phonepeMerchantOrderId || order?.paymentId || "",
+  ).trim();
+  const gatewayOrderReference = String(order?.phonepeOrderId || "").trim();
+  const gatewayTransactionReference = String(
+    order?.paytmTransactionId || order?.phonepeTransactionId || "",
+  ).trim();
 
   const canDownloadInvoice =
-    normalizeStatus(order?.payment_status) === "paid" ||
+    normalizeOrderStatus(order?.payment_status) === "paid" ||
     Boolean(
       order?.isInvoiceGenerated ||
       order?.invoiceUrl ||
@@ -559,8 +649,13 @@ const OrderRow = ({ order, index, token, onStatusUpdate }) => {
             </div>
           </div>
         </td>
-        <td className="text-[14px] text-gray-600 font-[500] px-4 py-2 break-all">
-          {order?.paymentId || "N/A"}
+        <td className="text-[14px] text-gray-600 font-[500] px-4 py-2">
+          <div className="min-w-0">
+            <div className="break-all">{paymentReference}</div>
+            <div className="mt-1 text-[11px] uppercase tracking-wide text-gray-400">
+              {paymentProviderLabel}
+            </div>
+          </div>
         </td>
         <td className="text-[14px] text-gray-600 font-[500] px-4 py-2 break-all">
           {customerPhone}
@@ -725,6 +820,14 @@ const OrderRow = ({ order, index, token, onStatusUpdate }) => {
                     {orderDisplayId || "N/A"}
                   </span>
                 </div>
+                <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+                  <span className="font-semibold text-gray-700">
+                    Payment Ref:
+                  </span>{" "}
+                  <span className="text-gray-800 break-all">
+                    {paymentReference}
+                  </span>
+                </div>
                 <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 flex items-center justify-between gap-2">
                   <div className="min-w-0">
                     <span className="font-semibold text-gray-700">
@@ -744,6 +847,36 @@ const OrderRow = ({ order, index, token, onStatusUpdate }) => {
                   >
                     Copy
                   </Button>
+                </div>
+                <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+                  <span className="font-semibold text-gray-700">
+                    Payment Provider:
+                  </span>{" "}
+                  <span className="text-gray-800">{paymentProviderLabel}</span>
+                </div>
+                <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+                  <span className="font-semibold text-gray-700">
+                    Merchant Ref:
+                  </span>{" "}
+                  <span className="text-gray-800 break-all">
+                    {merchantReference || "N/A"}
+                  </span>
+                </div>
+                <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+                  <span className="font-semibold text-gray-700">
+                    Gateway Order Ref:
+                  </span>{" "}
+                  <span className="text-gray-800 break-all">
+                    {gatewayOrderReference || "N/A"}
+                  </span>
+                </div>
+                <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+                  <span className="font-semibold text-gray-700">
+                    Gateway Txn Ref:
+                  </span>{" "}
+                  <span className="text-gray-800 break-all">
+                    {gatewayTransactionReference || "Pending / Not issued yet"}
+                  </span>
                 </div>
               </div>
             </div>
@@ -816,9 +949,9 @@ const OrderRow = ({ order, index, token, onStatusUpdate }) => {
                 </div>
                 <div>
                   <span className="font-semibold">Delivery Status:</span>{" "}
-                  {normalizeStatus(order?.order_status) === "completed"
+                  {normalizeOrderStatus(order?.order_status) === "completed"
                     ? "Completed"
-                    : normalizeStatus(order?.order_status)}
+                    : normalizeOrderStatus(order?.order_status)}
                 </div>
               </div>
             </div>
@@ -828,6 +961,64 @@ const OrderRow = ({ order, index, token, onStatusUpdate }) => {
     </>
   );
 };
+
+const OrdersTable = ({ orders, token, onStatusUpdate }) => (
+  <div className="w-full mt-5 border border-gray-200 rounded-xl overflow-x-auto">
+    <table className="min-w-[980px] w-full table-fixed">
+      <colgroup>
+        {ORDER_TABLE_COLUMNS.map((width, idx) => (
+          <col key={idx} style={{ width }} />
+        ))}
+      </colgroup>
+      <thead className="bg-gray-200">
+        <tr>
+          <th className="text-[13px] text-gray-700 font-[700] px-4 py-3 text-left border-b-[1px] border-[rgba(0,0,0,0.1)] uppercase tracking-wide"></th>
+          <th className="text-[13px] text-gray-700 font-[700] px-4 py-3 text-left uppercase tracking-wide">
+            Order Id
+          </th>
+          <th className="text-[13px] text-gray-700 font-[700] px-4 py-3 text-left uppercase tracking-wide">
+            Customer
+          </th>
+          <th className="text-[13px] text-gray-700 font-[700] px-4 py-3 text-left uppercase tracking-wide">
+            Payment Ref
+          </th>
+          <th className="text-[13px] text-gray-700 font-[700] px-4 py-3 text-left uppercase tracking-wide">
+            Phone Number
+          </th>
+          <th className="text-[13px] text-gray-700 font-[700] px-4 py-3 text-left uppercase tracking-wide">
+            Address
+          </th>
+          <th className="text-[13px] text-gray-700 font-[700] px-4 py-3 text-left uppercase tracking-wide">
+            Pincode
+          </th>
+          <th className="text-[13px] text-gray-700 font-[700] px-4 py-3 text-left uppercase tracking-wide">
+            Total Amount
+          </th>
+          <th className="text-[13px] text-gray-700 font-[700] px-4 py-3 text-left uppercase tracking-wide">
+            User Id
+          </th>
+          <th className="text-[13px] text-gray-700 font-[700] px-4 py-3 text-left uppercase tracking-wide">
+            Order Status
+          </th>
+          <th className="text-[13px] text-gray-700 font-[700] px-4 py-3 text-left uppercase tracking-wide">
+            Date
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {orders.map((order, index) => (
+          <OrderRow
+            key={order._id || index}
+            order={order}
+            index={index}
+            token={token}
+            onStatusUpdate={onStatusUpdate}
+          />
+        ))}
+      </tbody>
+    </table>
+  </div>
+);
 
 const Orders = () => {
   const { token, isAuthenticated, loading } = useAdmin();
@@ -954,6 +1145,29 @@ const Orders = () => {
     () => fetchOrders({ silent: true }),
     refreshConfig,
   );
+
+  const pendingOrders = useMemo(
+    () => orders.filter((order) => isPendingQueueOrder(order)),
+    [orders],
+  );
+  const nonPendingOrders = useMemo(
+    () => orders.filter((order) => !isPendingQueueOrder(order)),
+    [orders],
+  );
+  const showPendingQueueSection =
+    statusFilter === "all" && pendingOrders.length > 0;
+  const primaryOrders =
+    statusFilter === "pending"
+      ? pendingOrders
+      : statusFilter === "all"
+        ? nonPendingOrders
+        : orders;
+  const showEmptyPrimaryState =
+    !isLoading &&
+    orders.length > 0 &&
+    statusFilter === "all" &&
+    nonPendingOrders.length === 0 &&
+    pendingOrders.length > 0;
 
   const handleOrderUpdate = useCallback(() => {
     triggerOrdersRefresh();
@@ -1149,6 +1363,11 @@ const Orders = () => {
               <span className="text-primary font-bold">{orders.length}</span>{" "}
               {orders.length === 1 ? "order" : "orders"}
             </p>
+            {statusFilter === "all" ? (
+              <p className="mt-1 text-xs text-gray-500">
+                Pending and payment-hold rows are kept in a separate queue below.
+              </p>
+            ) : null}
           </div>
           <div className="flex items-center gap-3 flex-wrap">
             <Button
@@ -1285,61 +1504,58 @@ const Orders = () => {
           </div>
         ) : (
           <>
-            <div className="w-full mt-5 border border-gray-200 rounded-xl overflow-x-auto">
-              <table className="min-w-[980px] w-full table-fixed">
-                <colgroup>
-                  {ORDER_TABLE_COLUMNS.map((width, idx) => (
-                    <col key={idx} style={{ width }} />
-                  ))}
-                </colgroup>
-                <thead className="bg-gray-200">
-                  <tr>
-                    <th className="text-[13px] text-gray-700 font-[700] px-4 py-3 text-left border-b-[1px] border-[rgba(0,0,0,0.1)] uppercase tracking-wide"></th>
-                    <th className="text-[13px] text-gray-700 font-[700] px-4 py-3 text-left uppercase tracking-wide">
-                      Order Id
-                    </th>
-                    <th className="text-[13px] text-gray-700 font-[700] px-4 py-3 text-left uppercase tracking-wide">
-                      Customer
-                    </th>
-                    <th className="text-[13px] text-gray-700 font-[700] px-4 py-3 text-left uppercase tracking-wide">
-                      Payment Id
-                    </th>
-                    <th className="text-[13px] text-gray-700 font-[700] px-4 py-3 text-left uppercase tracking-wide">
-                      Phone Number
-                    </th>
-                    <th className="text-[13px] text-gray-700 font-[700] px-4 py-3 text-left uppercase tracking-wide">
-                      Address
-                    </th>
-                    <th className="text-[13px] text-gray-700 font-[700] px-4 py-3 text-left uppercase tracking-wide">
-                      Pincode
-                    </th>
-                    <th className="text-[13px] text-gray-700 font-[700] px-4 py-3 text-left uppercase tracking-wide">
-                      Total Amount
-                    </th>
-                    <th className="text-[13px] text-gray-700 font-[700] px-4 py-3 text-left uppercase tracking-wide">
-                      User Id
-                    </th>
-                    <th className="text-[13px] text-gray-700 font-[700] px-4 py-3 text-left uppercase tracking-wide">
-                      Order Status
-                    </th>
-                    <th className="text-[13px] text-gray-700 font-[700] px-4 py-3 text-left uppercase tracking-wide">
-                      Date
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {orders.map((order, index) => (
-                    <OrderRow
-                      key={order._id || index}
-                      order={order}
-                      index={index}
-                      token={token}
-                      onStatusUpdate={fetchOrders}
-                    />
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            {showEmptyPrimaryState ? (
+              <div className="mt-5 rounded-xl border border-dashed border-amber-200 bg-amber-50 px-4 py-5 text-sm text-amber-800">
+                All rows on this page are still in the pending queue. Review them below so
+                payment-hold and not-yet-confirmed orders stay separate from the main order list.
+              </div>
+            ) : primaryOrders.length > 0 ? (
+              <OrdersTable
+                orders={primaryOrders}
+                token={token}
+                onStatusUpdate={fetchOrders}
+              />
+            ) : (
+              <div className="mt-5 rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-8 text-center text-sm text-gray-500">
+                No orders matched this view.
+              </div>
+            )}
+
+            {showPendingQueueSection ? (
+              <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50/70 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h2 className="text-lg font-semibold text-amber-950">
+                      Pending Queue
+                    </h2>
+                    <p className="mt-1 text-sm text-amber-800">
+                      These rows are waiting on payment confirmation or internal processing, so
+                      they sit apart from the main order list.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {pendingOrders.slice(0, 3).map((order, index) => (
+                      <span
+                        key={String(order?._id || order?.id || index)}
+                        className="inline-flex rounded-full bg-white px-3 py-1 text-xs font-semibold text-amber-900 shadow-sm"
+                      >
+                        {getPendingQueueReason(order)}
+                      </span>
+                    ))}
+                    <span className="inline-flex rounded-full bg-amber-900 px-3 py-1 text-xs font-semibold text-white">
+                      {pendingOrders.length} queued
+                    </span>
+                  </div>
+                </div>
+
+                <OrdersTable
+                  orders={pendingOrders}
+                  token={token}
+                  onStatusUpdate={fetchOrders}
+                />
+              </div>
+            ) : null}
+
             <div className="flex items-center justify-center py-10">
               <Pagination
                 count={totalPages}

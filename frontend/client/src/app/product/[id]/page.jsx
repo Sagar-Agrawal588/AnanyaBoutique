@@ -6,13 +6,7 @@ import ComboCard from "@/components/ComboCard";
 import ProductItem from "@/components/ProductItem";
 import ShareButton from "@/components/ShareButton";
 import {
-  DEMO_FLAVORS,
   DEMO_PRODUCT_ID,
-  DEMO_SHIPPING_POINTS,
-  DEMO_SNAPSHOT,
-  DEMO_STAT_CARDS,
-  DEMO_STORY,
-  DEMO_TABS,
   buildDemoProduct,
   buildDemoReviews,
 } from "@/components/productDetail/demoLiveData";
@@ -33,7 +27,6 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { FiChevronLeft, FiChevronRight } from "react-icons/fi";
-import { HiOutlineSparkles } from "react-icons/hi2";
 import { IoMdCart } from "react-icons/io";
 import {
   MdLocalShipping,
@@ -128,15 +121,31 @@ const stripHtml = (value) =>
     .replace(/\s+/g, " ")
     .trim();
 
-const buildDescriptionParagraphs = (product, isDemoPreview) => {
-  if (isDemoPreview) {
-    return [
-      "This preview route shows a stronger product storytelling pattern with richer media treatment, clearer spacing, and purchase controls that stay readable at every breakpoint.",
-      "The hero section puts the product first, while the lower content area adds depth through description panels, supporting detail cards, and review-led trust signals.",
-      "Use this page as the reference layout for future product detail upgrades or stakeholder walkthroughs before mapping the design to fully live catalog data.",
-    ];
+const getAvailabilityLabel = (availableQty, demandStatus) => {
+  if (availableQty > 0) {
+    return String(demandStatus || "").trim().toUpperCase() === "HIGH"
+      ? "Selling fast"
+      : "In stock";
   }
 
+  if (String(demandStatus || "").trim().toUpperCase() === "HIGH") {
+    return "High demand";
+  }
+
+  return "Currently unavailable";
+};
+
+const getHeroStatusLabel = (product, reviewCount) => {
+  if (product?.isBestSeller) return "Best seller";
+  if (product?.isNewArrival) return "New arrival";
+  if (String(product?.demandStatus || "").trim().toUpperCase() === "HIGH") {
+    return "High demand";
+  }
+  if (Number(reviewCount || 0) > 0) return "Top rated";
+  return "Healthy One Gram";
+};
+
+const buildDescriptionParagraphs = (product) => {
   const descriptionText = stripHtml(
     product?.description || product?.shortDescription || "",
   );
@@ -170,12 +179,7 @@ const buildDetailCards = ({
   selectedVariant,
   availableQty,
   reviewCount,
-  isDemoPreview,
 }) => {
-  if (isDemoPreview) {
-    return DEMO_STAT_CARDS;
-  }
-
   const categoryLabel =
     product?.category?.name || product?.categoryName || "Storefront product";
   const selectedLabel = selectedVariant
@@ -200,7 +204,7 @@ const buildDetailCards = ({
     },
     {
       label: "Availability",
-      value: availableQty > 0 ? `${availableQty} in stock` : "Out of stock",
+      value: getAvailabilityLabel(availableQty, product?.demandStatus),
       helper: "Real-time stock signal",
     },
   ];
@@ -211,14 +215,9 @@ const buildSnapshotItems = ({
   selectedVariant,
   displaySku,
   availableQty,
-  isDemoPreview,
   productRating,
   reviewCount,
 }) => {
-  if (isDemoPreview) {
-    return DEMO_SNAPSHOT;
-  }
-
   const items = [];
   const categoryLabel =
     product?.category?.name || product?.categoryName || "General catalog";
@@ -231,11 +230,7 @@ const buildSnapshotItems = ({
   items.push(`Brand: ${brandLabel}`);
   if (displaySku) items.push(`SKU: ${displaySku}`);
   if (selectedLabel) items.push(`Selected pack: ${selectedLabel}`);
-  items.push(
-    availableQty > 0
-      ? `Availability: ${availableQty} unit${availableQty === 1 ? "" : "s"} ready`
-      : "Availability: currently out of stock",
-  );
+  items.push(`Availability: ${getAvailabilityLabel(availableQty, product?.demandStatus)}`);
   if (Number(productRating) > 0) {
     items.push(
       `Rating: ${Number(productRating).toFixed(1)} / 5 from ${Math.max(Number(reviewCount || 0), 0)} review${Number(reviewCount || 0) === 1 ? "" : "s"}`,
@@ -245,14 +240,11 @@ const buildSnapshotItems = ({
   return items;
 };
 
-const buildShippingPoints = (isDemoPreview) =>
-  isDemoPreview
-    ? DEMO_SHIPPING_POINTS
-    : [
-        "Standard delivery typically lands within 3-5 business days after dispatch.",
-        "All checkout flows run through secure payment handling and verified order tracking.",
-        "Packaging is designed to keep product quality protected throughout transit.",
-      ];
+const buildShippingPoints = () => [
+  "Standard delivery typically lands within 3-5 business days after dispatch.",
+  "All checkout flows run through secure payment handling and verified order tracking.",
+  "Packaging is designed to keep product quality protected throughout transit.",
+];
 
 const resolveVariantLabel = (variant, baseProduct) => {
   if (variant?.name) return variant.name;
@@ -338,7 +330,6 @@ const ProductDetailPage = () => {
   const [activeTab, setActiveTab] = useState("description");
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [deliveryPincode, setDeliveryPincode] = useState("");
-  const [selectedFlavor, setSelectedFlavor] = useState(DEMO_FLAVORS[0]);
   const [snackbar, setSnackbar] = useState({
     open: false,
     message: "",
@@ -357,9 +348,7 @@ const ProductDetailPage = () => {
     ? selectedVariant.originalPrice
     : product?.originalPrice;
   const demoReviewFallback = isDemoPreview ? buildDemoReviews() : [];
-  const pageConfig = isDemoPreview
-    ? null
-    : normalizeProductPageConfig(product?.productPage);
+  const pageConfig = normalizeProductPageConfig(product?.productPage);
   const activeStock = selectedVariant
     ? Math.max(
         Number(selectedVariant.stock_quantity ?? selectedVariant.stock ?? 0) -
@@ -399,83 +388,67 @@ const ProductDetailPage = () => {
     customerReviews.length || Number(product?.reviewCount || 0),
     demoReviewFallback.length,
   );
-  const defaultTabs = isDemoPreview ? DEMO_TABS : DEFAULT_TABS;
-  const tabs = isDemoPreview
-    ? defaultTabs
-    : [
-        pageConfig?.tabs?.showDescription !== false
-          ? {
-              id: "description",
-              label: mergeTextOverride(
-                pageConfig?.tabs?.descriptionLabel,
-                DEFAULT_TABS[0].label,
-              ),
-            }
-          : null,
-        pageConfig?.tabs?.showDetails !== false
-          ? {
-              id: "details",
-              label: mergeTextOverride(
-                pageConfig?.tabs?.detailsLabel,
-                DEFAULT_TABS[1].label,
-              ),
-            }
-          : null,
-        pageConfig?.tabs?.showShipping !== false
-          ? {
-              id: "shipping",
-              label: mergeTextOverride(
-                pageConfig?.tabs?.shippingLabel,
-                DEFAULT_TABS[2].label,
-              ),
-            }
-          : null,
-      ].filter(Boolean);
-  const defaultDescriptionParagraphs = buildDescriptionParagraphs(
-    product,
-    isDemoPreview,
+  const tabs = [
+    pageConfig?.tabs?.showDescription !== false
+      ? {
+          id: "description",
+          label: mergeTextOverride(
+            pageConfig?.tabs?.descriptionLabel,
+            DEFAULT_TABS[0].label,
+          ),
+        }
+      : null,
+    pageConfig?.tabs?.showDetails !== false
+      ? {
+          id: "details",
+          label: mergeTextOverride(
+            pageConfig?.tabs?.detailsLabel,
+            DEFAULT_TABS[1].label,
+          ),
+        }
+      : null,
+    pageConfig?.tabs?.showShipping !== false
+      ? {
+          id: "shipping",
+          label: mergeTextOverride(
+            pageConfig?.tabs?.shippingLabel,
+            DEFAULT_TABS[2].label,
+          ),
+        }
+      : null,
+  ].filter(Boolean);
+  const defaultDescriptionParagraphs = buildDescriptionParagraphs(product);
+  const descriptionParagraphs = mergeListWithDefaults(
+    pageConfig?.descriptionSection?.extraParagraphs || [],
+    defaultDescriptionParagraphs,
   );
-  const descriptionParagraphs = isDemoPreview
-    ? defaultDescriptionParagraphs
-    : mergeListWithDefaults(
-        pageConfig?.descriptionSection?.extraParagraphs || [],
-        defaultDescriptionParagraphs,
-      );
   const defaultDetailCards = buildDetailCards({
     product,
     selectedVariant,
     availableQty,
     reviewCount: displayReviewCount,
-    isDemoPreview,
   });
-  const detailCards = isDemoPreview
-    ? defaultDetailCards
-    : mergeCardsWithDefaults(
-        defaultDetailCards,
-        pageConfig?.detailsSection?.cards || [],
-      );
+  const detailCards = mergeCardsWithDefaults(
+    defaultDetailCards,
+    pageConfig?.detailsSection?.cards || [],
+  );
   const defaultSnapshotItems = buildSnapshotItems({
     product,
     selectedVariant,
     displaySku,
     availableQty,
-    isDemoPreview,
     productRating,
     reviewCount: displayReviewCount,
   });
-  const snapshotItems = isDemoPreview
-    ? defaultSnapshotItems
-    : mergeListWithDefaults(
-        pageConfig?.detailsSection?.snapshotItems || [],
-        defaultSnapshotItems,
-      );
-  const defaultShippingPoints = buildShippingPoints(isDemoPreview);
-  const shippingPoints = isDemoPreview
-    ? defaultShippingPoints
-    : mergeListWithDefaults(
-        pageConfig?.shippingSection?.points || [],
-        defaultShippingPoints,
-      );
+  const snapshotItems = mergeListWithDefaults(
+    pageConfig?.detailsSection?.snapshotItems || [],
+    defaultSnapshotItems,
+  );
+  const defaultShippingPoints = buildShippingPoints();
+  const shippingPoints = mergeListWithDefaults(
+    pageConfig?.shippingSection?.points || [],
+    defaultShippingPoints,
+  );
   const images = resolveProductImages(
     product,
     selectedVariant,
@@ -490,29 +463,40 @@ const ProductDetailPage = () => {
     displayReviewCount > 0
       ? `${displayReviewCount} review${displayReviewCount === 1 ? "" : "s"}`
       : "No reviews yet";
+  const heroStatusLabel = getHeroStatusLabel(product, displayReviewCount);
+  const availabilityLabel = getAvailabilityLabel(
+    availableQty,
+    product?.demandStatus,
+  );
   const deliveryReady = deliveryPincode.length === 6;
   const deliveryMessage = deliveryReady
     ? `Estimated delivery to ${deliveryPincode}: 2-4 business days.`
     : "Enter a 6-digit pincode to preview delivery timing.";
   const showDescriptionSection =
-    isDemoPreview ||
-    (pageConfig?.tabs?.showDescription !== false &&
-      pageConfig?.descriptionSection?.show !== false);
+    pageConfig?.tabs?.showDescription !== false &&
+    pageConfig?.descriptionSection?.show !== false;
   const showDetailsSection =
-    isDemoPreview ||
-    (pageConfig?.tabs?.showDetails !== false &&
-      pageConfig?.detailsSection?.show !== false);
+    pageConfig?.tabs?.showDetails !== false &&
+    pageConfig?.detailsSection?.show !== false;
   const showShippingSection =
-    isDemoPreview ||
-    (pageConfig?.tabs?.showShipping !== false &&
-      pageConfig?.shippingSection?.show !== false);
-  const showReviewsSection = isDemoPreview || pageConfig?.reviewsSection?.show !== false;
+    pageConfig?.tabs?.showShipping !== false &&
+    pageConfig?.shippingSection?.show !== false;
+  const showHeroStoryCard = pageConfig?.hero?.showStoryCard !== false;
+  const showHeroInsightCards = pageConfig?.hero?.showInsightCards !== false;
+  const showHeroDeliveryPreview = pageConfig?.hero?.showDeliveryPreview !== false;
+  const showReviewsSection = pageConfig?.reviewsSection?.show !== false;
   const showFrequentlyBoughtSection =
     !isDemoPreview && pageConfig?.frequentlyBoughtSection?.show !== false;
   const showRecommendedCombosSection =
     !isDemoPreview && pageConfig?.recommendedCombosSection?.show !== false;
   const showRelatedProductsSection =
     !isDemoPreview && pageConfig?.relatedProductsSection?.show !== false;
+  const galleryGridClassName = showHeroStoryCard
+    ? "relative mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px] lg:items-end"
+    : "relative mt-6";
+  const imageStageClassName = showHeroStoryCard
+    ? "product-image-stage relative flex min-h-[440px] items-center justify-center overflow-hidden rounded-[30px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.92)_0%,rgba(244,236,229,0.88)_100%)] p-6"
+    : "product-image-stage relative mx-auto flex min-h-[380px] max-w-[840px] items-center justify-center overflow-hidden rounded-[30px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.92)_0%,rgba(244,236,229,0.88)_100%)] p-6 sm:p-10";
 
   const fetchProductReviews = async (productValueId) => {
     if (!productValueId) {
@@ -677,7 +661,6 @@ const ProductDetailPage = () => {
     setActiveImageIndex(0);
     setDeliveryPincode("");
     setQuantity(1);
-    setSelectedFlavor(DEMO_FLAVORS[0]);
 
     if (!routeId) return;
 
@@ -883,8 +866,8 @@ const ProductDetailPage = () => {
       if (availableQty < quantity) {
         openSnackbar(
           availableQty > 0
-            ? `Only ${availableQty} left in stock`
-            : "This product is currently out of stock",
+            ? "Limited stock available for this selected pack."
+            : "This product is currently unavailable.",
           "error",
         );
         return;
@@ -920,8 +903,8 @@ const ProductDetailPage = () => {
         if (availableQty < quantity) {
           openSnackbar(
             availableQty > 0
-              ? `Only ${availableQty} left in stock`
-              : "This product is currently out of stock",
+              ? "Limited stock available for this selected pack."
+              : "This product is currently unavailable.",
             "error",
           );
           return;
@@ -1026,15 +1009,8 @@ const ProductDetailPage = () => {
             Product not found
           </h1>
           <p className="mt-4 text-base text-[#6a5548]">
-            The item you are trying to open is unavailable right now. You can
-            return to the catalog or use{" "}
-            <Link
-              href={`/product/${DEMO_PRODUCT_ID}`}
-              className="font-semibold text-[#2c6173]"
-            >
-              /product/{DEMO_PRODUCT_ID}
-            </Link>{" "}
-            to preview the redesigned layout.
+            The item you are trying to open is unavailable right now. Please
+            return to the catalog and choose another product.
           </p>
         </div>
       </section>
@@ -1043,7 +1019,7 @@ const ProductDetailPage = () => {
 
   return (
     <section
-      className="product-page-shell min-h-screen bg-[radial-gradient(circle_at_top,_#f6ede4_0%,_#fffaf6_38%,_#eff3f4_100%)] pb-20"
+      className="product-page-shell min-h-screen bg-[radial-gradient(circle_at_top,_#f7efe5_0%,_#fffaf5_42%,_#f4eee7_100%)] pb-20"
       style={{
         fontFamily: "var(--font-poppins), var(--font-inter), sans-serif",
       }}
@@ -1061,22 +1037,15 @@ const ProductDetailPage = () => {
           <span className="font-medium text-[#23150f]">
             {product?.name || product?.title}
           </span>
-          {isDemoPreview ? (
-            <span className="ml-auto inline-flex items-center gap-2 rounded-full bg-[#123b4a] px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white">
-              <HiOutlineSparkles className="text-sm" />
-              Demo Live
-            </span>
-          ) : null}
         </div>
 
         <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(360px,0.95fr)]">
           <div className="space-y-4">
-            <div className="product-hero-shell product-reveal product-reveal-delay-1 relative overflow-hidden rounded-[36px] border border-[#e1cdbf] bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.96)_0%,_rgba(250,240,231,0.95)_35%,_rgba(198,219,225,0.88)_100%)] p-4 shadow-[0_34px_90px_-55px_rgba(44,29,20,0.45)] sm:p-6">
+            <div className="product-hero-shell product-reveal product-reveal-delay-1 relative overflow-hidden rounded-[36px] border border-[#e1cdbf] bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.96)_0%,_rgba(250,240,231,0.95)_38%,_rgba(238,225,210,0.92)_100%)] p-4 shadow-[0_34px_90px_-55px_rgba(44,29,20,0.45)] sm:p-6">
               <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.55)_0%,rgba(255,255,255,0)_55%)]" />
               <div className="relative flex flex-wrap items-start justify-between gap-3">
-                <div className="inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/85 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#234454] backdrop-blur">
-                  <HiOutlineSparkles className="text-sm" />
-                  {isDemoPreview ? "Premium demo storyboard" : "Product gallery"}
+                <div className="inline-flex items-center gap-2 rounded-full border border-[#eadfd5] bg-white/90 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#6a4b39] backdrop-blur">
+                  Product gallery
                 </div>
                 {images.length > 1 ? (
                   <div className="flex items-center gap-2">
@@ -1108,41 +1077,35 @@ const ProductDetailPage = () => {
                 ) : null}
               </div>
 
-              <div className="relative mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px] lg:items-end">
-                <div className="product-image-stage relative flex min-h-[440px] items-center justify-center overflow-hidden rounded-[30px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.92)_0%,rgba(244,236,229,0.88)_100%)] p-6">
-                  <div className="absolute inset-x-[16%] bottom-4 h-10 rounded-full bg-[#113c49]/15 blur-2xl" />
+              <div className={galleryGridClassName}>
+                <div className={imageStageClassName}>
+                  <div className="absolute inset-x-[16%] bottom-4 h-10 rounded-full bg-[#6a4331]/12 blur-2xl" />
                   <img
                     src={activeImage}
                     alt={product?.name || product?.title || "Product image"}
-                    className="relative z-10 max-h-[380px] w-full object-contain drop-shadow-[0_26px_36px_rgba(17,60,73,0.18)]"
+                    className="relative z-10 max-h-[380px] w-full object-contain drop-shadow-[0_26px_36px_rgba(60,36,24,0.18)]"
                   />
                 </div>
 
-                {isDemoPreview || pageConfig?.hero?.showStoryCard !== false ? (
-                  <div className="product-story-card product-reveal product-reveal-delay-2 rounded-[30px] border border-white/70 bg-[#123b4a] p-6 text-white shadow-[0_28px_60px_-45px_rgba(18,59,74,0.95)]">
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#bad8e2]">
-                      {isDemoPreview
-                        ? DEMO_STORY.eyebrow
-                        : mergeTextOverride(
-                            pageConfig?.hero?.storyEyebrow,
-                            "Product Story",
-                          )}
+                {showHeroStoryCard ? (
+                  <div className="product-story-card product-reveal product-reveal-delay-2 rounded-[30px] border border-[#86614f] bg-[linear-gradient(155deg,_#3d2316_0%,_#6a4331_52%,_#8c634f_100%)] p-6 text-white shadow-[0_28px_60px_-45px_rgba(61,35,22,0.92)]">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#f1d9c9]">
+                      {mergeTextOverride(
+                        pageConfig?.hero?.storyEyebrow,
+                        "Product Story",
+                      )}
                     </p>
                     <h2 className="mt-3 text-2xl font-semibold leading-tight">
-                      {isDemoPreview
-                        ? DEMO_STORY.title
-                        : mergeTextOverride(
-                            pageConfig?.hero?.storyTitle,
-                            "A sharper product story with the important actions closer to the decision point.",
-                          )}
+                      {mergeTextOverride(
+                        pageConfig?.hero?.storyTitle,
+                        "A cleaner product story with the key buying details kept close to the decision point.",
+                      )}
                     </h2>
-                    <p className="mt-4 text-sm leading-6 text-[#d9edf2]">
-                      {isDemoPreview
-                        ? DEMO_STORY.caption
-                        : mergeTextOverride(
-                            pageConfig?.hero?.storyDescription,
-                            "The refreshed detail page keeps key content blocks feeling editorial without hiding purchase controls, ratings, or delivery context.",
-                          )}
+                    <p className="mt-4 text-sm leading-6 text-[#f8ebe2]">
+                      {mergeTextOverride(
+                        pageConfig?.hero?.storyDescription,
+                        "The refreshed detail page keeps product story, trust cues, pricing, and delivery context in one calm layout without pushing the buying actions too far away.",
+                      )}
                     </p>
                     <div className="mt-6 grid gap-3">
                       {detailCards.slice(0, 2).map((card) => (
@@ -1204,9 +1167,9 @@ const ProductDetailPage = () => {
                   <Rating value={productRating} precision={0.5} readOnly size="small" />
                   <span>{reviewSummaryLabel}</span>
                 </div>
-                <div className="inline-flex items-center gap-2 rounded-full border border-[#dce9ec] bg-[#edf5f7] px-4 py-2 text-sm font-medium text-[#204755]">
+                <div className="inline-flex items-center gap-2 rounded-full border border-[#eaded5] bg-[#f4eadf] px-4 py-2 text-sm font-medium text-[#6a4b39]">
                   <MdVerified className="text-base" />
-                  {isDemoPreview ? "Demo ready" : "Storefront ready"}
+                  {heroStatusLabel}
                 </div>
                 <div className="ml-auto">
                   <ShareButton
@@ -1247,30 +1210,6 @@ const ProductDetailPage = () => {
                 ) : null}
               </div>
 
-              {isDemoPreview ? (
-                <div className="mt-8">
-                  <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#7b6355]">
-                    Flavor
-                  </p>
-                  <div className="mt-3 flex flex-wrap gap-3">
-                    {DEMO_FLAVORS.map((flavor) => (
-                      <button
-                        key={flavor}
-                        type="button"
-                        onClick={() => setSelectedFlavor(flavor)}
-                        className={`rounded-2xl border px-5 py-3 text-sm font-semibold transition ${
-                          selectedFlavor === flavor
-                            ? "border-[#121212] bg-[#121212] text-white"
-                            : "border-[#d5c3b7] bg-white text-[#38231a] hover:-translate-y-0.5"
-                        }`}
-                      >
-                        {flavor}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-
               {product?.hasVariants && Array.isArray(product?.variants) ? (
                 <div className="mt-8">
                   <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#7b6355]">
@@ -1306,7 +1245,7 @@ const ProductDetailPage = () => {
                 </div>
               ) : null}
 
-              {isDemoPreview || pageConfig?.hero?.showDeliveryPreview !== false ? (
+              {showHeroDeliveryPreview ? (
                 <div className="mt-8 rounded-[28px] border border-[#e3d4c9] bg-[#fbf7f2] p-5">
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#7b6355]">
@@ -1327,7 +1266,7 @@ const ProductDetailPage = () => {
                       )
                     }
                     placeholder="Enter pincode"
-                    className="mt-4 h-14 w-full rounded-2xl border border-[#d8c6bb] bg-white px-4 text-base text-[#24150f] outline-none transition focus:border-[#123b4a] focus:ring-2 focus:ring-[#123b4a]/10"
+                    className="mt-4 h-14 w-full rounded-2xl border border-[#d8c6bb] bg-white px-4 text-base text-[#24150f] outline-none transition focus:border-[#6a4331] focus:ring-2 focus:ring-[#6a4331]/10"
                   />
                   <p className="mt-3 text-sm text-[#5d4b41]">{deliveryMessage}</p>
                 </div>
@@ -1365,12 +1304,12 @@ const ProductDetailPage = () => {
                     Availability
                   </p>
                   <p className="mt-3 text-base font-semibold text-[#24150f]">
-                    {availableQty > 0
-                      ? `${availableQty} unit${availableQty === 1 ? "" : "s"} available`
-                      : "Out of stock"}
+                    {availabilityLabel}
                   </p>
                   <p className="mt-1 text-sm text-[#5d4b41]">
-                    {displaySku ? `SKU: ${displaySku}` : "Ready for storefront use"}
+                    {displaySku
+                      ? `SKU: ${displaySku}`
+                      : "Availability syncs with your selected pack"}
                   </p>
                 </div>
               </div>
@@ -1398,7 +1337,7 @@ const ProductDetailPage = () => {
               <div className="mt-8 grid gap-3 sm:grid-cols-2">
                 <div className="rounded-[24px] border border-[#e7dad1] bg-[#faf6f2] p-4">
                   <div className="flex items-center gap-3">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#123b4a] text-white">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#2f1b12] text-white">
                       <MdLocalShipping className="text-xl" />
                     </div>
                     <div>
@@ -1411,7 +1350,7 @@ const ProductDetailPage = () => {
                 </div>
                 <div className="rounded-[24px] border border-[#e7dad1] bg-[#faf6f2] p-4">
                   <div className="flex items-center gap-3">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#123b4a] text-white">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#2f1b12] text-white">
                       <MdOutlineSecurity className="text-xl" />
                     </div>
                     <div>
@@ -1424,7 +1363,7 @@ const ProductDetailPage = () => {
                 </div>
                 <div className="rounded-[24px] border border-[#e7dad1] bg-[#faf6f2] p-4">
                   <div className="flex items-center gap-3">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#123b4a] text-white">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#2f1b12] text-white">
                       <MdVerified className="text-xl" />
                     </div>
                     <div>
@@ -1437,7 +1376,7 @@ const ProductDetailPage = () => {
                 </div>
                 <div className="rounded-[24px] border border-[#e7dad1] bg-[#faf6f2] p-4">
                   <div className="flex items-center gap-3">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#123b4a] text-white">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#2f1b12] text-white">
                       <MdOutlineInventory2 className="text-xl" />
                     </div>
                     <div>
@@ -1453,69 +1392,57 @@ const ProductDetailPage = () => {
           </div>
         </div>
 
-        {isDemoPreview || pageConfig?.hero?.showInsightCards !== false ? (
+        {showHeroInsightCards ? (
           <div className="mt-8 grid gap-4 md:grid-cols-3">
             <div className="rounded-[26px] border border-[#e4d5ca] bg-white/85 p-5 shadow-[0_24px_50px_-40px_rgba(42,28,20,0.45)]">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#876958]">
-                {isDemoPreview
-                  ? "Price Focus"
-                  : mergeTextOverride(
-                      pageConfig?.hero?.priceCardEyebrow,
-                      "Price Focus",
-                    )}
+                {mergeTextOverride(
+                  pageConfig?.hero?.priceCardEyebrow,
+                  "Price Focus",
+                )}
               </p>
               <p className="mt-2 text-3xl font-semibold text-[#24150f]">
                 {formatPrice(toNumber(activePrice, 0))}
               </p>
               <p className="mt-2 text-sm text-[#6d584a]">
-                {isDemoPreview
-                  ? "Clean, high-contrast pricing with supporting variant context."
-                  : mergeTextOverride(
-                      pageConfig?.hero?.priceCardDescription,
-                      "Clean, high-contrast pricing with supporting variant context.",
-                    )}
+                {mergeTextOverride(
+                  pageConfig?.hero?.priceCardDescription,
+                  "Clean, high-contrast pricing with supporting variant context.",
+                )}
               </p>
             </div>
             <div className="rounded-[26px] border border-[#e4d5ca] bg-white/85 p-5 shadow-[0_24px_50px_-40px_rgba(42,28,20,0.45)]">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#876958]">
-                {isDemoPreview
-                  ? "Variant View"
-                  : mergeTextOverride(
-                      pageConfig?.hero?.variantCardEyebrow,
-                      "Variant View",
-                    )}
+                {mergeTextOverride(
+                  pageConfig?.hero?.variantCardEyebrow,
+                  "Variant View",
+                )}
               </p>
               <p className="mt-2 text-xl font-semibold text-[#24150f]">
                 {selectedPackLabel}
               </p>
               <p className="mt-2 text-sm text-[#6d584a]">
-                {isDemoPreview
-                  ? "Easy-to-scan options that stay near the CTA block."
-                  : mergeTextOverride(
-                      pageConfig?.hero?.variantCardDescription,
-                      "Easy-to-scan options that stay near the CTA block.",
-                    )}
+                {mergeTextOverride(
+                  pageConfig?.hero?.variantCardDescription,
+                  "Easy-to-scan options that stay near the CTA block.",
+                )}
               </p>
             </div>
             <div className="rounded-[26px] border border-[#e4d5ca] bg-white/85 p-5 shadow-[0_24px_50px_-40px_rgba(42,28,20,0.45)]">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#876958]">
-                {isDemoPreview
-                  ? "Social Proof"
-                  : mergeTextOverride(
-                      pageConfig?.hero?.socialProofEyebrow,
-                      "Social Proof",
-                    )}
+                {mergeTextOverride(
+                  pageConfig?.hero?.socialProofEyebrow,
+                  "Social Proof",
+                )}
               </p>
               <p className="mt-2 text-xl font-semibold text-[#24150f]">
                 {reviewSummaryLabel}
               </p>
               <p className="mt-2 text-sm text-[#6d584a]">
-                {isDemoPreview
-                  ? "Reviews move closer to the content shoppers read before buying."
-                  : mergeTextOverride(
-                      pageConfig?.hero?.socialProofDescription,
-                      "Reviews move closer to the content shoppers read before buying.",
-                    )}
+                {mergeTextOverride(
+                  pageConfig?.hero?.socialProofDescription,
+                  "Reviews move closer to the content shoppers read before buying.",
+                )}
               </p>
             </div>
           </div>
@@ -1543,15 +1470,13 @@ const ProductDetailPage = () => {
             <div className="mt-6">
               {activeTab === "description" && showDescriptionSection ? (
                 <div className="grid gap-6 xl:grid-cols-[minmax(0,0.94fr)_minmax(320px,0.78fr)]">
-                  {isDemoPreview || pageConfig?.descriptionSection?.showEditorialBanner !== false ? (
-                    <div className="overflow-hidden rounded-[32px] bg-[linear-gradient(135deg,_#113c49_0%,_#1f5662_36%,_#264b63_100%)] p-6 text-white shadow-[0_28px_60px_-44px_rgba(18,59,74,0.95)] sm:p-8">
-                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#bad8e2]">
-                        {isDemoPreview
-                          ? "Editorial Banner"
-                          : mergeTextOverride(
-                              pageConfig?.descriptionSection?.editorialEyebrow,
-                              "Featured Overview",
-                            )}
+                  {pageConfig?.descriptionSection?.showEditorialBanner !== false ? (
+                    <div className="overflow-hidden rounded-[32px] bg-[linear-gradient(135deg,_#2f1b12_0%,_#6b4331_42%,_#9a6b54_100%)] p-6 text-white shadow-[0_28px_60px_-44px_rgba(47,27,18,0.88)] sm:p-8">
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#f2dbc7]">
+                        {mergeTextOverride(
+                          pageConfig?.descriptionSection?.editorialEyebrow,
+                          "Featured Overview",
+                        )}
                       </p>
                       <div className="mt-5 grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)] lg:items-center">
                         <div className="rounded-[28px] bg-white/10 p-4">
@@ -1563,35 +1488,29 @@ const ProductDetailPage = () => {
                         </div>
                         <div>
                           <h2 className="text-3xl font-semibold leading-tight">
-                            {isDemoPreview
-                              ? DEMO_STORY.title
-                              : mergeTextOverride(
-                                  pageConfig?.descriptionSection?.editorialTitle,
-                                  "A stronger product story can live right beside the product without overwhelming the transaction.",
-                                )}
+                            {mergeTextOverride(
+                              pageConfig?.descriptionSection?.editorialTitle,
+                              "A stronger product story can live right beside the product without overwhelming the transaction.",
+                            )}
                           </h2>
-                          <p className="mt-4 text-base leading-7 text-[#d9edf2]">
-                            {isDemoPreview
-                              ? DEMO_STORY.caption
-                              : mergeTextOverride(
-                                  pageConfig?.descriptionSection?.editorialDescription,
-                                  "This section gives longer-form content a more intentional home, helping the product feel more premium while keeping the purchase path above it calm and focused.",
-                                )}
+                          <p className="mt-4 text-base leading-7 text-[#f8ebe2]">
+                            {mergeTextOverride(
+                              pageConfig?.descriptionSection?.editorialDescription,
+                              "This section gives longer-form content a more intentional home, helping the product feel more premium while keeping the purchase path above it calm and focused.",
+                            )}
                           </p>
                         </div>
                       </div>
                     </div>
                   ) : null}
 
-                  {isDemoPreview || pageConfig?.descriptionSection?.showDescriptionFlow !== false ? (
+                  {pageConfig?.descriptionSection?.showDescriptionFlow !== false ? (
                     <div className="rounded-[32px] border border-[#e7dad1] bg-[#fbf7f2] p-6 sm:p-8">
                       <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7b6355]">
-                        {isDemoPreview
-                          ? "Description Flow"
-                          : mergeTextOverride(
-                              pageConfig?.descriptionSection?.flowEyebrow,
-                              "Description Flow",
-                            )}
+                        {mergeTextOverride(
+                          pageConfig?.descriptionSection?.flowEyebrow,
+                          "Description Flow",
+                        )}
                       </p>
                       <div className="mt-5 space-y-5 text-base leading-7 text-[#4b392f]">
                         {product?.description ? (
@@ -1613,7 +1532,7 @@ const ProductDetailPage = () => {
 
               {activeTab === "details" && showDetailsSection ? (
                 <div className="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(320px,0.75fr)]">
-                  {isDemoPreview || pageConfig?.detailsSection?.showCards !== false ? (
+                  {pageConfig?.detailsSection?.showCards !== false ? (
                     <div className="grid gap-4 sm:grid-cols-2">
                       {detailCards.map((card) => (
                         <div
@@ -1633,15 +1552,13 @@ const ProductDetailPage = () => {
                       ))}
                     </div>
                   ) : null}
-                  {isDemoPreview || pageConfig?.detailsSection?.showSnapshot !== false ? (
+                  {pageConfig?.detailsSection?.showSnapshot !== false ? (
                     <div className="rounded-[32px] border border-[#e7dad1] bg-white p-6 shadow-[0_24px_50px_-42px_rgba(42,28,20,0.3)] sm:p-8">
                       <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7b6355]">
-                        {isDemoPreview
-                          ? "Snapshot"
-                          : mergeTextOverride(
-                              pageConfig?.detailsSection?.snapshotEyebrow,
-                              "Snapshot",
-                            )}
+                        {mergeTextOverride(
+                          pageConfig?.detailsSection?.snapshotEyebrow,
+                          "Snapshot",
+                        )}
                       </p>
                       <div className="mt-5 space-y-4">
                         {snapshotItems.map((item) => (
@@ -1660,15 +1577,13 @@ const ProductDetailPage = () => {
 
               {activeTab === "shipping" && showShippingSection ? (
                 <div className="grid gap-6 xl:grid-cols-[minmax(0,0.88fr)_minmax(320px,0.82fr)]">
-                  {isDemoPreview || pageConfig?.shippingSection?.showPoints !== false ? (
+                  {pageConfig?.shippingSection?.showPoints !== false ? (
                     <div className="rounded-[32px] border border-[#e7dad1] bg-white p-6 shadow-[0_24px_50px_-42px_rgba(42,28,20,0.3)] sm:p-8">
                       <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7b6355]">
-                        {isDemoPreview
-                          ? "Shipping & Trust"
-                          : mergeTextOverride(
-                              pageConfig?.shippingSection?.pointsEyebrow,
-                              "Shipping & Trust",
-                            )}
+                        {mergeTextOverride(
+                          pageConfig?.shippingSection?.pointsEyebrow,
+                          "Shipping & Trust",
+                        )}
                       </p>
                       <div className="mt-5 space-y-4">
                         {shippingPoints.map((item) => (
@@ -1682,21 +1597,17 @@ const ProductDetailPage = () => {
                       </div>
                     </div>
                   ) : null}
-                  {isDemoPreview || pageConfig?.shippingSection?.showReasonsPanel !== false ? (
-                    <div className="rounded-[32px] bg-[linear-gradient(135deg,_#f1e5da_0%,_#fffdfb_46%,_#dce8eb_100%)] p-6 shadow-[0_24px_50px_-42px_rgba(42,28,20,0.3)] sm:p-8">
+                  {pageConfig?.shippingSection?.showReasonsPanel !== false ? (
+                    <div className="rounded-[32px] bg-[linear-gradient(135deg,_#f1e5da_0%,_#fffdfb_46%,_#efe1d2_100%)] p-6 shadow-[0_24px_50px_-42px_rgba(42,28,20,0.3)] sm:p-8">
                       <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#6f5a4c]">
-                        {isDemoPreview
-                          ? "Why This Feels Better"
-                          : mergeTextOverride(
-                              pageConfig?.shippingSection?.reasonsEyebrow,
-                              "Why This Feels Better",
-                            )}
+                        {mergeTextOverride(
+                          pageConfig?.shippingSection?.reasonsEyebrow,
+                          "Why This Feels Better",
+                        )}
                       </p>
                       <div className="mt-5 space-y-4 text-sm leading-6 text-[#4b392f]">
                         {mergeListWithDefaults(
-                          isDemoPreview
-                            ? []
-                            : pageConfig?.shippingSection?.reasonsParagraphs || [],
+                          pageConfig?.shippingSection?.reasonsParagraphs || [],
                           [
                             "The refreshed structure keeps support information within reach without drowning the buyer in a wall of plain text.",
                             "Trust markers, delivery context, and review content now sit in a more natural sequence after the hero instead of feeling detached from the decision point.",
@@ -1719,28 +1630,24 @@ const ProductDetailPage = () => {
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7b6355]">
-                {isDemoPreview
-                  ? "Review Section"
-                  : mergeTextOverride(
-                      pageConfig?.reviewsSection?.eyebrow,
-                      "Review Section",
-                    )}
+                {mergeTextOverride(
+                  pageConfig?.reviewsSection?.eyebrow,
+                  "Review Section",
+                )}
               </p>
               <h2 className="mt-2 text-3xl font-semibold text-[#24150f]">
-                {isDemoPreview
-                  ? "Reviews below the story, closer to the buy decision"
-                  : mergeTextOverride(
-                      pageConfig?.reviewsSection?.title,
-                      "Reviews below the story, closer to the buy decision",
-                    )}
+                {mergeTextOverride(
+                  pageConfig?.reviewsSection?.title,
+                  "Reviews below the story, closer to the buy decision",
+                )}
               </h2>
             </div>
-            <div className="rounded-[24px] border border-[#dce9ec] bg-[#edf5f7] px-5 py-4 text-right">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#326173]">
+            <div className="rounded-[24px] border border-[#eaded5] bg-[#f6efe7] px-5 py-4 text-right">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#6a4b39]">
                 Average Rating
               </p>
               <div className="mt-2 flex items-center justify-end gap-3">
-                <span className="text-2xl font-semibold text-[#173946]">
+                <span className="text-2xl font-semibold text-[#2f1b12]">
                   {productRating > 0 ? productRating.toFixed(1) : "0.0"}
                 </span>
                 <Rating value={productRating} precision={0.5} readOnly size="small" />
@@ -1766,7 +1673,7 @@ const ProductDetailPage = () => {
                           className="h-14 w-14 rounded-2xl object-cover"
                         />
                       ) : (
-                        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#123b4a] text-base font-semibold text-white">
+                        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#2f1b12] text-base font-semibold text-white">
                           {getReviewInitials(review)}
                         </div>
                       )}
@@ -1796,12 +1703,10 @@ const ProductDetailPage = () => {
               </div>
             ) : (
               <div className="rounded-[28px] border border-dashed border-[#d9c8bc] bg-[#fbf7f2] p-8 text-center text-[#5d4b41]">
-                {isDemoPreview
-                  ? "No reviews yet. This upgraded layout is ready for real review content as soon as customer feedback is available."
-                  : mergeTextOverride(
-                      pageConfig?.reviewsSection?.emptyState,
-                      "No reviews yet. This upgraded layout is ready for real review content as soon as customer feedback is available.",
-                    )}
+                {mergeTextOverride(
+                  pageConfig?.reviewsSection?.emptyState,
+                  "No reviews yet. This upgraded layout is ready for real review content as soon as customer feedback is available.",
+                )}
               </div>
             )}
           </div>
@@ -1810,182 +1715,225 @@ const ProductDetailPage = () => {
 
         {!isDemoPreview ? (
           <>
-            <div className="product-reveal product-reveal-delay-3 mt-12 rounded-[36px] border border-[#e1cdbf] bg-white/88 p-6 shadow-[0_34px_90px_-55px_rgba(44,29,20,0.38)] backdrop-blur sm:p-8">
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7b6355]">
-                    Frequently Bought Together
-                  </p>
-                  <h2 className="mt-2 text-3xl font-semibold text-[#24150f]">
-                    Helpful add-ons close to the primary product
-                  </h2>
+            {showFrequentlyBoughtSection ? (
+              <div className="product-reveal product-reveal-delay-3 mt-12 rounded-[36px] border border-[#e1cdbf] bg-white/88 p-6 shadow-[0_34px_90px_-55px_rgba(44,29,20,0.38)] backdrop-blur sm:p-8">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7b6355]">
+                      {mergeTextOverride(
+                        pageConfig?.frequentlyBoughtSection?.eyebrow,
+                        "Frequently Bought Together",
+                      )}
+                    </p>
+                    <h2 className="mt-2 text-3xl font-semibold text-[#24150f]">
+                      {mergeTextOverride(
+                        pageConfig?.frequentlyBoughtSection?.title,
+                        "Helpful add-ons close to the primary product",
+                      )}
+                    </h2>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleAddAllToCart}
+                    disabled={frequentlyBought.length === 0}
+                    className="rounded-2xl bg-[#121212] px-5 py-3 text-sm font-semibold text-white transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {mergeTextOverride(
+                      pageConfig?.frequentlyBoughtSection?.buttonText,
+                      "Add All To Cart",
+                    )}
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={handleAddAllToCart}
-                  disabled={frequentlyBought.length === 0}
-                  className="rounded-2xl bg-[#123b4a] px-5 py-3 text-sm font-semibold text-white transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Add All To Cart
-                </button>
-              </div>
 
-              <div className="mt-6">
-                {fbtLoading ? (
-                  <p className="text-sm text-[#6d584a]">Loading suggestions...</p>
-                ) : frequentlyBought.length > 0 ? (
-                  <div className="grid gap-4 lg:grid-cols-4">
-                    <div className="rounded-[28px] border border-[#e7dad1] bg-[#fbf7f2] p-5">
-                      <div className="flex items-center gap-4">
-                        <div className="flex h-[72px] w-[72px] items-center justify-center rounded-2xl border border-[#efe4dc] bg-white p-2">
-                          <img
-                            src={activeImage}
-                            alt={product?.name || product?.title}
-                            className="h-full w-full object-contain"
-                          />
-                        </div>
-                        <div>
-                          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#7b6355]">
-                            Main Product
-                          </p>
-                          <h3 className="mt-1 text-sm font-semibold text-[#24150f]">
-                            {product?.name || product?.title}
-                          </h3>
-                          <p className="mt-2 text-sm font-semibold text-[#123b4a]">
-                            {formatPrice(toNumber(activePrice, 0))}
-                          </p>
+                <div className="mt-6">
+                  {fbtLoading ? (
+                    <p className="text-sm text-[#6d584a]">Loading suggestions...</p>
+                  ) : frequentlyBought.length > 0 ? (
+                    <div className="grid gap-4 lg:grid-cols-4">
+                      <div className="rounded-[28px] border border-[#e7dad1] bg-[#fbf7f2] p-5">
+                        <div className="flex items-center gap-4">
+                          <div className="flex h-[72px] w-[72px] items-center justify-center rounded-2xl border border-[#efe4dc] bg-white p-2">
+                            <img
+                              src={activeImage}
+                              alt={product?.name || product?.title}
+                              className="h-full w-full object-contain"
+                            />
+                          </div>
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#7b6355]">
+                              Main Product
+                            </p>
+                            <h3 className="mt-1 text-sm font-semibold text-[#24150f]">
+                              {product?.name || product?.title}
+                            </h3>
+                            <p className="mt-2 text-sm font-semibold text-[#6a4331]">
+                              {formatPrice(toNumber(activePrice, 0))}
+                            </p>
+                          </div>
                         </div>
                       </div>
-                    </div>
 
-                    {frequentlyBought.map((item, index) => {
-                      const recommendation = getRecommendationPayload(item);
-                      if (!recommendation?.product) return null;
+                      {frequentlyBought.map((item, index) => {
+                        const recommendation = getRecommendationPayload(item);
+                        if (!recommendation?.product) return null;
 
-                      const recProduct = recommendation.product;
-                      const recProductId = getResolvedProductId(recProduct);
-                      const isAdded = hasSelectedVariantInCart(
-                        recProductId,
-                        recommendation.variantId,
-                      );
+                        const recProduct = recommendation.product;
+                        const recProductId = getResolvedProductId(recProduct);
+                        const isAdded = hasSelectedVariantInCart(
+                          recProductId,
+                          recommendation.variantId,
+                        );
 
-                      return (
-                        <div
-                          key={`${String(recProductId)}:${String(recommendation.variantId || "base")}:${index}`}
-                          className="rounded-[28px] border border-[#e7dad1] bg-[#fbf7f2] p-5"
-                        >
-                          <div className="flex items-center gap-4">
-                            <div className="flex h-[72px] w-[72px] items-center justify-center rounded-2xl border border-[#efe4dc] bg-white p-2">
-                              <img
-                                src={getImageUrl(recommendation.image)}
-                                alt={recProduct?.name || "Suggested product"}
-                                className="h-full w-full object-contain"
-                              />
-                            </div>
-                            <div className="min-w-0">
-                              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#7b6355]">
-                                Add-on
-                              </p>
-                              <h3 className="line-clamp-2 text-sm font-semibold text-[#24150f]">
-                                {recProduct?.name || recProduct?.title}
-                              </h3>
-                              {recommendation.label ? (
-                                <p className="mt-1 text-xs text-[#6d584a]">
-                                  {recommendation.label}
-                                </p>
-                              ) : null}
-                              <p className="mt-2 text-sm font-semibold text-[#123b4a]">
-                                {formatPrice(toNumber(recommendation.price, 0))}
-                              </p>
-                            </div>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => handleAddSingleRecommendation(item)}
-                            disabled={isAdded}
-                            className={`mt-4 w-full rounded-2xl px-4 py-3 text-sm font-semibold transition ${
-                              isAdded
-                                ? "border border-[#2a8a59] bg-white text-[#2a8a59]"
-                                : "bg-[#121212] text-white hover:-translate-y-0.5"
-                            }`}
+                        return (
+                          <div
+                            key={`${String(recProductId)}:${String(recommendation.variantId || "base")}:${index}`}
+                            className="rounded-[28px] border border-[#e7dad1] bg-[#fbf7f2] p-5"
                           >
-                            {isAdded ? "Added" : "Add to Cart"}
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <p className="text-sm text-[#6d584a]">
-                    No suggestions available yet.
-                  </p>
-                )}
-              </div>
-            </div>
-
-            <div className="product-reveal product-reveal-delay-3 mt-12 rounded-[36px] border border-[#e1cdbf] bg-white/88 p-6 shadow-[0_34px_90px_-55px_rgba(44,29,20,0.38)] backdrop-blur sm:p-8">
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7b6355]">
-                    Recommended Combos
-                  </p>
-                  <h2 className="mt-2 text-3xl font-semibold text-[#24150f]">
-                    Bundle options that support the same buying flow
-                  </h2>
+                            <div className="flex items-center gap-4">
+                              <div className="flex h-[72px] w-[72px] items-center justify-center rounded-2xl border border-[#efe4dc] bg-white p-2">
+                                <img
+                                  src={getImageUrl(recommendation.image)}
+                                  alt={recProduct?.name || "Suggested product"}
+                                  className="h-full w-full object-contain"
+                                />
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#7b6355]">
+                                  Add-on
+                                </p>
+                                <h3 className="line-clamp-2 text-sm font-semibold text-[#24150f]">
+                                  {recProduct?.name || recProduct?.title}
+                                </h3>
+                                {recommendation.label ? (
+                                  <p className="mt-1 text-xs text-[#6d584a]">
+                                    {recommendation.label}
+                                  </p>
+                                ) : null}
+                                <p className="mt-2 text-sm font-semibold text-[#6a4331]">
+                                  {formatPrice(toNumber(recommendation.price, 0))}
+                                </p>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleAddSingleRecommendation(item)}
+                              disabled={isAdded}
+                              className={`mt-4 w-full rounded-2xl px-4 py-3 text-sm font-semibold transition ${
+                                isAdded
+                                  ? "border border-[#6a4331] bg-white text-[#6a4331]"
+                                  : "bg-[#121212] text-white hover:-translate-y-0.5"
+                              }`}
+                            >
+                              {isAdded ? "Added" : "Add to Cart"}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-[#6d584a]">
+                      {mergeTextOverride(
+                        pageConfig?.frequentlyBoughtSection?.emptyState,
+                        "No suggestions available yet.",
+                      )}
+                    </p>
+                  )}
                 </div>
-                <Link
-                  href="/combo-deals"
-                  className="text-sm font-semibold text-[#123b4a]"
-                >
-                  View all combos
-                </Link>
               </div>
+            ) : null}
 
-              <div className="mt-6">
-                {recommendedLoading ? (
-                  <p className="text-sm text-[#6d584a]">Loading combos...</p>
-                ) : recommendedCombos.length > 0 ? (
-                  <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">
-                    {recommendedCombos.map((combo) => (
-                      <ComboCard
-                        key={combo._id || combo.slug}
-                        combo={combo}
-                        context="product_recommended_combos"
+            {showRecommendedCombosSection ? (
+              <div className="product-reveal product-reveal-delay-3 mt-12 rounded-[36px] border border-[#e1cdbf] bg-white/88 p-6 shadow-[0_34px_90px_-55px_rgba(44,29,20,0.38)] backdrop-blur sm:p-8">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7b6355]">
+                      {mergeTextOverride(
+                        pageConfig?.recommendedCombosSection?.eyebrow,
+                        "Recommended Combos",
+                      )}
+                    </p>
+                    <h2 className="mt-2 text-3xl font-semibold text-[#24150f]">
+                      {mergeTextOverride(
+                        pageConfig?.recommendedCombosSection?.title,
+                        "Bundle options that support the same buying flow",
+                      )}
+                    </h2>
+                  </div>
+                  <Link
+                    href="/combo-deals"
+                    className="text-sm font-semibold text-[#6a4331]"
+                  >
+                    {mergeTextOverride(
+                      pageConfig?.recommendedCombosSection?.linkText,
+                      "View all combos",
+                    )}
+                  </Link>
+                </div>
+
+                <div className="mt-6">
+                  {recommendedLoading ? (
+                    <p className="text-sm text-[#6d584a]">Loading combos...</p>
+                  ) : recommendedCombos.length > 0 ? (
+                    <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">
+                      {recommendedCombos.map((combo) => (
+                        <ComboCard
+                          key={combo._id || combo.slug}
+                          combo={combo}
+                          context="product_recommended_combos"
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-[#6d584a]">
+                      {mergeTextOverride(
+                        pageConfig?.recommendedCombosSection?.emptyState,
+                        "No recommended combos available right now.",
+                      )}
+                    </p>
+                  )}
+                </div>
+              </div>
+            ) : null}
+
+            {showRelatedProductsSection ? (
+              <div className="product-reveal product-reveal-delay-3 mt-12 rounded-[36px] border border-[#e1cdbf] bg-white/88 p-6 shadow-[0_34px_90px_-55px_rgba(44,29,20,0.38)] backdrop-blur sm:p-8">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7b6355]">
+                  {mergeTextOverride(
+                    pageConfig?.relatedProductsSection?.eyebrow,
+                    "Related Products",
+                  )}
+                </p>
+                <h2 className="mt-2 text-3xl font-semibold text-[#24150f]">
+                  {mergeTextOverride(
+                    pageConfig?.relatedProductsSection?.title,
+                    "More products in the same browsing mood",
+                  )}
+                </h2>
+                {relatedProducts.length > 0 ? (
+                  <div className="mt-6 grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">
+                    {relatedProducts.slice(0, 5).map((item) => (
+                      <ProductItem
+                        key={item._id || item.id}
+                        id={item._id || item.id}
+                        name={item.name || item.title}
+                        brand={item.brand || "Healthy One Gram"}
+                        price={item.price || item.salePrice}
+                        originalPrice={item.originalPrice || item.regularPrice}
+                        discount={item.discount || 0}
+                        rating={item.rating || 4.5}
+                        image={item.image || item.images?.[0] || "/product_1.png"}
+                        product={item}
                       />
                     ))}
                   </div>
                 ) : (
-                  <p className="text-sm text-[#6d584a]">
-                    No recommended combos available right now.
+                  <p className="mt-6 text-sm text-[#6d584a]">
+                    {mergeTextOverride(
+                      pageConfig?.relatedProductsSection?.emptyState,
+                      "No related products available right now.",
+                    )}
                   </p>
                 )}
-              </div>
-            </div>
-
-            {relatedProducts.length > 0 ? (
-              <div className="product-reveal product-reveal-delay-3 mt-12 rounded-[36px] border border-[#e1cdbf] bg-white/88 p-6 shadow-[0_34px_90px_-55px_rgba(44,29,20,0.38)] backdrop-blur sm:p-8">
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7b6355]">
-                  Related Products
-                </p>
-                <h2 className="mt-2 text-3xl font-semibold text-[#24150f]">
-                  More products in the same browsing mood
-                </h2>
-                <div className="mt-6 grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">
-                  {relatedProducts.slice(0, 5).map((item) => (
-                    <ProductItem
-                      key={item._id || item.id}
-                      id={item._id || item.id}
-                      name={item.name || item.title}
-                      brand={item.brand || "Healthy One Gram"}
-                      price={item.price || item.salePrice}
-                      originalPrice={item.originalPrice || item.regularPrice}
-                      discount={item.discount || 0}
-                      rating={item.rating || 4.5}
-                      image={item.image || item.images?.[0] || "/product_1.png"}
-                      product={item}
-                    />
-                  ))}
-                </div>
               </div>
             ) : null}
           </>
@@ -2019,8 +1967,8 @@ const ProductDetailPage = () => {
           transform: translateX(-50%);
           background: radial-gradient(
             circle,
-            rgba(18, 59, 74, 0.1) 0%,
-            rgba(18, 59, 74, 0) 68%
+            rgba(106, 67, 49, 0.12) 0%,
+            rgba(106, 67, 49, 0) 68%
           );
           filter: blur(10px);
           pointer-events: none;
@@ -2050,19 +1998,6 @@ const ProductDetailPage = () => {
         .product-story-card {
           position: relative;
           overflow: hidden;
-        }
-
-        .product-story-card::after {
-          content: "";
-          position: absolute;
-          inset: 0;
-          background: linear-gradient(
-            135deg,
-            rgba(255, 255, 255, 0.08),
-            transparent 48%,
-            rgba(255, 255, 255, 0.05)
-          );
-          pointer-events: none;
         }
 
         .product-cta-primary {

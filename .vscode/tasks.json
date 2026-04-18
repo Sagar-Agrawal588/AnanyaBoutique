@@ -38,6 +38,44 @@
           "endsPattern": "Ready in|Local:"
         }
       }
+    },
+    {
+      "label": "Admin: dev server",
+      "type": "shell",
+      "command": "npm",
+      "args": [
+        "--prefix",
+        "frontend/admin",
+        "run",
+        "dev",
+        "--",
+        "--hostname",
+        "127.0.0.1",
+        "--port",
+        "3001"
+      ],
+      "isBackground": true,
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      },
+      "problemMatcher": {
+        "owner": "custom",
+        "pattern": [
+          {
+            "regexp": "."
+          }
+        ],
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".",
+          "endsPattern": "Ready in|Local:"
+        }
+      }
     }
   ]
 }

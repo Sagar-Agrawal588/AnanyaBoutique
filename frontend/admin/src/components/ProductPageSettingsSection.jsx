@@ -92,12 +92,17 @@ export default function ProductPageSettingsSection({
     <div className="mt-8 space-y-5">
       <div>
         <h3 className="text-[18px] font-semibold text-gray-800">
-          Product Page Layout
+          Storefront Product Page
         </h3>
         <p className="mt-1 text-sm text-gray-500">
-          Control the copy and visibility of the upgraded product detail page
-          from admin. Empty fields keep the default storefront behavior.
+          Control the copy and visibility of the live `/product/[id]` page from
+          admin. Empty fields keep the default storefront behavior.
         </p>
+      </div>
+
+      <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        Changes here update the real client product page layout, including the
+        review section shown below the product details.
       </div>
 
       <div className={sectionCardClass}>
@@ -578,7 +583,7 @@ export default function ProductPageSettingsSection({
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
           <div className="space-y-4 rounded-lg border border-gray-200 bg-white p-4">
             <ToggleField
-              label="Show Reviews Section"
+              label="Show Reviews Below Product"
               checked={productPage.reviewsSection.show}
               onChange={(nextValue) =>
                 updateSectionField("reviewsSection", "show", nextValue)

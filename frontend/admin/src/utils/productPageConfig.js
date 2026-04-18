@@ -5,9 +5,9 @@ const DEFAULT_PRODUCT_PAGE_CONFIG = {
     showDeliveryPreview: true,
     storyEyebrow: "Product Story",
     storyTitle:
-      "A sharper product story with the important actions closer to the decision point.",
+      "A cleaner product story with the important buying details kept close to the decision point.",
     storyDescription:
-      "The refreshed detail page keeps key content blocks feeling editorial without hiding purchase controls, ratings, or delivery context.",
+      "Keep the product story, pricing, trust cues, and delivery context in one calm layout without pushing the buying actions too far away.",
     priceCardEyebrow: "Price Focus",
     priceCardDescription:
       "Clean, high-contrast pricing with supporting variant context.",
@@ -16,7 +16,7 @@ const DEFAULT_PRODUCT_PAGE_CONFIG = {
       "Easy-to-scan options that stay near the CTA block.",
     socialProofEyebrow: "Social Proof",
     socialProofDescription:
-      "Reviews move closer to the content shoppers read before buying.",
+      "Reviews sit closer to the product story so buyers see trust signals earlier.",
   },
   tabs: {
     showDescription: true,
@@ -75,7 +75,7 @@ const DEFAULT_PRODUCT_PAGE_CONFIG = {
     points: [],
     reasonsEyebrow: "Why This Feels Better",
     reasonsParagraphs: [
-      "The refreshed structure keeps support information within reach without drowning the buyer in a wall of plain text.",
+      "The updated structure keeps support information within reach without drowning the buyer in a wall of plain text.",
       "Trust markers, delivery context, and review content now sit in a more natural sequence after the hero instead of feeling detached from the decision point.",
       "The result is a calmer, more premium product page that still stays conversion-focused.",
     ],
@@ -83,9 +83,9 @@ const DEFAULT_PRODUCT_PAGE_CONFIG = {
   reviewsSection: {
     show: true,
     eyebrow: "Review Section",
-    title: "Reviews below the story, closer to the buy decision",
+    title: "Customer reviews below the product story",
     emptyState:
-      "No reviews yet. This upgraded layout is ready for real review content as soon as customer feedback is available.",
+      "No reviews yet. This section is ready to show customer feedback as soon as reviews come in.",
   },
   frequentlyBoughtSection: {
     show: true,

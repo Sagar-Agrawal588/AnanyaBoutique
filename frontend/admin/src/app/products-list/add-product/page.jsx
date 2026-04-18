@@ -769,6 +769,11 @@ const AddProduct = () => {
             )}
           </div>
 
+          <ProductPageSettingsSection
+            productPage={productPage}
+            setProductPage={setProductPage}
+          />
+
           {/* Images */}
           <div className="flex flex-col gap-2 mt-5">
             <h3 className="text-[16px] text-gray-700 font-[600]">
@@ -812,11 +817,6 @@ const AddProduct = () => {
               Max 10 images, 5MB each. Supported: JPG, PNG, WebP
             </p>
           </div>
-
-          <ProductPageSettingsSection
-            productPage={productPage}
-            setProductPage={setProductPage}
-          />
 
           {/* Submit */}
           <div className="mt-8 flex gap-3">
