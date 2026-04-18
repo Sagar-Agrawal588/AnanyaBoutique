@@ -100,6 +100,10 @@ const normalizeOrigin = (origin) =>
   String(origin || "")
     .trim()
     .replace(/\/+$/, "");
+const parseTrustedProxyHops = (value, fallback = 1) => {
+  const parsed = Number.parseInt(String(value || "").trim(), 10);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback;
+};
 const isHttpOrigin = (origin) =>
   /^https?:\/\/[^/\s]+$/i.test(normalizeOrigin(origin));
 const isDevLocalhostOrigin = (origin) =>
@@ -253,8 +257,11 @@ const server = http.createServer(app);
 app.disable("x-powered-by");
 
 if (isProductionEnv) {
-  // App Engine/Cloud Run can add multiple proxy hops before Express.
-  app.set("trust proxy", true);
+  // Trust only the known reverse-proxy hop count instead of every forwarded value.
+  app.set(
+    "trust proxy",
+    parseTrustedProxyHops(process.env.TRUST_PROXY_HOPS, 1),
+  );
 }
 
 // Redirect duplicate slashes in request paths (e.g., //api/cart -> /api/cart)
