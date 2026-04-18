@@ -1,6 +1,6 @@
 "use client";
 
-import { getData, patchData } from "@/utils/api";
+import { getData, patchData, postData } from "@/utils/api";
 
 const toQueryString = (params = {}) => {
   const query = new URLSearchParams();
@@ -43,3 +43,27 @@ export const fetchCrmContactTimeline = async (
 
 export const updateCrmContact = async (contactId, payload, token) =>
   patchData(`/api/admin/crm/contacts/${contactId}`, payload, token);
+
+export const fetchCrmWhatsappOverview = async (token) =>
+  getData("/api/admin/crm/whatsapp/overview", token);
+
+export const fetchCrmWhatsappTemplates = async (token) =>
+  getData("/api/admin/crm/whatsapp/templates", token);
+
+export const fetchCrmWhatsappAudiencePreview = async (
+  { segment = "all", inactiveDays = 45 } = {},
+  token,
+) =>
+  getData(
+    `/api/admin/crm/whatsapp/audience-preview${toQueryString({
+      segment,
+      inactiveDays,
+    })}`,
+    token,
+  );
+
+export const sendCrmWhatsappMessage = async (contactId, payload, token) =>
+  postData(`/api/admin/crm/contacts/${contactId}/whatsapp/send`, payload, token);
+
+export const sendCrmWhatsappCampaign = async (payload, token) =>
+  postData("/api/admin/crm/whatsapp/campaign/send", payload, token);

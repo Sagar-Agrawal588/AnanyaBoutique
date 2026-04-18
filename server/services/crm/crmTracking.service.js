@@ -252,7 +252,12 @@ const normalizeConsentPatch = (value = {}) => {
   };
 };
 
-const deriveConsentPatch = ({ eventType, channel, consent = {} }) => {
+const deriveConsentPatch = ({
+  eventType,
+  channel,
+  direction,
+  consent = {},
+}) => {
   const derived = { ...consent };
 
   if (eventType === "newsletter_subscribed" || channel === "email") {
@@ -269,6 +274,8 @@ const deriveConsentPatch = ({ eventType, channel, consent = {} }) => {
   }
   if (
     channel === "whatsapp" &&
+    direction === "inbound" &&
+    eventType === "chat_message" &&
     (derived.whatsapp === null || derived.whatsapp === undefined)
   ) {
     derived.whatsapp = true;
@@ -446,6 +453,7 @@ const buildNormalizedTouchpoint = (input = {}, options = {}) => {
     consent: deriveConsentPatch({
       eventType,
       channel,
+      direction: resolvedDirection || "system",
       consent: normalizeConsentPatch(input.consent),
     }),
     orderAmount: extractOrderAmount(input.orderAmount, input.metadata),

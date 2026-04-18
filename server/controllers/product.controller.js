@@ -8,6 +8,7 @@ import {
   getCartUpsellProductSuggestion,
   getFrequentlyBoughtTogether,
 } from "../services/combos/comboRecommendation.service.js";
+import { normalizeProductPageConfig } from "../utils/productPageConfig.js";
 
 const isProduction = process.env.NODE_ENV === "production";
 // Debug-only logging to keep production output clean
@@ -902,6 +903,7 @@ export const createProduct = async (req, res) => {
       metaKeywords,
       discount,
       rating,
+      productPage,
     } = req.body;
 
     // Validate required fields
@@ -1077,6 +1079,7 @@ export const createProduct = async (req, res) => {
       rating: rating === undefined || rating === null ? undefined : rating,
       adminStarRating:
         rating === undefined || rating === null ? undefined : Number(rating),
+      productPage: normalizeProductPageConfig(productPage),
     });
 
     await product.save();
@@ -1182,6 +1185,9 @@ export const updateProduct = async (req, res) => {
     }
     if ("hsnCode" in updateData) {
       updateData.hsnCode = normalizeHsnCode(updateData.hsnCode);
+    }
+    if ("productPage" in updateData) {
+      updateData.productPage = normalizeProductPageConfig(updateData.productPage);
     }
 
     const product = await ProductModel.findById(id);

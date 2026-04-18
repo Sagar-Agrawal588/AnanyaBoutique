@@ -1,8 +1,13 @@
 "use client";
+import ProductPageSettingsSection from "@/components/ProductPageSettingsSection";
 import UploadBox from "@/components/UploadBox";
 import { useAdmin } from "@/context/AdminContext";
 import { getData, putData, uploadFile } from "@/utils/api";
 import { getImageUrl } from "@/utils/imageUtils";
+import {
+  createDefaultProductPageConfig,
+  mergeProductPageConfig,
+} from "@/utils/productPageConfig";
 import { Button } from "@mui/material";
 import MenuItem from "@mui/material/MenuItem";
 import Rating from "@mui/material/Rating";
@@ -40,6 +45,9 @@ const EditProduct = () => {
   const [categories, setCategories] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [productPage, setProductPage] = useState(() =>
+    createDefaultProductPageConfig(),
+  );
 
   // Variants
   const [hasVariants, setHasVariants] = useState(false);
@@ -155,6 +163,7 @@ const EditProduct = () => {
         setRating(product.rating || 4);
         setTags(product.tags ? product.tags.join(", ") : "");
         setExistingImages(product.images || []);
+        setProductPage(mergeProductPageConfig(product.productPage));
 
         // Load variants
         if (product.hasVariants && product.variants?.length > 0) {
@@ -364,8 +373,9 @@ const EditProduct = () => {
                 stock: v.stock ? Number(v.stock) : 0,
                 stock_quantity: v.stock ? Number(v.stock) : 0,
               }))
-          : [],
+              : [],
         variantType: hasVariants ? "weight" : "",
+        productPage,
       };
 
       const response = await putData(
@@ -920,6 +930,11 @@ const EditProduct = () => {
               Max 10 images, 5MB each. Supported: JPG, PNG, WebP
             </p>
           </div>
+
+          <ProductPageSettingsSection
+            productPage={productPage}
+            setProductPage={setProductPage}
+          />
 
           {/* Submit */}
           <div className="mt-8 flex gap-3">

@@ -4,6 +4,13 @@ import {
   getCrmOverview,
   updateCrmContactAdmin,
 } from "../services/crm/crmInsights.service.js";
+import {
+  getWhatsappAdminOverview,
+  getWhatsappAudiencePreview,
+  getWhatsappTemplateCatalog,
+  sendWhatsappCampaign,
+  sendWhatsappMessageToContact,
+} from "../services/whatsapp/whatsappAdmin.service.js";
 
 const buildErrorResponse = (res, error) => {
   const statusCode =
@@ -66,6 +73,77 @@ export const patchAdminCrmContact = async (req, res) => {
       data: {
         contact,
       },
+    });
+  } catch (error) {
+    return buildErrorResponse(res, error);
+  }
+};
+
+export const getAdminCrmWhatsappOverview = async (_req, res) => {
+  try {
+    const data = await getWhatsappAdminOverview();
+    return res.status(200).json({
+      error: false,
+      success: true,
+      data,
+    });
+  } catch (error) {
+    return buildErrorResponse(res, error);
+  }
+};
+
+export const getAdminCrmWhatsappTemplates = async (_req, res) => {
+  try {
+    const data = await getWhatsappTemplateCatalog();
+    return res.status(200).json({
+      error: false,
+      success: true,
+      data,
+    });
+  } catch (error) {
+    return buildErrorResponse(res, error);
+  }
+};
+
+export const getAdminCrmWhatsappAudiencePreview = async (req, res) => {
+  try {
+    const data = await getWhatsappAudiencePreview(req.query);
+    return res.status(200).json({
+      error: false,
+      success: true,
+      data,
+    });
+  } catch (error) {
+    return buildErrorResponse(res, error);
+  }
+};
+
+export const postAdminCrmContactWhatsappMessage = async (req, res) => {
+  try {
+    const data = await sendWhatsappMessageToContact(
+      req.params.contactId,
+      req.body,
+      req.user?.id || req.user || "",
+    );
+    return res.status(200).json({
+      error: false,
+      success: true,
+      message: "WhatsApp message submitted successfully.",
+      data,
+    });
+  } catch (error) {
+    return buildErrorResponse(res, error);
+  }
+};
+
+export const postAdminCrmWhatsappCampaign = async (req, res) => {
+  try {
+    const data = await sendWhatsappCampaign(req.body, req.user?.id || req.user || "");
+    return res.status(200).json({
+      error: false,
+      success: true,
+      message: "WhatsApp campaign processed.",
+      data,
     });
   } catch (error) {
     return buildErrorResponse(res, error);

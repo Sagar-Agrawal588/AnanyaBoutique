@@ -2,7 +2,7 @@ import FlavorThemeProvider from "@/context/ThemeContext";
 import ThemeProvider from "@/context/theme-provider";
 import { Inter, Poppins } from "next/font/google";
 import Script from "next/script";
-import ClientLayout from "./ClientLayout";
+import ClientLayout from "./ClientLayout.jsx";
 import "./globals.css";
 import "../styles/themes.css";
 
