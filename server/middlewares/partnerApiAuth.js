@@ -9,11 +9,12 @@ import {
 
 const PARTNER_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const PARTNER_RATE_LIMIT_DEFAULT_MAX = 120;
-const PARTNER_RATE_LIMIT_MIN_MAX = 10;
-const PARTNER_RATE_LIMIT_MAX_MAX = 5000;
+const PARTNER_RATE_LIMIT_MIN_MAX = 1;
+const PARTNER_RATE_LIMIT_MAX_MAX = Number.MAX_SAFE_INTEGER;
 const PARTNER_DAILY_LIMIT_DEFAULT_MAX = 20000;
-const PARTNER_DAILY_LIMIT_MIN_MAX = 100;
-const PARTNER_DAILY_LIMIT_MAX_MAX = 5000000;
+const PARTNER_DAILY_LIMIT_MIN_MAX = 1;
+const PARTNER_DAILY_LIMIT_MAX_MAX = Number.MAX_SAFE_INTEGER;
+const PARTNER_UNBOUNDED_LIMIT = Number.MAX_SAFE_INTEGER;
 const PARTNER_AUTH_CACHE_TTL_MS = Math.max(
   Number.parseInt(
     String(process.env.PARTNER_AUTH_CACHE_TTL_MS ?? "5000"),
@@ -93,6 +94,7 @@ const PARTNER_SCOPE_ALIASES = Object.freeze({
 const toClampedRateLimit = (value) => {
   const parsed = Number.parseInt(String(value ?? ""), 10);
   if (!Number.isFinite(parsed)) return PARTNER_RATE_LIMIT_DEFAULT_MAX;
+  if (parsed <= 0) return PARTNER_UNBOUNDED_LIMIT;
   return Math.min(
     PARTNER_RATE_LIMIT_MAX_MAX,
     Math.max(PARTNER_RATE_LIMIT_MIN_MAX, parsed),
@@ -102,6 +104,7 @@ const toClampedRateLimit = (value) => {
 const toClampedDailyLimit = (value) => {
   const parsed = Number.parseInt(String(value ?? ""), 10);
   if (!Number.isFinite(parsed)) return PARTNER_DAILY_LIMIT_DEFAULT_MAX;
+  if (parsed <= 0) return PARTNER_UNBOUNDED_LIMIT;
   return Math.min(
     PARTNER_DAILY_LIMIT_MAX_MAX,
     Math.max(PARTNER_DAILY_LIMIT_MIN_MAX, parsed),

@@ -65,8 +65,27 @@ bogEcom/
 - Next.js App Router admin console
 - Product/category/banner/blog/content management
 - Order and support workflows
+- CRM overview, contact list, timeline, and contact updates
 - Membership and coin settings management
 - Shipping and operational settings screens
+
+## CRM and Customer Operations
+- Admin CRM page: `frontend/admin/src/app/crm/page.jsx`
+- Public capture endpoint: `POST /api/crm/touchpoint`
+- Admin CRM endpoints:
+  - `GET /api/admin/crm/overview`
+  - `GET /api/admin/crm/contacts`
+  - `GET /api/admin/crm/contacts/:contactId/timeline`
+  - `PATCH /api/admin/crm/contacts/:contactId`
+- Automatic CRM ingestion currently runs from:
+  - newsletter subscribe / unsubscribe
+  - support ticket create / admin update
+  - push token registration
+  - order create and paid-order completion
+- WhatsApp webhook ingestion is available for Meta-style verification and message/status payloads at `/api/webhooks/whatsapp/meta`.
+- Historical CRM backfill script:
+  - `npm --prefix server run backfill:crm -- --apply`
+- External channels like WhatsApp, Meta, and provider-level email events still require webhook/API integrations before they appear automatically in CRM.
 
 ## Authentication Flow
 ```mermaid
@@ -206,9 +225,10 @@ All deploy workflows:
 
 1. Install dependencies:
 ```bash
-cd server && npm ci
-cd ../frontend/client && npm ci
-cd ../admin && npm ci
+npm ci
+npm --prefix server ci
+npm --prefix frontend/client ci
+npm --prefix frontend/admin ci
 ```
 
 2. Configure env files from examples:
@@ -218,9 +238,9 @@ cd ../admin && npm ci
 
 3. Run services:
 ```bash
-cd server && npm run dev
-cd frontend/client && npm run dev
-cd frontend/admin && npm run dev
+npm --prefix server run dev
+npm --prefix frontend/client run dev
+npm --prefix frontend/admin run dev
 ```
 
 4. Validate env docs:

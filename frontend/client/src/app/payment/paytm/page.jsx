@@ -18,7 +18,9 @@ const getStoredAuthToken = () => {
   const cookieToken = cookies.get("accessToken");
   if (cookieToken) return cookieToken;
   if (typeof window === "undefined") return "";
-  return localStorage.getItem("accessToken") || localStorage.getItem("token") || "";
+  return (
+    localStorage.getItem("accessToken") || localStorage.getItem("token") || ""
+  );
 };
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -29,9 +31,13 @@ const loadScript = async (src) =>
     if (existing) {
       if (existing.dataset.loaded === "true") return resolve();
       existing.addEventListener("load", () => resolve(), { once: true });
-      existing.addEventListener("error", () => reject(new Error("Script load failed")), {
-        once: true,
-      });
+      existing.addEventListener(
+        "error",
+        () => reject(new Error("Script load failed")),
+        {
+          once: true,
+        },
+      );
       return;
     }
 
@@ -46,7 +52,10 @@ const loadScript = async (src) =>
     document.body.appendChild(script);
   });
 
-const waitFor = async (predicate, { timeoutMs = 4500, intervalMs = 120 } = {}) =>
+const waitFor = async (
+  predicate,
+  { timeoutMs = 4500, intervalMs = 120 } = {},
+) =>
   new Promise((resolve, reject) => {
     const startedAt = Date.now();
 
@@ -78,7 +87,9 @@ const sanitizePath = (value, fallback) => {
 };
 
 const sanitizePaytmBase = (value) => {
-  const raw = String(value || "").trim().replace(/\/+$/, "");
+  const raw = String(value || "")
+    .trim()
+    .replace(/\/+$/, "");
   if (!raw) return "";
 
   try {
@@ -112,8 +123,7 @@ const buildScriptCandidates = (mid, preferredBase) => {
 };
 
 const buildHostedFallbackUrl = ({ mid, orderId, txnToken, gatewayBase }) => {
-  const fallbackBase =
-    sanitizePaytmBase(gatewayBase) || DEFAULT_PAYTM_PROD_URL;
+  const fallbackBase = sanitizePaytmBase(gatewayBase) || DEFAULT_PAYTM_PROD_URL;
   const query = new URLSearchParams({
     mid: String(mid || "").trim(),
     orderId: String(orderId || "").trim(),
@@ -165,6 +175,52 @@ const normalizePaymentState = (value) =>
     .trim()
     .toLowerCase();
 
+const normalizeMerchantTransactionId = (value) =>
+  String(value || "")
+    .trim()
+    .toUpperCase();
+
+const readPendingOrderContext = (expectedMerchantTransactionId = "") => {
+  if (typeof window === "undefined") {
+    return { orderId: "", merchantTransactionId: "", valid: false };
+  }
+
+  const raw = localStorage.getItem(ORDER_PENDING_PAYMENT_KEY);
+  if (!raw) {
+    return { orderId: "", merchantTransactionId: "", valid: false };
+  }
+
+  let pending = null;
+  try {
+    pending = JSON.parse(raw);
+  } catch {
+    localStorage.removeItem(ORDER_PENDING_PAYMENT_KEY);
+    return { orderId: "", merchantTransactionId: "", valid: false };
+  }
+
+  const orderId = String(pending?.orderId || "").trim();
+  const merchantTransactionId = normalizeMerchantTransactionId(
+    pending?.merchantTransactionId,
+  );
+  const expected = normalizeMerchantTransactionId(
+    expectedMerchantTransactionId,
+  );
+  const createdAt = Number(pending?.createdAt || 0);
+  const isExpired =
+    Number.isFinite(createdAt) &&
+    createdAt > 0 &&
+    Date.now() - createdAt > 6 * 60 * 60 * 1000;
+  const merchantMatches = !expected || merchantTransactionId === expected;
+  const valid = Boolean(orderId) && merchantMatches && !isExpired;
+
+  if (!valid) {
+    localStorage.removeItem(ORDER_PENDING_PAYMENT_KEY);
+    return { orderId: "", merchantTransactionId, valid: false };
+  }
+
+  return { orderId, merchantTransactionId, valid: true };
+};
+
 const getFailureMessage = (state) =>
   normalizePaymentState(state).includes("cancel")
     ? "Payment was cancelled. No amount was charged."
@@ -184,7 +240,10 @@ const buildMembershipReturnUrl = (params) => {
     target.searchParams.set("coins", params.coins);
   }
   if (params.paymentState) {
-    target.searchParams.set("paymentState", normalizePaymentState(params.paymentState));
+    target.searchParams.set(
+      "paymentState",
+      normalizePaymentState(params.paymentState),
+    );
   }
   return target.toString();
 };
@@ -254,7 +313,9 @@ const PaytmReturn = () => {
       txnToken: String(search.get("txnToken") || "").trim(),
       amount: String(search.get("amount") || "").trim(),
       planId: String(search.get("planId") || "").trim(),
-      paymentProvider: normalizeProvider(search.get("paymentProvider") || "PAYTM"),
+      paymentProvider: normalizeProvider(
+        search.get("paymentProvider") || "PAYTM",
+      ),
       coins: String(search.get("coins") || "").trim(),
       paymentState: normalizePaymentState(search.get("paymentState") || ""),
       flow: String(search.get("flow") || "order")
@@ -262,7 +323,9 @@ const PaytmReturn = () => {
         .toLowerCase(),
       returnPath: sanitizePath(
         search.get("returnPath"),
-        search.get("flow") === "membership" ? "/membership/checkout" : "/my-orders",
+        search.get("flow") === "membership"
+          ? "/membership/checkout"
+          : "/my-orders",
       ),
       gatewayBase: String(search.get("gatewayBase") || DEFAULT_PAYTM_STAGE_URL)
         .trim()
@@ -277,7 +340,9 @@ const PaytmReturn = () => {
     const gotoHostedFallback = () => {
       if (disposed || hostedFallbackTriggeredRef.current) return;
       hostedFallbackTriggeredRef.current = true;
-      setMessage("Checkout script unavailable. Redirecting to secure Paytm page...");
+      setMessage(
+        "Checkout script unavailable. Redirecting to secure Paytm page...",
+      );
       if (typeof window !== "undefined") {
         window.location.assign(
           buildHostedFallbackUrl({
@@ -302,7 +367,10 @@ const PaytmReturn = () => {
 
       try {
         let loadedScriptUrl = "";
-        const scriptCandidates = buildScriptCandidates(params.mid, params.gatewayBase);
+        const scriptCandidates = buildScriptCandidates(
+          params.mid,
+          params.gatewayBase,
+        );
         let lastLoadError = null;
 
         for (const scriptUrl of scriptCandidates) {
@@ -356,7 +424,9 @@ const PaytmReturn = () => {
 
             if (!disposed) {
               window.Paytm.CheckoutJS.invoke();
-              setMessage("Paytm checkout opened. Complete payment to continue.");
+              setMessage(
+                "Paytm checkout opened. Complete payment to continue.",
+              );
 
               // Some browsers load CheckoutJS but never render the popup.
               // In that case, force hosted Paytm fallback instead of keeping user stuck.
@@ -414,20 +484,13 @@ const PaytmReturn = () => {
       if (typeof window === "undefined") return false;
       if (params.flow !== "order") return false;
 
-      const raw = localStorage.getItem(ORDER_PENDING_PAYMENT_KEY);
-      if (!raw) return false;
-
-      let pending = null;
-      try {
-        pending = JSON.parse(raw);
-      } catch {
-        localStorage.removeItem(ORDER_PENDING_PAYMENT_KEY);
-        return false;
-      }
-
-      const orderId = String(pending?.orderId || "").trim();
+      const pendingContext = readPendingOrderContext(params.orderId);
+      let orderId = String(pendingContext.orderId || "").trim();
       if (!orderId) {
-        localStorage.removeItem(ORDER_PENDING_PAYMENT_KEY);
+        const synced = await syncPaytmFailureToServer(API_URL, params);
+        orderId = String(synced?.orderId || "").trim();
+      }
+      if (!orderId) {
         return false;
       }
 
@@ -440,12 +503,15 @@ const PaytmReturn = () => {
         if (disposed) return true;
 
         try {
-          const response = await fetch(`${API_URL}/api/orders/user/order/${orderId}`, {
-            headers: {
-              Authorization: `Bearer ${token}`,
+          const response = await fetch(
+            `${API_URL}/api/orders/user/order/${orderId}`,
+            {
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+              credentials: "include",
             },
-            credentials: "include",
-          });
+          );
 
           if (response.ok) {
             const data = await response.json();
@@ -547,10 +613,14 @@ const PaytmReturn = () => {
         params.paymentState === "cancelled" ||
         params.paymentState === "canceled"
       ) {
+        const pendingContext = readPendingOrderContext(params.orderId);
         const syncedFailure = await syncPaytmFailureToServer(API_URL, params);
         const syncedState =
-          syncedFailure.paymentState || normalizePaymentState(params.paymentState);
-        const resolvedOrderId = String(syncedFailure.orderId || "").trim();
+          syncedFailure.paymentState ||
+          normalizePaymentState(params.paymentState);
+        const resolvedOrderId = String(
+          syncedFailure.orderId || pendingContext.orderId || "",
+        ).trim();
         localStorage.removeItem(ORDER_PENDING_PAYMENT_KEY);
         setMessage(getFailureMessage(syncedState));
         if (!redirectedRef.current) {
@@ -608,10 +678,16 @@ const PaytmReturn = () => {
         <p className="text-gray-600 mb-6">{message}</p>
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
           <Link
-            href={params.flow === "membership" ? "/membership/checkout" : "/my-orders"}
+            href={
+              params.flow === "membership"
+                ? "/membership/checkout"
+                : "/my-orders"
+            }
             className="inline-flex items-center justify-center px-6 py-3 bg-primary text-white font-semibold rounded-lg hover:brightness-110"
           >
-            {params.flow === "membership" ? "Back to Membership" : "View My Orders"}
+            {params.flow === "membership"
+              ? "Back to Membership"
+              : "View My Orders"}
           </Link>
           <Link
             href="/"

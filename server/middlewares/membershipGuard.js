@@ -1,5 +1,6 @@
 import MembershipUserModel from "../models/membershipUser.model.js";
 import UserModel from "../models/user.model.js";
+import isPrivilegedAdminRole from "../utils/isPrivilegedAdminRole.js";
 
 const toUserId = (value) => {
   if (!value) return "";
@@ -37,7 +38,7 @@ export const getMembershipAccess = async (userId) => {
     return { isActiveMember: false, isAdmin: false };
   }
 
-  const isAdmin = user.role === "Admin";
+  const isAdmin = isPrivilegedAdminRole(user.role);
   let isActiveMember = false;
 
   if (user.membership_id) {

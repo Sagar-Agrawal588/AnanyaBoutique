@@ -414,6 +414,10 @@ const productSchema = new mongoose.Schema(
       of: String,
       default: {},
     },
+    productPage: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
 
     // Shipping
     freeShipping: {

@@ -10,6 +10,7 @@ import {
   postData,
   putData,
 } from "@/utils/api";
+import { withAdminBasePath } from "@/utils/basePath";
 import { Button } from "@mui/material";
 import MenuItem from "@mui/material/MenuItem";
 import Pagination from "@mui/material/Pagination";
@@ -35,6 +36,110 @@ const ORDER_TABLE_COLUMNS = [
   "168px",
   "96px",
 ];
+
+const PENDING_ORDER_STATUSES = new Set([
+  "pending",
+  "pending_payment",
+  "in_warehouse",
+]);
+
+const PENDING_PAYMENT_STATUSES = new Set(["pending", "pending_payment"]);
+
+const normalizeOrderStatus = (status) => {
+  if (!status) return "pending";
+  const value = String(status).trim().toLowerCase().replace(/\s+/g, "_");
+  return value === "confirmed" ? "accepted" : value;
+};
+
+const formatStatusLabel = (status, fallback = "Pending") => {
+  const normalized = String(status || "").trim();
+  if (!normalized) return fallback;
+  return normalized
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+};
+
+const isGatewayMerchantReference = (value) =>
+  /^BOG_/i.test(String(value || "").trim());
+
+const resolveGatewayTransactionReference = (order = {}) => {
+  const directReference = [order?.paytmTransactionId, order?.phonepeTransactionId]
+    .map((value) => String(value || "").trim())
+    .find(Boolean);
+
+  if (directReference) return directReference;
+
+  const fallbackPaymentId = String(order?.paymentId || "").trim();
+  if (fallbackPaymentId && !isGatewayMerchantReference(fallbackPaymentId)) {
+    return fallbackPaymentId;
+  }
+
+  return "";
+};
+
+const resolveMerchantReference = (order = {}) => {
+  const directReference = [order?.paytmOrderId, order?.phonepeMerchantOrderId]
+    .map((value) => String(value || "").trim())
+    .find(Boolean);
+
+  if (directReference) return directReference;
+
+  const fallbackPaymentId = String(order?.paymentId || "").trim();
+  return isGatewayMerchantReference(fallbackPaymentId) ? fallbackPaymentId : "";
+};
+
+const resolvePaymentReference = (order = {}) => {
+  return resolveGatewayTransactionReference(order);
+};
+
+const resolvePaymentProviderLabel = (order = {}) => {
+  const paymentMethod = String(
+    order?.paymentMethod || order?.payment_method || "",
+  )
+    .trim()
+    .toLowerCase();
+
+  if (paymentMethod.includes("phonepe")) return "PhonePe";
+  if (paymentMethod.includes("paytm")) return "Paytm";
+  if (paymentMethod) return formatStatusLabel(paymentMethod, "Gateway");
+
+  if (String(order?.phonepeMerchantOrderId || order?.phonepeOrderId || "").trim()) {
+    return "PhonePe";
+  }
+  if (String(order?.paytmOrderId || order?.paytmTransactionId || "").trim()) {
+    return "Paytm";
+  }
+  return "Manual / Unknown";
+};
+
+const isPendingQueueOrder = (order = {}) => {
+  const normalizedOrderStatus = normalizeOrderStatus(
+    order?.order_status || order?.status,
+  );
+  const normalizedPaymentStatus = normalizeOrderStatus(order?.payment_status);
+
+  return (
+    PENDING_ORDER_STATUSES.has(normalizedOrderStatus) ||
+    PENDING_PAYMENT_STATUSES.has(normalizedPaymentStatus)
+  );
+};
+
+const getPendingQueueReason = (order = {}) => {
+  const normalizedOrderStatus = normalizeOrderStatus(
+    order?.order_status || order?.status,
+  );
+  const normalizedPaymentStatus = normalizeOrderStatus(order?.payment_status);
+
+  if (PENDING_ORDER_STATUSES.has(normalizedOrderStatus)) {
+    return formatStatusLabel(normalizedOrderStatus);
+  }
+  if (PENDING_PAYMENT_STATUSES.has(normalizedPaymentStatus)) {
+    return "Payment Pending";
+  }
+  return "Needs Review";
+};
 
 const toPositiveInt = (value, fallback) => {
   const parsed = Number(value);
@@ -171,6 +276,30 @@ const fetchOrdersFromAltPort = async ({ url, token, fallbackPagination }) => {
   }
 };
 
+const buildXpressbeesTrackingUrl = (awb, candidateUrl = "") => {
+  const normalizedAwb = String(awb || "").trim();
+  if (!normalizedAwb) return "";
+
+  const fallbackUrl = `https://www.xpressbees.com/shipment/tracking?awbNo=${encodeURIComponent(normalizedAwb)}`;
+  const explicitUrl = String(candidateUrl || "").trim();
+  if (!explicitUrl) return fallbackUrl;
+
+  try {
+    const parsed = new URL(explicitUrl);
+    const host = String(parsed.hostname || "").toLowerCase();
+    if (!host.includes("xpressbees.com")) return explicitUrl;
+
+    parsed.pathname = "/shipment/tracking";
+    parsed.search = "";
+    parsed.searchParams.set("awbNo", normalizedAwb);
+    return parsed.toString();
+  } catch {
+    return explicitUrl.toLowerCase().includes("xpressbees.com")
+      ? fallbackUrl
+      : explicitUrl;
+  }
+};
+
 const resolveTrackingUrl = (order = {}) => {
   const explicitUrl = String(
     order?.trackingUrl ||
@@ -195,8 +324,7 @@ const resolveTrackingUrl = (order = {}) => {
   ).trim();
 
   if (!explicitUrl) {
-    if (!awb) return "";
-    return `https://www.xpressbees.com/shipment/tracking?awbNo=${encodeURIComponent(awb)}`;
+    return buildXpressbeesTrackingUrl(awb);
   }
 
   if (!awb) return explicitUrl;
@@ -206,33 +334,33 @@ const resolveTrackingUrl = (order = {}) => {
     const host = String(parsed.hostname || "").toLowerCase();
     const isXpressbees = host.includes("xpressbees.com");
     if (!isXpressbees) return explicitUrl;
-
-    parsed.searchParams.delete("awb");
-    parsed.searchParams.set("awbNo", awb);
-    return parsed.toString();
+    return buildXpressbeesTrackingUrl(awb, explicitUrl);
   } catch {
-    return explicitUrl;
+    return explicitUrl.toLowerCase().includes("xpressbees.com")
+      ? buildXpressbeesTrackingUrl(awb, explicitUrl)
+      : explicitUrl;
   }
 };
 
 const OrderRow = ({ order, index, token, onStatusUpdate }) => {
-  const normalizeStatus = (status) => {
-    if (!status) return "pending";
-    const value = String(status).trim().toLowerCase().replace(/\s+/g, "_");
-    return value === "confirmed" ? "accepted" : value;
-  };
   const [expandIndex, setExpandIndex] = useState(false);
   const [orderStatus, setOrderStatus] = useState(
-    normalizeStatus(order?.order_status) || "pending",
+    normalizeOrderStatus(order?.order_status) || "pending",
   );
   const [updating, setUpdating] = useState(false);
   const [downloadingInvoice, setDownloadingInvoice] = useState(false);
   const [orderReviews, setOrderReviews] = useState([]);
   const [reviewsLoading, setReviewsLoading] = useState(false);
   const trackingUrl = resolveTrackingUrl(order);
+  const paymentReference =
+    resolvePaymentReference(order) || "Pending / Not issued yet";
+  const paymentProviderLabel = resolvePaymentProviderLabel(order);
+  const merchantReference = resolveMerchantReference(order);
+  const gatewayOrderReference = String(order?.phonepeOrderId || "").trim();
+  const gatewayTransactionReference = resolveGatewayTransactionReference(order);
 
   const canDownloadInvoice =
-    normalizeStatus(order?.payment_status) === "paid" ||
+    normalizeOrderStatus(order?.payment_status) === "paid" ||
     Boolean(
       order?.isInvoiceGenerated ||
       order?.invoiceUrl ||
@@ -254,45 +382,53 @@ const OrderRow = ({ order, index, token, onStatusUpdate }) => {
   const billingDetails = order?.billingDetails || {};
   const addressSnapshot = order?.deliveryAddressSnapshot || {};
   const deliveryAddress = order?.delivery_address || null;
+  const snapshotAddressLine1 =
+    addressSnapshot.address_line1 || addressSnapshot.full_address || "";
+  const snapshotAddressCity = addressSnapshot.order_city || "";
+  const snapshotAddressState = addressSnapshot.order_state || "";
+  const snapshotAddressPincode = addressSnapshot.order_pincode || "";
+  const snapshotSource = String(addressSnapshot.source || "")
+    .trim()
+    .toLowerCase();
   const customerName =
-    order?.user?.name ||
     guestDetails.fullName ||
+    guestDetails.name ||
     billingDetails.fullName ||
     addressSnapshot.order_name ||
+    order?.user?.name ||
     "Guest";
   const customerEmail =
-    order?.user?.email ||
-    guestDetails.email ||
     billingDetails.email ||
+    guestDetails.email ||
     addressSnapshot.email ||
+    order?.user?.email ||
     "N/A";
   const customerPhone =
-    order?.user?.mobile ||
-    guestDetails.phone ||
     billingDetails.phone ||
+    guestDetails.phone ||
     addressSnapshot.order_mobile ||
     deliveryAddress?.mobile ||
     deliveryAddress?.mobile_number ||
+    order?.user?.mobile ||
     "N/A";
   const addressLine1 =
+    snapshotAddressLine1 ||
+    billingDetails.address ||
+    guestDetails.address ||
     deliveryAddress?.address_line1 ||
     deliveryAddress?.address_line ||
-    addressSnapshot.address_line1 ||
-    addressSnapshot.full_address ||
-    guestDetails.address ||
-    billingDetails.address ||
     "";
   const addressCity =
-    deliveryAddress?.city ||
-    addressSnapshot.order_city ||
-    guestDetails.city ||
+    snapshotAddressCity ||
     billingDetails.city ||
+    guestDetails.city ||
+    deliveryAddress?.city ||
     "";
   const addressState =
-    deliveryAddress?.state ||
-    addressSnapshot.order_state ||
-    guestDetails.state ||
+    snapshotAddressState ||
     billingDetails.state ||
+    guestDetails.state ||
+    deliveryAddress?.state ||
     "";
   const addressDisplay = addressLine1
     ? `${addressLine1}${
@@ -302,12 +438,18 @@ const OrderRow = ({ order, index, token, onStatusUpdate }) => {
       }`
     : "No address";
   const addressTypeLabel =
-    deliveryAddress?.addressType || (addressLine1 ? "Guest" : "Home");
+    snapshotSource === "saved_address"
+      ? deliveryAddress?.addressType || "Saved"
+      : snapshotSource === "guest_manual"
+        ? "Guest"
+        : snapshotSource === "registered_manual"
+          ? "Manual"
+          : deliveryAddress?.addressType || (addressLine1 ? "Guest" : "Home");
   const pincodeDisplay =
-    deliveryAddress?.pincode ||
-    addressSnapshot.order_pincode ||
-    guestDetails.pincode ||
+    snapshotAddressPincode ||
     billingDetails.pincode ||
+    guestDetails.pincode ||
+    deliveryAddress?.pincode ||
     "N/A";
 
   const copyToClipboard = async (value, label = "value") => {
@@ -522,8 +664,13 @@ const OrderRow = ({ order, index, token, onStatusUpdate }) => {
             </div>
           </div>
         </td>
-        <td className="text-[14px] text-gray-600 font-[500] px-4 py-2 break-all">
-          {order?.paymentId || "N/A"}
+        <td className="text-[14px] text-gray-600 font-[500] px-4 py-2">
+          <div className="min-w-0">
+            <div className="break-all">{paymentReference}</div>
+            <div className="mt-1 text-[11px] uppercase tracking-wide text-gray-400">
+              {paymentProviderLabel}
+            </div>
+          </div>
         </td>
         <td className="text-[14px] text-gray-600 font-[500] px-4 py-2 break-all">
           {customerPhone}
@@ -600,7 +747,9 @@ const OrderRow = ({ order, index, token, onStatusUpdate }) => {
                 >
                   <div className="img rounded-md overflow-hidden w-[80px] h-[80px] bg-gray-100">
                     <img
-                      src={product?.image || "/placeholder.png"}
+                      src={
+                        product?.image || withAdminBasePath("/placeholder.png")
+                      }
                       alt="product"
                       className="w-full h-full object-cover"
                     />
@@ -686,6 +835,14 @@ const OrderRow = ({ order, index, token, onStatusUpdate }) => {
                     {orderDisplayId || "N/A"}
                   </span>
                 </div>
+                <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+                  <span className="font-semibold text-gray-700">
+                    Payment App Txn ID:
+                  </span>{" "}
+                  <span className="text-gray-800 break-all">
+                    {paymentReference}
+                  </span>
+                </div>
                 <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 flex items-center justify-between gap-2">
                   <div className="min-w-0">
                     <span className="font-semibold text-gray-700">
@@ -705,6 +862,36 @@ const OrderRow = ({ order, index, token, onStatusUpdate }) => {
                   >
                     Copy
                   </Button>
+                </div>
+                <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+                  <span className="font-semibold text-gray-700">
+                    Payment Provider:
+                  </span>{" "}
+                  <span className="text-gray-800">{paymentProviderLabel}</span>
+                </div>
+                <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+                  <span className="font-semibold text-gray-700">
+                    Merchant Ref:
+                  </span>{" "}
+                  <span className="text-gray-800 break-all">
+                    {merchantReference || "N/A"}
+                  </span>
+                </div>
+                <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+                  <span className="font-semibold text-gray-700">
+                    Gateway Order Ref:
+                  </span>{" "}
+                  <span className="text-gray-800 break-all">
+                    {gatewayOrderReference || "N/A"}
+                  </span>
+                </div>
+                <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+                  <span className="font-semibold text-gray-700">
+                    Gateway Txn Ref:
+                  </span>{" "}
+                  <span className="text-gray-800 break-all">
+                    {gatewayTransactionReference || "Pending / Not issued yet"}
+                  </span>
                 </div>
               </div>
             </div>
@@ -777,9 +964,9 @@ const OrderRow = ({ order, index, token, onStatusUpdate }) => {
                 </div>
                 <div>
                   <span className="font-semibold">Delivery Status:</span>{" "}
-                  {normalizeStatus(order?.order_status) === "completed"
+                  {normalizeOrderStatus(order?.order_status) === "completed"
                     ? "Completed"
-                    : normalizeStatus(order?.order_status)}
+                    : normalizeOrderStatus(order?.order_status)}
                 </div>
               </div>
             </div>
@@ -789,6 +976,64 @@ const OrderRow = ({ order, index, token, onStatusUpdate }) => {
     </>
   );
 };
+
+const OrdersTable = ({ orders, token, onStatusUpdate }) => (
+  <div className="w-full mt-5 border border-gray-200 rounded-xl overflow-x-auto">
+    <table className="min-w-[980px] w-full table-fixed">
+      <colgroup>
+        {ORDER_TABLE_COLUMNS.map((width, idx) => (
+          <col key={idx} style={{ width }} />
+        ))}
+      </colgroup>
+      <thead className="bg-gray-200">
+        <tr>
+          <th className="text-[13px] text-gray-700 font-[700] px-4 py-3 text-left border-b-[1px] border-[rgba(0,0,0,0.1)] uppercase tracking-wide"></th>
+          <th className="text-[13px] text-gray-700 font-[700] px-4 py-3 text-left uppercase tracking-wide">
+            Order Id
+          </th>
+          <th className="text-[13px] text-gray-700 font-[700] px-4 py-3 text-left uppercase tracking-wide">
+            Customer
+          </th>
+          <th className="text-[13px] text-gray-700 font-[700] px-4 py-3 text-left uppercase tracking-wide">
+            Payment App Txn ID
+          </th>
+          <th className="text-[13px] text-gray-700 font-[700] px-4 py-3 text-left uppercase tracking-wide">
+            Phone Number
+          </th>
+          <th className="text-[13px] text-gray-700 font-[700] px-4 py-3 text-left uppercase tracking-wide">
+            Address
+          </th>
+          <th className="text-[13px] text-gray-700 font-[700] px-4 py-3 text-left uppercase tracking-wide">
+            Pincode
+          </th>
+          <th className="text-[13px] text-gray-700 font-[700] px-4 py-3 text-left uppercase tracking-wide">
+            Total Amount
+          </th>
+          <th className="text-[13px] text-gray-700 font-[700] px-4 py-3 text-left uppercase tracking-wide">
+            User Id
+          </th>
+          <th className="text-[13px] text-gray-700 font-[700] px-4 py-3 text-left uppercase tracking-wide">
+            Order Status
+          </th>
+          <th className="text-[13px] text-gray-700 font-[700] px-4 py-3 text-left uppercase tracking-wide">
+            Date
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {orders.map((order, index) => (
+          <OrderRow
+            key={order._id || index}
+            order={order}
+            index={index}
+            token={token}
+            onStatusUpdate={onStatusUpdate}
+          />
+        ))}
+      </tbody>
+    </table>
+  </div>
+);
 
 const Orders = () => {
   const { token, isAuthenticated, loading } = useAdmin();
@@ -802,8 +1047,10 @@ const Orders = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [backfillingPaymentIds, setBackfillingPaymentIds] = useState(false);
   const [repairingPaidOrders, setRepairingPaidOrders] = useState(false);
   const [removingPendingOrders, setRemovingPendingOrders] = useState(false);
+  const [removingDemoOrders, setRemovingDemoOrders] = useState(false);
   const { intervalMs } = useLiveRefreshSetting();
   const refreshConfig = useMemo(
     () => ({
@@ -915,6 +1162,29 @@ const Orders = () => {
     refreshConfig,
   );
 
+  const pendingOrders = useMemo(
+    () => orders.filter((order) => isPendingQueueOrder(order)),
+    [orders],
+  );
+  const nonPendingOrders = useMemo(
+    () => orders.filter((order) => !isPendingQueueOrder(order)),
+    [orders],
+  );
+  const showPendingQueueSection =
+    statusFilter === "all" && pendingOrders.length > 0;
+  const primaryOrders =
+    statusFilter === "pending"
+      ? pendingOrders
+      : statusFilter === "all"
+        ? nonPendingOrders
+        : orders;
+  const showEmptyPrimaryState =
+    !isLoading &&
+    orders.length > 0 &&
+    statusFilter === "all" &&
+    nonPendingOrders.length === 0 &&
+    pendingOrders.length > 0;
+
   const handleOrderUpdate = useCallback(() => {
     triggerOrdersRefresh();
   }, [triggerOrdersRefresh]);
@@ -976,6 +1246,48 @@ const Orders = () => {
     }
   };
 
+  const handleBackfillSuccessfulPaymentIds = async () => {
+    if (!token) {
+      toast.error("Admin session missing");
+      return;
+    }
+
+    const confirmed =
+      typeof window === "undefined"
+        ? true
+        : window.confirm(
+            "Backfill Payment App Txn IDs for successful orders only? This updates payment ID only when provider transaction IDs already exist.",
+          );
+    if (!confirmed) return;
+
+    setBackfillingPaymentIds(true);
+    try {
+      const response = await postData(
+        "/api/orders/admin/backfill-payment-ids?limit=250",
+        {},
+        token,
+      );
+
+      if (response?.success) {
+        const stats = response?.data || {};
+        const updated = Number(stats?.updated || 0);
+        const skipped = Number(stats?.skipped || 0);
+        const remaining = Number(stats?.remaining || 0);
+
+        toast.success(
+          `Backfill completed: ${updated} updated, ${skipped} skipped, ${remaining} remaining.`,
+        );
+        fetchOrders();
+      } else {
+        toast.error(response?.message || "Backfill failed");
+      }
+    } catch {
+      toast.error("Backfill failed");
+    } finally {
+      setBackfillingPaymentIds(false);
+    }
+  };
+
   const handleRemovePendingOrders = async () => {
     if (!token) {
       toast.error("Admin session missing");
@@ -1032,6 +1344,62 @@ const Orders = () => {
     }
   };
 
+  const handleRemoveDemoOrders = async () => {
+    if (!token) {
+      toast.error("Admin session missing");
+      return;
+    }
+
+    const confirmed =
+      typeof window === "undefined"
+        ? true
+        : window.confirm(
+            "Remove all demo orders? This permanently deletes demo orders from the database.",
+          );
+    if (!confirmed) return;
+
+    setRemovingDemoOrders(true);
+    try {
+      const response = await deleteData("/api/orders/admin/demo-orders", token);
+      if (response?.success) {
+        const deletedCount = Number(response?.data?.deletedCount || 0);
+        const skippedCount = Number(response?.data?.skippedCount || 0);
+
+        if (deletedCount > 0) {
+          toast.success(
+            `Removed ${deletedCount} demo order${deletedCount === 1 ? "" : "s"}`,
+          );
+        } else {
+          toast.success("No demo orders found");
+        }
+
+        if (skippedCount > 0) {
+          toast.error(
+            `${skippedCount} demo order${skippedCount === 1 ? " was" : "s were"} skipped. Check server logs.`,
+          );
+        }
+
+        const params = new URLSearchParams(searchParams?.toString() || "");
+        params.delete("status");
+        const query = params.toString();
+
+        setStatusFilter("all");
+        setPage(1);
+        router.replace(query ? `/orders?${query}` : "/orders");
+
+        if (statusFilter === "all") {
+          fetchOrders();
+        }
+      } else {
+        toast.error(response?.message || "Failed to remove demo orders");
+      }
+    } catch {
+      toast.error("Failed to remove demo orders");
+    } finally {
+      setRemovingDemoOrders(false);
+    }
+  };
+
   if (loading || !isAuthenticated) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -1053,13 +1421,44 @@ const Orders = () => {
               <span className="text-primary font-bold">{orders.length}</span>{" "}
               {orders.length === 1 ? "order" : "orders"}
             </p>
+            {statusFilter === "all" ? (
+              <p className="mt-1 text-xs text-gray-500">
+                Pending and payment-hold rows are kept in a separate queue below.
+              </p>
+            ) : null}
           </div>
           <div className="flex items-center gap-3 flex-wrap">
             <Button
               variant="outlined"
               size="small"
+              onClick={handleBackfillSuccessfulPaymentIds}
+              disabled={
+                backfillingPaymentIds ||
+                repairingPaidOrders ||
+                removingPendingOrders ||
+                removingDemoOrders
+              }
+              sx={{
+                textTransform: "none",
+                borderRadius: "10px",
+                px: 2,
+                py: 0.8,
+              }}
+            >
+              {backfillingPaymentIds
+                ? "Backfilling Txn IDs..."
+                : "Backfill Successful Txn IDs"}
+            </Button>
+            <Button
+              variant="outlined"
+              size="small"
               onClick={handleRepairPaidOrders}
-              disabled={repairingPaidOrders || removingPendingOrders}
+              disabled={
+                backfillingPaymentIds ||
+                repairingPaidOrders ||
+                removingPendingOrders ||
+                removingDemoOrders
+              }
               sx={{
                 textTransform: "none",
                 borderRadius: "10px",
@@ -1076,7 +1475,12 @@ const Orders = () => {
               color="error"
               size="small"
               onClick={handleRemovePendingOrders}
-              disabled={removingPendingOrders || repairingPaidOrders}
+              disabled={
+                removingPendingOrders ||
+                backfillingPaymentIds ||
+                repairingPaidOrders ||
+                removingDemoOrders
+              }
               sx={{
                 textTransform: "none",
                 borderRadius: "10px",
@@ -1087,6 +1491,28 @@ const Orders = () => {
               {removingPendingOrders
                 ? "Removing Pending Orders..."
                 : "Remove Pending Orders"}
+            </Button>
+            <Button
+              variant="outlined"
+              color="error"
+              size="small"
+              onClick={handleRemoveDemoOrders}
+              disabled={
+                removingDemoOrders ||
+                removingPendingOrders ||
+                backfillingPaymentIds ||
+                repairingPaidOrders
+              }
+              sx={{
+                textTransform: "none",
+                borderRadius: "10px",
+                px: 2,
+                py: 0.8,
+              }}
+            >
+              {removingDemoOrders
+                ? "Removing Demo Orders..."
+                : "Remove Demo Orders"}
             </Button>
             <Button
               variant="outlined"
@@ -1160,61 +1586,58 @@ const Orders = () => {
           </div>
         ) : (
           <>
-            <div className="w-full mt-5 border border-gray-200 rounded-xl overflow-x-auto">
-              <table className="min-w-[980px] w-full table-fixed">
-                <colgroup>
-                  {ORDER_TABLE_COLUMNS.map((width, idx) => (
-                    <col key={idx} style={{ width }} />
-                  ))}
-                </colgroup>
-                <thead className="bg-gray-200">
-                  <tr>
-                    <th className="text-[13px] text-gray-700 font-[700] px-4 py-3 text-left border-b-[1px] border-[rgba(0,0,0,0.1)] uppercase tracking-wide"></th>
-                    <th className="text-[13px] text-gray-700 font-[700] px-4 py-3 text-left uppercase tracking-wide">
-                      Order Id
-                    </th>
-                    <th className="text-[13px] text-gray-700 font-[700] px-4 py-3 text-left uppercase tracking-wide">
-                      Customer
-                    </th>
-                    <th className="text-[13px] text-gray-700 font-[700] px-4 py-3 text-left uppercase tracking-wide">
-                      Payment Id
-                    </th>
-                    <th className="text-[13px] text-gray-700 font-[700] px-4 py-3 text-left uppercase tracking-wide">
-                      Phone Number
-                    </th>
-                    <th className="text-[13px] text-gray-700 font-[700] px-4 py-3 text-left uppercase tracking-wide">
-                      Address
-                    </th>
-                    <th className="text-[13px] text-gray-700 font-[700] px-4 py-3 text-left uppercase tracking-wide">
-                      Pincode
-                    </th>
-                    <th className="text-[13px] text-gray-700 font-[700] px-4 py-3 text-left uppercase tracking-wide">
-                      Total Amount
-                    </th>
-                    <th className="text-[13px] text-gray-700 font-[700] px-4 py-3 text-left uppercase tracking-wide">
-                      User Id
-                    </th>
-                    <th className="text-[13px] text-gray-700 font-[700] px-4 py-3 text-left uppercase tracking-wide">
-                      Order Status
-                    </th>
-                    <th className="text-[13px] text-gray-700 font-[700] px-4 py-3 text-left uppercase tracking-wide">
-                      Date
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {orders.map((order, index) => (
-                    <OrderRow
-                      key={order._id || index}
-                      order={order}
-                      index={index}
-                      token={token}
-                      onStatusUpdate={fetchOrders}
-                    />
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            {showEmptyPrimaryState ? (
+              <div className="mt-5 rounded-xl border border-dashed border-amber-200 bg-amber-50 px-4 py-5 text-sm text-amber-800">
+                All rows on this page are still in the pending queue. Review them below so
+                payment-hold and not-yet-confirmed orders stay separate from the main order list.
+              </div>
+            ) : primaryOrders.length > 0 ? (
+              <OrdersTable
+                orders={primaryOrders}
+                token={token}
+                onStatusUpdate={fetchOrders}
+              />
+            ) : (
+              <div className="mt-5 rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-8 text-center text-sm text-gray-500">
+                No orders matched this view.
+              </div>
+            )}
+
+            {showPendingQueueSection ? (
+              <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50/70 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h2 className="text-lg font-semibold text-amber-950">
+                      Pending Queue
+                    </h2>
+                    <p className="mt-1 text-sm text-amber-800">
+                      These rows are waiting on payment confirmation or internal processing, so
+                      they sit apart from the main order list.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {pendingOrders.slice(0, 3).map((order, index) => (
+                      <span
+                        key={String(order?._id || order?.id || index)}
+                        className="inline-flex rounded-full bg-white px-3 py-1 text-xs font-semibold text-amber-900 shadow-sm"
+                      >
+                        {getPendingQueueReason(order)}
+                      </span>
+                    ))}
+                    <span className="inline-flex rounded-full bg-amber-900 px-3 py-1 text-xs font-semibold text-white">
+                      {pendingOrders.length} queued
+                    </span>
+                  </div>
+                </div>
+
+                <OrdersTable
+                  orders={pendingOrders}
+                  token={token}
+                  onStatusUpdate={fetchOrders}
+                />
+              </div>
+            ) : null}
+
             <div className="flex items-center justify-center py-10">
               <Pagination
                 count={totalPages}

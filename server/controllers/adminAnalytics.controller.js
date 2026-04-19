@@ -114,6 +114,14 @@ const buildSessionTypeFilter = (type) => {
   return {};
 };
 
+const buildBehaviorSessionQualityMatch = () => ({
+  $or: [
+    { pageViewsValue: { $gt: 0 } },
+    { totalActiveTimeValue: { $gt: 0 } },
+    { eventCountValue: { $gt: 1 } },
+  ],
+});
+
 const withTimestampRange = (from, to, field = "timestamp") => ({
   [field]: {
     $gte: from,
@@ -246,6 +254,7 @@ const getOverviewData = async (db, from, to) => {
                 $gte: from,
                 $lte: to,
               },
+              ...buildBehaviorSessionQualityMatch(),
             },
           },
           {
@@ -454,6 +463,7 @@ const getChartData = async (db, from, to, interval = "day") => {
             $gte: from,
             $lte: to,
           },
+          ...buildBehaviorSessionQualityMatch(),
         },
       },
       {
@@ -2797,6 +2807,9 @@ export const getBehaviorSessions = async (req, res) => {
           {
             $match: toSessionRangeMatch(queryFilter),
           },
+          {
+            $match: buildBehaviorSessionQualityMatch(),
+          },
           { $sort: { startedAtDate: -1 } },
           { $skip: skip },
           { $limit: limit },
@@ -2838,6 +2851,9 @@ export const getBehaviorSessions = async (req, res) => {
             $match: toSessionRangeMatch(queryFilter),
           },
           {
+            $match: buildBehaviorSessionQualityMatch(),
+          },
+          {
             $count: "count",
           },
         ])
@@ -2853,6 +2869,9 @@ export const getBehaviorSessions = async (req, res) => {
             $match: toSessionRangeMatch(buildSessionTypeFilter("guest")),
           },
           {
+            $match: buildBehaviorSessionQualityMatch(),
+          },
+          {
             $count: "count",
           },
         ])
@@ -2866,6 +2885,9 @@ export const getBehaviorSessions = async (req, res) => {
           },
           {
             $match: toSessionRangeMatch(buildSessionTypeFilter("logged_in")),
+          },
+          {
+            $match: buildBehaviorSessionQualityMatch(),
           },
           {
             $count: "count",

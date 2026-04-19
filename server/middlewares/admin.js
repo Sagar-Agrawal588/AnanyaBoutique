@@ -1,4 +1,5 @@
 import UserModel from "../models/user.model.js";
+import isPrivilegedAdminRole from "../utils/isPrivilegedAdminRole.js";
 
 /**
  * Admin Middleware
@@ -19,7 +20,7 @@ const admin = async (req, res, next) => {
     }
 
     const user = await UserModel.findById(userId).select(
-      "_id role status name email",
+      "_id role status name email managerPermissions",
     );
 
     if (!user) {
@@ -38,7 +39,7 @@ const admin = async (req, res, next) => {
       });
     }
 
-    if (user.role !== "Admin") {
+    if (!isPrivilegedAdminRole(user.role)) {
       return res.status(403).json({
         error: true,
         success: false,

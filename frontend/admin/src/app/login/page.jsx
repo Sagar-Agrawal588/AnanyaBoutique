@@ -2,6 +2,7 @@
 import { useAdmin } from "@/context/AdminContext";
 import { firebaseApp } from "@/firebase";
 import { postData } from "@/utils/api";
+import { withAdminBasePath } from "@/utils/basePath";
 import { Button } from "@mui/material";
 import Checkbox from "@mui/material/Checkbox";
 import {
@@ -19,6 +20,9 @@ import { MdEmail, MdLock, MdVisibility, MdVisibilityOff } from "react-icons/md";
 
 const label = { slotProps: { input: { "aria-label": "Checkbox demo" } } };
 const GOOGLE_REDIRECT_ATTEMPT_KEY = "googleAuthRedirectAttemptedAdmin";
+const PRIVILEGED_ADMIN_ROLES = new Set(["admin", "manager"]);
+const isPrivilegedAdminRole = (role) =>
+  PRIVILEGED_ADMIN_ROLES.has(String(role || "").trim().toLowerCase());
 
 const Login = () => {
   const [email, setEmail] = useState("");
@@ -57,12 +61,8 @@ const Login = () => {
       throw new Error(backendResponse?.message || "Google Sign-In failed");
     }
 
-    if (
-      String(backendResponse?.data?.role || "")
-        .trim()
-        .toLowerCase() !== "admin"
-    ) {
-      throw new Error("Access denied. Admin privileges required.");
+    if (!isPrivilegedAdminRole(backendResponse?.data?.role)) {
+      throw new Error("Access denied. Admin or Manager privileges required.");
     }
 
     localStorage.setItem("adminToken", backendResponse?.data?.accessToken);
@@ -190,7 +190,9 @@ const Login = () => {
       {/* Background */}
       <div
         className="absolute inset-0 bg-repeat bg-center"
-        style={{ backgroundImage: "url('/pattern.png')" }}
+        style={{
+          backgroundImage: `url('${withAdminBasePath("/pattern.png")}')`,
+        }}
       />
 
       {/* Soft overlay */}
@@ -199,7 +201,11 @@ const Login = () => {
       {/* Header */}
       <div className="fixed top-0 left-0 w-full py-4 z-50">
         <div className="w-[90%] mx-auto flex items-center justify-between">
-          <img src="/logo.png" alt="logo" className="w-[150px]" />
+          <img
+            src={withAdminBasePath("/logo.png")}
+            alt="logo"
+            className="w-[150px]"
+          />
 
           <div className="flex gap-3">
             <Link href={"/login"}>

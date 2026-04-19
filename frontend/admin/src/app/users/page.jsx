@@ -1,15 +1,24 @@
 "use client";
+
 import { useAdmin } from "@/context/AdminContext";
+import {
+  MANAGER_PERMISSION_OPTIONS,
+  hasAdminPermission,
+  normalizeManagerPermissions,
+} from "@/utils/adminPermissions";
 import { deleteData, getData, postData, putData } from "@/utils/api";
 import {
   Avatar,
   Button,
+  Checkbox,
   Chip,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
   FormControl,
+  FormControlLabel,
+  FormGroup,
   IconButton,
   InputLabel,
   MenuItem,
@@ -36,8 +45,16 @@ import {
 import { MdOutlineAdminPanelSettings } from "react-icons/md";
 import { RiVipCrownLine } from "react-icons/ri";
 
+const MANAGER_PERMISSION_LABEL_MAP = MANAGER_PERMISSION_OPTIONS.reduce(
+  (acc, option) => {
+    acc[option.key] = option.label;
+    return acc;
+  },
+  {},
+);
+
 export default function UserManagement() {
-  const { token, isAuthenticated, loading } = useAdmin();
+  const { token, isAuthenticated, loading, admin } = useAdmin();
   const router = useRouter();
 
   const [users, setUsers] = useState([]);
@@ -49,17 +66,30 @@ export default function UserManagement() {
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [selectedUser, setSelectedUser] = useState(null);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [dialogType, setDialogType] = useState(""); // "role", "status", "delete"
+  const [dialogType, setDialogType] = useState(""); // role, status, delete, permissions
+  const [selectedRole, setSelectedRole] = useState("User");
+  const [selectedManagerPermissions, setSelectedManagerPermissions] = useState([]);
   const [actionLoading, setActionLoading] = useState(false);
+
+  const isAdminUser = String(admin?.role || "").trim() === "Admin";
+  const canManageUsers = hasAdminPermission(admin, "manage_users");
+  const canManageMembership = hasAdminPermission(admin, "manage_membership");
+
+  const getManagerPermissionLabels = (permissions = []) =>
+    normalizeManagerPermissions(permissions).map(
+      (key) => MANAGER_PERMISSION_LABEL_MAP[key] || key,
+    );
 
   const fetchUsers = useCallback(async () => {
     setIsLoading(true);
+    setLoadError("");
     try {
       const params = new URLSearchParams({
-        page: pagination.page + 1,
-        limit: pagination.limit,
+        page: String(pagination.page + 1),
+        limit: String(pagination.limit),
         search,
         role: roleFilter,
         includeCoinSummary: "1",
@@ -68,17 +98,22 @@ export default function UserManagement() {
       const response = await getData(`/api/user/admin/users?${params}`, token);
 
       if (response.success) {
-        setUsers(response.data);
+        setUsers(response.data || []);
         setPagination((prev) => ({
           ...prev,
-          total: response.pagination.total,
+          total: Number(response.pagination?.total || 0),
         }));
+      } else {
+        setUsers([]);
+        setLoadError(response.message || "Failed to fetch users");
       }
     } catch (error) {
       console.error("Failed to fetch users:", error);
+      setUsers([]);
+      setLoadError(error?.message || "Failed to fetch users");
     }
     setIsLoading(false);
-  }, [pagination.page, pagination.limit, search, roleFilter, token]);
+  }, [pagination.page, pagination.limit, roleFilter, search, token]);
 
   useEffect(() => {
     if (!loading && !isAuthenticated) {
@@ -90,14 +125,7 @@ export default function UserManagement() {
     if (isAuthenticated && token) {
       fetchUsers();
     }
-  }, [
-    isAuthenticated,
-    token,
-    pagination.page,
-    pagination.limit,
-    roleFilter,
-    fetchUsers,
-  ]);
+  }, [isAuthenticated, token, fetchUsers]);
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -111,7 +139,7 @@ export default function UserManagement() {
   const handleChangeRowsPerPage = (event) => {
     setPagination((prev) => ({
       ...prev,
-      limit: parseInt(event.target.value, 10),
+      limit: Number.parseInt(event.target.value, 10),
       page: 0,
     }));
   };
@@ -119,12 +147,18 @@ export default function UserManagement() {
   const openDialog = (user, type) => {
     setSelectedUser(user);
     setDialogType(type);
+    setSelectedRole(user?.role || "User");
+    setSelectedManagerPermissions(
+      normalizeManagerPermissions(user?.managerPermissions),
+    );
     setDialogOpen(true);
   };
 
   const closeDialog = () => {
     setSelectedUser(null);
     setDialogType("");
+    setSelectedRole("User");
+    setSelectedManagerPermissions([]);
     setDialogOpen(false);
   };
 
@@ -140,7 +174,7 @@ export default function UserManagement() {
       );
 
       if (response.success) {
-        fetchUsers();
+        await fetchUsers();
         closeDialog();
       } else {
         alert(response.message || "Failed to update role");
@@ -148,6 +182,40 @@ export default function UserManagement() {
     } catch (error) {
       console.error("Failed to update role:", error);
       alert("Failed to update role");
+    }
+
+    setActionLoading(false);
+  };
+
+  const toggleManagerPermission = (permissionKey) => {
+    setSelectedManagerPermissions((prev) => {
+      if (prev.includes(permissionKey)) {
+        return prev.filter((key) => key !== permissionKey);
+      }
+      return [...prev, permissionKey];
+    });
+  };
+
+  const handleManagerPermissionsSave = async () => {
+    if (!selectedUser) return;
+    setActionLoading(true);
+
+    try {
+      const response = await putData(
+        `/api/user/admin/users/${selectedUser._id}/manager-permissions`,
+        { permissions: selectedManagerPermissions },
+        token,
+      );
+
+      if (response.success) {
+        await fetchUsers();
+        closeDialog();
+      } else {
+        alert(response.message || "Failed to update manager permissions");
+      }
+    } catch (error) {
+      console.error("Failed to update manager permissions:", error);
+      alert("Failed to update manager permissions");
     }
 
     setActionLoading(false);
@@ -165,7 +233,7 @@ export default function UserManagement() {
       );
 
       if (response.success) {
-        fetchUsers();
+        await fetchUsers();
         closeDialog();
       } else {
         alert(response.message || "Failed to update status");
@@ -189,7 +257,7 @@ export default function UserManagement() {
       );
 
       if (response.success) {
-        fetchUsers();
+        await fetchUsers();
         closeDialog();
       } else {
         alert(response.message || "Failed to delete user");
@@ -218,7 +286,7 @@ export default function UserManagement() {
       );
 
       if (response.success) {
-        fetchUsers();
+        await fetchUsers();
         alert(response.message || "User converted to member successfully");
       } else {
         alert(response.message || "Failed to convert user to member");
@@ -237,6 +305,16 @@ export default function UserManagement() {
           icon={<MdOutlineAdminPanelSettings />}
           label="Admin"
           color="primary"
+          size="small"
+        />
+      );
+    }
+    if (role === "Manager") {
+      return (
+        <Chip
+          icon={<FiShield />}
+          label="Manager"
+          color="secondary"
           size="small"
         />
       );
@@ -265,21 +343,39 @@ export default function UserManagement() {
     );
   }
 
+  if (!isAuthenticated) {
+    return null;
+  }
+
+  if (!canManageUsers) {
+    return (
+      <div className="p-6">
+        <div className="bg-white rounded-xl shadow-sm p-6 border border-red-100">
+          <h1 className="text-xl font-bold text-gray-900 mb-2">Access Restricted</h1>
+          <p className="text-gray-600">
+            Your account does not have permission to manage users. Ask an Admin to
+            grant the <strong>User management</strong> permission.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-6">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-800 mb-2">
-          User Management
-        </h1>
+        <h1 className="text-2xl font-bold text-gray-800 mb-2">User Management</h1>
         <p className="text-gray-600">Manage user roles and permissions</p>
+        {isAdminUser ? (
+          <p className="text-xs text-gray-500 mt-1">
+            To grant Manager advanced modules, use the <strong>Set Permissions</strong>
+            button in the <strong>Manager Access</strong> column.
+          </p>
+        ) : null}
       </div>
 
-      {/* Filters */}
       <div className="bg-white rounded-xl shadow-sm p-4 mb-6">
-        <form
-          onSubmit={handleSearch}
-          className="flex flex-wrap gap-4 items-end"
-        >
+        <form onSubmit={handleSearch} className="flex flex-wrap gap-4 items-end">
           <div className="flex-1 min-w-[200px]">
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Search
@@ -307,6 +403,7 @@ export default function UserManagement() {
                 <MenuItem value="">All</MenuItem>
                 <MenuItem value="User">User</MenuItem>
                 <MenuItem value="Admin">Admin</MenuItem>
+                <MenuItem value="Manager">Manager</MenuItem>
               </Select>
             </FormControl>
           </div>
@@ -317,7 +414,6 @@ export default function UserManagement() {
         </form>
       </div>
 
-      {/* Users Table */}
       <div className="bg-white rounded-xl shadow-sm overflow-hidden">
         <TableContainer>
           <Table>
@@ -331,20 +427,27 @@ export default function UserManagement() {
                 <TableCell>Membership Status</TableCell>
                 <TableCell>Provider</TableCell>
                 <TableCell>Joined</TableCell>
+                <TableCell>Manager Access</TableCell>
                 <TableCell align="right">Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={9} align="center" className="py-8">
+                  <TableCell colSpan={10} align="center" className="py-8">
                     <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-600 mx-auto"></div>
+                  </TableCell>
+                </TableRow>
+              ) : loadError ? (
+                <TableRow>
+                  <TableCell colSpan={10} align="center" className="py-8 text-red-600">
+                    {loadError}
                   </TableCell>
                 </TableRow>
               ) : users.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={9}
+                    colSpan={10}
                     align="center"
                     className="py-8 text-gray-500"
                   >
@@ -352,95 +455,119 @@ export default function UserManagement() {
                   </TableCell>
                 </TableRow>
               ) : (
-                users.map((user) => (
-                  <TableRow key={user._id} hover>
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <Avatar src={user.avatar} alt={user.name}>
-                          {user.name?.[0]?.toUpperCase()}
-                        </Avatar>
-                        <span className="font-medium">{user.name}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell>{user.email}</TableCell>
-                    <TableCell>{getRoleChip(user.role)}</TableCell>
-                    <TableCell>{getStatusChip(user.status)}</TableCell>
-                    <TableCell>{Number(user.coinBalance || 0)}</TableCell>
-                    <TableCell>
-                      {isActiveMember(user) ? (
-                        <span className="inline-flex items-center gap-1 font-semibold text-amber-600">
-                          <RiVipCrownLine />
-                          Member
-                        </span>
-                      ) : (
-                        <span className="text-gray-500">Normal</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        label={user.provider || "email"}
-                        size="small"
-                        variant="outlined"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      {new Date(user.createdAt).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell align="right">
-                      <div className="flex justify-end gap-1">
-                        <Tooltip
-                          title={
-                            user.role === "Admin"
-                              ? "Demote to User"
-                              : "Promote to Admin"
-                          }
-                        >
-                          <IconButton
-                            size="small"
-                            color={
-                              user.role === "Admin" ? "warning" : "primary"
-                            }
-                            onClick={() => openDialog(user, "role")}
-                          >
-                            {user.role === "Admin" ? <FiUserX /> : <FiShield />}
-                          </IconButton>
-                        </Tooltip>
-                        <Tooltip title="Change Status">
-                          <IconButton
-                            size="small"
-                            color={
-                              user.status === "active" ? "success" : "warning"
-                            }
-                            onClick={() => openDialog(user, "status")}
-                          >
-                            <FiUserCheck />
-                          </IconButton>
-                        </Tooltip>
-                        <Tooltip title="Delete User">
-                          <IconButton
-                            size="small"
-                            color="error"
-                            onClick={() => openDialog(user, "delete")}
-                          >
-                            <FiTrash2 />
-                          </IconButton>
-                        </Tooltip>
-                        {user.role !== "Admin" && (
-                          <Tooltip title="Convert to Member">
-                            <IconButton
-                              size="small"
-                              color="warning"
-                              onClick={() => handleConvertToMember(user)}
-                              disabled={actionLoading}
-                            >
-                              <RiVipCrownLine />
-                            </IconButton>
-                          </Tooltip>
+                users.map((user) => {
+                  const managerPermissionLabels = getManagerPermissionLabels(
+                    user?.managerPermissions,
+                  );
+
+                  return (
+                    <TableRow key={user._id} hover>
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <Avatar src={user.avatar} alt={user.name}>
+                            {user.name?.[0]?.toUpperCase()}
+                          </Avatar>
+                          <span className="font-medium">{user.name}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>{user.email}</TableCell>
+                      <TableCell>{getRoleChip(user.role)}</TableCell>
+                      <TableCell>{getStatusChip(user.status)}</TableCell>
+                      <TableCell>{Number(user.coinBalance || 0)}</TableCell>
+                      <TableCell>
+                        {isActiveMember(user) ? (
+                          <span className="inline-flex items-center gap-1 font-semibold text-amber-600">
+                            <RiVipCrownLine />
+                            Member
+                          </span>
+                        ) : (
+                          <span className="text-gray-500">Normal</span>
                         )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          label={user.provider || "email"}
+                          size="small"
+                          variant="outlined"
+                        />
+                      </TableCell>
+                      <TableCell>{new Date(user.createdAt).toLocaleDateString()}</TableCell>
+                      <TableCell>
+                        {user.role === "Manager" ? (
+                          <div className="max-w-[260px]">
+                            <p className="text-xs text-gray-700 leading-5">
+                              {managerPermissionLabels.length
+                                ? managerPermissionLabels.join(", ")
+                                : "No advanced permissions assigned"}
+                            </p>
+                            {isAdminUser ? (
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                className="!mt-2"
+                                onClick={() => openDialog(user, "permissions")}
+                              >
+                                Set Permissions
+                              </Button>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <span className="text-gray-400">N/A</span>
+                        )}
+                      </TableCell>
+                      <TableCell align="right">
+                        <div className="flex justify-end gap-1">
+                          {isAdminUser ? (
+                            <Tooltip title="Change Role">
+                              <IconButton
+                                size="small"
+                                color={user.role === "Admin" ? "warning" : "primary"}
+                                onClick={() => openDialog(user, "role")}
+                              >
+                                {user.role === "Admin" ? <FiUserX /> : <FiShield />}
+                              </IconButton>
+                            </Tooltip>
+                          ) : null}
+                          {canManageUsers ? (
+                            <Tooltip title="Change Status">
+                              <IconButton
+                                size="small"
+                                color={user.status === "active" ? "success" : "warning"}
+                                onClick={() => openDialog(user, "status")}
+                              >
+                                <FiUserCheck />
+                              </IconButton>
+                            </Tooltip>
+                          ) : null}
+                          {canManageUsers ? (
+                            <Tooltip title="Delete User">
+                              <IconButton
+                                size="small"
+                                color="error"
+                                onClick={() => openDialog(user, "delete")}
+                              >
+                                <FiTrash2 />
+                              </IconButton>
+                            </Tooltip>
+                          ) : null}
+                          {canManageMembership &&
+                          !(["Admin", "Manager"].includes(user.role)) ? (
+                            <Tooltip title="Convert to Member">
+                              <IconButton
+                                size="small"
+                                color="warning"
+                                onClick={() => handleConvertToMember(user)}
+                                disabled={actionLoading}
+                              >
+                                <RiVipCrownLine />
+                              </IconButton>
+                            </Tooltip>
+                          ) : null}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               )}
             </TableBody>
           </Table>
@@ -456,7 +583,6 @@ export default function UserManagement() {
         />
       </div>
 
-      {/* Role Change Dialog */}
       <Dialog open={dialogOpen && dialogType === "role"} onClose={closeDialog}>
         <DialogTitle>Change User Role</DialogTitle>
         <DialogContent>
@@ -467,35 +593,36 @@ export default function UserManagement() {
           <p className="text-sm text-gray-600">
             Current role: <strong>{selectedUser?.role}</strong>
           </p>
+          <FormControl fullWidth className="mt-4">
+            <InputLabel>New Role</InputLabel>
+            <Select
+              value={selectedRole}
+              label="New Role"
+              onChange={(e) => setSelectedRole(e.target.value)}
+              disabled={actionLoading}
+            >
+              <MenuItem value="User">User</MenuItem>
+              <MenuItem value="Manager">Manager</MenuItem>
+              <MenuItem value="Admin">Admin</MenuItem>
+            </Select>
+          </FormControl>
         </DialogContent>
         <DialogActions>
           <Button onClick={closeDialog} disabled={actionLoading}>
             Cancel
           </Button>
           <Button
-            onClick={() =>
-              handleRoleChange(
-                selectedUser?.role === "Admin" ? "User" : "Admin",
-              )
-            }
+            onClick={() => handleRoleChange(selectedRole)}
             variant="contained"
-            color={selectedUser?.role === "Admin" ? "warning" : "primary"}
-            disabled={actionLoading}
+            color="primary"
+            disabled={actionLoading || !selectedRole}
           >
-            {actionLoading
-              ? "Updating..."
-              : selectedUser?.role === "Admin"
-                ? "Demote to User"
-                : "Promote to Admin"}
+            {actionLoading ? "Updating..." : "Save Role"}
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Status Change Dialog */}
-      <Dialog
-        open={dialogOpen && dialogType === "status"}
-        onClose={closeDialog}
-      >
+      <Dialog open={dialogOpen && dialogType === "status"} onClose={closeDialog}>
         <DialogTitle>Change User Status</DialogTitle>
         <DialogContent>
           <p className="mb-4">
@@ -522,20 +649,62 @@ export default function UserManagement() {
         </DialogActions>
       </Dialog>
 
-      {/* Delete Confirmation Dialog */}
       <Dialog
-        open={dialogOpen && dialogType === "delete"}
+        open={dialogOpen && dialogType === "permissions"}
         onClose={closeDialog}
+        maxWidth="sm"
+        fullWidth
       >
+        <DialogTitle>Manager Permissions</DialogTitle>
+        <DialogContent>
+          <p className="mb-4">
+            Select advanced modules <strong>{selectedUser?.name}</strong> can access.
+          </p>
+          <FormGroup>
+            {MANAGER_PERMISSION_OPTIONS.map((option) => (
+              <FormControlLabel
+                key={option.key}
+                control={
+                  <Checkbox
+                    checked={selectedManagerPermissions.includes(option.key)}
+                    onChange={() => toggleManagerPermission(option.key)}
+                    disabled={actionLoading}
+                  />
+                }
+                label={
+                  <span>
+                    <span className="font-medium text-gray-900">{option.label}</span>
+                    <span className="block text-xs text-gray-600">
+                      {option.description}
+                    </span>
+                  </span>
+                }
+              />
+            ))}
+          </FormGroup>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeDialog} disabled={actionLoading}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleManagerPermissionsSave}
+            variant="contained"
+            color="secondary"
+            disabled={actionLoading}
+          >
+            {actionLoading ? "Saving..." : "Save Permissions"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={dialogOpen && dialogType === "delete"} onClose={closeDialog}>
         <DialogTitle>Delete User</DialogTitle>
         <DialogContent>
           <p>
-            Are you sure you want to delete{" "}
-            <strong>{selectedUser?.name}</strong>?
+            Are you sure you want to delete <strong>{selectedUser?.name}</strong>?
           </p>
-          <p className="text-sm text-red-600 mt-2">
-            This action cannot be undone.
-          </p>
+          <p className="text-sm text-red-600 mt-2">This action cannot be undone.</p>
         </DialogContent>
         <DialogActions>
           <Button onClick={closeDialog} disabled={actionLoading}>

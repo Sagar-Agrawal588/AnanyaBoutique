@@ -480,6 +480,29 @@ test("admin auth hardening: admin endpoints reject missing auth", async () => {
   assert.equal(result.response.status, 401);
 });
 
+test("admin: credential PDF endpoint returns a valid PDF", async () => {
+  const { partnerId, apiKey } = await createPartnerViaAdmin();
+
+  const response = await fetch(
+    `${baseUrl}/api/v1/partner/admin/partners/${partnerId}/credential-pdf`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ apiKey }),
+    },
+  );
+
+  const contentType = String(response.headers.get("content-type") || "");
+  const body = Buffer.from(await response.arrayBuffer());
+
+  assert.equal(response.status, 200);
+  assert.match(contentType, /application\/pdf/i);
+  assert.ok(body.length > 200, "credential pdf should not be empty");
+});
+
 test(
   "load smoke: 100 concurrent and 1000 requests stay stable",
   { timeout: 40_000 },

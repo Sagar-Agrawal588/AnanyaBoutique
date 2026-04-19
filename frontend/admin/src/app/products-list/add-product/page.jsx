@@ -1,7 +1,9 @@
 "use client";
+import ProductPageSettingsSection from "@/components/ProductPageSettingsSection";
 import UploadBox from "@/components/UploadBox";
 import { useAdmin } from "@/context/AdminContext";
 import { getData, postData, uploadFile } from "@/utils/api";
+import { createDefaultProductPageConfig } from "@/utils/productPageConfig";
 import { Button } from "@mui/material";
 import MenuItem from "@mui/material/MenuItem";
 import Rating from "@mui/material/Rating";
@@ -38,6 +40,9 @@ const AddProduct = () => {
   const [images, setImages] = useState([]); // { file, preview }
   const [categories, setCategories] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [productPage, setProductPage] = useState(() =>
+    createDefaultProductPageConfig(),
+  );
 
   // Variants
   const [hasVariants, setHasVariants] = useState(false);
@@ -241,6 +246,7 @@ const AddProduct = () => {
         hasVariants,
         variants: variantData,
         variantType: hasVariants ? "weight" : "",
+        productPage,
       };
 
       const response = await postData("/api/products", productData, token);
@@ -762,6 +768,11 @@ const AddProduct = () => {
               </>
             )}
           </div>
+
+          <ProductPageSettingsSection
+            productPage={productPage}
+            setProductPage={setProductPage}
+          />
 
           {/* Images */}
           <div className="flex flex-col gap-2 mt-5">

@@ -1,29 +1,45 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element */
+
 import ComboCard from "@/components/ComboCard";
 import ProductItem from "@/components/ProductItem";
-import ProductZoom from "@/components/ProductZoom";
-import QtyBox from "@/components/QtyBox";
 import ShareButton from "@/components/ShareButton";
+import {
+  DEMO_PRODUCT_ID,
+  buildDemoProduct,
+  buildDemoReviews,
+} from "@/components/productDetail/demoLiveData";
+import {
+  mergeCardsWithDefaults,
+  mergeListWithDefaults,
+  mergeTextOverride,
+  normalizeProductPageConfig,
+} from "@/components/productDetail/pageConfig";
 import { formatPrice } from "@/config/siteConfig";
 import { useCart } from "@/context/CartContext";
 import { trackEvent } from "@/utils/analyticsTracker";
 import { fetchDataFromApi } from "@/utils/api";
 import { getImageUrl } from "@/utils/imageUtils";
 import { sanitizeHTML } from "@/utils/sanitize";
-import {
-  Alert,
-  Button,
-  CircularProgress,
-  Rating,
-  Snackbar,
-} from "@mui/material";
+import { Alert, CircularProgress, Rating, Snackbar } from "@mui/material";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { HiOutlineFire } from "react-icons/hi";
+import { FiChevronLeft, FiChevronRight } from "react-icons/fi";
 import { IoMdCart } from "react-icons/io";
-import { MdLocalShipping, MdPolicy, MdVerified } from "react-icons/md";
+import {
+  MdLocalShipping,
+  MdOutlineInventory2,
+  MdOutlineSecurity,
+  MdVerified,
+} from "react-icons/md";
+
+const DEFAULT_TABS = [
+  { id: "description", label: "Description" },
+  { id: "details", label: "Product Details" },
+  { id: "shipping", label: "Shipping & Trust" },
+];
 
 const isExclusiveProduct = (value) => {
   const product = value?.product || value;
@@ -48,6 +64,13 @@ const isExclusiveCombo = (combo) => {
   );
 };
 
+const toNumber = (value, fallback = 0) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const getResolvedProductId = (product) => product?._id || product?.id || "";
+
 const formatVariantWeight = (variant = {}) => {
   const weight = Number(variant?.weight || 0);
   const unit = String(variant?.unit || "").trim();
@@ -57,6 +80,7 @@ const formatVariantWeight = (variant = {}) => {
     const kg = Number((weight / 1000).toFixed(2));
     return `${kg} kg`;
   }
+
   return `${weight} ${unit}`;
 };
 
@@ -65,16 +89,15 @@ const formatVariantLabel = (variant = {}) => {
   const weightLabel = formatVariantWeight(variant);
   const skuLabel = String(variant?.sku || "").trim();
 
-  const normalizeLabelToken = (value) =>
+  const normalizeToken = (value) =>
     String(value || "")
       .toLowerCase()
       .replace(/\s+/g, "")
       .replace(/[^a-z0-9]/g, "");
 
-  const baseToken = normalizeLabelToken(baseName);
-  const weightToken = normalizeLabelToken(weightLabel);
+  const baseToken = normalizeToken(baseName);
+  const weightToken = normalizeToken(weightLabel);
 
-  // Avoid duplicate labels such as "500g - 500 g" or "1kg - 1 kg".
   if (baseName && weightLabel && baseToken && weightToken) {
     if (baseToken.includes(weightToken) || weightToken.includes(baseToken)) {
       return baseName;
@@ -89,17 +112,208 @@ const formatVariantLabel = (variant = {}) => {
   return "Variant";
 };
 
-/**
- * Product Detail Page
- *
- * Displays single product details fetched from API (admin-managed products).
- * Features: Image gallery, pricing, add to cart, reviews, related products.
- */
+const stripHtml = (value) =>
+  String(value || "")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const getAvailabilityLabel = (availableQty, demandStatus) => {
+  if (availableQty > 0) {
+    return String(demandStatus || "").trim().toUpperCase() === "HIGH"
+      ? "Selling fast"
+      : "In stock";
+  }
+
+  if (String(demandStatus || "").trim().toUpperCase() === "HIGH") {
+    return "High demand";
+  }
+
+  return "Currently unavailable";
+};
+
+const getHeroStatusLabel = (product, reviewCount) => {
+  if (product?.isBestSeller) return "Best seller";
+  if (product?.isNewArrival) return "New arrival";
+  if (String(product?.demandStatus || "").trim().toUpperCase() === "HIGH") {
+    return "High demand";
+  }
+  if (Number(reviewCount || 0) > 0) return "Top rated";
+  return "Healthy One Gram";
+};
+
+const buildDescriptionParagraphs = (product) => {
+  const descriptionText = stripHtml(
+    product?.description || product?.shortDescription || "",
+  );
+
+  if (descriptionText) {
+    const sentences = descriptionText
+      .split(/(?<=[.!?])\s+/)
+      .map((part) => part.trim())
+      .filter(Boolean);
+
+    if (sentences.length <= 2) {
+      return [descriptionText];
+    }
+
+    const grouped = [];
+    for (let index = 0; index < sentences.length; index += 2) {
+      grouped.push(sentences.slice(index, index + 2).join(" "));
+    }
+    return grouped.slice(0, 3);
+  }
+
+  const name = String(product?.name || product?.title || "This product").trim();
+  return [
+    `${name} now has a cleaner product detail presentation with clearer image hierarchy, stronger pricing emphasis, and a more readable information flow.`,
+    "The refreshed layout gives customers a faster path from product discovery to purchase while still leaving room for supporting content below the fold.",
+  ];
+};
+
+const buildDetailCards = ({
+  product,
+  selectedVariant,
+  availableQty,
+  reviewCount,
+}) => {
+  const categoryLabel =
+    product?.category?.name || product?.categoryName || "Storefront product";
+  const selectedLabel = selectedVariant
+    ? formatVariantLabel(selectedVariant)
+    : formatVariantWeight(product);
+
+  return [
+    {
+      label: "Category",
+      value: categoryLabel,
+      helper: "Live product taxonomy",
+    },
+    {
+      label: "Selected Pack",
+      value: selectedLabel || "Default option",
+      helper: "Variant-aware display",
+    },
+    {
+      label: "Customer Reviews",
+      value: `${Math.max(Number(reviewCount || 0), 0)}`,
+      helper: "Visible social proof",
+    },
+    {
+      label: "Availability",
+      value: getAvailabilityLabel(availableQty, product?.demandStatus),
+      helper: "Real-time stock signal",
+    },
+  ];
+};
+
+const buildSnapshotItems = ({
+  product,
+  selectedVariant,
+  displaySku,
+  availableQty,
+  productRating,
+  reviewCount,
+}) => {
+  const items = [];
+  const categoryLabel =
+    product?.category?.name || product?.categoryName || "General catalog";
+  const brandLabel = String(product?.brand || "Healthy One Gram").trim();
+  const selectedLabel = selectedVariant
+    ? formatVariantLabel(selectedVariant)
+    : formatVariantWeight(product);
+
+  items.push(`Category: ${categoryLabel}`);
+  items.push(`Brand: ${brandLabel}`);
+  if (displaySku) items.push(`SKU: ${displaySku}`);
+  if (selectedLabel) items.push(`Selected pack: ${selectedLabel}`);
+  items.push(`Availability: ${getAvailabilityLabel(availableQty, product?.demandStatus)}`);
+  if (Number(productRating) > 0) {
+    items.push(
+      `Rating: ${Number(productRating).toFixed(1)} / 5 from ${Math.max(Number(reviewCount || 0), 0)} review${Number(reviewCount || 0) === 1 ? "" : "s"}`,
+    );
+  }
+
+  return items;
+};
+
+const buildShippingPoints = () => [
+  "Standard delivery typically lands within 3-5 business days after dispatch.",
+  "All checkout flows run through secure payment handling and verified order tracking.",
+  "Packaging is designed to keep product quality protected throughout transit.",
+];
+
+const resolveVariantLabel = (variant, baseProduct) => {
+  if (variant?.name) return variant.name;
+  const weight = variant?.weight || baseProduct?.weight;
+  const unit = variant?.unit || baseProduct?.unit;
+  if (!weight || !unit) return "";
+  return formatVariantWeight({ weight, unit });
+};
+
+const resolveProductImages = (product, selectedVariant, fallbackImages = []) => {
+  const variantImages = Array.isArray(selectedVariant?.images)
+    ? selectedVariant.images
+    : [];
+  const productImages = Array.isArray(product?.images) ? product.images : [];
+
+  return [
+    selectedVariant?.image,
+    ...variantImages,
+    product?.thumbnail,
+    ...productImages,
+    ...fallbackImages,
+  ]
+    .filter(Boolean)
+    .map((image) => getImageUrl(image))
+    .filter(Boolean)
+    .filter((image, index, allImages) => allImages.indexOf(image) === index);
+};
+
+const averageReviewRating = (reviews = []) => {
+  if (!Array.isArray(reviews) || reviews.length === 0) return 0;
+  const total = reviews.reduce(
+    (sum, review) => sum + Math.max(Number(review?.rating || 0), 0),
+    0,
+  );
+  return total > 0 ? total / reviews.length : 0;
+};
+
+const formatReviewDate = (value) => {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+};
+
+const getReviewInitials = (review) => {
+  const source = String(review?.userName || review?.name || "Customer").trim();
+  return source
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join("");
+};
+
 const ProductDetailPage = () => {
   const { id } = useParams();
   const router = useRouter();
-  const { addToCart, removeFromCart, isInCart, cartItems, isComboCartItem } =
-    useCart();
+  const routeId = String(id || "").trim();
+  const isDemoPreview = routeId.toLowerCase() === DEMO_PRODUCT_ID;
+  const {
+    addToCart,
+    removeFromCart,
+    isInCart,
+    cartItems,
+    isComboCartItem,
+  } = useCart();
 
   const [product, setProduct] = useState(null);
   const [customerReviews, setCustomerReviews] = useState([]);
@@ -110,20 +324,31 @@ const ProductDetailPage = () => {
   const [recommendedCombos, setRecommendedCombos] = useState([]);
   const [recommendedLoading, setRecommendedLoading] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
   const [quantity, setQuantity] = useState(1);
   const [selectedVariant, setSelectedVariant] = useState(null);
   const [activeTab, setActiveTab] = useState("description");
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [deliveryPincode, setDeliveryPincode] = useState("");
   const [snackbar, setSnackbar] = useState({
     open: false,
     message: "",
     severity: "success",
   });
 
-  // Compute active price/stock based on selected variant
+  const defaultVariant =
+    product?.hasVariants && Array.isArray(product?.variants)
+      ? product.variants.find((variant) => variant?.isDefault) ||
+        product.variants[0] ||
+        null
+      : null;
+
   const activePrice = selectedVariant ? selectedVariant.price : product?.price;
   const activeOriginalPrice = selectedVariant
     ? selectedVariant.originalPrice
     : product?.originalPrice;
+  const demoReviewFallback = isDemoPreview ? buildDemoReviews() : [];
+  const pageConfig = normalizeProductPageConfig(product?.productPage);
   const activeStock = selectedVariant
     ? Math.max(
         Number(selectedVariant.stock_quantity ?? selectedVariant.stock ?? 0) -
@@ -131,15 +356,6 @@ const ProductDetailPage = () => {
         0,
       )
     : null;
-  const defaultVariant =
-    product?.hasVariants && Array.isArray(product?.variants)
-      ? product.variants.find((variant) => variant?.isDefault) ||
-        product.variants[0] ||
-        null
-      : null;
-  const displaySku =
-    selectedVariant?.sku || defaultVariant?.sku || product?.sku || "";
-
   const availableQty =
     activeStock !== null
       ? activeStock
@@ -153,19 +369,144 @@ const ProductDetailPage = () => {
           )
         : 0;
   const maxQty = availableQty > 0 ? availableQty : 1;
+  const displaySku =
+    selectedVariant?.sku || defaultVariant?.sku || product?.sku || "";
+  const productId = getResolvedProductId(product);
+  const selectedVariantId = selectedVariant?._id || selectedVariant?.id || null;
+  const currentVariantInCart =
+    productId && isInCart(productId, selectedVariantId);
   const productRating = Number(
-    product?.adminStarRating ?? product?.rating ?? 0,
+    product?.adminStarRating ??
+      product?.rating ??
+      averageReviewRating(customerReviews),
   );
-  const customerReviewCount = customerReviews.length;
+  const displayReviews =
+    customerReviews.length > 0
+      ? customerReviews
+      : demoReviewFallback;
+  const displayReviewCount = Math.max(
+    customerReviews.length || Number(product?.reviewCount || 0),
+    demoReviewFallback.length,
+  );
+  const tabs = [
+    pageConfig?.tabs?.showDescription !== false
+      ? {
+          id: "description",
+          label: mergeTextOverride(
+            pageConfig?.tabs?.descriptionLabel,
+            DEFAULT_TABS[0].label,
+          ),
+        }
+      : null,
+    pageConfig?.tabs?.showDetails !== false
+      ? {
+          id: "details",
+          label: mergeTextOverride(
+            pageConfig?.tabs?.detailsLabel,
+            DEFAULT_TABS[1].label,
+          ),
+        }
+      : null,
+    pageConfig?.tabs?.showShipping !== false
+      ? {
+          id: "shipping",
+          label: mergeTextOverride(
+            pageConfig?.tabs?.shippingLabel,
+            DEFAULT_TABS[2].label,
+          ),
+        }
+      : null,
+  ].filter(Boolean);
+  const defaultDescriptionParagraphs = buildDescriptionParagraphs(product);
+  const descriptionParagraphs = mergeListWithDefaults(
+    pageConfig?.descriptionSection?.extraParagraphs || [],
+    defaultDescriptionParagraphs,
+  );
+  const defaultDetailCards = buildDetailCards({
+    product,
+    selectedVariant,
+    availableQty,
+    reviewCount: displayReviewCount,
+  });
+  const detailCards = mergeCardsWithDefaults(
+    defaultDetailCards,
+    pageConfig?.detailsSection?.cards || [],
+  );
+  const defaultSnapshotItems = buildSnapshotItems({
+    product,
+    selectedVariant,
+    displaySku,
+    availableQty,
+    productRating,
+    reviewCount: displayReviewCount,
+  });
+  const snapshotItems = mergeListWithDefaults(
+    pageConfig?.detailsSection?.snapshotItems || [],
+    defaultSnapshotItems,
+  );
+  const defaultShippingPoints = buildShippingPoints();
+  const shippingPoints = mergeListWithDefaults(
+    pageConfig?.shippingSection?.points || [],
+    defaultShippingPoints,
+  );
+  const images = resolveProductImages(
+    product,
+    selectedVariant,
+    isDemoPreview ? buildDemoProduct().images : [],
+  );
+  const activeImage = images[activeImageIndex] || images[0] || "/product_1.png";
+  const selectedPackLabel =
+    resolveVariantLabel(selectedVariant, product) ||
+    resolveVariantLabel(defaultVariant, product) ||
+    "Default option";
+  const reviewSummaryLabel =
+    displayReviewCount > 0
+      ? `${displayReviewCount} review${displayReviewCount === 1 ? "" : "s"}`
+      : "No reviews yet";
+  const heroStatusLabel = getHeroStatusLabel(product, displayReviewCount);
+  const availabilityLabel = getAvailabilityLabel(
+    availableQty,
+    product?.demandStatus,
+  );
+  const deliveryReady = deliveryPincode.length === 6;
+  const deliveryMessage = deliveryReady
+    ? `Estimated delivery to ${deliveryPincode}: 2-4 business days.`
+    : "Enter a 6-digit pincode to preview delivery timing.";
+  const showDescriptionSection =
+    pageConfig?.tabs?.showDescription !== false &&
+    pageConfig?.descriptionSection?.show !== false;
+  const showDetailsSection =
+    pageConfig?.tabs?.showDetails !== false &&
+    pageConfig?.detailsSection?.show !== false;
+  const showShippingSection =
+    pageConfig?.tabs?.showShipping !== false &&
+    pageConfig?.shippingSection?.show !== false;
+  const showHeroStoryCard = pageConfig?.hero?.showStoryCard !== false;
+  const showHeroInsightCards = pageConfig?.hero?.showInsightCards !== false;
+  const showHeroDeliveryPreview = pageConfig?.hero?.showDeliveryPreview !== false;
+  const showReviewsSection = pageConfig?.reviewsSection?.show !== false;
+  const showFrequentlyBoughtSection =
+    !isDemoPreview && pageConfig?.frequentlyBoughtSection?.show !== false;
+  const showRecommendedCombosSection =
+    !isDemoPreview && pageConfig?.recommendedCombosSection?.show !== false;
+  const showRelatedProductsSection =
+    !isDemoPreview && pageConfig?.relatedProductsSection?.show !== false;
+  const galleryGridClassName = showHeroStoryCard
+    ? "relative mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px] lg:items-end"
+    : "relative mt-6";
+  const imageStageClassName = showHeroStoryCard
+    ? "product-image-stage relative flex min-h-[440px] items-center justify-center overflow-hidden rounded-[30px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.92)_0%,rgba(244,236,229,0.88)_100%)] p-6"
+    : "product-image-stage relative mx-auto flex min-h-[380px] max-w-[840px] items-center justify-center overflow-hidden rounded-[30px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.92)_0%,rgba(244,236,229,0.88)_100%)] p-6 sm:p-10";
 
-  const fetchProductReviews = async (productId) => {
-    if (!productId) {
+  const fetchProductReviews = async (productValueId) => {
+    if (!productValueId) {
       setCustomerReviews([]);
       return;
     }
+
     try {
       setReviewsLoading(true);
-      const response = await fetchDataFromApi(`/api/reviews/${productId}`);
+      const response = await fetchDataFromApi(`/api/reviews/${productValueId}`);
       if (response?.success && Array.isArray(response?.data)) {
         setCustomerReviews(response.data);
       } else {
@@ -179,15 +520,16 @@ const ProductDetailPage = () => {
     }
   };
 
-  const fetchFrequentlyBought = async (productId) => {
-    if (!productId) {
+  const fetchFrequentlyBought = async (productValueId) => {
+    if (!productValueId) {
       setFrequentlyBought([]);
       return;
     }
+
     try {
       setFbtLoading(true);
       const response = await fetchDataFromApi(
-        `/api/products/${productId}/frequently-bought?limit=3`,
+        `/api/products/${productValueId}/frequently-bought?limit=3`,
       );
       if (response?.success && Array.isArray(response?.data)) {
         setFrequentlyBought(
@@ -204,15 +546,16 @@ const ProductDetailPage = () => {
     }
   };
 
-  const fetchRecommendedCombos = async (productId) => {
-    if (!productId) {
+  const fetchRecommendedCombos = async (productValueId) => {
+    if (!productValueId) {
       setRecommendedCombos([]);
       return;
     }
+
     try {
       setRecommendedLoading(true);
       const response = await fetchDataFromApi(
-        `/api/combos/sections?productId=${productId}`,
+        `/api/combos/sections?productId=${productValueId}`,
       );
       if (response?.success) {
         setRecommendedCombos(
@@ -231,41 +574,62 @@ const ProductDetailPage = () => {
     }
   };
 
-  // Fetch product details from API
   const fetchProduct = async () => {
     try {
       setLoading(true);
-      const response = await fetchDataFromApi(`/api/products/${id}`);
+      const response = await fetchDataFromApi(`/api/products/${routeId}`);
 
       if (response?.error !== true && response?.data) {
-        setProduct(response.data);
-        const resolvedProductId = response.data?._id || response.data?.id;
+        const resolvedProduct = response.data;
+        const resolvedProductId = getResolvedProductId(resolvedProduct);
+        const resolvedPageConfig = normalizeProductPageConfig(
+          resolvedProduct?.productPage,
+        );
+
+        setProduct(resolvedProduct);
+        setSelectedVariant(
+          resolvedProduct?.hasVariants && Array.isArray(resolvedProduct?.variants)
+            ? resolvedProduct.variants.find((variant) => variant?.isDefault) ||
+                resolvedProduct.variants[0] ||
+                null
+            : null,
+        );
+
         trackEvent("product_view", {
           productId: String(resolvedProductId || ""),
           productName: String(
-            response.data?.name || response.data?.title || "",
+            resolvedProduct?.name || resolvedProduct?.title || "",
           ),
           categoryId: String(
-            response.data?.category?._id || response.data?.category || "",
+            resolvedProduct?.category?._id || resolvedProduct?.category || "",
           ),
-          price: Number(response.data?.price || 0),
+          price: Number(resolvedProduct?.price || 0),
         });
-        fetchProductReviews(resolvedProductId);
-        fetchFrequentlyBought(resolvedProductId);
-        fetchRecommendedCombos(resolvedProductId);
 
-        // Auto-select default variant (or first) if product has variants
-        if (response.data.hasVariants && response.data.variants?.length > 0) {
-          const defaultVariant =
-            response.data.variants.find((v) => v.isDefault) ||
-            response.data.variants[0];
-          setSelectedVariant(defaultVariant);
+        if (resolvedPageConfig?.reviewsSection?.show !== false) {
+          fetchProductReviews(resolvedProductId);
+        } else {
+          setCustomerReviews([]);
         }
 
-        // Fetch related products by category
-        if (response.data.category) {
+        if (resolvedPageConfig?.frequentlyBoughtSection?.show !== false) {
+          fetchFrequentlyBought(resolvedProductId);
+        } else {
+          setFrequentlyBought([]);
+        }
+
+        if (resolvedPageConfig?.recommendedCombosSection?.show !== false) {
+          fetchRecommendedCombos(resolvedProductId);
+        } else {
+          setRecommendedCombos([]);
+        }
+
+        if (
+          resolvedPageConfig?.relatedProductsSection?.show !== false &&
+          resolvedProduct?.category
+        ) {
           const relatedResponse = await fetchDataFromApi(
-            `/api/products?category=${response.data.category._id || response.data.category}&limit=5&exclude=${id}`,
+            `/api/products?category=${resolvedProduct.category._id || resolvedProduct.category}&limit=5&exclude=${routeId}`,
           );
           if (relatedResponse?.error !== true) {
             setRelatedProducts(
@@ -274,57 +638,92 @@ const ProductDetailPage = () => {
               ),
             );
           }
+        } else {
+          setRelatedProducts([]);
         }
-      } else if (response) {
-        // Handle different API response formats
-        setProduct(response);
-        trackEvent("product_view", {
-          productId: String(response?._id || response?.id || ""),
-          productName: String(response?.name || response?.title || ""),
-          categoryId: String(
-            response?.category?._id || response?.category || "",
-          ),
-          price: Number(response?.price || response?.salePrice || 0),
-        });
-        const resolvedId = response?._id || response?.id;
-        fetchProductReviews(resolvedId);
-        fetchFrequentlyBought(resolvedId);
-        fetchRecommendedCombos(resolvedId);
       } else {
-        setCustomerReviews([]);
+        setProduct(null);
       }
     } catch (error) {
       console.error("Error fetching product:", error);
+      setProduct(null);
       setCustomerReviews([]);
+      setFrequentlyBought([]);
+      setRecommendedCombos([]);
+      setRelatedProducts([]);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    if (id) {
-      fetchProduct();
+    setActiveTab("description");
+    setActiveImageIndex(0);
+    setDeliveryPincode("");
+    setQuantity(1);
+
+    if (!routeId) return;
+
+    if (isDemoPreview) {
+      setLoading(true);
+      const demoProduct = buildDemoProduct();
+      setProduct(demoProduct);
+      setSelectedVariant(
+        demoProduct.variants.find((variant) => variant?.isDefault) ||
+          demoProduct.variants[0] ||
+          null,
+      );
+      setCustomerReviews(buildDemoReviews());
+      setRelatedProducts([]);
+      setFrequentlyBought([]);
+      setRecommendedCombos([]);
+      setLoading(false);
       window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
     }
-  }, [id]);
+
+    fetchProduct();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [routeId, isDemoPreview]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (activeImageIndex >= images.length) {
+      setActiveImageIndex(0);
+    }
+  }, [activeImageIndex, images.length]);
+
+  useEffect(() => {
+    if (tabs.length === 0) return;
+
+    const hasActiveTab = tabs.some((tab) => tab.id === activeTab);
+    if (!hasActiveTab) {
+      setActiveTab(tabs[0].id);
+    }
+  }, [activeTab, tabs]);
+
+  useEffect(() => {
+    if (quantity > maxQty) {
+      setQuantity(maxQty);
+    }
+  }, [maxQty, quantity]);
 
   const buildCartProduct = () => {
     if (!product) return null;
     if (!selectedVariant) return product;
-    const selectedVariantId = selectedVariant._id || selectedVariant.id;
+
     return {
       ...product,
       price: selectedVariant.price,
       originalPrice: selectedVariant.originalPrice || product.originalPrice,
       selectedVariant: {
-        _id: selectedVariantId,
+        _id: selectedVariant._id || selectedVariant.id,
         name: selectedVariant.name,
         sku: selectedVariant.sku,
         price: selectedVariant.price,
         weight: selectedVariant.weight,
         unit: selectedVariant.unit,
       },
-      variantId: selectedVariantId,
+      variantId: selectedVariant._id || selectedVariant.id,
     };
   };
 
@@ -355,16 +754,14 @@ const ProductDetailPage = () => {
     const safeOriginalPrice = Number.isFinite(rawOriginalPrice)
       ? Math.max(rawOriginalPrice, safePrice)
       : safePrice;
-    const finalPrice =
-      safePrice > 0 ? safePrice : safeOriginalPrice > 0 ? safeOriginalPrice : 0;
 
     return {
       product: recProduct,
       variant,
       variantId: variant?._id || variant?.id || null,
       label: resolveVariantLabel(variant, recProduct),
-      price: finalPrice,
-      originalPrice: Math.max(safeOriginalPrice, finalPrice),
+      price: safePrice > 0 ? safePrice : safeOriginalPrice,
+      originalPrice: Math.max(safeOriginalPrice, safePrice),
       image:
         item?.image ||
         recommendation?.image ||
@@ -408,16 +805,20 @@ const ProductDetailPage = () => {
     };
   };
 
-  const hasSelectedVariantInCart = (productId, variantId) => {
-    if (!productId) return false;
+  const hasSelectedVariantInCart = (targetProductId, variantId) => {
+    if (!targetProductId) return false;
+
     return cartItems.some((item) => {
       if (typeof isComboCartItem === "function" && isComboCartItem(item)) {
         return false;
       }
+
       const itemProductId =
         item?.product?._id || item?.product?.id || item?.product || item?.id;
-      if (String(itemProductId) !== String(productId)) return false;
+      if (String(itemProductId) !== String(targetProductId)) return false;
+
       if (!variantId) return true;
+
       const itemVariantId =
         item?.variant?._id ||
         item?.variant?.id ||
@@ -426,73 +827,89 @@ const ProductDetailPage = () => {
         item?.selectedVariant?._id ||
         item?.selectedVariant?.id ||
         null;
+
       return String(itemVariantId || "") === String(variantId);
     });
   };
 
-  // Handle Add to Cart or Remove from Cart (toggle)
+  const openSnackbar = (message, severity = "success") => {
+    setSnackbar({
+      open: true,
+      message,
+      severity,
+    });
+  };
+
+  const handleDemoAction = (message) => {
+    openSnackbar(message, "success");
+  };
+
   const handleAddToCart = async () => {
+    if (!product) return;
+
+    if (isDemoPreview) {
+      handleDemoAction(
+        "Demo preview only. Use this route to review the layout and interaction flow.",
+      );
+      return;
+    }
+
     try {
-      if (!product) return;
+      setActionLoading(true);
 
-      const productId = product._id || product.id;
-      const selectedVariantId =
-        selectedVariant?._id || selectedVariant?.id || null;
-
-      // Check if already in cart
-      if (isInCart(productId, selectedVariantId)) {
-        // Remove from cart
+      if (currentVariantInCart) {
         await removeFromCart(productId, selectedVariantId);
-        setSnackbar({
-          open: true,
-          message: "Removed from cart!",
-          severity: "success",
-        });
-      } else {
-        if (availableQty < quantity) {
-          setSnackbar({
-            open: true,
-            message:
-              availableQty > 0
-                ? `Only ${availableQty} left in stock`
-                : "This product is currently out of stock",
-            severity: "error",
-          });
-          return;
-        }
-        // Add to cart - pass variant-adjusted product data
-        const cartProduct = buildCartProduct();
-        if (!cartProduct) return;
-        await addToCart(cartProduct, quantity);
+        openSnackbar("Removed from cart!");
+        return;
       }
+
+      if (availableQty < quantity) {
+        openSnackbar(
+          availableQty > 0
+            ? "Limited stock available for this selected pack."
+            : "This product is currently unavailable.",
+          "error",
+        );
+        return;
+      }
+
+      const cartProduct = buildCartProduct();
+      if (!cartProduct) return;
+
+      await addToCart(cartProduct, quantity);
+      openSnackbar("Added to cart!");
     } catch (error) {
-      setSnackbar({
-        open: true,
-        message: "Failed to update cart",
-        severity: "error",
-      });
+      console.error("Error updating cart:", error);
+      openSnackbar("Failed to update cart", "error");
+    } finally {
+      setActionLoading(false);
     }
   };
 
   const handleBuyNow = async () => {
-    try {
-      if (!product) return;
-      const productId = product._id || product.id;
-      const variantId = selectedVariant?._id || selectedVariant?.id || null;
-      const hasVariant = hasSelectedVariantInCart(productId, variantId);
+    if (!product) return;
 
-      if (!hasVariant) {
+    if (isDemoPreview) {
+      handleDemoAction(
+        "Buy Now is preview-only on /product/demo-live so the mock route does not affect real carts.",
+      );
+      return;
+    }
+
+    try {
+      setActionLoading(true);
+
+      if (!currentVariantInCart) {
         if (availableQty < quantity) {
-          setSnackbar({
-            open: true,
-            message:
-              availableQty > 0
-                ? `Only ${availableQty} left in stock`
-                : "This product is currently out of stock",
-            severity: "error",
-          });
+          openSnackbar(
+            availableQty > 0
+              ? "Limited stock available for this selected pack."
+              : "This product is currently unavailable.",
+            "error",
+          );
           return;
         }
+
         const cartProduct = buildCartProduct();
         if (!cartProduct) return;
         await addToCart(cartProduct, quantity);
@@ -500,958 +917,1122 @@ const ProductDetailPage = () => {
 
       router.push("/checkout");
     } catch (error) {
-      setSnackbar({
-        open: true,
-        message: "Unable to proceed to checkout",
-        severity: "error",
-      });
+      console.error("Error proceeding to checkout:", error);
+      openSnackbar("Unable to proceed to checkout", "error");
+    } finally {
+      setActionLoading(false);
     }
   };
 
   const handleAddAllToCart = async () => {
-    if (!product) return;
-    const itemsToAdd = [];
-    const currentProductPayload = buildCartProduct();
-    if (currentProductPayload) {
-      itemsToAdd.push({
-        payload: currentProductPayload,
-        quantity: quantity,
-      });
-    }
-
-    frequentlyBought.forEach((item) => {
-      const payload = buildCartProductFromRecommendation(item);
-      if (!payload) return;
-      itemsToAdd.push({ payload, quantity: 1 });
-    });
+    if (!product || frequentlyBought.length === 0) return;
 
     try {
       let addedCount = 0;
-      for (const entry of itemsToAdd) {
-        const productId = entry.payload?._id || entry.payload?.id;
-        const variantId = entry.payload?.variantId || null;
-        if (!productId) continue;
-        if (hasSelectedVariantInCart(productId, variantId)) {
+      const currentProductPayload = buildCartProduct();
+
+      if (currentProductPayload) {
+        const targetVariantId = currentProductPayload?.variantId || null;
+        if (!hasSelectedVariantInCart(productId, targetVariantId)) {
+          await addToCart(currentProductPayload, quantity);
+          addedCount += 1;
+        }
+      }
+
+      for (const item of frequentlyBought) {
+        const payload = buildCartProductFromRecommendation(item);
+        if (!payload) continue;
+
+        const targetProductId = getResolvedProductId(payload);
+        if (!targetProductId) continue;
+        if (hasSelectedVariantInCart(targetProductId, payload?.variantId)) {
           continue;
         }
-        await addToCart(entry.payload, entry.quantity);
+
+        await addToCart(payload, 1);
         addedCount += 1;
       }
 
-      setSnackbar({
-        open: true,
-        message:
-          addedCount > 0
-            ? "Added bundle items to cart!"
-            : "All items are already in your cart.",
-        severity: "success",
-      });
+      openSnackbar(
+        addedCount > 0
+          ? "Added bundle items to cart!"
+          : "All bundle items are already in your cart.",
+      );
     } catch (error) {
-      setSnackbar({
-        open: true,
-        message: "Failed to add bundle items",
-        severity: "error",
-      });
+      console.error("Error adding bundle items:", error);
+      openSnackbar("Failed to add bundle items", "error");
     }
   };
 
   const handleAddSingleRecommendation = async (item) => {
     const payload = buildCartProductFromRecommendation(item);
     if (!payload) {
-      setSnackbar({
-        open: true,
-        message: "Unable to add this item right now",
-        severity: "error",
-      });
+      openSnackbar("Unable to add this item right now", "error");
       return;
     }
 
-    const productId = payload?._id || payload?.id;
-    const variantId = payload?.variantId || null;
-
-    if (hasSelectedVariantInCart(productId, variantId)) {
-      setSnackbar({
-        open: true,
-        message: "Item already in your cart",
-        severity: "success",
-      });
+    const targetProductId = getResolvedProductId(payload);
+    const targetVariantId = payload?.variantId || null;
+    if (hasSelectedVariantInCart(targetProductId, targetVariantId)) {
+      openSnackbar("Item already in your cart");
       return;
     }
 
     try {
       await addToCart(payload, 1);
-      setSnackbar({
-        open: true,
-        message: "Added to cart!",
-        severity: "success",
-      });
-    } catch {
-      setSnackbar({
-        open: true,
-        message: "Failed to add item",
-        severity: "error",
-      });
+      openSnackbar("Added to cart!");
+    } catch (error) {
+      console.error("Error adding recommendation:", error);
+      openSnackbar("Failed to add item", "error");
     }
   };
 
-  // Calculate discount
-  const calculateDiscount = () => {
-    const p = activePrice || product?.price;
-    const op = activeOriginalPrice || product?.originalPrice;
-    if (op && p && op > p) {
-      return Math.round(((op - p) / op) * 100);
-    }
-    return product?.discount || 0;
-  };
+  const isBuyNowDisabled =
+    actionLoading || (!currentVariantInCart && availableQty === 0);
 
-  // Format weight for display
-  const formatWeight = (w, u) => {
-    if (!w || w <= 0) return null;
-    if (u === "g" && w >= 1000) return `${w / 1000} kg`;
-    return `${w}${u && u !== "piece" ? " " + u : " g"}`;
-  };
-
-  const resolveVariantLabel = (variant, baseProduct) => {
-    if (variant?.name) return variant.name;
-    const weightLabel = formatWeight(
-      variant?.weight || baseProduct?.weight,
-      variant?.unit || baseProduct?.unit,
-    );
-    return weightLabel || "";
-  };
-
-  // Loading State
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-[#f8f2ec]">
         <CircularProgress style={{ color: "var(--primary)" }} />
       </div>
     );
   }
 
-  // Product Not Found
   if (!product) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50">
-        <svg
-          className="w-24 h-24 text-gray-300 mb-4"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={1.5}
-            d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-          />
-        </svg>
-        <h2 className="text-2xl font-bold text-gray-700 mb-2">
-          Product Not Found
-        </h2>
-        <p className="text-gray-500 mb-4">
-          The product you are looking for does not exist or has been removed.
-        </p>
-        <Link href="/products">
-          <Button
-            variant="contained"
-            style={{ backgroundColor: "var(--primary)" }}
-          >
-            Browse Products
-          </Button>
-        </Link>
-      </div>
+      <section className="min-h-screen bg-[#f8f2ec] px-4 py-16">
+        <div className="mx-auto max-w-3xl rounded-[32px] border border-[#e7d7cb] bg-white p-10 text-center shadow-[0_28px_80px_-48px_rgba(52,32,20,0.35)]">
+          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#7c5e4e]">
+            Product Detail
+          </p>
+          <h1 className="mt-3 text-3xl font-semibold text-[#23150f]">
+            Product not found
+          </h1>
+          <p className="mt-4 text-base text-[#6a5548]">
+            The item you are trying to open is unavailable right now. Please
+            return to the catalog and choose another product.
+          </p>
+        </div>
+      </section>
     );
   }
 
-  const discount = calculateDiscount();
-  const images =
-    product.images || (product.image ? [product.image] : ["/product_1.png"]);
-  const productId = product?._id || product?.id;
-  const isVariantInCart = hasSelectedVariantInCart(
-    productId,
-    selectedVariant?._id || selectedVariant?.id || null,
-  );
-  const isBuyNowDisabled = !isVariantInCart && availableQty === 0;
-
   return (
     <section
-      className="py-4 sm:py-10 min-h-screen bg-[radial-gradient(circle_at_top_left,var(--flavor-glass),_transparent_36%),radial-gradient(circle_at_bottom_right,_rgba(14,165,233,0.12),_transparent_40%),linear-gradient(180deg,#f8fbff_0%,#eef9f2_100%)]"
-      data-product-id={String(productId || "")}
+      className="product-page-shell min-h-screen bg-[radial-gradient(circle_at_top,_#f7efe5_0%,_#fffaf5_42%,_#f4eee7_100%)] pb-20"
+      style={{
+        fontFamily: "var(--font-poppins), var(--font-inter), sans-serif",
+      }}
     >
-      <div
-        className="container px-3 sm:px-4"
-        style={{ fontFamily: "'Sora', 'Segoe UI', sans-serif" }}
-      >
-        {/* Breadcrumb */}
-        <nav className="flex items-center gap-2 text-xs sm:text-sm text-gray-500 mb-4 sm:mb-6 overflow-x-auto whitespace-nowrap pb-2">
-          <Link href="/" className="hover:text-primary">
+      <div className="mx-auto max-w-[1320px] px-4 py-6 sm:px-6 lg:px-8">
+        <div className="flex flex-wrap items-center gap-2 text-sm text-[#7f6657]">
+          <Link href="/" className="hover:text-[#23150f]">
             Home
           </Link>
           <span>/</span>
-          <Link href="/products" className="hover:text-primary">
+          <Link href="/products" className="hover:text-[#23150f]">
             Products
           </Link>
           <span>/</span>
-          {product.category && (
-            <>
-              <Link
-                href={`/products?category=${product.category._id || product.category}`}
-                className="hover:text-primary"
-              >
-                {product.category.name || product.categoryName || "Category"}
-              </Link>
-              <span>/</span>
-            </>
-          )}
-          <span className="text-gray-800 font-medium truncate max-w-[200px]">
-            {product.name || product.title}
+          <span className="font-medium text-[#23150f]">
+            {product?.name || product?.title}
           </span>
-        </nav>
+        </div>
 
-        {/* Main Product Section */}
-        <div
-          className="bg-white/75 backdrop-blur-xl border border-white/70 rounded-2xl sm:rounded-3xl shadow-[0_30px_80px_-55px_rgba(15,23,42,0.45)] p-4 sm:p-6 md:p-8 transition-all duration-500"
-          data-track-section="product_hero"
-        >
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8">
-            {/* Product Images */}
-            <div
-              className="relative"
-              data-track-section="product_image_gallery"
-              data-track-hover="product_image"
-              data-track-role="product-image"
-            >
-              {discount > 0 && (
-                <span className="absolute top-4 left-4 bg-red-500 text-white text-sm font-bold px-3 py-1 rounded-full z-10">
-                  {discount}% OFF
-                </span>
-              )}
-              <div className="absolute top-4 right-4 z-20">
-                <ShareButton
-                  variant="icon"
-                  showLabel={false}
-                  productId={productId}
-                  productName={product.name || product.title || "Product"}
-                  productDetails={{
-                    brand: product.brand,
-                    price: Number(activePrice || product.salePrice || 0),
-                    originalPrice: Number(
-                      activeOriginalPrice || product.regularPrice || 0,
-                    ),
-                    variantName: selectedVariant?.name,
-                    sku: displaySku,
-                  }}
-                />
+        <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(360px,0.95fr)]">
+          <div className="space-y-4">
+            <div className="product-hero-shell product-reveal product-reveal-delay-1 relative overflow-hidden rounded-[36px] border border-[#e1cdbf] bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.96)_0%,_rgba(250,240,231,0.95)_38%,_rgba(238,225,210,0.92)_100%)] p-4 shadow-[0_34px_90px_-55px_rgba(44,29,20,0.45)] sm:p-6">
+              <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.55)_0%,rgba(255,255,255,0)_55%)]" />
+              <div className="relative flex flex-wrap items-start justify-between gap-3">
+                <div className="inline-flex items-center gap-2 rounded-full border border-[#eadfd5] bg-white/90 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#6a4b39] backdrop-blur">
+                  Product gallery
+                </div>
+                {images.length > 1 ? (
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setActiveImageIndex((previous) =>
+                          previous === 0 ? images.length - 1 : previous - 1,
+                        )
+                      }
+                      className="flex h-10 w-10 items-center justify-center rounded-full border border-white/70 bg-white/85 text-[#1d3740] shadow-sm transition hover:-translate-y-0.5"
+                      aria-label="Previous image"
+                    >
+                      <FiChevronLeft />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setActiveImageIndex((previous) =>
+                          previous === images.length - 1 ? 0 : previous + 1,
+                        )
+                      }
+                      className="flex h-10 w-10 items-center justify-center rounded-full border border-white/70 bg-white/85 text-[#1d3740] shadow-sm transition hover:-translate-y-0.5"
+                      aria-label="Next image"
+                    >
+                      <FiChevronRight />
+                    </button>
+                  </div>
+                ) : null}
               </div>
-              <ProductZoom images={images} productId={productId} />
+
+              <div className={galleryGridClassName}>
+                <div className={imageStageClassName}>
+                  <div className="absolute inset-x-[16%] bottom-4 h-10 rounded-full bg-[#6a4331]/12 blur-2xl" />
+                  <img
+                    src={activeImage}
+                    alt={product?.name || product?.title || "Product image"}
+                    className="relative z-10 max-h-[380px] w-full object-contain drop-shadow-[0_26px_36px_rgba(60,36,24,0.18)]"
+                  />
+                </div>
+
+                {showHeroStoryCard ? (
+                  <div className="product-story-card product-reveal product-reveal-delay-2 rounded-[30px] border border-[#86614f] bg-[linear-gradient(155deg,_#3d2316_0%,_#6a4331_52%,_#8c634f_100%)] p-6 text-white shadow-[0_28px_60px_-45px_rgba(61,35,22,0.92)]">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#f1d9c9]">
+                      {mergeTextOverride(
+                        pageConfig?.hero?.storyEyebrow,
+                        "Product Story",
+                      )}
+                    </p>
+                    <h2 className="mt-3 text-2xl font-semibold leading-tight">
+                      {mergeTextOverride(
+                        pageConfig?.hero?.storyTitle,
+                        "A cleaner product story with the key buying details kept close to the decision point.",
+                      )}
+                    </h2>
+                    <p className="mt-4 text-sm leading-6 text-[#f8ebe2]">
+                      {mergeTextOverride(
+                        pageConfig?.hero?.storyDescription,
+                        "The refreshed detail page keeps product story, trust cues, pricing, and delivery context in one calm layout without pushing the buying actions too far away.",
+                      )}
+                    </p>
+                    <div className="mt-6 grid gap-3">
+                      {detailCards.slice(0, 2).map((card) => (
+                        <div
+                          key={card.label}
+                          className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3"
+                        >
+                          <p className="text-[11px] uppercase tracking-[0.16em] text-[#bad8e2]">
+                            {card.label}
+                          </p>
+                          <p className="mt-1 text-lg font-semibold">{card.value}</p>
+                          <p className="text-xs text-[#d9edf2]">{card.helper}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
             </div>
 
-            {/* Product Info */}
-            <div className="flex flex-col">
-              {/* Brand */}
-              {product.brand && (
-                <p className="text-xs font-bold uppercase tracking-wider text-primary mb-2">
-                  {product.brand}
-                </p>
-              )}
+            {images.length > 1 ? (
+              <div className="grid grid-cols-4 gap-3 sm:grid-cols-5">
+                {images.map((image, index) => (
+                  <button
+                    key={`${image}-${index}`}
+                    type="button"
+                    onClick={() => setActiveImageIndex(index)}
+                    className={`overflow-hidden rounded-[22px] border bg-white p-2 shadow-sm transition ${
+                      activeImageIndex === index
+                        ? "border-[#123b4a] shadow-[0_18px_40px_-28px_rgba(18,59,74,0.7)]"
+                        : "border-[#eadcd1] hover:-translate-y-0.5 hover:border-[#b9d0d8]"
+                    }`}
+                  >
+                    <div className="aspect-square rounded-[16px] bg-[#f9f3ed]">
+                      <img
+                        src={image}
+                        alt={`Preview ${index + 1}`}
+                        className="h-full w-full object-contain"
+                      />
+                    </div>
+                  </button>
+                ))}
+              </div>
+            ) : null}
 
-              {/* Title */}
-              <h1 className="text-xl sm:text-2xl md:text-4xl font-semibold tracking-tight text-gray-900 mb-3">
-                {product.name || product.title}
+          </div>
+
+          <div className="xl:sticky xl:top-[calc(var(--header-height)+20px)]">
+            <div className="product-reveal product-reveal-delay-2 rounded-[36px] border border-[#e1cdbf] bg-white/88 p-6 shadow-[0_34px_90px_-55px_rgba(44,29,20,0.38)] backdrop-blur sm:p-8">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7b6355]">
+                {product?.brand || "Healthy One Gram"}
+              </p>
+              <h1 className="mt-3 text-3xl font-semibold leading-tight text-[#24150f] sm:text-[2.55rem]">
+                {product?.name || product?.title}
               </h1>
 
-              {/* Weight Badge (only when no variants) */}
-              {!product.hasVariants && product.weight > 0 && (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold bg-gray-100 text-gray-700 mb-3 w-fit">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="w-4 h-4 text-gray-500"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={2}
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l3 9a5.002 5.002 0 006.001 0M18 7l-3 9m0-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3"
-                    />
-                  </svg>
-                  {product.weight}
-                  {product.unit && product.unit !== "piece"
-                    ? product.unit
-                    : "g"}
-                </span>
-              )}
-
-              {/* Rating */}
-              <div className="flex items-center gap-3 mb-4">
-                <Rating
-                  value={productRating}
-                  precision={0.5}
-                  readOnly
-                  size="small"
-                />
-                <span className="text-sm text-gray-500">
-                  ({customerReviewCount} reviews)
-                </span>
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <div className="inline-flex items-center gap-2 rounded-full border border-[#eaded5] bg-[#faf6f1] px-4 py-2 text-sm font-medium text-[#2f190f]">
+                  <Rating value={productRating} precision={0.5} readOnly size="small" />
+                  <span>{reviewSummaryLabel}</span>
+                </div>
+                <div className="inline-flex items-center gap-2 rounded-full border border-[#eaded5] bg-[#f4eadf] px-4 py-2 text-sm font-medium text-[#6a4b39]">
+                  <MdVerified className="text-base" />
+                  {heroStatusLabel}
+                </div>
+                <div className="ml-auto">
+                  <ShareButton
+                    productId={productId || DEMO_PRODUCT_ID}
+                    productName={product?.name || product?.title}
+                    variant="icon"
+                    iconSizeClass="h-11 w-11"
+                    iconGlyphClass="h-4 w-4"
+                  />
+                </div>
               </div>
 
-              {/* Size / Weight Variant Selector */}
-              {product.hasVariants && product.variants?.length > 0 && (
-                <div className="mb-5">
-                  <p className="text-sm text-gray-500 mb-2">
-                    Size:{" "}
-                    <span className="font-bold text-gray-900">
-                      {formatVariantLabel(selectedVariant) || "Select"}
-                    </span>
+              <p className="mt-5 text-base leading-7 text-[#5d4b41]">
+                {product?.shortDescription ||
+                  "A richer product detail layout with stronger visual storytelling, better CTA placement, and a cleaner lower content section."}
+              </p>
+
+              <div className="mt-7 flex flex-wrap items-end gap-3">
+                <p className="text-4xl font-semibold text-[#24150f]">
+                  {formatPrice(toNumber(activePrice, 0))}
+                </p>
+                {toNumber(activeOriginalPrice, 0) > toNumber(activePrice, 0) ? (
+                  <p className="pb-1 text-lg font-medium text-[#9a8476] line-through">
+                    {formatPrice(toNumber(activeOriginalPrice, 0))}
                   </p>
-                  <div className="flex flex-wrap gap-3">
-                    {product.variants.map((variant, idx) => {
-                      const isSelected = selectedVariant?._id === variant._id;
-                      const vStock = Math.max(
-                        Number(variant.stock_quantity ?? variant.stock ?? 0) -
-                          Number(variant.reserved_quantity ?? 0),
+                ) : null}
+                {toNumber(activeOriginalPrice, 0) > toNumber(activePrice, 0) ? (
+                  <span className="rounded-full bg-[#13202a] px-4 py-2 text-sm font-semibold text-white">
+                    Save{" "}
+                    {formatPrice(
+                      Math.max(
+                        toNumber(activeOriginalPrice, 0) -
+                          toNumber(activePrice, 0),
                         0,
-                      );
-                      const vDiscount =
-                        variant.discountPercent ||
-                        (variant.originalPrice &&
-                        variant.price &&
-                        variant.originalPrice > variant.price
-                          ? Math.round(
-                              ((variant.originalPrice - variant.price) /
-                                variant.originalPrice) *
-                                100,
-                            )
-                          : 0);
+                      ),
+                    )}
+                  </span>
+                ) : null}
+              </div>
+
+              {product?.hasVariants && Array.isArray(product?.variants) ? (
+                <div className="mt-8">
+                  <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#7b6355]">
+                    Weight / Pack
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-3">
+                    {product.variants.map((variant) => {
+                      const variantId = variant?._id || variant?.id;
+                      const isSelected =
+                        String(variantId || "") ===
+                        String(selectedVariantId || "");
+
                       return (
                         <button
-                          key={variant._id || idx}
+                          key={variantId || variant.name}
                           type="button"
                           onClick={() => {
                             setSelectedVariant(variant);
+                            setActiveImageIndex(0);
                             setQuantity(1);
                           }}
-                          className={`relative flex flex-col items-start rounded-xl border-2 px-4 py-3 min-w-[140px] transition-all duration-200 text-left ${
+                          className={`rounded-2xl border px-5 py-3 text-left text-sm font-semibold transition ${
                             isSelected
-                              ? "border-primary bg-[var(--flavor-glass)] shadow-md"
-                              : "border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm"
-                          } ${vStock === 0 ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
-                          disabled={vStock === 0}
+                              ? "border-[#121212] bg-[#121212] text-white"
+                              : "border-[#d5c3b7] bg-white text-[#38231a] hover:-translate-y-0.5"
+                          }`}
                         >
-                          {vDiscount > 0 && (
-                            <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-                              {vDiscount}%
-                            </span>
-                          )}
-                          {variant.isDefault && (
-                            <span className="absolute -top-2 left-2 bg-blue-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-                              Popular
-                            </span>
-                          )}
-                          <span
-                            className={`text-sm font-bold ${isSelected ? "text-primary" : "text-gray-900"}`}
-                          >
-                            {formatVariantLabel(variant)}
-                          </span>
-                          <span className="text-base font-extrabold text-gray-900 mt-1">
-                            {formatPrice(Number(variant.price || 0))}
-                          </span>
-                          {variant.originalPrice &&
-                            variant.originalPrice > variant.price && (
-                              <span className="text-xs text-gray-400 line-through">
-                                {formatPrice(
-                                  Number(variant.originalPrice || 0),
-                                )}
-                              </span>
-                            )}
-                          <span
-                            className={`text-[11px] font-semibold mt-1 ${vStock > 0 ? "text-green-600" : "text-red-500"}`}
-                          >
-                            {vStock > 0 ? "In stock" : "Out of stock"}
-                          </span>
+                          {formatVariantLabel(variant)}
                         </button>
                       );
                     })}
                   </div>
                 </div>
-              )}
+              ) : null}
 
-              {/* Price */}
-              <div
-                className="flex items-center gap-2 sm:gap-4 mb-4 sm:mb-6 flex-wrap"
-                data-track-section="product_price_block"
-                data-track-hover="product_price"
-                data-track-role="price"
-              >
-                <span className="text-2xl sm:text-3xl font-extrabold text-gray-900">
-                  {formatPrice(Number(activePrice || product.salePrice || 0))}
-                </span>
-                {(activeOriginalPrice || product.regularPrice) &&
-                  (activeOriginalPrice || product.regularPrice) >
-                    (activePrice || 0) && (
-                    <span className="text-lg sm:text-xl text-gray-400 line-through">
-                      {formatPrice(
-                        Number(
-                          activeOriginalPrice || product.regularPrice || 0,
-                        ),
-                      )}
+              {showHeroDeliveryPreview ? (
+                <div className="mt-8 rounded-[28px] border border-[#e3d4c9] bg-[#fbf7f2] p-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#7b6355]">
+                      Delivery Preview
+                    </p>
+                    <span className="text-xs font-medium text-[#5d4b41]">
+                      {deliveryReady ? "Ready" : "Optional"}
                     </span>
-                  )}
-                {discount > 0 && (
-                  <span className="text-sm font-bold text-primary bg-[var(--flavor-glass)] px-2 py-1 rounded">
-                    Save{" "}
-                    {formatPrice(
-                      Number(
-                        (activeOriginalPrice || product.regularPrice || 0) -
-                          (activePrice || product.salePrice || 0),
-                      ),
-                    )}
-                  </span>
-                )}
+                  </div>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={6}
+                    value={deliveryPincode}
+                    onChange={(event) =>
+                      setDeliveryPincode(
+                        event.target.value.replace(/\D/g, "").slice(0, 6),
+                      )
+                    }
+                    placeholder="Enter pincode"
+                    className="mt-4 h-14 w-full rounded-2xl border border-[#d8c6bb] bg-white px-4 text-base text-[#24150f] outline-none transition focus:border-[#6a4331] focus:ring-2 focus:ring-[#6a4331]/10"
+                  />
+                  <p className="mt-3 text-sm text-[#5d4b41]">{deliveryMessage}</p>
+                </div>
+              ) : null}
+
+              <div className="mt-8 flex flex-wrap items-center justify-between gap-4 rounded-[28px] border border-[#e3d4c9] bg-[#fbf7f2] p-5">
+                <div>
+                  <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#7b6355]">
+                    Quantity
+                  </p>
+                  <div className="mt-3 inline-flex items-center gap-3 rounded-2xl border border-[#d8c6bb] bg-white p-2">
+                    <button
+                      type="button"
+                      onClick={() => setQuantity((previous) => Math.max(previous - 1, 1))}
+                      className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#f5ece5] text-lg font-semibold text-[#24150f] transition hover:bg-[#eadacc]"
+                    >
+                      -
+                    </button>
+                    <span className="min-w-[40px] text-center text-lg font-semibold text-[#24150f]">
+                      {quantity}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setQuantity((previous) => Math.min(previous + 1, maxQty))
+                      }
+                      className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#f5ece5] text-lg font-semibold text-[#24150f] transition hover:bg-[#eadacc]"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#7b6355]">
+                    Availability
+                  </p>
+                  <p className="mt-3 text-base font-semibold text-[#24150f]">
+                    {availabilityLabel}
+                  </p>
+                  <p className="mt-1 text-sm text-[#5d4b41]">
+                    {displaySku
+                      ? `SKU: ${displaySku}`
+                      : "Availability syncs with your selected pack"}
+                  </p>
+                </div>
               </div>
 
-              {/* High Traffic Alert Banner - Prominent notice for high demand products */}
-              {product.demandStatus === "HIGH" && (
-                <div className="mb-6 p-4 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl">
-                  <div className="flex items-start gap-3">
-                    <div className="p-2 bg-amber-100 rounded-lg">
-                      <HiOutlineFire className="w-5 h-5 text-amber-600" />
+              <div className="mt-8 grid gap-3 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={handleAddToCart}
+                  disabled={actionLoading || (!currentVariantInCart && availableQty === 0)}
+                  className="flex min-h-[58px] items-center justify-center gap-3 rounded-2xl border border-[#1f1612] bg-white px-5 py-4 text-base font-semibold text-[#1f1612] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <IoMdCart className="text-xl" />
+                  {currentVariantInCart ? "Remove from Cart" : "Add to Cart"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleBuyNow}
+                  disabled={isBuyNowDisabled}
+                  className="product-cta-primary min-h-[58px] rounded-2xl bg-[#121212] px-5 py-4 text-base font-semibold text-white transition hover:-translate-y-0.5 hover:bg-[#000] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Buy Now
+                </button>
+              </div>
+
+              <div className="mt-8 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-[24px] border border-[#e7dad1] bg-[#faf6f2] p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#2f1b12] text-white">
+                      <MdLocalShipping className="text-xl" />
                     </div>
-                    <div className="flex-1">
-                      <h4 className="font-semibold text-amber-800 text-sm">
-                        High Traffic Product
-                      </h4>
-                      <p className="text-amber-700 text-sm mt-0.5">
-                        This product is in high demand. Stock availability may
-                        vary. Your order will be confirmed once processed.
+                    <div>
+                      <p className="font-semibold text-[#24150f]">Free Delivery</p>
+                      <p className="text-sm text-[#5d4b41]">
+                        Stronger utility near the CTA block.
                       </p>
                     </div>
                   </div>
                 </div>
-              )}
-
-              {/* Short Description */}
-              {product.shortDescription && (
-                <p className="text-gray-600 mb-6 leading-relaxed">
-                  {product.shortDescription}
-                </p>
-              )}
-
-              {/* Demand Status Badge */}
-              <div className="flex items-center gap-2 mb-6">
-                {product.demandStatus === "HIGH" ? (
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold bg-red-100 text-red-600">
-                    <HiOutlineFire className="w-4 h-4" />
-                    High Demand
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold bg-[var(--flavor-glass)] text-primary">
-                    <span className="w-2 h-2 bg-primary rounded-full"></span>
-                    Available
-                  </span>
-                )}
-              </div>
-
-              {/* Quantity & Add to Cart */}
-              <div className="mb-6" data-track-section="product_cta">
-                {!isInCart(product._id || product.id) && (
-                  <div className="flex items-center gap-3 mb-4">
-                    <span className="text-gray-700 font-medium">Qty:</span>
-                    <div className="flex flex-col">
-                      <QtyBox
-                        value={quantity}
-                        onChange={setQuantity}
-                        max={maxQty}
-                      />
-                      {availableQty === 0 ? (
-                        <span className="text-xs text-red-500 mt-1">
-                          Out of stock
-                        </span>
-                      ) : availableQty <= 10 ? (
-                        <span className="text-xs text-orange-600 mt-1">
-                          Only {availableQty} left
-                        </span>
-                      ) : null}
+                <div className="rounded-[24px] border border-[#e7dad1] bg-[#faf6f2] p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#2f1b12] text-white">
+                      <MdOutlineSecurity className="text-xl" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-[#24150f]">Secure Payment</p>
+                      <p className="text-sm text-[#5d4b41]">
+                        Checkout trust signal stays visible.
+                      </p>
                     </div>
                   </div>
-                )}
-
-                <div className="flex items-stretch gap-2 sm:gap-3 w-full">
-                  <Button
-                    variant="contained"
-                    size="large"
-                    startIcon={<IoMdCart />}
-                    onClick={handleAddToCart}
-                    data-track="product_cta_add_to_cart"
-                    data-product-id={String(productId || "")}
-                    disabled={
-                      !isInCart(product._id || product.id) && availableQty === 0
-                    }
-                    className="!flex-1"
-                    sx={{
-                      minHeight: "56px",
-                      minWidth: 0,
-                      backgroundColor: isInCart(product._id || product.id)
-                        ? "#dc2626"
-                        : "var(--primary)",
-                      "&:hover": {
-                        backgroundColor: isInCart(product._id || product.id)
-                          ? "#b91c1c"
-                          : "var(--flavor-hover)",
-                      },
-                      padding: { xs: "12px 14px", sm: "12px 32px" },
-                      borderRadius: "14px",
-                      fontWeight: 700,
-                      textTransform: "none",
-                      fontSize: { xs: "15px", sm: "16px" },
-                      whiteSpace: "nowrap",
-                      "& .MuiButton-startIcon": {
-                        marginRight: { xs: "6px", sm: "8px" },
-                        marginLeft: 0,
-                      },
-                      boxShadow: isInCart(product._id || product.id)
-                        ? "0 16px 30px -20px rgba(220,38,38,0.85)"
-                        : "0 16px 30px -20px rgba(var(--flavor-badge),0.85)",
-                    }}
-                  >
-                    {isInCart(product._id || product.id)
-                      ? "Remove from Cart"
-                      : "Add to Cart"}
-                  </Button>
-
-                  <Button
-                    variant="contained"
-                    size="large"
-                    onClick={handleBuyNow}
-                    data-track="product_cta_buy_now"
-                    data-product-id={String(productId || "")}
-                    disabled={isBuyNowDisabled}
-                    className="!flex-1"
-                    sx={{
-                      minHeight: "56px",
-                      minWidth: 0,
-                      backgroundColor: "#dc2626",
-                      color: "#fff",
-                      "&:hover": {
-                        backgroundColor: "#b91c1c",
-                      },
-                      padding: { xs: "12px 14px", sm: "12px 20px" },
-                      borderRadius: "14px",
-                      textTransform: "none",
-                      fontWeight: 700,
-                      fontSize: { xs: "15px", sm: "16px" },
-                      whiteSpace: "nowrap",
-                      boxShadow: "0 16px 30px -20px rgba(220,38,38,0.7)",
-                    }}
-                  >
-                    Buy Now
-                  </Button>
                 </div>
-              </div>
-
-              {/* Features */}
-              <div className="grid grid-cols-2 gap-4 py-6 border-t border-b border-gray-100">
-                <div className="flex items-center gap-3">
-                  <MdLocalShipping className="text-2xl text-primary" />
-                  <div>
-                    <p className="font-semibold text-gray-800 text-sm">
-                      Free Delivery
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      On all orders (₹0 shipping)
-                    </p>
+                <div className="rounded-[24px] border border-[#e7dad1] bg-[#faf6f2] p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#2f1b12] text-white">
+                      <MdVerified className="text-xl" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-[#24150f]">Authentic Product</p>
+                      <p className="text-sm text-[#5d4b41]">
+                        Premium surface with useful proof points.
+                      </p>
+                    </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <MdVerified className="text-2xl text-primary" />
-                  <div>
-                    <p className="font-semibold text-gray-800 text-sm">
-                      Quality Products
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      Fresh & authentic items
-                    </p>
+                <div className="rounded-[24px] border border-[#e7dad1] bg-[#faf6f2] p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#2f1b12] text-white">
+                      <MdOutlineInventory2 className="text-xl" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-[#24150f]">Clear Inventory</p>
+                      <p className="text-sm text-[#5d4b41]">
+                        Variant-aware stock display for better decisions.
+                      </p>
+                    </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <MdVerified className="text-2xl text-primary" />
-                  <div>
-                    <p className="font-semibold text-gray-800 text-sm">
-                      100% Authentic
-                    </p>
-                    <p className="text-xs text-gray-500">Quality guaranteed</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <MdPolicy className="text-2xl text-primary" />
-                  <div>
-                    <p className="font-semibold text-gray-800 text-sm">
-                      Secure Payment
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      100% secure checkout
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* SKU & Category */}
-              <div className="mt-6 text-sm text-gray-500">
-                {displaySku && (
-                  <p>
-                    <span className="font-medium">SKU:</span> {displaySku}
-                  </p>
-                )}
-                {product.category && (
-                  <p>
-                    <span className="font-medium">Category:</span>{" "}
-                    <Link
-                      href={`/products?category=${product.category._id || product.category}`}
-                      className="text-primary hover:underline"
-                    >
-                      {product.category.name ||
-                        product.categoryName ||
-                        "View Category"}
-                    </Link>
-                  </p>
-                )}
               </div>
             </div>
           </div>
         </div>
 
-        {/* Tabs Section */}
-        <div
-          className="bg-white/75 backdrop-blur-xl border border-white/70 rounded-2xl sm:rounded-3xl shadow-[0_24px_70px_-50px_rgba(30,41,59,0.55)] mt-8 p-6 md:p-8"
-          data-track-section="product_details_tabs"
-        >
-          {/* Tab Headers */}
-          <div className="flex border-b border-gray-200">
-            {["description", "reviews", "shipping"].map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                data-track={`product_tab_${tab}`}
-                className={`px-6 py-3 font-semibold text-sm capitalize transition-colors ${
-                  activeTab === tab
-                    ? "text-primary border-b-2 border-primary"
-                    : "text-gray-500 hover:text-gray-700"
-                }`}
-              >
-                {tab === "reviews" ? `Reviews (${customerReviewCount})` : tab}
-              </button>
-            ))}
+        {showHeroInsightCards ? (
+          <div className="mt-8 grid gap-4 md:grid-cols-3">
+            <div className="rounded-[26px] border border-[#e4d5ca] bg-white/85 p-5 shadow-[0_24px_50px_-40px_rgba(42,28,20,0.45)]">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#876958]">
+                {mergeTextOverride(
+                  pageConfig?.hero?.priceCardEyebrow,
+                  "Price Focus",
+                )}
+              </p>
+              <p className="mt-2 text-3xl font-semibold text-[#24150f]">
+                {formatPrice(toNumber(activePrice, 0))}
+              </p>
+              <p className="mt-2 text-sm text-[#6d584a]">
+                {mergeTextOverride(
+                  pageConfig?.hero?.priceCardDescription,
+                  "Clean, high-contrast pricing with supporting variant context.",
+                )}
+              </p>
+            </div>
+            <div className="rounded-[26px] border border-[#e4d5ca] bg-white/85 p-5 shadow-[0_24px_50px_-40px_rgba(42,28,20,0.45)]">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#876958]">
+                {mergeTextOverride(
+                  pageConfig?.hero?.variantCardEyebrow,
+                  "Variant View",
+                )}
+              </p>
+              <p className="mt-2 text-xl font-semibold text-[#24150f]">
+                {selectedPackLabel}
+              </p>
+              <p className="mt-2 text-sm text-[#6d584a]">
+                {mergeTextOverride(
+                  pageConfig?.hero?.variantCardDescription,
+                  "Easy-to-scan options that stay near the CTA block.",
+                )}
+              </p>
+            </div>
+            <div className="rounded-[26px] border border-[#e4d5ca] bg-white/85 p-5 shadow-[0_24px_50px_-40px_rgba(42,28,20,0.45)]">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#876958]">
+                {mergeTextOverride(
+                  pageConfig?.hero?.socialProofEyebrow,
+                  "Social Proof",
+                )}
+              </p>
+              <p className="mt-2 text-xl font-semibold text-[#24150f]">
+                {reviewSummaryLabel}
+              </p>
+              <p className="mt-2 text-sm text-[#6d584a]">
+                {mergeTextOverride(
+                  pageConfig?.hero?.socialProofDescription,
+                  "Reviews move closer to the content shoppers read before buying.",
+                )}
+              </p>
+            </div>
+          </div>
+        ) : null}
+
+        {tabs.length > 0 ? (
+          <div className="mt-8 rounded-[36px] border border-[#e1cdbf] bg-white/88 p-4 shadow-[0_34px_90px_-55px_rgba(44,29,20,0.38)] backdrop-blur sm:p-6">
+            <div className="flex flex-wrap gap-3">
+              {tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`rounded-2xl px-5 py-3 text-sm font-semibold transition ${
+                    activeTab === tab.id
+                      ? "bg-[#121212] text-white"
+                      : "border border-[#d6c5b9] bg-white text-[#38231a] hover:-translate-y-0.5"
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="mt-6">
+              {activeTab === "description" && showDescriptionSection ? (
+                <div className="grid gap-6 xl:grid-cols-[minmax(0,0.94fr)_minmax(320px,0.78fr)]">
+                  {pageConfig?.descriptionSection?.showEditorialBanner !== false ? (
+                    <div className="overflow-hidden rounded-[32px] bg-[linear-gradient(135deg,_#2f1b12_0%,_#6b4331_42%,_#9a6b54_100%)] p-6 text-white shadow-[0_28px_60px_-44px_rgba(47,27,18,0.88)] sm:p-8">
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#f2dbc7]">
+                        {mergeTextOverride(
+                          pageConfig?.descriptionSection?.editorialEyebrow,
+                          "Featured Overview",
+                        )}
+                      </p>
+                      <div className="mt-5 grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)] lg:items-center">
+                        <div className="rounded-[28px] bg-white/10 p-4">
+                          <img
+                            src={activeImage}
+                            alt={product?.name || product?.title || "Product showcase"}
+                            className="mx-auto max-h-[280px] w-full object-contain"
+                          />
+                        </div>
+                        <div>
+                          <h2 className="text-3xl font-semibold leading-tight">
+                            {mergeTextOverride(
+                              pageConfig?.descriptionSection?.editorialTitle,
+                              "A stronger product story can live right beside the product without overwhelming the transaction.",
+                            )}
+                          </h2>
+                          <p className="mt-4 text-base leading-7 text-[#f8ebe2]">
+                            {mergeTextOverride(
+                              pageConfig?.descriptionSection?.editorialDescription,
+                              "This section gives longer-form content a more intentional home, helping the product feel more premium while keeping the purchase path above it calm and focused.",
+                            )}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {pageConfig?.descriptionSection?.showDescriptionFlow !== false ? (
+                    <div className="rounded-[32px] border border-[#e7dad1] bg-[#fbf7f2] p-6 sm:p-8">
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7b6355]">
+                        {mergeTextOverride(
+                          pageConfig?.descriptionSection?.flowEyebrow,
+                          "Description Flow",
+                        )}
+                      </p>
+                      <div className="mt-5 space-y-5 text-base leading-7 text-[#4b392f]">
+                        {product?.description ? (
+                          <div
+                            className="max-w-none text-[#4b392f]"
+                            dangerouslySetInnerHTML={{
+                              __html: sanitizeHTML(product.description),
+                            }}
+                          />
+                        ) : null}
+                        {descriptionParagraphs.map((paragraph) => (
+                          <p key={paragraph}>{paragraph}</p>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {activeTab === "details" && showDetailsSection ? (
+                <div className="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(320px,0.75fr)]">
+                  {pageConfig?.detailsSection?.showCards !== false ? (
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      {detailCards.map((card) => (
+                        <div
+                          key={card.label}
+                          className="rounded-[28px] border border-[#e7dad1] bg-[#fbf7f2] p-6"
+                        >
+                          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7b6355]">
+                            {card.label}
+                          </p>
+                          <p className="mt-3 text-2xl font-semibold text-[#24150f]">
+                            {card.value}
+                          </p>
+                          <p className="mt-2 text-sm leading-6 text-[#5d4b41]">
+                            {card.helper}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                  {pageConfig?.detailsSection?.showSnapshot !== false ? (
+                    <div className="rounded-[32px] border border-[#e7dad1] bg-white p-6 shadow-[0_24px_50px_-42px_rgba(42,28,20,0.3)] sm:p-8">
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7b6355]">
+                        {mergeTextOverride(
+                          pageConfig?.detailsSection?.snapshotEyebrow,
+                          "Snapshot",
+                        )}
+                      </p>
+                      <div className="mt-5 space-y-4">
+                        {snapshotItems.map((item) => (
+                          <div
+                            key={item}
+                            className="rounded-2xl border border-[#efe4dc] bg-[#fbf7f2] px-4 py-4 text-sm leading-6 text-[#4b392f]"
+                          >
+                            {item}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {activeTab === "shipping" && showShippingSection ? (
+                <div className="grid gap-6 xl:grid-cols-[minmax(0,0.88fr)_minmax(320px,0.82fr)]">
+                  {pageConfig?.shippingSection?.showPoints !== false ? (
+                    <div className="rounded-[32px] border border-[#e7dad1] bg-white p-6 shadow-[0_24px_50px_-42px_rgba(42,28,20,0.3)] sm:p-8">
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7b6355]">
+                        {mergeTextOverride(
+                          pageConfig?.shippingSection?.pointsEyebrow,
+                          "Shipping & Trust",
+                        )}
+                      </p>
+                      <div className="mt-5 space-y-4">
+                        {shippingPoints.map((item) => (
+                          <div
+                            key={item}
+                            className="rounded-2xl border border-[#efe4dc] bg-[#fbf7f2] px-4 py-4 text-sm leading-6 text-[#4b392f]"
+                          >
+                            {item}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  {pageConfig?.shippingSection?.showReasonsPanel !== false ? (
+                    <div className="rounded-[32px] bg-[linear-gradient(135deg,_#f1e5da_0%,_#fffdfb_46%,_#efe1d2_100%)] p-6 shadow-[0_24px_50px_-42px_rgba(42,28,20,0.3)] sm:p-8">
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#6f5a4c]">
+                        {mergeTextOverride(
+                          pageConfig?.shippingSection?.reasonsEyebrow,
+                          "Why This Feels Better",
+                        )}
+                      </p>
+                      <div className="mt-5 space-y-4 text-sm leading-6 text-[#4b392f]">
+                        {mergeListWithDefaults(
+                          pageConfig?.shippingSection?.reasonsParagraphs || [],
+                          [
+                            "The refreshed structure keeps support information within reach without drowning the buyer in a wall of plain text.",
+                            "Trust markers, delivery context, and review content now sit in a more natural sequence after the hero instead of feeling detached from the decision point.",
+                            "The result is a calmer, more premium product page that still stays conversion-focused.",
+                          ],
+                        ).map((paragraph) => (
+                          <p key={paragraph}>{paragraph}</p>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+
+        {showReviewsSection ? (
+          <div className="product-reveal product-reveal-delay-3 mt-10 rounded-[36px] border border-[#e1cdbf] bg-white/88 p-6 shadow-[0_34px_90px_-55px_rgba(44,29,20,0.38)] backdrop-blur sm:p-8">
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7b6355]">
+                {mergeTextOverride(
+                  pageConfig?.reviewsSection?.eyebrow,
+                  "Review Section",
+                )}
+              </p>
+              <h2 className="mt-2 text-3xl font-semibold text-[#24150f]">
+                {mergeTextOverride(
+                  pageConfig?.reviewsSection?.title,
+                  "Reviews below the story, closer to the buy decision",
+                )}
+              </h2>
+            </div>
+            <div className="rounded-[24px] border border-[#eaded5] bg-[#f6efe7] px-5 py-4 text-right">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#6a4b39]">
+                Average Rating
+              </p>
+              <div className="mt-2 flex items-center justify-end gap-3">
+                <span className="text-2xl font-semibold text-[#2f1b12]">
+                  {productRating > 0 ? productRating.toFixed(1) : "0.0"}
+                </span>
+                <Rating value={productRating} precision={0.5} readOnly size="small" />
+              </div>
+            </div>
           </div>
 
-          {/* Tab Content */}
-          <div className="py-6">
-            {activeTab === "description" && (
-              <div
-                className="prose max-w-none text-gray-600"
-                data-track-section="product_description"
-              >
-                {product.description ? (
-                  <div
-                    dangerouslySetInnerHTML={{
-                      __html: sanitizeHTML(product.description),
-                    }}
-                  />
-                ) : (
-                  <p>
-                    {product.shortDescription || "No description available."}
-                  </p>
+          <div className="mt-6">
+            {reviewsLoading ? (
+              <p className="text-sm text-[#6d584a]">Loading reviews...</p>
+            ) : displayReviews.length > 0 ? (
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {displayReviews.slice(0, 6).map((review, index) => (
+                  <article
+                    key={review?._id || `${review?.userName || "review"}-${index}`}
+                    className="product-review-card rounded-[28px] border border-[#e7dad1] bg-[#fbf7f2] p-6 shadow-[0_24px_50px_-42px_rgba(42,28,20,0.28)]"
+                  >
+                    <div className="flex items-center gap-4">
+                      {review?.avatar ? (
+                        <img
+                          src={getImageUrl(review.avatar)}
+                          alt={review?.userName || "Customer"}
+                          className="h-14 w-14 rounded-2xl object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#2f1b12] text-base font-semibold text-white">
+                          {getReviewInitials(review)}
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <p className="font-semibold text-[#24150f]">
+                          {review?.userName || "Customer"}
+                        </p>
+                        <p className="text-sm text-[#6d584a]">
+                          {[review?.city, formatReviewDate(review?.createdAt)]
+                            .filter(Boolean)
+                            .join("  •  ")}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-4">
+                      <Rating
+                        value={Math.max(Number(review?.rating || 0), 0)}
+                        readOnly
+                        size="small"
+                      />
+                    </div>
+                    <p className="mt-4 text-sm leading-7 text-[#4b392f]">
+                      {review?.comment || "No written comment available."}
+                    </p>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-[28px] border border-dashed border-[#d9c8bc] bg-[#fbf7f2] p-8 text-center text-[#5d4b41]">
+                {mergeTextOverride(
+                  pageConfig?.reviewsSection?.emptyState,
+                  "No reviews yet. This upgraded layout is ready for real review content as soon as customer feedback is available.",
                 )}
               </div>
             )}
+          </div>
+          </div>
+        ) : null}
 
-            {activeTab === "reviews" && (
-              <div data-track-section="product_reviews">
-                {reviewsLoading ? (
-                  <p className="text-gray-500">Loading reviews...</p>
-                ) : customerReviews.length > 0 ? (
-                  <div className="space-y-4">
-                    {customerReviews.map((review) => (
-                      <div
-                        key={review._id}
-                        className="border-b border-gray-100 pb-4"
-                      >
-                        <div className="flex items-center gap-3 mb-2">
-                          <Rating value={review.rating} size="small" readOnly />
-                          <span className="font-medium">
-                            {review.userName || "Customer"}
-                            {review.city ? (
-                              <span className="text-gray-400 text-xs ml-2">
-                                {review.city}
-                              </span>
-                            ) : null}
-                          </span>
-                          <span className="text-xs text-gray-400">
-                            {new Date(review.createdAt).toLocaleDateString()}
-                          </span>
+        {!isDemoPreview ? (
+          <>
+            {showFrequentlyBoughtSection ? (
+              <div className="product-reveal product-reveal-delay-3 mt-12 rounded-[36px] border border-[#e1cdbf] bg-white/88 p-6 shadow-[0_34px_90px_-55px_rgba(44,29,20,0.38)] backdrop-blur sm:p-8">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7b6355]">
+                      {mergeTextOverride(
+                        pageConfig?.frequentlyBoughtSection?.eyebrow,
+                        "Frequently Bought Together",
+                      )}
+                    </p>
+                    <h2 className="mt-2 text-3xl font-semibold text-[#24150f]">
+                      {mergeTextOverride(
+                        pageConfig?.frequentlyBoughtSection?.title,
+                        "Helpful add-ons close to the primary product",
+                      )}
+                    </h2>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleAddAllToCart}
+                    disabled={frequentlyBought.length === 0}
+                    className="rounded-2xl bg-[#121212] px-5 py-3 text-sm font-semibold text-white transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {mergeTextOverride(
+                      pageConfig?.frequentlyBoughtSection?.buttonText,
+                      "Add All To Cart",
+                    )}
+                  </button>
+                </div>
+
+                <div className="mt-6">
+                  {fbtLoading ? (
+                    <p className="text-sm text-[#6d584a]">Loading suggestions...</p>
+                  ) : frequentlyBought.length > 0 ? (
+                    <div className="grid gap-4 lg:grid-cols-4">
+                      <div className="rounded-[28px] border border-[#e7dad1] bg-[#fbf7f2] p-5">
+                        <div className="flex items-center gap-4">
+                          <div className="flex h-[72px] w-[72px] items-center justify-center rounded-2xl border border-[#efe4dc] bg-white p-2">
+                            <img
+                              src={activeImage}
+                              alt={product?.name || product?.title}
+                              className="h-full w-full object-contain"
+                            />
+                          </div>
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#7b6355]">
+                              Main Product
+                            </p>
+                            <h3 className="mt-1 text-sm font-semibold text-[#24150f]">
+                              {product?.name || product?.title}
+                            </h3>
+                            <p className="mt-2 text-sm font-semibold text-[#6a4331]">
+                              {formatPrice(toNumber(activePrice, 0))}
+                            </p>
+                          </div>
                         </div>
-                        <p className="text-gray-600">{review.comment}</p>
                       </div>
+
+                      {frequentlyBought.map((item, index) => {
+                        const recommendation = getRecommendationPayload(item);
+                        if (!recommendation?.product) return null;
+
+                        const recProduct = recommendation.product;
+                        const recProductId = getResolvedProductId(recProduct);
+                        const isAdded = hasSelectedVariantInCart(
+                          recProductId,
+                          recommendation.variantId,
+                        );
+
+                        return (
+                          <div
+                            key={`${String(recProductId)}:${String(recommendation.variantId || "base")}:${index}`}
+                            className="rounded-[28px] border border-[#e7dad1] bg-[#fbf7f2] p-5"
+                          >
+                            <div className="flex items-center gap-4">
+                              <div className="flex h-[72px] w-[72px] items-center justify-center rounded-2xl border border-[#efe4dc] bg-white p-2">
+                                <img
+                                  src={getImageUrl(recommendation.image)}
+                                  alt={recProduct?.name || "Suggested product"}
+                                  className="h-full w-full object-contain"
+                                />
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#7b6355]">
+                                  Add-on
+                                </p>
+                                <h3 className="line-clamp-2 text-sm font-semibold text-[#24150f]">
+                                  {recProduct?.name || recProduct?.title}
+                                </h3>
+                                {recommendation.label ? (
+                                  <p className="mt-1 text-xs text-[#6d584a]">
+                                    {recommendation.label}
+                                  </p>
+                                ) : null}
+                                <p className="mt-2 text-sm font-semibold text-[#6a4331]">
+                                  {formatPrice(toNumber(recommendation.price, 0))}
+                                </p>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleAddSingleRecommendation(item)}
+                              disabled={isAdded}
+                              className={`mt-4 w-full rounded-2xl px-4 py-3 text-sm font-semibold transition ${
+                                isAdded
+                                  ? "border border-[#6a4331] bg-white text-[#6a4331]"
+                                  : "bg-[#121212] text-white hover:-translate-y-0.5"
+                              }`}
+                            >
+                              {isAdded ? "Added" : "Add to Cart"}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-[#6d584a]">
+                      {mergeTextOverride(
+                        pageConfig?.frequentlyBoughtSection?.emptyState,
+                        "No suggestions available yet.",
+                      )}
+                    </p>
+                  )}
+                </div>
+              </div>
+            ) : null}
+
+            {showRecommendedCombosSection ? (
+              <div className="product-reveal product-reveal-delay-3 mt-12 rounded-[36px] border border-[#e1cdbf] bg-white/88 p-6 shadow-[0_34px_90px_-55px_rgba(44,29,20,0.38)] backdrop-blur sm:p-8">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7b6355]">
+                      {mergeTextOverride(
+                        pageConfig?.recommendedCombosSection?.eyebrow,
+                        "Recommended Combos",
+                      )}
+                    </p>
+                    <h2 className="mt-2 text-3xl font-semibold text-[#24150f]">
+                      {mergeTextOverride(
+                        pageConfig?.recommendedCombosSection?.title,
+                        "Bundle options that support the same buying flow",
+                      )}
+                    </h2>
+                  </div>
+                  <Link
+                    href="/combo-deals"
+                    className="text-sm font-semibold text-[#6a4331]"
+                  >
+                    {mergeTextOverride(
+                      pageConfig?.recommendedCombosSection?.linkText,
+                      "View all combos",
+                    )}
+                  </Link>
+                </div>
+
+                <div className="mt-6">
+                  {recommendedLoading ? (
+                    <p className="text-sm text-[#6d584a]">Loading combos...</p>
+                  ) : recommendedCombos.length > 0 ? (
+                    <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">
+                      {recommendedCombos.map((combo) => (
+                        <ComboCard
+                          key={combo._id || combo.slug}
+                          combo={combo}
+                          context="product_recommended_combos"
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-[#6d584a]">
+                      {mergeTextOverride(
+                        pageConfig?.recommendedCombosSection?.emptyState,
+                        "No recommended combos available right now.",
+                      )}
+                    </p>
+                  )}
+                </div>
+              </div>
+            ) : null}
+
+            {showRelatedProductsSection ? (
+              <div className="product-reveal product-reveal-delay-3 mt-12 rounded-[36px] border border-[#e1cdbf] bg-white/88 p-6 shadow-[0_34px_90px_-55px_rgba(44,29,20,0.38)] backdrop-blur sm:p-8">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7b6355]">
+                  {mergeTextOverride(
+                    pageConfig?.relatedProductsSection?.eyebrow,
+                    "Related Products",
+                  )}
+                </p>
+                <h2 className="mt-2 text-3xl font-semibold text-[#24150f]">
+                  {mergeTextOverride(
+                    pageConfig?.relatedProductsSection?.title,
+                    "More products in the same browsing mood",
+                  )}
+                </h2>
+                {relatedProducts.length > 0 ? (
+                  <div className="mt-6 grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">
+                    {relatedProducts.slice(0, 5).map((item) => (
+                      <ProductItem
+                        key={item._id || item.id}
+                        id={item._id || item.id}
+                        name={item.name || item.title}
+                        brand={item.brand || "Healthy One Gram"}
+                        price={item.price || item.salePrice}
+                        originalPrice={item.originalPrice || item.regularPrice}
+                        discount={item.discount || 0}
+                        rating={item.rating || 4.5}
+                        image={item.image || item.images?.[0] || "/product_1.png"}
+                        product={item}
+                      />
                     ))}
                   </div>
                 ) : (
-                  <p className="text-gray-500">
-                    No reviews yet. Be the first to review this product!
+                  <p className="mt-6 text-sm text-[#6d584a]">
+                    {mergeTextOverride(
+                      pageConfig?.relatedProductsSection?.emptyState,
+                      "No related products available right now.",
+                    )}
                   </p>
                 )}
               </div>
-            )}
-
-            {activeTab === "shipping" && (
-              <div
-                className="text-gray-600 space-y-4"
-                data-track-section="product_shipping"
-              >
-                <p>
-                  <strong>Delivery:</strong> Standard delivery within 3-5
-                  business days.
-                </p>
-                <p>
-                  <strong>Shipping Charges:</strong> ₹0 on all orders.
-                </p>
-                <p>
-                  <strong>Packaging:</strong> Eco-friendly packaging to ensure
-                  product safety.
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Frequently Bought Together */}
-        <div className="mt-12" data-track-section="frequently_bought_together">
-          <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900">
-                Frequently Bought Together
-              </h2>
-              <p className="text-sm text-gray-500">
-                Popular add-ons customers purchase with this item.
-              </p>
-            </div>
-            <Button
-              variant="contained"
-              onClick={handleAddAllToCart}
-              disabled={frequentlyBought.length === 0}
-              sx={{
-                backgroundColor: "var(--primary)",
-                "&:hover": { backgroundColor: "var(--flavor-hover)" },
-                borderRadius: "999px",
-                textTransform: "none",
-                fontWeight: 600,
-              }}
-            >
-              Add All To Cart
-            </Button>
-          </div>
-
-          {fbtLoading ? (
-            <p className="text-sm text-gray-500">Loading suggestions...</p>
-          ) : frequentlyBought.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
-                <div className="flex items-center gap-3">
-                  <div className="w-16 h-16 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-center p-2">
-                    <img
-                      src={getImageUrl(images?.[0])}
-                      alt={product.name || product.title}
-                      className="w-full h-full object-contain"
-                    />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-xs uppercase tracking-wider text-gray-400">
-                      This product
-                    </p>
-                    <h4 className="text-sm font-semibold text-gray-900 line-clamp-1">
-                      {product.name || product.title}
-                    </h4>
-                    {resolveVariantLabel(selectedVariant, product) && (
-                      <p className="text-xs text-gray-500">
-                        {resolveVariantLabel(selectedVariant, product)}
-                      </p>
-                    )}
-                    <p className="text-sm font-bold text-primary">
-                      {formatPrice(Number(activePrice || product.price || 0))}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {frequentlyBought.map((item, index) => {
-                const recommendation = getRecommendationPayload(item);
-                if (!recommendation?.product) return null;
-
-                const recProduct = recommendation.product;
-                const price = Number(recommendation.price || 0);
-                const originalPrice = Number(
-                  recommendation.originalPrice || price,
-                );
-                const recProductId =
-                  recProduct._id || recProduct.id || item?.productId || "";
-                const isAdded = hasSelectedVariantInCart(
-                  recProductId,
-                  recommendation.variantId,
-                );
-
-                return (
-                  <div
-                    key={`${String(recProductId)}:${String(recommendation.variantId || "base")}:${index}`}
-                    className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-16 h-16 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-center p-2">
-                        <img
-                          src={getImageUrl(
-                            recommendation.image ||
-                              recProduct.thumbnail ||
-                              recProduct.images?.[0],
-                          )}
-                          alt={recProduct.name || "Recommended product"}
-                          className="w-full h-full object-contain"
-                        />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-xs uppercase tracking-wider text-gray-400">
-                          Add-on
-                        </p>
-                        <h4 className="text-sm font-semibold text-gray-900 line-clamp-1">
-                          {recProduct.name || recProduct.title}
-                        </h4>
-                        {recommendation.label && (
-                          <p className="text-xs text-gray-500">
-                            {recommendation.label}
-                          </p>
-                        )}
-                        <div className="flex items-center gap-2">
-                          {originalPrice > price && (
-                            <span className="text-xs text-gray-400 line-through">
-                              {formatPrice(originalPrice)}
-                            </span>
-                          )}
-                          <span className="text-sm font-bold text-primary">
-                            {formatPrice(price)}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="mt-3 flex justify-end">
-                      <Button
-                        size="small"
-                        variant={isAdded ? "outlined" : "contained"}
-                        onClick={() => handleAddSingleRecommendation(item)}
-                        disabled={isAdded}
-                        sx={{
-                          textTransform: "none",
-                          borderRadius: "999px",
-                          fontWeight: 600,
-                          minWidth: 120,
-                          ...(isAdded
-                            ? {
-                                color: "#16a34a",
-                                borderColor: "#16a34a",
-                              }
-                            : {
-                                backgroundColor: "var(--primary)",
-                                "&:hover": {
-                                  backgroundColor: "var(--flavor-hover)",
-                                },
-                              }),
-                        }}
-                      >
-                        {isAdded ? "Added" : "Add to Cart"}
-                      </Button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <p className="text-sm text-gray-500">
-              No suggestions available yet.
-            </p>
-          )}
-        </div>
-
-        {/* Recommended Combos */}
-        <div className="mt-12" data-track-section="recommended_combos">
-          <div className="flex items-center justify-between gap-4 mb-6">
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900">
-                Recommended Combos
-              </h2>
-              <p className="text-sm text-gray-500">
-                Bundles that include this product.
-              </p>
-            </div>
-            <Link
-              href="/combo-deals"
-              className="text-sm text-primary font-semibold"
-            >
-              View all combos
-            </Link>
-          </div>
-          {recommendedLoading ? (
-            <p className="text-sm text-gray-500">Loading combos...</p>
-          ) : recommendedCombos.length > 0 ? (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-              {recommendedCombos.map((combo) => (
-                <ComboCard
-                  key={combo._id || combo.slug}
-                  combo={combo}
-                  context="product_recommended_combos"
-                />
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-gray-500">
-              No recommended combos available right now.
-            </p>
-          )}
-        </div>
-
-        {/* Related Products */}
-        {relatedProducts.length > 0 && (
-          <div className="mt-12" data-track-section="related_products">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">
-              Related Products
-            </h2>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-              {relatedProducts.slice(0, 5).map((item) => (
-                <ProductItem
-                  key={item._id || item.id}
-                  id={item._id || item.id}
-                  name={item.name || item.title}
-                  brand={item.brand || "Buy One Gram"}
-                  price={item.price || item.salePrice}
-                  originalPrice={item.originalPrice || item.regularPrice}
-                  discount={item.discount || 0}
-                  rating={item.rating || 4.5}
-                  image={item.image || item.images?.[0] || "/product_1.png"}
-                  product={item}
-                />
-              ))}
-            </div>
-          </div>
-        )}
+            ) : null}
+          </>
+        ) : null}
       </div>
 
-      {/* Snackbar Notifications */}
+      <style jsx global>{`
+        @keyframes productFadeUp {
+          from {
+            opacity: 0;
+            transform: translate3d(0, 26px, 0) scale(0.985);
+          }
+          to {
+            opacity: 1;
+            transform: translate3d(0, 0, 0) scale(1);
+          }
+        }
+
+        .product-page-shell {
+          position: relative;
+          overflow: clip;
+        }
+
+        .product-page-shell::before {
+          content: "";
+          position: absolute;
+          top: 0;
+          left: 50%;
+          width: min(720px, 72vw);
+          height: 420px;
+          transform: translateX(-50%);
+          background: radial-gradient(
+            circle,
+            rgba(106, 67, 49, 0.12) 0%,
+            rgba(106, 67, 49, 0) 68%
+          );
+          filter: blur(10px);
+          pointer-events: none;
+        }
+
+        .product-reveal {
+          opacity: 0;
+          animation: productFadeUp 0.72s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+        }
+
+        .product-reveal-delay-1 {
+          animation-delay: 0.06s;
+        }
+
+        .product-reveal-delay-2 {
+          animation-delay: 0.14s;
+        }
+
+        .product-reveal-delay-3 {
+          animation-delay: 0.22s;
+        }
+
+        .product-image-stage {
+          isolation: isolate;
+        }
+
+        .product-story-card {
+          position: relative;
+          overflow: hidden;
+        }
+
+        .product-cta-primary {
+          position: relative;
+        }
+
+        .product-review-card {
+          transition:
+            transform 0.3s ease,
+            box-shadow 0.3s ease;
+        }
+
+        .product-review-card:hover {
+          transform: translateY(-4px);
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .product-reveal,
+          .product-review-card {
+            animation: none !important;
+            opacity: 1 !important;
+            transform: none !important;
+          }
+        }
+      `}</style>
+
       <Snackbar
         open={snackbar.open}
-        autoHideDuration={3000}
-        onClose={() => setSnackbar({ ...snackbar, open: false })}
+        autoHideDuration={3200}
+        onClose={() => setSnackbar((current) => ({ ...current, open: false }))}
         anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
       >
         <Alert
           severity={snackbar.severity}
-          onClose={() => setSnackbar({ ...snackbar, open: false })}
+          onClose={() => setSnackbar((current) => ({ ...current, open: false }))}
         >
           {snackbar.message}
         </Alert>

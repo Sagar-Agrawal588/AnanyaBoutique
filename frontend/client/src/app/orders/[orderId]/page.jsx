@@ -6,6 +6,7 @@ import {
   buildSavedOrderCalculationInput,
   calculateOrderTotals,
 } from "@/utils/calculateOrderTotals.mjs";
+import { getImageUrl } from "@/utils/imageUtils";
 import {
   Button,
   Dialog,
@@ -220,6 +221,30 @@ const getStepIndex = (status) => {
   return index === -1 ? 0 : index;
 };
 
+const buildXpressbeesTrackingUrl = (awb, candidateUrl = "") => {
+  const normalizedAwb = String(awb || "").trim();
+  if (!normalizedAwb) return "";
+
+  const fallbackUrl = `https://www.xpressbees.com/shipment/tracking?awbNo=${encodeURIComponent(normalizedAwb)}`;
+  const explicitUrl = String(candidateUrl || "").trim();
+  if (!explicitUrl) return fallbackUrl;
+
+  try {
+    const parsed = new URL(explicitUrl);
+    const host = String(parsed.hostname || "").toLowerCase();
+    if (!host.includes("xpressbees.com")) return explicitUrl;
+
+    parsed.pathname = "/shipment/tracking";
+    parsed.search = "";
+    parsed.searchParams.set("awbNo", normalizedAwb);
+    return parsed.toString();
+  } catch {
+    return explicitUrl.toLowerCase().includes("xpressbees.com")
+      ? fallbackUrl
+      : explicitUrl;
+  }
+};
+
 const resolveTrackingUrl = (order = {}) => {
   const explicitUrl = String(
     order?.trackingUrl ||
@@ -244,8 +269,7 @@ const resolveTrackingUrl = (order = {}) => {
   ).trim();
 
   if (!explicitUrl) {
-    if (!awb) return "";
-    return `https://www.xpressbees.com/shipment/tracking?awbNo=${encodeURIComponent(awb)}`;
+    return buildXpressbeesTrackingUrl(awb);
   }
 
   if (!awb) return explicitUrl;
@@ -255,13 +279,52 @@ const resolveTrackingUrl = (order = {}) => {
     const host = String(parsed.hostname || "").toLowerCase();
     const isXpressbees = host.includes("xpressbees.com");
     if (!isXpressbees) return explicitUrl;
-
-    parsed.searchParams.delete("awb");
-    parsed.searchParams.set("awbNo", awb);
-    return parsed.toString();
+    return buildXpressbeesTrackingUrl(awb, explicitUrl);
   } catch {
-    return explicitUrl;
+    return explicitUrl.toLowerCase().includes("xpressbees.com")
+      ? buildXpressbeesTrackingUrl(awb, explicitUrl)
+      : explicitUrl;
   }
+};
+
+const resolveComboImage = (combo = {}) => {
+  const comboItems = Array.isArray(combo?.items) ? combo.items : [];
+  const primaryImage =
+    combo?.thumbnail ||
+    combo?.image ||
+    combo?.comboImages?.[0] ||
+    comboItems?.[0]?.image ||
+    comboItems?.[0]?.thumbnail ||
+    "";
+
+  return getImageUrl(primaryImage, "/placeholder.png");
+};
+
+const resolveOrderItemImage = (item = {}) => {
+  const productRef =
+    item?.product && typeof item.product === "object"
+      ? item.product
+      : item?.productId && typeof item.productId === "object"
+        ? item.productId
+        : null;
+
+  const primaryImage =
+    item?.image ||
+    item?.thumbnail ||
+    item?.productImage ||
+    item?.variantImage ||
+    item?.images?.[0] ||
+    productRef?.thumbnail ||
+    productRef?.images?.[0] ||
+    "";
+
+  return getImageUrl(primaryImage, "/placeholder.png");
+};
+
+const handleOrderImageFallback = (event) => {
+  if (!event?.currentTarget) return;
+  event.currentTarget.onerror = null;
+  event.currentTarget.src = "/placeholder.png";
 };
 
 /**
@@ -310,9 +373,10 @@ const OrderDetailsPage = () => {
     invoice: false,
   });
   const deliveryState =
-    order?.delivery_address?.state ||
+    order?.deliveryAddressSnapshot?.order_state ||
     order?.billingDetails?.state ||
     order?.guestDetails?.state ||
+    order?.delivery_address?.state ||
     "";
   const hasDeliveryState = Boolean(String(deliveryState).trim());
   const isRajasthanDelivery =
@@ -979,6 +1043,74 @@ const OrderDetailsPage = () => {
     hasInvoiceHint ||
     isDeliveredLikeOrder ||
     normalizeStatus(order?.payment_status) === "paid";
+  const deliverySnapshot = order?.deliveryAddressSnapshot || {};
+  const resolvedAddressName = String(
+    deliverySnapshot?.order_name ||
+      order?.billingDetails?.fullName ||
+      order?.guestDetails?.fullName ||
+      order?.delivery_address?.name ||
+      order?.user?.name ||
+      "Guest",
+  ).trim();
+  const resolvedAddressLine1 = String(
+    deliverySnapshot?.address_line1 ||
+      order?.billingDetails?.address ||
+      order?.guestDetails?.address ||
+      order?.delivery_address?.address_line1 ||
+      order?.delivery_address?.addressLine1 ||
+      "",
+  ).trim();
+  const resolvedAddressLine2 = String(
+    deliverySnapshot?.address_line2 ||
+      order?.delivery_address?.address_line2 ||
+      order?.delivery_address?.addressLine2 ||
+      "",
+  ).trim();
+  const resolvedAddressCity = String(
+    deliverySnapshot?.order_city ||
+      order?.billingDetails?.city ||
+      order?.guestDetails?.city ||
+      order?.delivery_address?.city ||
+      "",
+  ).trim();
+  const resolvedAddressState = String(
+    deliverySnapshot?.order_state ||
+      order?.billingDetails?.state ||
+      order?.guestDetails?.state ||
+      order?.delivery_address?.state ||
+      "",
+  ).trim();
+  const resolvedAddressPincode = String(
+    deliverySnapshot?.order_pincode ||
+      order?.billingDetails?.pincode ||
+      order?.guestDetails?.pincode ||
+      order?.delivery_address?.pincode ||
+      order?.delivery_address?.pinCode ||
+      "",
+  ).trim();
+  const resolvedAddressPhone = String(
+    deliverySnapshot?.order_mobile ||
+      order?.billingDetails?.phone ||
+      order?.guestDetails?.phone ||
+      order?.delivery_address?.mobile ||
+      order?.delivery_address?.phone ||
+      "",
+  ).trim();
+  const resolvedAddressEmail = String(
+    deliverySnapshot?.email ||
+      order?.billingDetails?.email ||
+      order?.guestDetails?.email ||
+      order?.user?.email ||
+      "",
+  ).trim();
+  const hasResolvedAddress = Boolean(
+    resolvedAddressLine1 ||
+    resolvedAddressCity ||
+    resolvedAddressState ||
+    resolvedAddressPincode ||
+    resolvedAddressPhone ||
+    resolvedAddressEmail,
+  );
   const isReviewEligibleOrder = (() => {
     return isDeliveredLikeOrder;
   })();
@@ -1350,12 +1482,16 @@ const OrderDetailsPage = () => {
                 const quantity = Math.max(Number(combo?.quantity || 1), 1);
                 const unitPrice = Math.max(Number(combo?.comboPrice || 0), 0);
                 const lineTotal = unitPrice * quantity;
-                const savingsPerCombo = Math.max(Number(combo?.savings || 0), 0);
+                const savingsPerCombo = Math.max(
+                  Number(combo?.savings || 0),
+                  0,
+                );
                 const savingsTotal = savingsPerCombo * quantity;
-                const comboItems = Array.isArray(combo?.items) ? combo.items : [];
+                const comboItems = Array.isArray(combo?.items)
+                  ? combo.items
+                  : [];
                 const comboTitle = combo?.comboName || "Combo Bundle";
-                const comboImage =
-                  combo?.thumbnail || combo?.image || "/placeholder.png";
+                const comboImage = resolveComboImage(combo);
 
                 const includesPreview = comboItems
                   .slice(0, 2)
@@ -1379,6 +1515,7 @@ const OrderDetailsPage = () => {
                     <img
                       src={comboImage}
                       alt={comboTitle}
+                      onError={handleOrderImageFallback}
                       className="w-20 h-20 object-cover rounded-lg bg-gray-100"
                     />
                     <div className="flex-1 min-w-0">
@@ -1413,8 +1550,9 @@ const OrderDetailsPage = () => {
                   className="flex items-center gap-4 pb-4 border-b border-gray-100 last:border-0 last:pb-0"
                 >
                   <img
-                    src={item.image || "/placeholder.png"}
+                    src={resolveOrderItemImage(item)}
                     alt={item.productTitle}
+                    onError={handleOrderImageFallback}
                     className="w-20 h-20 object-cover rounded-lg bg-gray-100"
                   />
                   <div className="flex-1 min-w-0">
@@ -1507,86 +1645,33 @@ const OrderDetailsPage = () => {
           </div>
 
           {/* Delivery Address */}
-          {order.delivery_address && (
+          {hasResolvedAddress && (
             <div className="bg-white rounded-xl shadow-sm p-5 md:p-6 mb-6">
               <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
                 <MdLocalShipping className="text-orange-500" />
-                Delivery Address
+                Delivery Details
               </h2>
               <div className="text-gray-600">
                 <p className="font-medium text-gray-800">
-                  {order.delivery_address.name ||
-                    order.billingDetails?.fullName}
+                  {resolvedAddressName || "Guest"}
                 </p>
-                <p>
-                  {order.delivery_address.address_line1 ||
-                    order.delivery_address.addressLine1 ||
-                    order.billingDetails?.address}
-                </p>
-                {(order.delivery_address.address_line2 ||
-                  order.delivery_address.addressLine2) && (
+                {resolvedAddressLine1 && <p>{resolvedAddressLine1}</p>}
+                {resolvedAddressLine2 && <p>{resolvedAddressLine2}</p>}
+                {(resolvedAddressCity ||
+                  resolvedAddressState ||
+                  resolvedAddressPincode) && (
                   <p>
-                    {order.delivery_address.address_line2 ||
-                      order.delivery_address.addressLine2}
+                    {resolvedAddressCity ? `${resolvedAddressCity}, ` : ""}
+                    {resolvedAddressState || "-"}
+                    {resolvedAddressPincode
+                      ? ` - ${resolvedAddressPincode}`
+                      : ""}
                   </p>
                 )}
-                <p>
-                  {order.delivery_address.city
-                    ? `${order.delivery_address.city}, `
-                    : ""}
-                  {order.delivery_address.state || order.billingDetails?.state}{" "}
-                  -{" "}
-                  {order.delivery_address.pincode ||
-                    order.delivery_address.pinCode ||
-                    order.billingDetails?.pincode}
-                </p>
-                <p className="mt-2">
-                  Phone:{" "}
-                  {order.delivery_address.mobile ||
-                    order.delivery_address.phone ||
-                    order.billingDetails?.phone}
-                </p>
-              </div>
-            </div>
-          )}
-          {!order.delivery_address && order?.billingDetails && (
-            <div className="bg-white rounded-xl shadow-sm p-5 md:p-6 mb-6">
-              <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-                <MdLocalShipping className="text-orange-500" />
-                Billing / Guest Details
-              </h2>
-              <div className="text-gray-600">
-                <p className="font-medium text-gray-800">
-                  {order.billingDetails.fullName ||
-                    order.guestDetails?.fullName ||
-                    "Guest"}
-                </p>
-                <p>
-                  {order.billingDetails.address ||
-                    order.guestDetails?.address ||
-                    "-"}
-                </p>
-                <p>
-                  {order.billingDetails.state ||
-                    order.guestDetails?.state ||
-                    "-"}{" "}
-                  -{" "}
-                  {order.billingDetails.pincode ||
-                    order.guestDetails?.pincode ||
-                    "-"}
-                </p>
-                <p className="mt-2">
-                  Phone:{" "}
-                  {order.billingDetails.phone ||
-                    order.guestDetails?.phone ||
-                    "-"}
-                </p>
-                <p>
-                  Email:{" "}
-                  {order.billingDetails.email ||
-                    order.guestDetails?.email ||
-                    "-"}
-                </p>
+                {resolvedAddressPhone && (
+                  <p className="mt-2">Phone: {resolvedAddressPhone}</p>
+                )}
+                {resolvedAddressEmail && <p>Email: {resolvedAddressEmail}</p>}
               </div>
             </div>
           )}

@@ -52,6 +52,7 @@ ehthumbs.db
 *.swo
 .vscode/*
 !.vscode/extensions.json
+!.vscode/tasks.json
 .continue/
 
 # =====================================
@@ -68,6 +69,14 @@ next-env.d.ts
 !README.md
 !PROJECT_DEEP_STUDY_GUIDE.md
 !EMAILS.md
+
+# =====================================
+# Generated docs / previews
+# =====================================
+docs/*.pdf
+docs/*.docx
+docs/*.pptx
+docs/screenshots/*
 
 
 # =====================================

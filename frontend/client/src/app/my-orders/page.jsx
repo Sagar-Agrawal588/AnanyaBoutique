@@ -391,6 +391,71 @@ const Orders = () => {
     return `BOG-${orderId.slice(-8).toUpperCase()}`;
   };
 
+  const buildXpressbeesTrackingUrl = (awb, candidateUrl = "") => {
+    const normalizedAwb = String(awb || "").trim();
+    if (!normalizedAwb) return "";
+
+    const fallbackUrl = `https://www.xpressbees.com/shipment/tracking?awbNo=${encodeURIComponent(normalizedAwb)}`;
+    const explicitUrl = String(candidateUrl || "").trim();
+    if (!explicitUrl) return fallbackUrl;
+
+    try {
+      const parsed = new URL(explicitUrl);
+      const host = String(parsed.hostname || "").toLowerCase();
+      if (!host.includes("xpressbees.com")) return explicitUrl;
+
+      parsed.pathname = "/shipment/tracking";
+      parsed.search = "";
+      parsed.searchParams.set("awbNo", normalizedAwb);
+      return parsed.toString();
+    } catch {
+      return explicitUrl.toLowerCase().includes("xpressbees.com")
+        ? fallbackUrl
+        : explicitUrl;
+    }
+  };
+
+  const resolveTrackingUrl = (order = {}) => {
+    const explicitUrl = String(
+      order?.trackingUrl ||
+        order?.tracking_url ||
+        order?.shipmentTrackingUrl ||
+        "",
+    ).trim();
+    const awb = String(
+      order?.awbNo ||
+        order?.awb_no ||
+        order?.awbNumber ||
+        order?.awb_number ||
+        order?.shipment?.awbNo ||
+        order?.shipment?.awb_no ||
+        order?.shipment?.awb_number ||
+        order?.shipment?.awb ||
+        order?.shipping?.awbNo ||
+        order?.shipping?.awb_no ||
+        order?.shipping?.awb_number ||
+        order?.shipping?.awb ||
+        "",
+    ).trim();
+
+    if (!explicitUrl) {
+      return buildXpressbeesTrackingUrl(awb);
+    }
+
+    if (!awb) return explicitUrl;
+
+    try {
+      const parsed = new URL(explicitUrl);
+      const host = String(parsed.hostname || "").toLowerCase();
+      if (!host.includes("xpressbees.com")) return explicitUrl;
+      return buildXpressbeesTrackingUrl(awb, explicitUrl);
+    } catch {
+      return explicitUrl.toLowerCase().includes("xpressbees.com")
+        ? buildXpressbeesTrackingUrl(awb, explicitUrl)
+        : explicitUrl;
+    }
+  };
+
   // Helper function to get status badge color
   const getStatusColor = (status) => {
     const normalized = normalizeStatus(status);
@@ -637,6 +702,7 @@ const Orders = () => {
                     order,
                     orderTotals,
                   );
+                  const trackingUrl = resolveTrackingUrl(order);
 
                   return (
                     <div
@@ -928,33 +994,45 @@ const Orders = () => {
                       )}
 
                       {/* View Order Details Link */}
-                      <div className="px-6 py-4 bg-white border-t border-gray-200 flex justify-end">
+                      <div className="px-6 py-4 bg-white border-t border-gray-200 flex flex-wrap justify-end gap-3">
                         {(() => {
                           const routeOrderId = resolveOrderRouteId(order);
                           return (
-                            <Link
-                              href={
-                                routeOrderId
-                                  ? `/orders/${routeOrderId}`
-                                  : "/my-orders"
-                              }
-                              className="inline-flex items-center px-4 py-2 bg-orange-600 text-white text-sm font-medium rounded-lg hover:bg-orange-700 transition-colors"
-                            >
-                              View Order Details
-                              <svg
-                                className="ml-2 w-4 h-4"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
+                            <>
+                              {trackingUrl ? (
+                                <a
+                                  href={trackingUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center px-4 py-2 border border-orange-200 bg-orange-50 text-orange-700 text-sm font-medium rounded-lg hover:bg-orange-100 transition-colors"
+                                >
+                                  Track Shipment
+                                </a>
+                              ) : null}
+                              <Link
+                                href={
+                                  routeOrderId
+                                    ? `/orders/${routeOrderId}`
+                                    : "/my-orders"
+                                }
+                                className="inline-flex items-center px-4 py-2 bg-orange-600 text-white text-sm font-medium rounded-lg hover:bg-orange-700 transition-colors"
                               >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M9 5l7 7-7 7"
-                                />
-                              </svg>
-                            </Link>
+                                View Order Details
+                                <svg
+                                  className="ml-2 w-4 h-4"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M9 5l7 7-7 7"
+                                  />
+                                </svg>
+                              </Link>
+                            </>
                           );
                         })()}
                       </div>

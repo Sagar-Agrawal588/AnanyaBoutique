@@ -69,6 +69,11 @@ const Search = ({
   // Handle form submit
   const handleSubmit = (e) => {
     if (e && e.preventDefault) e.preventDefault();
+    if (e && e.stopPropagation) e.stopPropagation();
+    if (debounceTimeout.current) {
+      clearTimeout(debounceTimeout.current);
+      debounceTimeout.current = null;
+    }
     const normalizedTerm = searchTerm.trim();
 
     setShowDropdown(false);
@@ -227,11 +232,11 @@ const Search = ({
           {/* Loading/Submit Button - Right side */}
           <button
             type="submit"
+            aria-label="Search"
             className={`absolute right-1.5 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full flex items-center justify-center transition-all duration-300 ${searchTerm || isFocused
               ? "bg-[var(--flavor-color)] text-white shadow-lg shadow-[var(--flavor-color)]/30 scale-100"
               : "bg-gray-100 text-gray-400 scale-90"
               } z-20 cursor-pointer`}
-            disabled={isLoading}
           >
             {isLoading ? (
               <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />

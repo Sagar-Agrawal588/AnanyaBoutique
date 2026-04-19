@@ -1,4 +1,6 @@
 const DEFAULT_SITE_URL = "https://healthyonegram.com";
+const DEMO_PRODUCT_ID = "demo-live";
+const SERVER_FETCH_TIMEOUT_MS = 3000;
 
 const sanitizeBaseUrl = (value) =>
   String(value || "")
@@ -64,6 +66,20 @@ const toCanonicalPath = (value = "") => {
   const normalized = String(value || "").trim();
   if (!normalized) return "";
   return normalized.startsWith("/") ? normalized : `/${normalized}`;
+};
+
+const fetchWithTimeout = async (url, options = {}) => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), SERVER_FETCH_TIMEOUT_MS);
+
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
 };
 
 const getSiteUrl = () =>
@@ -142,7 +158,9 @@ const fetchProductForMetadata = async (id) => {
   for (const apiBase of apiCandidates) {
     const endpoint = `${apiBase}/api/products/${encodeURIComponent(id)}`;
     try {
-      const response = await fetch(endpoint, { next: { revalidate: 300 } });
+      const response = await fetchWithTimeout(endpoint, {
+        next: { revalidate: 300 },
+      });
       if (!response.ok) continue;
       const payload = await response.json();
       const product = payload?.data?.data || payload?.data || null;
@@ -158,13 +176,52 @@ const fetchProductForMetadata = async (id) => {
 };
 
 export async function generateMetadata({ params }) {
-  const routeId = safeDecode(params?.id).trim();
+  const resolvedParams = await params;
+  const routeId = safeDecode(resolvedParams?.id).trim();
   const siteUrl = getSiteUrl();
 
   if (!routeId) {
     return {
       title: "Product | Healthy One Gram",
       description: "Explore healthy products from Healthy One Gram.",
+    };
+  }
+
+  if (routeId.toLowerCase() === DEMO_PRODUCT_ID) {
+    const title = "Clean Whey Protein (Isolate), 2.2 lb Chocolate | Healthy One Gram";
+    const description =
+      "Preview the upgraded storefront product detail experience with demo data, richer visuals, and conversion-focused layout blocks.";
+    const url = `${siteUrl}/product/${DEMO_PRODUCT_ID}`;
+    const imageUrl = `${siteUrl}/prodImage1.png`;
+
+    return {
+      title,
+      description,
+      alternates: {
+        canonical: url,
+      },
+      openGraph: {
+        title,
+        description,
+        url,
+        type: "website",
+        locale: "en_IN",
+        siteName: "Healthy One Gram",
+        images: [
+          {
+            url: imageUrl,
+            width: 1200,
+            height: 630,
+            alt: "Demo product preview",
+          },
+        ],
+      },
+      twitter: {
+        card: "summary_large_image",
+        title,
+        description,
+        images: [imageUrl],
+      },
     };
   }
 
@@ -194,7 +251,7 @@ export async function generateMetadata({ params }) {
       title,
       description,
       url,
-      type: "product",
+      type: "website",
       locale: "en_IN",
       siteName: "Healthy One Gram",
       images: [

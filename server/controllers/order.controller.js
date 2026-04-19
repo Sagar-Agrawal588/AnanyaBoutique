@@ -48,6 +48,7 @@ import {
   resolveUserSegment,
   restoreComboStock,
 } from "../services/combos/combo.service.js";
+import { captureCrmTouchpointSafely } from "../services/crm/crmTracking.service.js";
 import { createEmailLog } from "../services/emailAutomation.service.js";
 import {
   confirmInventory,
@@ -103,17 +104,23 @@ import {
   syncOrderStatus,
   syncOrderToFirestore,
 } from "../utils/orderFirestoreSync.js";
+import { saveDocumentWithTempIdRetry } from "../utils/orderPersistence.js";
 import {
   applyOrderStatusTransition,
   normalizeOrderStatus,
   ORDER_STATUS,
 } from "../utils/orderStatus.js";
 import {
+  resolveOrderAwb,
+  resolveOrderTrackingUrl,
+} from "../utils/orderTracking.js";
+import {
   calculateInfluencerCommission,
   calculateReferralDiscount,
   updateInfluencerStats,
 } from "./influencer.controller.js";
 import { sendOrderUpdateNotification } from "./notification.controller.js";
+import isPrivilegedAdminRole from "../utils/isPrivilegedAdminRole.js";
 
 // ==================== PAYMENT PROVIDER CONFIGURATION ====================
 
@@ -359,7 +366,19 @@ const parseOrderSequenceNumber = (value, scopePrefix) => {
 const isValidNewsletterEmail = (value) =>
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
 
-const captureOrderEmailInNewsletter = async ({ email, userId }) => {
+const captureOrderEmailInNewsletter = async ({
+  req,
+  email,
+  userId,
+  name,
+  phone,
+  orderId,
+  orderAmount,
+  sessionId,
+  affiliateSource,
+  influencerCode,
+  isSavedOrder = false,
+}) => {
   const normalizedEmail = String(email || "")
     .trim()
     .toLowerCase();
@@ -382,6 +401,30 @@ const captureOrderEmailInNewsletter = async ({ email, userId }) => {
       setDefaultsOnInsert: true,
     },
   );
+
+  if (!orderId) return;
+
+  await captureCrmTouchpointSafely({
+    channel: "website",
+    eventType: "order_created",
+    userId,
+    email: normalizedEmail,
+    phone,
+    name,
+    orderId,
+    orderAmount,
+    sessionId,
+    pageUrl: "/checkout",
+    referrer: req?.headers?.referer || "",
+    happenedAt: new Date(),
+    idempotencyKey: `crm:order:${orderId}:created`,
+    metadata: {
+      source: "order_create",
+      affiliateSource: affiliateSource || null,
+      influencerCode: influencerCode || null,
+      isSavedOrder: Boolean(isSavedOrder),
+    },
+  });
 };
 
 const generateOrderSeriesNumber = async (referenceDate = new Date()) => {
@@ -895,16 +938,71 @@ const resolveDisplayOrderNumber = (order = {}) => {
   return `BOG-${rawOrderId.slice(-8).toUpperCase()}`;
 };
 
+const resolveOrderContactIdentity = (order = {}) => {
+  const billing = order?.billingDetails || {};
+  const guest = order?.guestDetails || {};
+  const delivery = order?.deliveryAddressSnapshot || {};
+
+  return {
+    email: billing?.email || guest?.email || delivery?.email || "",
+    phone:
+      billing?.phone ||
+      billing?.mobile ||
+      guest?.phone ||
+      guest?.mobile ||
+      guest?.mobile_number ||
+      delivery?.order_mobile ||
+      "",
+    name:
+      billing?.fullName ||
+      guest?.name ||
+      guest?.full_name ||
+      delivery?.order_name ||
+      "",
+  };
+};
+
 const emitPurchaseCompletedTrackingEvent = ({
   req,
   order,
   source = "unknown",
 }) => {
   if (!req || !order) return;
-  if (String(order?.analyticsConsent || "").toLowerCase() === "denied") return;
 
   const orderId = String(order?._id || "").trim();
   if (!orderId) return;
+  if (!order?.isDemoOrder) {
+    const contactIdentity = resolveOrderContactIdentity(order);
+
+    void captureCrmTouchpointSafely({
+      channel: "website",
+      eventType: "order_paid",
+      userId: order?.user ? String(order.user) : null,
+      email: contactIdentity.email,
+      phone: contactIdentity.phone,
+      name: contactIdentity.name,
+      orderId,
+      orderAmount: order?.finalAmount || order?.totalAmt || 0,
+      sessionId: String(
+        order?.trackingSessionId || req.analyticsSessionId || "",
+      ),
+      pageUrl: "/checkout",
+      referrer: req?.headers?.referer || "",
+      happenedAt: order?.confirmedAt || order?.confirmed_at || new Date(),
+      idempotencyKey: `crm:order:${orderId}:paid`,
+      metadata: {
+        source,
+        paymentMethod: String(order?.paymentMethod || "").trim() || "unknown",
+        paymentStatus: String(order?.payment_status || "").trim() || "unknown",
+        orderStatus: String(order?.order_status || "").trim() || "unknown",
+        influencerCode: String(order?.influencerCode || "").trim() || null,
+        couponCode: String(order?.couponCode || "").trim() || null,
+        affiliateSource: order?.affiliateSource || null,
+      },
+    });
+  }
+
+  if (String(order?.analyticsConsent || "").toLowerCase() === "denied") return;
 
   const lineItems = Array.isArray(order?.products)
     ? order.products.slice(0, 100).map((item) => ({
@@ -1083,19 +1181,11 @@ const stringifyOrderItemsForEmail = (order) => {
 };
 
 const resolveOrderRecipient = async (order) => {
+  const contactIdentity = resolveOrderContactIdentity(order);
+  const preferredName = String(contactIdentity?.name || "").trim();
   const fallbackName =
-    String(
-      order?.billingDetails?.fullName ||
-        order?.guestDetails?.fullName ||
-        order?.user?.name ||
-        "Customer",
-    ).trim() || "Customer";
-  const directEmail = String(
-    order?.billingDetails?.email ||
-      order?.guestDetails?.email ||
-      order?.user?.email ||
-      "",
-  )
+    preferredName || String(order?.user?.name || "").trim() || "Customer";
+  const directEmail = String(contactIdentity?.email || order?.user?.email || "")
     .trim()
     .toLowerCase();
 
@@ -1114,7 +1204,7 @@ const resolveOrderRecipient = async (order) => {
       .trim()
       .toLowerCase();
     const resolvedName =
-      String(user?.name || fallbackName || "Customer").trim() || "Customer";
+      preferredName || String(user?.name || "").trim() || "Customer";
     return { email: resolvedEmail, name: resolvedName };
   } catch {
     return { email: "", name: fallbackName };
@@ -1268,60 +1358,8 @@ const sendOrderConfirmationEmail = async (order) => {
       Number(order?.finalAmount || order?.totalAmt || 0),
     );
 
-    const awbNumber = String(
-      order?.awbNo ||
-        order?.awb_no ||
-        order?.awb_number ||
-        order?.awbNumber ||
-        order?.shipment?.awb ||
-        order?.shipping?.awb ||
-        "",
-    ).trim();
-    const applyAwbToXpressbeesUrl = (rawUrl, awb) => {
-      const normalizedUrl = String(rawUrl || "").trim();
-      const normalizedAwb = String(awb || "").trim();
-      if (!normalizedUrl || !normalizedAwb) return normalizedUrl;
-
-      try {
-        const parsed = new URL(normalizedUrl);
-        const host = String(parsed.hostname || "").toLowerCase();
-        if (!host.includes("xpressbees.com")) {
-          return normalizedUrl;
-        }
-
-        parsed.searchParams.delete("awb");
-        parsed.searchParams.set("awbNo", normalizedAwb);
-        return parsed.toString();
-      } catch {
-        return normalizedUrl;
-      }
-    };
-    const trackingUrlTemplate = String(
-      process.env.XPRESSBEES_TRACKING_URL_TEMPLATE ||
-        "https://www.xpressbees.com/shipment/tracking?awbNo=${AWB}",
-    ).trim();
-    const normalizedTrackingTemplate = trackingUrlTemplate.replace(
-      /([?&])awb=\$\{AWB\}/i,
-      "$1awbNo=${AWB}",
-    );
-    const templateWithAwbPlaceholder = normalizedTrackingTemplate.includes(
-      "${AWB}",
-    )
-      ? normalizedTrackingTemplate
-      : trackingUrlTemplate.includes("?")
-        ? `${normalizedTrackingTemplate}&awbNo=${AWB}`
-        : `${normalizedTrackingTemplate}?awbNo=${AWB}`;
-    const trackingUrl =
-      applyAwbToXpressbeesUrl(
-        String(order?.trackingUrl || "").trim(),
-        awbNumber,
-      ) ||
-      (awbNumber
-        ? templateWithAwbPlaceholder.replace(
-            "${AWB}",
-            encodeURIComponent(awbNumber),
-          )
-        : "");
+    const awbNumber = resolveOrderAwb(order);
+    const trackingUrl = resolveOrderTrackingUrl(order);
 
     const estimatedDeliveryDate =
       order?.deliveryDate || order?.delivery_date
@@ -3992,6 +4030,8 @@ export const getAllOrders = asyncHandler(async (req, res) => {
     const filter = {
       // Keep purchase orders out of the regular orders listing.
       purchaseOrder: null,
+      // Hide test/demo orders from the production admin orders screen.
+      isDemoOrder: { $ne: true },
     };
     const andFilters = [];
     const normalizedStatus = String(status || "all")
@@ -4270,6 +4310,150 @@ export const removeAllPendingOrders = asyncHandler(async (req, res) => {
 });
 
 /**
+ * Remove all demo orders (Admin)
+ * @route DELETE /api/orders/admin/demo-orders
+ * @access Admin
+ */
+export const removeAllDemoOrders = asyncHandler(async (req, res) => {
+  try {
+    const demoOrders = await OrderModel.find({ isDemoOrder: true })
+      .select("_id inventoryStatus products combos")
+      .lean();
+
+    if (demoOrders.length === 0) {
+      return sendSuccess(
+        res,
+        {
+          totalMatched: 0,
+          deletedCount: 0,
+          skippedCount: 0,
+          releasedInventoryCount: 0,
+          releasedComboCount: 0,
+          restoredInventoryCount: 0,
+          restoredComboCount: 0,
+          deletedComboOrdersCount: 0,
+          deletedInvoicesCount: 0,
+        },
+        "No demo orders found",
+      );
+    }
+
+    let deletedCount = 0;
+    let skippedCount = 0;
+    let releasedInventoryCount = 0;
+    let releasedComboCount = 0;
+    let restoredInventoryCount = 0;
+    let restoredComboCount = 0;
+    let deletedComboOrdersCount = 0;
+    let deletedInvoicesCount = 0;
+    const skippedOrderIds = [];
+
+    for (const order of demoOrders) {
+      try {
+        const inventoryStatus = String(order?.inventoryStatus || "")
+          .trim()
+          .toLowerCase();
+
+        if (inventoryStatus === "reserved") {
+          const inventoryRelease = await releaseInventory(
+            order,
+            "ADMIN_DEMO_PURGE",
+          );
+          if (inventoryRelease?.status === "released") {
+            releasedInventoryCount += 1;
+          }
+
+          const comboRelease = await releaseComboStock(
+            order,
+            "ADMIN_DEMO_PURGE",
+          );
+          if (comboRelease?.status === "released") {
+            releasedComboCount += 1;
+          }
+        } else if (inventoryStatus === "deducted") {
+          const inventoryRestore = await restoreInventory(
+            order,
+            "ADMIN_DEMO_PURGE",
+          );
+          if (inventoryRestore?.status === "restored") {
+            restoredInventoryCount += 1;
+          }
+
+          const comboRestore = await restoreComboStock(
+            order,
+            "ADMIN_DEMO_PURGE",
+          );
+          if (comboRestore?.status === "restored") {
+            restoredComboCount += 1;
+          }
+        }
+
+        const [comboDeleteResult, invoiceDeleteResult] = await Promise.all([
+          ComboOrderModel.deleteMany({ orderId: order._id }),
+          InvoiceModel.deleteMany({ orderId: order._id }),
+        ]);
+
+        deletedComboOrdersCount += Number(comboDeleteResult?.deletedCount || 0);
+        deletedInvoicesCount += Number(invoiceDeleteResult?.deletedCount || 0);
+
+        const deleteResult = await OrderModel.deleteOne({ _id: order._id });
+        if (Number(deleteResult?.deletedCount || 0) === 1) {
+          deletedCount += 1;
+        } else {
+          skippedCount += 1;
+          skippedOrderIds.push(String(order._id));
+        }
+      } catch (cleanupError) {
+        skippedCount += 1;
+        skippedOrderIds.push(String(order._id));
+        logger.error("removeAllDemoOrders", "Failed to remove demo order", {
+          orderId: order?._id,
+          error: cleanupError?.message || String(cleanupError),
+        });
+      }
+    }
+
+    logger.info("removeAllDemoOrders", "Demo order cleanup finished", {
+      totalMatched: demoOrders.length,
+      deletedCount,
+      skippedCount,
+      releasedInventoryCount,
+      releasedComboCount,
+      restoredInventoryCount,
+      restoredComboCount,
+      deletedComboOrdersCount,
+      deletedInvoicesCount,
+    });
+
+    return sendSuccess(
+      res,
+      {
+        totalMatched: demoOrders.length,
+        deletedCount,
+        skippedCount,
+        releasedInventoryCount,
+        releasedComboCount,
+        restoredInventoryCount,
+        restoredComboCount,
+        deletedComboOrdersCount,
+        deletedInvoicesCount,
+        skippedOrderIds,
+      },
+      deletedCount > 0
+        ? `Removed ${deletedCount} demo orders`
+        : "No demo orders were removed",
+    );
+  } catch (error) {
+    if (error instanceof AppError) {
+      return sendError(res, error);
+    }
+
+    const dbError = handleDatabaseError(error, "removeAllDemoOrders");
+    return sendError(res, dbError);
+  }
+});
+
+/**
  * Get order statistics (Admin)
  * @route GET /api/orders/admin/stats
  * @access Admin or Order Owner
@@ -4476,14 +4660,14 @@ export const getOrderById = asyncHandler(async (req, res) => {
 
     let isAdmin = false;
     if (req.user?.role) {
-      isAdmin = req.user.role === "Admin";
+      isAdmin = isPrivilegedAdminRole(req.user.role);
     } else {
       const viewer =
         await UserModel.findById(requesterId).select("role status");
       if (!viewer) {
         throw new AppError("UNAUTHORIZED");
       }
-      isAdmin = viewer.role === "Admin";
+      isAdmin = isPrivilegedAdminRole(viewer.role);
     }
 
     if (!isAdmin) {
@@ -4913,7 +5097,7 @@ export const downloadOrderInvoice = asyncHandler(async (req, res) => {
       throw new AppError("ORDER_NOT_FOUND");
     }
 
-    const isAdmin = requester.role === "Admin";
+    const isAdmin = isPrivilegedAdminRole(requester.role);
     const orderUserId =
       order.user?._id?.toString?.() || order.user?.toString?.();
     const requesterEmail = normalizeEmail(requester?.email || "");
@@ -5272,15 +5456,51 @@ export const createOrder = asyncHandler(async (req, res) => {
     try {
       await reserveComboStock(order, "ORDER_CREATE");
       await reserveInventory(order, "ORDER_CREATE");
-      await order.save();
+      await saveDocumentWithTempIdRetry(order, {
+        onDuplicateKey: ({
+          attempt,
+          maxAttempts,
+          document,
+          duplicateFields,
+        }) => {
+          logger.warn(
+            "createOrder",
+            "Retrying order save after identity key conflict",
+            {
+              attempt,
+              maxAttempts,
+              duplicateFields,
+              tempOrderId: document?.temp_id || null,
+            },
+          );
+        },
+      });
 
       void captureOrderEmailInNewsletter({
+        req,
         email:
           checkoutContact?.contact?.email ||
           billingDetails?.email ||
           guestOrderDetails?.email ||
           "",
         userId,
+        name:
+          checkoutContact?.contact?.name ||
+          billingDetails?.fullName ||
+          guestOrderDetails?.name ||
+          "",
+        phone:
+          billingDetails?.phone ||
+          billingDetails?.mobile ||
+          guestOrderDetails?.phone ||
+          guestOrderDetails?.mobile ||
+          "",
+        orderId: order?._id || null,
+        orderAmount: order?.finalAmount || order?.totalAmt || 0,
+        sessionId: order?.trackingSessionId || "",
+        affiliateSource: order?.affiliateSource || null,
+        influencerCode: order?.influencerCode || null,
+        isSavedOrder: Boolean(order?.isSavedOrder),
       }).catch((captureError) => {
         logger.warn("createOrder", "Failed to capture newsletter email", {
           orderId: order?._id,
@@ -5957,15 +6177,51 @@ export const saveOrderForLater = asyncHandler(async (req, res) => {
     try {
       await reserveComboStock(savedOrder, "ORDER_SAVE");
       await reserveInventory(savedOrder, "ORDER_SAVE");
-      await savedOrder.save();
+      await saveDocumentWithTempIdRetry(savedOrder, {
+        onDuplicateKey: ({
+          attempt,
+          maxAttempts,
+          document,
+          duplicateFields,
+        }) => {
+          logger.warn(
+            "saveOrderForLater",
+            "Retrying saved-order persistence after identity key conflict",
+            {
+              attempt,
+              maxAttempts,
+              duplicateFields,
+              tempOrderId: document?.temp_id || null,
+            },
+          );
+        },
+      });
 
       void captureOrderEmailInNewsletter({
+        req,
         email:
           checkoutContact?.contact?.email ||
           billingDetails?.email ||
           guestOrderDetails?.email ||
           "",
         userId,
+        name:
+          checkoutContact?.contact?.name ||
+          billingDetails?.fullName ||
+          guestOrderDetails?.name ||
+          "",
+        phone:
+          billingDetails?.phone ||
+          billingDetails?.mobile ||
+          guestOrderDetails?.phone ||
+          guestOrderDetails?.mobile ||
+          "",
+        orderId: savedOrder?._id || null,
+        orderAmount: savedOrder?.finalAmount || savedOrder?.totalAmt || 0,
+        sessionId: savedOrder?.trackingSessionId || "",
+        affiliateSource: savedOrder?.affiliateSource || null,
+        influencerCode: savedOrder?.influencerCode || null,
+        isSavedOrder: Boolean(savedOrder?.isSavedOrder),
       }).catch((captureError) => {
         logger.warn("saveOrderForLater", "Failed to capture newsletter email", {
           orderId: savedOrder?._id,
@@ -6379,9 +6635,6 @@ export const initiatePayOrderPayment = asyncHandler(async (req, res) => {
     const contact = order.billingDetails || order.guestDetails || {};
 
     let mutated = false;
-    if (await linkOrderToUserByEmail(order)) {
-      mutated = true;
-    }
 
     if (selectedPaymentProvider === PAYMENT_PROVIDERS.PAYTM) {
       const merchantTransactionId =
@@ -7017,6 +7270,44 @@ const resolvePaymentProviderFromOrder = (order = {}) => {
   }
 
   return null;
+};
+
+const SUCCESSFUL_BACKFILL_ORDER_STATUSES = new Set([
+  ORDER_STATUS.ACCEPTED,
+  ORDER_STATUS.CONFIRMED_LEGACY,
+  ORDER_STATUS.SHIPPED,
+  ORDER_STATUS.OUT_FOR_DELIVERY,
+  ORDER_STATUS.DELIVERED,
+  ORDER_STATUS.COMPLETED,
+]);
+
+const SUCCESSFUL_BACKFILL_PAYMENT_STATUSES = new Set([
+  "paid",
+  "confirmed",
+  "captured",
+  "success",
+  "successful",
+]);
+
+const isGatewayMerchantReference = (value) =>
+  /^BOG_/i.test(String(value || "").trim());
+
+const resolveProviderTransactionIdForBackfill = (order = {}) => {
+  return [order?.paytmTransactionId, order?.phonepeTransactionId]
+    .map((value) => String(value || "").trim())
+    .find(Boolean);
+};
+
+const isSuccessfulOrderCandidateForBackfill = (order = {}) => {
+  const paymentStatus = String(order?.payment_status || "")
+    .trim()
+    .toLowerCase();
+  const orderStatus = normalizeOrderStatus(order?.order_status);
+
+  return (
+    SUCCESSFUL_BACKFILL_PAYMENT_STATUSES.has(paymentStatus) ||
+    SUCCESSFUL_BACKFILL_ORDER_STATUSES.has(orderStatus)
+  );
 };
 
 const shouldAttemptPaymentReconciliation = (order, { force = false } = {}) => {
@@ -7696,14 +7987,28 @@ export const handlePaytmWebhook = asyncHandler(async (req, res) => {
             orderId: order._id,
             paymentState: clientPaymentState,
           })
-        : sendSuccess(res, {}, "Webhook already processed");
+        : sendSuccess(
+            res,
+            {
+              orderId: String(order?._id || ""),
+              paymentState: clientPaymentState,
+            },
+            "Webhook already processed",
+          );
     }
     return wantsBrowserRedirect
       ? redirectPaytmWebhookToClient(req, res, {
           orderId: order._id,
           paymentState: clientPaymentState,
         })
-      : sendSuccess(res, {}, "Webhook processed");
+      : sendSuccess(
+          res,
+          {
+            orderId: String(order?._id || ""),
+            paymentState: clientPaymentState,
+          },
+          "Webhook processed",
+        );
   } catch (error) {
     logger.error("handlePaytmWebhook", "Webhook processing error", {
       error: error.message,
@@ -7811,6 +8116,131 @@ export const repairPaidOrders = asyncHandler(async (req, res) => {
     return sendError(res, dbError);
   }
 });
+
+/**
+ * Backfill paymentId with provider transaction ID for successful orders (Admin)
+ * @route POST /api/orders/admin/backfill-payment-ids
+ * @access Admin
+ */
+export const backfillSuccessfulOrderPaymentIds = asyncHandler(
+  async (req, res) => {
+    try {
+      const limitRaw = req.body?.limit ?? req.query?.limit ?? 250;
+      const limit = Math.min(Math.max(Number(limitRaw) || 250, 1), 1000);
+
+      const candidateFilter = {
+        purchaseOrder: null,
+        isDemoOrder: { $ne: true },
+        $and: [
+          {
+            $or: [
+              {
+                payment_status: {
+                  $in: Array.from(SUCCESSFUL_BACKFILL_PAYMENT_STATUSES),
+                },
+              },
+              {
+                order_status: {
+                  $in: Array.from(SUCCESSFUL_BACKFILL_ORDER_STATUSES),
+                },
+              },
+            ],
+          },
+          {
+            $or: [
+              { paymentId: { $in: [null, ""] } },
+              { paymentId: { $regex: "^BOG_", $options: "i" } },
+            ],
+          },
+          {
+            $or: [
+              { paytmTransactionId: { $exists: true, $nin: [null, ""] } },
+              { phonepeTransactionId: { $exists: true, $nin: [null, ""] } },
+            ],
+          },
+        ],
+      };
+
+      const orders = await OrderModel.find(candidateFilter)
+        .sort({ updatedAt: 1 })
+        .limit(limit)
+        .exec();
+
+      if (!orders.length) {
+        return sendSuccess(
+          res,
+          { scanned: 0, updated: 0, skipped: 0, remaining: 0 },
+          "No successful orders need payment ID backfill",
+        );
+      }
+
+      let updated = 0;
+      let skipped = 0;
+      const updatedOrderIds = [];
+
+      for (const order of orders) {
+        if (!isSuccessfulOrderCandidateForBackfill(order)) {
+          skipped += 1;
+          continue;
+        }
+
+        const transactionId = resolveProviderTransactionIdForBackfill(order);
+        if (!transactionId) {
+          skipped += 1;
+          continue;
+        }
+
+        const currentPaymentId = String(order?.paymentId || "").trim();
+        if (currentPaymentId && !isGatewayMerchantReference(currentPaymentId)) {
+          skipped += 1;
+          continue;
+        }
+
+        if (currentPaymentId === transactionId) {
+          skipped += 1;
+          continue;
+        }
+
+        order.paymentId = transactionId;
+        order.updatedAt = new Date();
+        await order.save();
+        updated += 1;
+        updatedOrderIds.push(String(order._id));
+
+        syncOrderToFirestore(order, "update").catch((error) => {
+          logger.error(
+            "backfillSuccessfulOrderPaymentIds",
+            "Failed to sync order after payment ID backfill",
+            {
+              orderId: order._id,
+              error: error?.message || String(error),
+            },
+          );
+        });
+      }
+
+      const remaining = await OrderModel.countDocuments(candidateFilter);
+
+      return sendSuccess(
+        res,
+        {
+          scanned: orders.length,
+          updated,
+          skipped,
+          remaining,
+          updatedOrderIds,
+        },
+        "Successful-order payment ID backfill completed",
+      );
+    } catch (error) {
+      const dbError = handleDatabaseError(
+        error,
+        "backfillSuccessfulOrderPaymentIds",
+      );
+      return sendError(res, dbError);
+    }
+  },
+);
 
 /**
  * PhonePe Webhook Handler
@@ -7971,11 +8401,32 @@ export const handlePhonePeWebhook = asyncHandler(async (req, res) => {
       });
     }
 
-    if (resolution.skipped) {
-      return sendSuccess(res, {}, "Webhook already processed");
+    let clientPaymentState = String(order.payment_status || "pending")
+      .toLowerCase()
+      .trim();
+    if (clientPaymentState === "failed" && failureKind === "cancelled") {
+      clientPaymentState = "cancelled";
     }
 
-    return sendSuccess(res, {}, "Webhook processed");
+    if (resolution.skipped) {
+      return sendSuccess(
+        res,
+        {
+          orderId: String(order?._id || ""),
+          paymentState: clientPaymentState,
+        },
+        "Webhook already processed",
+      );
+    }
+
+    return sendSuccess(
+      res,
+      {
+        orderId: String(order?._id || ""),
+        paymentState: clientPaymentState,
+      },
+      "Webhook processed",
+    );
   } catch (error) {
     logger.error("handlePhonePeWebhook", "Webhook processing error", {
       error: error.message,
@@ -8047,6 +8498,8 @@ export const createTestOrder = asyncHandler(async (req, res) => {
 
     let normalizedProducts = [];
     const requestedProducts = Array.isArray(body.products) ? body.products : [];
+    const requestedCombos = Array.isArray(body.combos) ? body.combos : [];
+
     if (requestedProducts.length > 0) {
       validateProductsArray(requestedProducts, "products");
       const normalizedResult = await fetchAndNormalizeOrderProducts(
@@ -8054,7 +8507,15 @@ export const createTestOrder = asyncHandler(async (req, res) => {
         "createTestOrder",
       );
       normalizedProducts = normalizedResult.normalizedProducts;
-    } else {
+    }
+
+    const comboPayload = await fetchAndNormalizeOrderCombos({
+      combos: requestedCombos,
+      userId: effectiveUserId,
+      logContext: "createTestOrder",
+    });
+
+    if (requestedProducts.length === 0 && requestedCombos.length === 0) {
       const products = await ProductModel.find().limit(3);
       if (products.length === 0) {
         logger.warn("createTestOrder", "No products found in database");
@@ -8079,6 +8540,18 @@ export const createTestOrder = asyncHandler(async (req, res) => {
           image: product.images?.[0] || product.thumbnail || "",
           subTotal: round2(price * quantity),
         };
+      });
+    }
+
+    const mergedProducts = [
+      ...normalizedProducts,
+      ...comboPayload.expandedProducts,
+    ];
+
+    if (!mergedProducts.length) {
+      throw new AppError("MISSING_FIELD", {
+        field: "products|combos",
+        message: "At least one product or combo is required",
       });
     }
 
@@ -8107,7 +8580,9 @@ export const createTestOrder = asyncHandler(async (req, res) => {
     };
 
     const pricing = await calculateCheckoutPricing({
-      normalizedProducts,
+      normalizedProducts: mergedProducts,
+      comboDiscount: comboPayload.comboDiscount,
+      comboOriginalAmount: comboPayload.comboOriginalAmount,
       userId: effectiveUserId,
       couponCode: null,
       influencerCode: influencerCode || null,
@@ -8138,7 +8613,8 @@ export const createTestOrder = asyncHandler(async (req, res) => {
     // Create test order (paid + accepted), but shipping-suppressed.
     const testOrder = new OrderModel({
       user: effectiveUserId,
-      products: normalizedProducts,
+      products: mergedProducts,
+      combos: comboPayload.normalizedCombos,
       totalAmt: finalAmount,
       subtotal: taxableAmount,
       tax: gstAmount,
@@ -8162,6 +8638,9 @@ export const createTestOrder = asyncHandler(async (req, res) => {
       ],
       paymentId: `TEST_${Date.now()}`,
       originalPrice: round2(Number(pricing.originalAmount || finalAmount)),
+      comboDiscount: round2(
+        Number(pricing.comboDiscountInclusive ?? pricing.comboDiscount ?? 0),
+      ),
       couponCode: pricing.normalizedCouponCode || null,
       discountAmount: round2(Number(pricing.couponDiscount || 0)),
       discount: round2(Number(pricing.totalDiscount || 0)),
@@ -8276,18 +8755,31 @@ export const createTestOrder = asyncHandler(async (req, res) => {
       totals: {
         originalSubtotal: round2(Number(pricing.subtotal || 0)),
         subtotal: taxableAmount,
+        comboDiscount: round2(
+          Number(pricing.comboDiscountInclusive ?? pricing.comboDiscount ?? 0),
+        ),
         influencerDiscount: round2(Number(pricing.influencerDiscount || 0)),
         couponDiscount: round2(Number(pricing.couponDiscount || 0)),
         gst: gstAmount,
         shipping: shippingCharge,
         total: finalAmount,
       },
-      items: normalizedProducts.map((item) => ({
+      items: mergedProducts.map((item) => ({
         productId: item.productId || null,
         name: item.productTitle || "Product",
         quantity: Math.max(Number(item.quantity || 0), 0),
         unitPrice: round2(Number(item.price || 0)),
         lineTotal: round2(Number(item.subTotal || 0)),
+        comboId: item.comboId || null,
+        comboName: item.comboName || "",
+      })),
+      combos: (comboPayload.normalizedCombos || []).map((combo) => ({
+        comboId: combo.comboId || null,
+        comboName: combo.comboName || "Combo",
+        quantity: Math.max(Number(combo.quantity || 0), 0),
+        comboPrice: round2(Number(combo.comboPrice || 0)),
+        originalPrice: round2(Number(combo.originalPrice || 0)),
+        savings: round2(Number(combo.savings || 0)),
       })),
     };
 
@@ -8320,6 +8812,7 @@ export const createTestOrder = asyncHandler(async (req, res) => {
       influencerCode: testOrder.influencerCode || null,
       influencerCommission: testOrder.influencerCommission || 0,
       influencerStatsSynced,
+      comboCount: Array.isArray(testOrder.combos) ? testOrder.combos.length : 0,
       shippingSuppressed,
       invoiceNumber: testOrder.invoiceNumber || null,
       localInvoiceJsonPath: localDiskInvoice?.jsonPath || null,

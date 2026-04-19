@@ -13,6 +13,7 @@ import {
 } from "../utils/addressUtils.js";
 import { logger } from "../utils/errorHandler.js";
 import { syncOrderToFirestore } from "../utils/orderFirestoreSync.js";
+import { buildXpressbeesTrackingUrl } from "../utils/orderTracking.js";
 import {
   applyOrderStatusTransition,
   mapExpressbeesToShipmentStatus,
@@ -369,27 +370,12 @@ const mapLegacyShipmentStatus = (canonical) => {
 };
 
 const buildTrackingUrl = (awb) => {
-  const explicit = normalizeText(process.env.XPRESSBEES_TRACKING_BASE_URL, "");
-  if (!awb) return null;
-  if (!explicit) {
-    return `https://www.xpressbees.com/shipment/tracking?awbNo=${encodeURIComponent(String(awb))}`;
-  }
-
-  const normalizedBase = explicit.replace(/\/+$/, "");
-  try {
-    const parsed = new URL(normalizedBase);
-    parsed.searchParams.delete("awb");
-    parsed.searchParams.set("awbNo", String(awb));
-    return parsed.toString();
-  } catch {
-    if (normalizedBase.includes("${AWB}")) {
-      return normalizedBase.replace("${AWB}", encodeURIComponent(String(awb)));
-    }
-    if (normalizedBase.includes("?")) {
-      return `${normalizedBase}&awbNo=${encodeURIComponent(String(awb))}`;
-    }
-    return `${normalizedBase}?awbNo=${encodeURIComponent(String(awb))}`;
-  }
+  const template = normalizeText(
+    process.env.XPRESSBEES_TRACKING_BASE_URL ||
+      process.env.XPRESSBEES_TRACKING_URL_TEMPLATE,
+    "",
+  );
+  return buildXpressbeesTrackingUrl(awb, template) || null;
 };
 
 const normalizeXpressbeesTrackingUrl = (rawUrl, awb) => {
@@ -403,9 +389,9 @@ const normalizeXpressbeesTrackingUrl = (rawUrl, awb) => {
     if (!host.includes("xpressbees.com")) {
       return normalizedUrl;
     }
-    parsed.searchParams.delete("awb");
-    parsed.searchParams.set("awbNo", normalizedAwb);
-    return parsed.toString();
+    return (
+      buildXpressbeesTrackingUrl(normalizedAwb, normalizedUrl) || normalizedUrl
+    );
   } catch {
     return normalizedUrl;
   }

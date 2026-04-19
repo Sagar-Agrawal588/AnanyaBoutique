@@ -1,6 +1,7 @@
 import jwt from "jsonwebtoken";
 import { Server } from "socket.io";
 import UserModel from "../models/user.model.js";
+import isPrivilegedAdminRole from "../utils/isPrivilegedAdminRole.js";
 
 let ioInstance = null;
 
@@ -55,7 +56,7 @@ export const initSocket = (httpServer, { origins = [], jwtSecret } = {}) => {
       socket.join(`user:${socket.userId}`);
       try {
         const user = await UserModel.findById(socket.userId).select("role status");
-        if (user?.role === "Admin" && user?.status === "active") {
+        if (isPrivilegedAdminRole(user?.role) && user?.status === "active") {
           socket.join("admin:orders");
           socket.join("admin:analytics");
         }

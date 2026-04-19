@@ -51,20 +51,17 @@ const partnerSchema = new mongoose.Schema(
     rateLimitPerMinute: {
       type: Number,
       default: 120,
-      min: 10,
-      max: 5000,
+      min: 0,
     },
     dailyRequestLimit: {
       type: Number,
       default: 20000,
-      min: 100,
-      max: 5000000,
+      min: 0,
     },
     dailyTokenLimit: {
       type: Number,
       default: 0,
       min: 0,
-      max: 50000000,
     },
     rateLimitPlan: {
       tier: {
@@ -75,32 +72,27 @@ const partnerSchema = new mongoose.Schema(
       baseRPM: {
         type: Number,
         default: 120,
-        min: 10,
-        max: 50000,
+        min: 0,
       },
       burstRPM: {
         type: Number,
         default: 220,
-        min: 10,
-        max: 50000,
+        min: 0,
       },
       dailyLimit: {
         type: Number,
         default: 20000,
-        min: 100,
-        max: 10000000,
+        min: 0,
       },
       minDynamicRPM: {
         type: Number,
         default: 60,
-        min: 10,
-        max: 50000,
+        min: 0,
       },
       maxDynamicRPM: {
         type: Number,
         default: 4000,
-        min: 10,
-        max: 50000,
+        min: 0,
       },
       scalingEnabled: {
         type: Boolean,
@@ -115,14 +107,12 @@ const partnerSchema = new mongoose.Schema(
       manualOverrideRPM: {
         type: Number,
         default: null,
-        min: 10,
-        max: 50000,
+        min: 0,
       },
       manualOverrideDailyLimit: {
         type: Number,
         default: null,
-        min: 100,
-        max: 10000000,
+        min: 0,
       },
       qualityScore: {
         type: Number,

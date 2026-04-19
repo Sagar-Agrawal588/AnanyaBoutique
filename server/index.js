@@ -96,10 +96,18 @@ if (!normalizedMongoUri) {
 process.env.MONGO_URI = normalizedMongoUri;
 
 const isProductionEnv = process.env.NODE_ENV === "production";
+const isCorsAllowAllEnabled =
+  String(process.env.CORS_ALLOW_ALL || (isProductionEnv ? "false" : "true"))
+    .trim()
+    .toLowerCase() === "true";
 const normalizeOrigin = (origin) =>
   String(origin || "")
     .trim()
     .replace(/\/+$/, "");
+const parseTrustedProxyHops = (value, fallback = 1) => {
+  const parsed = Number.parseInt(String(value || "").trim(), 10);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback;
+};
 const isHttpOrigin = (origin) =>
   /^https?:\/\/[^/\s]+$/i.test(normalizeOrigin(origin));
 const isDevLocalhostOrigin = (origin) =>
@@ -194,6 +202,7 @@ import aboutPageRouter from "./routes/aboutPage.route.js";
 import addressRouter from "./routes/address.route.js";
 import adminAnalyticsRouter from "./routes/adminAnalytics.route.js";
 import adminAuthRouter from "./routes/adminAuth.route.js";
+import adminCrmRouter from "./routes/adminCrm.route.js";
 import adminEmailTemplatesRouter from "./routes/adminEmailTemplates.route.js";
 import adminMembershipRouter from "./routes/adminMembership.route.js";
 import adminOrdersRouter from "./routes/adminOrders.js";
@@ -208,6 +217,7 @@ import categoryRouter from "./routes/category.route.js";
 import coinRouter from "./routes/coin.route.js";
 import comboRouter from "./routes/combo.route.js";
 import couponRouter from "./routes/coupon.route.js";
+import crmRouter from "./routes/crm.route.js";
 import emailAutomationRouter from "./routes/emailAutomation.route.js";
 import homeMembershipContentRouter from "./routes/homeMembershipContent.route.js";
 import homeSlideRouter from "./routes/homeSlide.route.js";
@@ -251,8 +261,11 @@ const server = http.createServer(app);
 app.disable("x-powered-by");
 
 if (isProductionEnv) {
-  // App Engine/Cloud Run can add multiple proxy hops before Express.
-  app.set("trust proxy", true);
+  // Trust only the known reverse-proxy hop count instead of every forwarded value.
+  app.set(
+    "trust proxy",
+    parseTrustedProxyHops(process.env.TRUST_PROXY_HOPS, 1),
+  );
 }
 
 // Redirect duplicate slashes in request paths (e.g., //api/cart -> /api/cart)
@@ -284,11 +297,49 @@ app.use(
       allowedHeaders: [
         "Content-Type",
         "Authorization",
+        "x-api-key",
+        "X-API-Key",
         "X-Session-Id",
         "X-Analytics-Consent",
         "X-Page-Url",
       ],
+      exposedHeaders: [
+        "ETag",
+        "Retry-After",
+        "X-RateLimit-Limit",
+        "X-RateLimit-Remaining",
+        "X-RateLimit-Reset",
+        "RateLimit-Limit",
+        "RateLimit-Remaining",
+        "RateLimit-Reset",
+        "X-DailyLimit-Limit",
+        "X-DailyLimit-Remaining",
+        "X-RateLimit-Mode",
+        "X-RateLimit-Burst",
+        "X-RateLimit-Policy",
+      ],
     };
+
+    if (isCorsAllowAllEnabled) {
+      // Allow local/file-based testing while keeping credentialed browser requests valid.
+      if (!origin) {
+        callback(null, { ...corsOptions, origin: true });
+        return;
+      }
+
+      if (origin === "null") {
+        callback(null, { ...corsOptions, origin: "null" });
+        return;
+      }
+
+      if (isHttpOrigin(normalizedOrigin)) {
+        callback(null, { ...corsOptions, origin: normalizedOrigin });
+        return;
+      }
+
+      callback(new Error("Not allowed by CORS"));
+      return;
+    }
 
     if (
       !origin ||
@@ -445,6 +496,7 @@ app.use("/api/blogs", adminLimiter, blogRouter);
 app.use("/api/orders", generalLimiter, orderRouter);
 app.use("/api/admin/orders", adminLimiter, adminOrdersRouter);
 app.use("/api/admin/analytics", adminLimiter, adminAnalyticsRouter);
+app.use("/api/admin/crm", adminLimiter, adminCrmRouter);
 app.use("/api/admin/email-templates", adminLimiter, adminEmailTemplatesRouter);
 app.use("/api/admin", adminLimiter, adminMembershipRouter);
 app.use("/api/cart", generalLimiter, cartRouter);
@@ -465,6 +517,7 @@ app.use("/api/influencers", generalLimiter, influencerRouter);
 app.use("/api/invoices", generalLimiter, invoiceRouter);
 app.use("/api/notifications", generalLimiter, notificationRouter);
 app.use("/api/newsletter", generalLimiter, newsletterRouter);
+app.use("/api/crm", generalLimiter, crmRouter);
 app.use("/api/email", generalLimiter, emailAutomationRouter);
 app.use("/api/v1/partner", generalLimiter, partnerApiRouter);
 app.use("/api/settings", generalLimiter, settingsRouter);

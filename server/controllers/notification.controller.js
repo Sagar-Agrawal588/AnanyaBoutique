@@ -9,6 +9,7 @@ import NotificationTokenModel from "../models/notificationToken.model.js";
 import UserModel from "../models/user.model.js";
 import { emitLiveOfferNotification } from "../realtime/offerEvents.js";
 import { getIO } from "../realtime/socket.js";
+import { captureCrmTouchpointSafely } from "../services/crm/crmTracking.service.js";
 
 const isProduction = process.env.NODE_ENV === "production";
 // Debug-only logging to keep production output clean
@@ -360,6 +361,23 @@ export const registerToken = async (req, res) => {
         },
       );
     }
+
+    void captureCrmTouchpointSafely({
+      channel: "push",
+      eventType: "notification_registered",
+      userId: resolvedUserId,
+      sessionId,
+      happenedAt: tokenDoc.lastUsedAt || new Date(),
+      idempotencyKey: `crm:push:${tokenDoc._id}:registered:${new Date(tokenDoc.lastUsedAt || Date.now()).getTime()}`,
+      consent: {
+        push: true,
+      },
+      metadata: {
+        source: "notification_register",
+        platform: tokenDoc.platform || platform || "web",
+        userType: tokenDoc.userType || resolvedUserType,
+      },
+    });
 
     res.status(200).json({
       error: false,
@@ -1147,6 +1165,21 @@ export const unsubscribePromotionalEmail = async (req, res) => {
         message: "This email is not registered for promotional notifications.",
       });
     }
+
+    void captureCrmTouchpointSafely({
+      channel: "email",
+      eventType: "promotional_unsubscribed",
+      userId: updatedUser._id,
+      email,
+      happenedAt: new Date(),
+      idempotencyKey: `crm:promo-unsub:${updatedUser._id}`,
+      consent: {
+        email: false,
+      },
+      metadata: {
+        source: "promotional_unsubscribe",
+      },
+    });
 
     return respondWithResult(200, {
       success: true,

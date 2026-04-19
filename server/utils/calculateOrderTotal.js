@@ -1,3 +1,8 @@
+import {
+  resolveOrderAwb,
+  resolveOrderTrackingUrl,
+} from "./orderTracking.js";
+
 const round2 = (value) =>
   Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
 
@@ -145,7 +150,7 @@ export const normalizeOrderForResponse = (order) => {
   const base =
     typeof order.toObject === "function" ? order.toObject() : { ...order };
   const pricing = calculateOrderTotal(base);
-  const awbNumber = base.awbNumber || base.awb_number || null;
+  const awbNumber = resolveOrderAwb(base) || null;
   const shipmentStatus = toCanonicalShipmentStatus(base);
   const courierName =
     String(base.courierName || "").trim() ||
@@ -154,7 +159,7 @@ export const normalizeOrderForResponse = (order) => {
       .toUpperCase() === "XPRESSBEES"
       ? "Xpressbees"
       : "");
-  const trackingUrl = base.trackingUrl || null;
+  const trackingUrl = resolveOrderTrackingUrl(base) || null;
   const manifestId = base.manifestId || base.shipping_manifest || null;
   const invoiceUrl = base.invoiceUrl || base.invoicePath || null;
   const isInvoiceGenerated = Boolean(base.isInvoiceGenerated || invoiceUrl);

@@ -167,11 +167,16 @@ export const ERROR_CODES = {
 export class AppError extends Error {
   constructor(errorCode, details = null, originalError = null) {
     const errorDef = ERROR_CODES[errorCode] || ERROR_CODES.INTERNAL_ERROR;
-    super(errorDef.message);
+    const detailMessage =
+      details && typeof details === "object"
+        ? String(details.message || "").trim()
+        : "";
+    const resolvedMessage = detailMessage || errorDef.message;
+    super(resolvedMessage);
 
     this.code = errorCode;
     this.status = errorDef.status;
-    this.message = errorDef.message;
+    this.message = resolvedMessage;
     this.details = details;
     this.originalError = originalError;
     this.timestamp = new Date().toISOString();
@@ -278,9 +283,16 @@ export function sendError(
 
   if (error instanceof AppError) {
     errorCode = error.code;
-    message = error.message;
     statusCode = error.status;
     details = error.details;
+
+    const detailMessage =
+      details && typeof details === "object"
+        ? String(details.message || "").trim()
+        : "";
+    const useDetailMessage =
+      detailMessage.length > 0 && statusCode >= 400 && statusCode < 500;
+    message = useDetailMessage ? detailMessage : error.message;
 
     logger.error("AppError", message, {
       code: errorCode,
@@ -493,7 +505,38 @@ export function handleDatabaseError(error, context = "Database Operation") {
   }
 
   if (error.code === 11000) {
-    const field = Object.keys(error.keyPattern)[0];
+    const rawMessage = String(error?.message || "");
+    const keyPattern =
+      error.keyPattern && typeof error.keyPattern === "object"
+        ? error.keyPattern
+        : null;
+    const keyValue =
+      error.keyValue && typeof error.keyValue === "object"
+        ? error.keyValue
+        : null;
+    const parsedFieldFromMessage = (() => {
+      const directDupKeyMatch = rawMessage.match(
+        /dup\s+key\s*:\s*\{\s*"?([A-Za-z0-9_.-]+)"?\s*:/i,
+      );
+      if (directDupKeyMatch?.[1]) return directDupKeyMatch[1];
+
+      const indexWithSuffixMatch = rawMessage.match(
+        /index:\s*([A-Za-z0-9_.-]+)_1\s+dup\s+key/i,
+      );
+      if (indexWithSuffixMatch?.[1]) return indexWithSuffixMatch[1];
+
+      const genericIndexMatch = rawMessage.match(
+        /index:\s*([A-Za-z0-9_.-]+)\s+dup\s+key/i,
+      );
+      if (genericIndexMatch?.[1]) return genericIndexMatch[1];
+
+      return "";
+    })();
+
+    const field =
+      Object.keys(keyPattern || keyValue || {})[0] ||
+      parsedFieldFromMessage ||
+      "resource";
     return new AppError("CONFLICT", {
       field,
       message: `${field} already exists`,

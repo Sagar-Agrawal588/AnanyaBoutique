@@ -3,9 +3,10 @@ import InvoiceModel from "../models/invoice.model.js";
 import OrderModel from "../models/order.model.js";
 import UserModel from "../models/user.model.js";
 import { getAbsolutePathFromStoredInvoicePath } from "../utils/generateInvoicePdf.js";
+import isPrivilegedAdminRole from "../utils/isPrivilegedAdminRole.js";
 
 const isOrderAccessible = (order, requester) => {
-  const isAdmin = requester?.role === "Admin";
+  const isAdmin = isPrivilegedAdminRole(requester?.role);
   if (isAdmin) return true;
   const orderUserId = order?.user?._id?.toString?.() || order?.user?.toString?.();
   return Boolean(orderUserId && requester && orderUserId === String(requester._id));

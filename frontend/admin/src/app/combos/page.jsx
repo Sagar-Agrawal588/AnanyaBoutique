@@ -2,6 +2,7 @@
 
 import UploadBox from "@/components/UploadBox";
 import { useAdmin } from "@/context/AdminContext";
+import { withAdminBasePath } from "@/utils/basePath";
 import {
   deleteData,
   getData,
@@ -192,7 +193,7 @@ const buildItemsPreview = (items = []) => {
 };
 
 const resolveSuggestionImage = (suggestion) => {
-  if (!suggestion) return "/placeholder.png";
+  if (!suggestion) return withAdminBasePath("/placeholder.png");
   const items = Array.isArray(suggestion.items)
     ? suggestion.items
     : Array.isArray(suggestion.itemsSnapshot)
@@ -202,7 +203,7 @@ const resolveSuggestionImage = (suggestion) => {
     suggestion.thumbnail ||
     suggestion.image ||
     items.find((item) => item?.image)?.image ||
-    "/placeholder.png"
+    withAdminBasePath("/placeholder.png")
   );
 };
 

@@ -1,5 +1,6 @@
 "use client";
 import { useAdmin } from "@/context/AdminContext";
+import { withAdminBasePath } from "@/utils/basePath";
 import { deleteData, getData, patchData } from "@/utils/api";
 import { getImageUrl } from "@/utils/imageUtils";
 import { Button, Chip } from "@mui/material";
@@ -354,7 +355,9 @@ const ProductsListContent = () => {
                               onError={(e) => {
                                 if (e.currentTarget.dataset.fallbackApplied) return;
                                 e.currentTarget.dataset.fallbackApplied = "true";
-                                e.currentTarget.src = "/placeholder.png";
+                                e.currentTarget.src = withAdminBasePath(
+                                  "/placeholder.png",
+                                );
                               }}
                             />
                           </div>

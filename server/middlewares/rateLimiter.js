@@ -12,22 +12,8 @@ const toPositiveInteger = (value, fallback) => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
 
-const getClientIp = (req) => {
-  const forwardedFor = req.headers["x-forwarded-for"];
-  const realIp = req.headers["x-real-ip"];
-
-  const firstForwardedIp =
-    typeof forwardedFor === "string" ? forwardedFor.split(",")[0].trim() : "";
-  const normalizedRealIp = typeof realIp === "string" ? realIp.trim() : "";
-
-  return (
-    firstForwardedIp ||
-    normalizedRealIp ||
-    req.ip ||
-    req.socket?.remoteAddress ||
-    "127.0.0.1"
-  );
-};
+export const resolveRateLimitIp = (req) =>
+  String(req?.ip || req?.socket?.remoteAddress || "").trim() || "127.0.0.1";
 
 const getTopLevelApiBucket = (req) => {
   const rawPath = String(req.originalUrl || req.url || "").split("?")[0];
@@ -41,8 +27,8 @@ const getTopLevelApiBucket = (req) => {
   return pathSegments.length >= 2 ? `/api/${pathSegments[1]}` : "/api";
 };
 
-const buildLimiterKey = (req, scope, includeApiBucket = false) => {
-  const ipKey = ipKeyGenerator(getClientIp(req));
+export const buildLimiterKey = (req, scope, includeApiBucket = false) => {
+  const ipKey = ipKeyGenerator(resolveRateLimitIp(req));
   if (!includeApiBucket) return `${scope}:${ipKey}`;
   return `${scope}:${getTopLevelApiBucket(req)}:${ipKey}`;
 };
@@ -167,6 +153,8 @@ export const analyticsLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: (req) => buildLimiterKey(req, "analytics", true),
+  skip: skipPreflight,
 });
 
 // Support ticket limiter.

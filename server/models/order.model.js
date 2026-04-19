@@ -218,7 +218,7 @@ const orderSchema = new mongoose.Schema(
     // Final immutable identifier assigned only after successful payment.
     final_id: {
       type: String,
-      default: null,
+      default: undefined,
       trim: true,
       uppercase: true,
     },
@@ -992,6 +992,10 @@ orderSchema.pre("validate", async function () {
     this.payment_status = "paid";
   }
 
+  const normalizedPaymentStatus = String(this.payment_status || "")
+    .trim()
+    .toLowerCase();
+
   if (this.confirmedAt && !this.confirmed_at) {
     this.confirmed_at = this.confirmedAt;
   }
@@ -1028,20 +1032,21 @@ orderSchema.pre("validate", async function () {
   const normalizedLegacyOrderNumber = String(this.orderNumber || "")
     .trim()
     .toUpperCase();
-  if (
+  const allowsFinalId =
+    normalizedPaymentStatus === "paid" ||
+    normalizedPaymentStatus === "confirmed";
+
+  if (!allowsFinalId) {
+    normalizedFinalId = "";
+  } else if (
     !normalizedFinalId &&
     FINAL_ORDER_ID_PATTERN.test(normalizedLegacyOrderNumber)
   ) {
     normalizedFinalId = normalizedLegacyOrderNumber;
   }
-  this.final_id = normalizedFinalId || null;
+  this.final_id = normalizedFinalId || undefined;
 
-  if (
-    String(this.payment_status || "")
-      .trim()
-      .toLowerCase() === "paid" &&
-    !this.confirmed_at
-  ) {
+  if (normalizedPaymentStatus === "paid" && !this.confirmed_at) {
     const confirmedAt = this.paymentCompletedAt || new Date();
     this.confirmed_at = confirmedAt;
     this.confirmedAt = confirmedAt;
