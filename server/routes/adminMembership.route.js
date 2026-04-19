@@ -10,25 +10,24 @@ import {
 } from "../controllers/adminMembership.controller.js";
 import admin from "../middlewares/admin.js";
 import auth from "../middlewares/auth.js";
+import requireAdminPermission from "../middlewares/requireAdminPermission.js";
 
 const router = express.Router();
 
-router.get("/membership-users", auth, admin, getAdminMembershipUsers);
-router.get("/membership-users/:id", auth, admin, getAdminMembershipUserById);
-router.post("/membership-users/extend", auth, admin, extendAdminMembershipUser);
+router.use(auth, admin, requireAdminPermission("manage_membership"));
+
+router.get("/membership-users", getAdminMembershipUsers);
+router.get("/membership-users/:id", getAdminMembershipUserById);
+router.post("/membership-users/extend", extendAdminMembershipUser);
 router.post(
   "/membership-users/add-points",
-  auth,
-  admin,
   addPointsToAdminMembershipUser,
 );
 router.post(
   "/membership-users/toggle-status",
-  auth,
-  admin,
   toggleAdminMembershipUserStatus,
 );
-router.post("/membership-users/convert", auth, admin, convertUserToMembershipAdmin);
-router.get("/membership-analytics", auth, admin, getAdminMembershipAnalytics);
+router.post("/membership-users/convert", convertUserToMembershipAdmin);
+router.get("/membership-analytics", getAdminMembershipAnalytics);
 
 export default router;

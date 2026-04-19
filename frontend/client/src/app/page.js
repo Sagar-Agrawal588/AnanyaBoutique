@@ -14,6 +14,21 @@ const sanitizeBaseUrl = (value) =>
 const API_BASE_URL = sanitizeBaseUrl(
   process.env.NEXT_PUBLIC_APP_API_URL || process.env.NEXT_PUBLIC_API_URL,
 );
+const SERVER_FETCH_TIMEOUT_MS = 3000;
+
+const fetchWithTimeout = async (url, options = {}) => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), SERVER_FETCH_TIMEOUT_MS);
+
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+};
 
 const getHomepageData = async (path) => {
   if (!API_BASE_URL) {
@@ -21,7 +36,7 @@ const getHomepageData = async (path) => {
   }
 
   try {
-    const response = await fetch(`${API_BASE_URL}${path}`, {
+    const response = await fetchWithTimeout(`${API_BASE_URL}${path}`, {
       next: { revalidate: 60 },
     });
 

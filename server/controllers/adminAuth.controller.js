@@ -2,6 +2,8 @@ import bcrypt from "bcryptjs";
 import UserModel from "../models/user.model.js";
 import generateAccessToken from "../utils/generateAccessToken.js";
 import generateRefreshToken from "../utils/generateRefreshToken.js";
+import isPrivilegedAdminRole from "../utils/isPrivilegedAdminRole.js";
+import { normalizeManagerPermissions } from "../utils/adminPermissions.js";
 
 const AUTH_PERSIST_MAX_AGE = 365 * 24 * 60 * 60 * 1000; // 365 days
 const ACCESS_TOKEN_MAX_AGE = AUTH_PERSIST_MAX_AGE;
@@ -54,9 +56,29 @@ const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 const ADMIN_PRIMARY_EMAIL = normalizeEmail(
   process.env.ADMIN_PRIMARY_EMAIL || "admin@buyonegram.com",
 );
+const MANAGER_PRIMARY_EMAIL = normalizeEmail(
+  process.env.MANAGER_PRIMARY_EMAIL || "manager@buyonegram.com",
+);
+
+const ADMIN_ALLOWED_EMAILS = new Set(
+  String(process.env.ADMIN_ALLOWED_EMAILS || "")
+    .split(",")
+    .map((email) => normalizeEmail(email))
+    .filter(Boolean),
+);
+
+if (ADMIN_PRIMARY_EMAIL) {
+  ADMIN_ALLOWED_EMAILS.add(ADMIN_PRIMARY_EMAIL);
+}
+if (MANAGER_PRIMARY_EMAIL) {
+  ADMIN_ALLOWED_EMAILS.add(MANAGER_PRIMARY_EMAIL);
+}
 
 const isAllowedAdminEmail = (email) =>
-  normalizeEmail(email) === ADMIN_PRIMARY_EMAIL;
+  ADMIN_ALLOWED_EMAILS.has(normalizeEmail(email));
+
+const resolvePrivilegedRoleForEmail = (email) =>
+  normalizeEmail(email) === ADMIN_PRIMARY_EMAIL ? "Admin" : "Manager";
 
 const resolveIsActiveMember = (user) => {
   if (!user) return false;
@@ -93,7 +115,7 @@ export const adminLoginController = async (req, res) => {
       return res.status(403).json({
         success: false,
         error: true,
-        message: "Access denied. Admin privileges required.",
+        message: "Access denied. Admin or Manager privileges required.",
       });
     }
 
@@ -102,7 +124,7 @@ export const adminLoginController = async (req, res) => {
       return res.status(403).json({
         success: false,
         error: true,
-        message: "Admin account not found",
+        message: "Privileged account not found",
       });
     }
 
@@ -160,8 +182,12 @@ export const adminLoginController = async (req, res) => {
       });
     }
 
-    if (user.role !== "Admin") {
-      user.role = "Admin";
+    const expectedRole = resolvePrivilegedRoleForEmail(normalizedEmail);
+    if (
+      !isPrivilegedAdminRole(user.role) ||
+      (expectedRole === "Admin" && user.role !== "Admin")
+    ) {
+      user.role = expectedRole;
       await user.save();
     }
 
@@ -178,6 +204,11 @@ export const adminLoginController = async (req, res) => {
     res.cookie("accessToken", accessToken, accessCookieOptions);
     res.cookie("refreshToken", refreshToken, refreshCookieOptions);
 
+    const managerPermissions =
+      user?.role === "Manager"
+        ? normalizeManagerPermissions(user?.managerPermissions)
+        : [];
+
     return res.json({
       message: "Login successful",
       success: true,
@@ -191,6 +222,7 @@ export const adminLoginController = async (req, res) => {
         userId: user?._id,
         avatar: user?.avatar,
         isMember: resolveIsActiveMember(user),
+        managerPermissions,
       },
     });
   } catch (error) {
@@ -219,9 +251,11 @@ export const adminGoogleLoginController = async (req, res) => {
       return res.status(403).json({
         success: false,
         error: true,
-        message: "Access denied. Admin privileges required.",
+        message: "Access denied. Admin or Manager privileges required.",
       });
     }
+
+    const expectedRole = resolvePrivilegedRoleForEmail(normalizedEmail);
 
     const sanitizedName = String(name || "")
       .trim()
@@ -231,21 +265,19 @@ export const adminGoogleLoginController = async (req, res) => {
 
     let user = await UserModel.findOne({ email: normalizedEmail });
 
-    let isNewGoogleUser = false;
     if (!user) {
       user = new UserModel({
         email: normalizedEmail,
         name: resolvedName,
         verifyEmail: true,
         signUpWithGoogle: true,
-        role: "Admin",
+        role: expectedRole,
         avatar: avatar || "",
         mobile: mobile || "",
         googleId: googleId || null,
         provider: "google",
       });
       await user.save();
-      isNewGoogleUser = true;
     } else {
       if (avatar && !user.avatar) {
         user.avatar = avatar;
@@ -257,8 +289,11 @@ export const adminGoogleLoginController = async (req, res) => {
         user.provider = "google";
         user.signUpWithGoogle = true;
       }
-      if (user.role !== "Admin") {
-        user.role = "Admin";
+      if (
+        !isPrivilegedAdminRole(user.role) ||
+        (expectedRole === "Admin" && user.role !== "Admin")
+      ) {
+        user.role = expectedRole;
       }
       if (user.name !== resolvedName && !user.name) {
         user.name = resolvedName;
@@ -278,6 +313,11 @@ export const adminGoogleLoginController = async (req, res) => {
     res.cookie("accessToken", accessToken, accessCookieOptions);
     res.cookie("refreshToken", refreshToken, refreshCookieOptions);
 
+    const managerPermissions =
+      user?.role === "Manager"
+        ? normalizeManagerPermissions(user?.managerPermissions)
+        : [];
+
     return res.json({
       message: "Google login successful",
       success: true,
@@ -291,6 +331,7 @@ export const adminGoogleLoginController = async (req, res) => {
         userId: user?._id,
         avatar: user?.avatar,
         isMember: resolveIsActiveMember(user),
+        managerPermissions,
       },
     });
   } catch (error) {

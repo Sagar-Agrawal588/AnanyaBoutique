@@ -120,6 +120,7 @@ import {
   updateInfluencerStats,
 } from "./influencer.controller.js";
 import { sendOrderUpdateNotification } from "./notification.controller.js";
+import isPrivilegedAdminRole from "../utils/isPrivilegedAdminRole.js";
 
 // ==================== PAYMENT PROVIDER CONFIGURATION ====================
 
@@ -4659,14 +4660,14 @@ export const getOrderById = asyncHandler(async (req, res) => {
 
     let isAdmin = false;
     if (req.user?.role) {
-      isAdmin = req.user.role === "Admin";
+      isAdmin = isPrivilegedAdminRole(req.user.role);
     } else {
       const viewer =
         await UserModel.findById(requesterId).select("role status");
       if (!viewer) {
         throw new AppError("UNAUTHORIZED");
       }
-      isAdmin = viewer.role === "Admin";
+      isAdmin = isPrivilegedAdminRole(viewer.role);
     }
 
     if (!isAdmin) {
@@ -5096,7 +5097,7 @@ export const downloadOrderInvoice = asyncHandler(async (req, res) => {
       throw new AppError("ORDER_NOT_FOUND");
     }
 
-    const isAdmin = requester.role === "Admin";
+    const isAdmin = isPrivilegedAdminRole(requester.role);
     const orderUserId =
       order.user?._id?.toString?.() || order.user?.toString?.();
     const requesterEmail = normalizeEmail(requester?.email || "");
@@ -7271,6 +7272,44 @@ const resolvePaymentProviderFromOrder = (order = {}) => {
   return null;
 };
 
+const SUCCESSFUL_BACKFILL_ORDER_STATUSES = new Set([
+  ORDER_STATUS.ACCEPTED,
+  ORDER_STATUS.CONFIRMED_LEGACY,
+  ORDER_STATUS.SHIPPED,
+  ORDER_STATUS.OUT_FOR_DELIVERY,
+  ORDER_STATUS.DELIVERED,
+  ORDER_STATUS.COMPLETED,
+]);
+
+const SUCCESSFUL_BACKFILL_PAYMENT_STATUSES = new Set([
+  "paid",
+  "confirmed",
+  "captured",
+  "success",
+  "successful",
+]);
+
+const isGatewayMerchantReference = (value) =>
+  /^BOG_/i.test(String(value || "").trim());
+
+const resolveProviderTransactionIdForBackfill = (order = {}) => {
+  return [order?.paytmTransactionId, order?.phonepeTransactionId]
+    .map((value) => String(value || "").trim())
+    .find(Boolean);
+};
+
+const isSuccessfulOrderCandidateForBackfill = (order = {}) => {
+  const paymentStatus = String(order?.payment_status || "")
+    .trim()
+    .toLowerCase();
+  const orderStatus = normalizeOrderStatus(order?.order_status);
+
+  return (
+    SUCCESSFUL_BACKFILL_PAYMENT_STATUSES.has(paymentStatus) ||
+    SUCCESSFUL_BACKFILL_ORDER_STATUSES.has(orderStatus)
+  );
+};
+
 const shouldAttemptPaymentReconciliation = (order, { force = false } = {}) => {
   if (!order?._id) return false;
 
@@ -8077,6 +8116,131 @@ export const repairPaidOrders = asyncHandler(async (req, res) => {
     return sendError(res, dbError);
   }
 });
+
+/**
+ * Backfill paymentId with provider transaction ID for successful orders (Admin)
+ * @route POST /api/orders/admin/backfill-payment-ids
+ * @access Admin
+ */
+export const backfillSuccessfulOrderPaymentIds = asyncHandler(
+  async (req, res) => {
+    try {
+      const limitRaw = req.body?.limit ?? req.query?.limit ?? 250;
+      const limit = Math.min(Math.max(Number(limitRaw) || 250, 1), 1000);
+
+      const candidateFilter = {
+        purchaseOrder: null,
+        isDemoOrder: { $ne: true },
+        $and: [
+          {
+            $or: [
+              {
+                payment_status: {
+                  $in: Array.from(SUCCESSFUL_BACKFILL_PAYMENT_STATUSES),
+                },
+              },
+              {
+                order_status: {
+                  $in: Array.from(SUCCESSFUL_BACKFILL_ORDER_STATUSES),
+                },
+              },
+            ],
+          },
+          {
+            $or: [
+              { paymentId: { $in: [null, ""] } },
+              { paymentId: { $regex: "^BOG_", $options: "i" } },
+            ],
+          },
+          {
+            $or: [
+              { paytmTransactionId: { $exists: true, $nin: [null, ""] } },
+              { phonepeTransactionId: { $exists: true, $nin: [null, ""] } },
+            ],
+          },
+        ],
+      };
+
+      const orders = await OrderModel.find(candidateFilter)
+        .sort({ updatedAt: 1 })
+        .limit(limit)
+        .exec();
+
+      if (!orders.length) {
+        return sendSuccess(
+          res,
+          { scanned: 0, updated: 0, skipped: 0, remaining: 0 },
+          "No successful orders need payment ID backfill",
+        );
+      }
+
+      let updated = 0;
+      let skipped = 0;
+      const updatedOrderIds = [];
+
+      for (const order of orders) {
+        if (!isSuccessfulOrderCandidateForBackfill(order)) {
+          skipped += 1;
+          continue;
+        }
+
+        const transactionId = resolveProviderTransactionIdForBackfill(order);
+        if (!transactionId) {
+          skipped += 1;
+          continue;
+        }
+
+        const currentPaymentId = String(order?.paymentId || "").trim();
+        if (currentPaymentId && !isGatewayMerchantReference(currentPaymentId)) {
+          skipped += 1;
+          continue;
+        }
+
+        if (currentPaymentId === transactionId) {
+          skipped += 1;
+          continue;
+        }
+
+        order.paymentId = transactionId;
+        order.updatedAt = new Date();
+        await order.save();
+        updated += 1;
+        updatedOrderIds.push(String(order._id));
+
+        syncOrderToFirestore(order, "update").catch((error) => {
+          logger.error(
+            "backfillSuccessfulOrderPaymentIds",
+            "Failed to sync order after payment ID backfill",
+            {
+              orderId: order._id,
+              error: error?.message || String(error),
+            },
+          );
+        });
+      }
+
+      const remaining = await OrderModel.countDocuments(candidateFilter);
+
+      return sendSuccess(
+        res,
+        {
+          scanned: orders.length,
+          updated,
+          skipped,
+          remaining,
+          updatedOrderIds,
+        },
+        "Successful-order payment ID backfill completed",
+      );
+    } catch (error) {
+      const dbError = handleDatabaseError(
+        error,
+        "backfillSuccessfulOrderPaymentIds",
+      );
+      return sendError(res, dbError);
+    }
+  },
+);
 
 /**
  * PhonePe Webhook Handler

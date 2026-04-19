@@ -10,6 +10,7 @@ import ComboModel from "./models/combo.model.js";
 import HomeSlideModel from "./models/homeSlide.model.js";
 import ProductModel from "./models/product.model.js";
 import UserModel from "./models/user.model.js";
+import { normalizeManagerPermissions } from "./utils/adminPermissions.js";
 import {
   buildComboItemsSnapshot,
   buildComboPricing,
@@ -46,6 +47,30 @@ const SEED_PUBLIC_IMAGES = [
 
 const resolveSeedPublicImage = (index = 0) =>
   SEED_PUBLIC_IMAGES[index % SEED_PUBLIC_IMAGES.length];
+
+const RAW_SEED_MANAGER_DEFAULT_PERMISSIONS = String(
+  process.env.MANAGER_DEFAULT_PERMISSIONS || "",
+).trim();
+const HAS_SEED_MANAGER_DEFAULT_PERMISSIONS =
+  RAW_SEED_MANAGER_DEFAULT_PERMISSIONS.length > 0;
+const SEED_MANAGER_DEFAULT_PERMISSIONS = normalizeManagerPermissions(
+  RAW_SEED_MANAGER_DEFAULT_PERMISSIONS
+    .split(",")
+    .map((permission) => permission.trim())
+    .filter(Boolean),
+);
+const ADMIN_SEED_EMAIL = String(
+  process.env.ADMIN_PRIMARY_EMAIL || "admin@buyonegram.com",
+)
+  .trim()
+  .toLowerCase();
+const MANAGER_SEED_EMAIL = String(
+  process.env.MANAGER_PRIMARY_EMAIL || "manager@buyonegram.com",
+)
+  .trim()
+  .toLowerCase();
+const ADMIN_SEED_PASSWORD = String(process.env.ADMIN_PRIMARY_PASSWORD || "").trim();
+const MANAGER_SEED_PASSWORD = String(process.env.MANAGER_PRIMARY_PASSWORD || "").trim();
 
 // Peanut Butter Categories
 const categories = [
@@ -651,26 +676,118 @@ const seedBanners = async () => {
   console.log(`✅ ${createdBanners.length} banners seeded`);
 };
 
-const seedAdminUser = async () => {
-  const adminExists = await UserModel.findOne({ role: "Admin" });
+const seedPrivilegedUser = async ({
+  name,
+  email,
+  password,
+  role,
+  managerPermissions = null,
+}) => {
+  const normalizedEmail = String(email || "")
+    .trim()
+    .toLowerCase();
+  if (!normalizedEmail) return;
 
-  if (!adminExists) {
-    const hashedPassword = await bcrypt.hash("admin123", 10);
+  const existingUser = await UserModel.findOne({ email: normalizedEmail });
+  const hashedPassword = await bcrypt.hash(password, 10);
 
-    const adminUser = await UserModel.create({
-      name: "Admin",
-      email: "admin@buyonegram.com",
+  if (!existingUser) {
+    const createdUser = await UserModel.create({
+      name,
+      email: normalizedEmail,
       password: hashedPassword,
-      role: "Admin",
+      role,
       verifyEmail: true,
       status: "active",
+      managerPermissions:
+        role === "Manager"
+          ? normalizeManagerPermissions(
+              Array.isArray(managerPermissions) ? managerPermissions : [],
+            )
+          : [],
     });
 
-    console.log(`✅ Admin user created: ${adminUser.email}`);
+    console.log(`✅ ${role} user created: ${createdUser.email}`);
     console.log("   Password: [set in seeder script] (change this immediately!)");
-  } else {
-    console.log(`ℹ️  Admin user already exists: ${adminExists.email}`);
+    return;
   }
+
+  let didUpdate = false;
+  if (existingUser.role !== role) {
+    existingUser.role = role;
+    didUpdate = true;
+  }
+  if (existingUser.verifyEmail !== true) {
+    existingUser.verifyEmail = true;
+    didUpdate = true;
+  }
+  if (existingUser.status !== "active") {
+    existingUser.status = "active";
+    didUpdate = true;
+  }
+  if (role === "Manager" && Array.isArray(managerPermissions)) {
+    const normalized = normalizeManagerPermissions(managerPermissions);
+    if (
+      JSON.stringify(existingUser.managerPermissions || []) !==
+      JSON.stringify(normalized)
+    ) {
+      existingUser.managerPermissions = normalized;
+      didUpdate = true;
+    }
+  } else if (
+    Array.isArray(existingUser.managerPermissions) &&
+    existingUser.managerPermissions.length > 0
+  ) {
+    existingUser.managerPermissions = [];
+    didUpdate = true;
+  }
+  if (!existingUser.password) {
+    existingUser.password = hashedPassword;
+    didUpdate = true;
+  }
+
+  if (didUpdate) {
+    await existingUser.save();
+    console.log(`✅ ${role} user updated: ${existingUser.email}`);
+  } else {
+    console.log(`ℹ️  ${role} user already exists: ${existingUser.email}`);
+  }
+};
+
+const seedAdminUser = async () => {
+  if (!ADMIN_SEED_PASSWORD) {
+    console.log(
+      "⚠️  Skipping Admin user seed: ADMIN_PRIMARY_PASSWORD is not set.",
+    );
+    return;
+  }
+
+  await seedPrivilegedUser({
+    name: "Admin",
+    email: ADMIN_SEED_EMAIL,
+    password: ADMIN_SEED_PASSWORD,
+    role: "Admin",
+    managerPermissions: null,
+  });
+};
+
+const seedManagerUser = async () => {
+  if (!MANAGER_SEED_PASSWORD) {
+    console.log(
+      "⚠️  Skipping Manager user seed: MANAGER_PRIMARY_PASSWORD is not set.",
+    );
+    return;
+  }
+
+  await seedPrivilegedUser({
+    name: "Manager",
+    email: MANAGER_SEED_EMAIL,
+    password: MANAGER_SEED_PASSWORD,
+    role: "Manager",
+    managerPermissions: HAS_SEED_MANAGER_DEFAULT_PERMISSIONS
+      ? SEED_MANAGER_DEFAULT_PERMISSIONS
+      : null,
+  });
 };
 
 // Main seed function
@@ -686,6 +803,7 @@ const seedDatabase = async () => {
     await seedSlides();
     await seedBanners();
     await seedAdminUser();
+    await seedManagerUser();
 
     console.log("\n✨ Database seeded successfully!\n");
     process.exit(0);

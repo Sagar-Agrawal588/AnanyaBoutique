@@ -12,27 +12,26 @@ import {
 } from "../controllers/adminCrm.controller.js";
 import admin from "../middlewares/admin.js";
 import auth from "../middlewares/auth.js";
+import requireAdminPermission from "../middlewares/requireAdminPermission.js";
 
 const router = express.Router();
 
-router.get("/overview", auth, admin, getAdminCrmOverview);
-router.get("/contacts", auth, admin, getAdminCrmContacts);
-router.get("/contacts/:contactId/timeline", auth, admin, getAdminCrmContactTimeline);
-router.patch("/contacts/:contactId", auth, admin, patchAdminCrmContact);
+router.use(auth, admin, requireAdminPermission("manage_crm"));
+
+router.get("/overview", getAdminCrmOverview);
+router.get("/contacts", getAdminCrmContacts);
+router.get("/contacts/:contactId/timeline", getAdminCrmContactTimeline);
+router.patch("/contacts/:contactId", patchAdminCrmContact);
 router.post(
   "/contacts/:contactId/whatsapp/send",
-  auth,
-  admin,
   postAdminCrmContactWhatsappMessage,
 );
-router.get("/whatsapp/overview", auth, admin, getAdminCrmWhatsappOverview);
-router.get("/whatsapp/templates", auth, admin, getAdminCrmWhatsappTemplates);
+router.get("/whatsapp/overview", getAdminCrmWhatsappOverview);
+router.get("/whatsapp/templates", getAdminCrmWhatsappTemplates);
 router.get(
   "/whatsapp/audience-preview",
-  auth,
-  admin,
   getAdminCrmWhatsappAudiencePreview,
 );
-router.post("/whatsapp/campaign/send", auth, admin, postAdminCrmWhatsappCampaign);
+router.post("/whatsapp/campaign/send", postAdminCrmWhatsappCampaign);
 
 export default router;

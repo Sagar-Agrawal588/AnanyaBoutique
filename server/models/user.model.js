@@ -86,8 +86,20 @@ const userSchema = mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ["User", "Admin", "Influencer", "influencer"],
+      enum: ["User", "Admin", "Manager", "Influencer", "influencer"],
       default: "User",
+    },
+    managerPermissions: {
+      type: [String],
+      enum: [
+        "manage_users",
+        "view_analytics",
+        "manage_crm",
+        "manage_membership",
+        "manage_shipping",
+        "manage_settings",
+      ],
+      default: [],
     },
     signUpWithGoogle: {
       type: Boolean,

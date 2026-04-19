@@ -16,6 +16,7 @@ import UserModel from "../models/user.model.js";
 import { validateIndianPincode } from "../services/shippingRate.service.js";
 import { splitGstInclusiveAmount } from "../services/tax.service.js";
 import { checkExclusiveAccess } from "../middlewares/membershipGuard.js";
+import isPrivilegedAdminRole from "../utils/isPrivilegedAdminRole.js";
 
 const round2 = (value) =>
   Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
@@ -828,7 +829,7 @@ export const getPurchaseOrderById = async (req, res) => {
     let isAdmin = false;
     if (userId) {
       const requester = await UserModel.findById(userId).select("role").lean();
-      isAdmin = requester?.role === "Admin";
+      isAdmin = isPrivilegedAdminRole(requester?.role);
     }
 
     const po = await PurchaseOrderModel.findById(id).lean();
@@ -923,7 +924,7 @@ export const downloadPurchaseOrderPdf = async (req, res) => {
     let isAdmin = false;
     if (requesterId) {
       const requester = await UserModel.findById(requesterId).select("role").lean();
-      isAdmin = requester?.role === "Admin";
+      isAdmin = isPrivilegedAdminRole(requester?.role);
     }
 
     if (!isAdmin) {
@@ -1388,7 +1389,7 @@ export const convertPurchaseOrderToOrder = async (req, res) => {
     let isAdmin = false;
     if (userId) {
       const requester = await UserModel.findById(userId).select("role").lean();
-      isAdmin = requester?.role === "Admin";
+      isAdmin = isPrivilegedAdminRole(requester?.role);
     }
 
     if (!po) {

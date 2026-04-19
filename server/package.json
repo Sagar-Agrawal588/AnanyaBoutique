@@ -24,6 +24,7 @@
     "migrate:payment-cleanup": "node migrations/2026-02-payment-provider-cleanup.mjs",
     "repair:order-identity-indexes": "node scripts/repairOrderIdentityIndexes.mjs",
     "cleanup:demo-orders": "node scripts/removeDemoOrders.mjs",
+    "users:ensure-privileged": "node scripts/ensurePrivilegedUsers.mjs",
     "backfill:addresses": "node scripts/backfillAddressStructures.mjs",
     "backfill:crm": "node scripts/backfillCrmContacts.mjs",
     "backfill:order-item-sku-hsn": "node scripts/backfillOrderItemSkuHsn.mjs",

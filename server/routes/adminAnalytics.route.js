@@ -1,6 +1,7 @@
 import express from "express";
 import auth from "../middlewares/auth.js";
 import admin from "../middlewares/admin.js";
+import requireAdminPermission from "../middlewares/requireAdminPermission.js";
 import {
   getAdminAnalyticsCharts,
   getAdminAnalyticsOverview,
@@ -16,19 +17,21 @@ import {
 
 const router = express.Router();
 
+router.use(auth, admin, requireAdminPermission("view_analytics"));
+
 // Legacy analytics endpoints (kept for backward compatibility)
-router.get("/overview", auth, admin, getAdminAnalyticsOverview);
-router.get("/charts", auth, admin, getAdminAnalyticsCharts);
-router.get("/users/:userId", auth, admin, getAdminUserActivity);
-router.get("/users", auth, admin, getAdminUserActivity);
+router.get("/overview", getAdminAnalyticsOverview);
+router.get("/charts", getAdminAnalyticsCharts);
+router.get("/users/:userId", getAdminUserActivity);
+router.get("/users", getAdminUserActivity);
 
 // Behavior analytics endpoints
-router.get("/behavior/overview", auth, admin, getBehaviorAnalyticsOverview);
-router.get("/behavior/engagement", auth, admin, getBehaviorAnalyticsEngagement);
-router.get("/behavior/performance", auth, admin, getBehaviorAnalyticsPerformance);
-router.get("/behavior/sessions", auth, admin, getBehaviorSessions);
-router.get("/behavior/user-activity", auth, admin, getBehaviorAnalyticsUserActivity);
-router.get("/behavior/product-journey", auth, admin, getBehaviorProductJourney);
-router.get("/behavior/timeline", auth, admin, getBehaviorTimeline);
+router.get("/behavior/overview", getBehaviorAnalyticsOverview);
+router.get("/behavior/engagement", getBehaviorAnalyticsEngagement);
+router.get("/behavior/performance", getBehaviorAnalyticsPerformance);
+router.get("/behavior/sessions", getBehaviorSessions);
+router.get("/behavior/user-activity", getBehaviorAnalyticsUserActivity);
+router.get("/behavior/product-journey", getBehaviorProductJourney);
+router.get("/behavior/timeline", getBehaviorTimeline);
 
 export default router;

@@ -3,6 +3,7 @@ import {
   createOrder,
   createTestOrder,
   downloadOrderInvoice,
+  backfillSuccessfulOrderPaymentIds,
   getAllOrders,
   getDashboardStats,
   getOrderById,
@@ -149,6 +150,14 @@ router.get("/admin/dashboard-stats", auth, admin, getDashboardStats);
 
 // Repair paid orders missing shipment/invoice artifacts
 router.post("/admin/repair-paid", auth, admin, repairPaidOrders);
+
+// Backfill provider transaction IDs into paymentId for successful orders
+router.post(
+  "/admin/backfill-payment-ids",
+  auth,
+  admin,
+  backfillSuccessfulOrderPaymentIds,
+);
 
 // Remove all pending orders from admin orders page
 router.delete("/admin/pending", auth, admin, removeAllPendingOrders);

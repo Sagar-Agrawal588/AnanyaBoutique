@@ -1,5 +1,9 @@
 "use client";
 import { getData, postData } from "@/utils/api";
+import {
+  hasAdminPermission,
+  normalizeManagerPermissions,
+} from "@/utils/adminPermissions";
 import { useRouter } from "next/navigation";
 import {
   createContext,
@@ -22,16 +26,24 @@ const debugWarn = (...args) => {
     console.warn(...args);
   }
 };
+
+const PRIVILEGED_ADMIN_ROLES = new Set(["admin", "manager"]);
+const isPrivilegedAdminRole = (role) =>
+  PRIVILEGED_ADMIN_ROLES.has(String(role || "").trim().toLowerCase());
+
 const normalizeAdminPayload = (input) => {
   if (!input || typeof input !== "object") return null;
-  const email = String(input.email || "").trim();
+  const email = String(input.email || input.userEmail || "").trim();
   const explicitName = String(
     input.name || input.userName || input.username || input.fullName || "",
   ).trim();
   const fallbackName = email ? email.split("@")[0] : "Admin";
   return {
     ...input,
+    email,
+    userEmail: email,
     name: explicitName || fallbackName,
+    managerPermissions: normalizeManagerPermissions(input.managerPermissions),
   };
 };
 
@@ -98,7 +110,29 @@ export const AdminProvider = ({ children }) => {
               "/api/user/user-details",
               storedToken,
             );
-            if (response.error === false && response.data?.role === "Admin") {
+            if (
+              response.error === false &&
+              isPrivilegedAdminRole(response.data?.role)
+            ) {
+              const mergedProfile = normalizeAdminPayload({
+                ...adminData,
+                _id: response.data?._id || adminData?._id,
+                userId: response.data?._id || adminData?.userId,
+                name: response.data?.name || adminData?.name,
+                email: response.data?.email || adminData?.email,
+                userEmail: response.data?.email || adminData?.userEmail,
+                role: response.data?.role || adminData?.role,
+                avatar: response.data?.avatar || adminData?.avatar,
+                managerPermissions:
+                  response.data?.managerPermissions ||
+                  adminData?.managerPermissions,
+              });
+
+              if (mergedProfile) {
+                setAdmin(mergedProfile);
+                localStorage.setItem("adminUser", JSON.stringify(mergedProfile));
+              }
+
               debugLog("Token verified successfully with server");
             } else {
               debugWarn(
@@ -153,14 +187,10 @@ export const AdminProvider = ({ children }) => {
         const normalizedAdmin = normalizeAdminPayload(data) || data;
 
         // Check if user is an admin
-        if (
-          String(data?.role || "")
-            .trim()
-            .toLowerCase() !== "admin"
-        ) {
+        if (!isPrivilegedAdminRole(data?.role)) {
           return {
             error: true,
-            message: "Access denied. Admin privileges required.",
+            message: "Access denied. Admin or Manager privileges required.",
           };
         }
 
@@ -207,6 +237,7 @@ export const AdminProvider = ({ children }) => {
     login,
     logout,
     updateAdminProfile,
+    hasPermission: (permission) => hasAdminPermission(admin, permission),
     isAuthenticated: !!admin,
   };
 

@@ -1,7 +1,9 @@
 import { Router } from "express";
 import admin from "../middlewares/admin.js";
+import adminOnly from "../middlewares/adminOnly.js";
 import auth from "../middlewares/auth.js";
 import authOptional from "../middlewares/authOptional.js";
+import requireAdminPermission from "../middlewares/requireAdminPermission.js";
 import { authLimiter } from "../middlewares/rateLimiter.js";
 import { handleUploadError, uploadSingle } from "../middlewares/upload.js";
 
@@ -20,6 +22,7 @@ import {
   resendOTPController,
   setBackupPassword,
   updateUserProfile,
+  updateManagerPermissions,
   updateUserRole,
   updateUserSettings,
   updateUserStatus,
@@ -124,10 +127,41 @@ userRouter.get("/coins-summary", auth, getUserCoinsSummary);
 userRouter.get("/coin-transactions", auth, getUserCoinsTransactions);
 
 // Admin routes for user management
-userRouter.get("/admin/users", auth, admin, getAllUsers);
-userRouter.get("/admin/users/:userId", auth, admin, getUserDetails);
-userRouter.put("/admin/users/:userId/role", auth, admin, updateUserRole);
-userRouter.put("/admin/users/:userId/status", auth, admin, updateUserStatus);
-userRouter.delete("/admin/users/:userId", auth, admin, deleteUser);
+userRouter.get(
+  "/admin/users",
+  auth,
+  admin,
+  requireAdminPermission("manage_users"),
+  getAllUsers,
+);
+userRouter.get(
+  "/admin/users/:userId",
+  auth,
+  admin,
+  requireAdminPermission("manage_users"),
+  getUserDetails,
+);
+userRouter.put("/admin/users/:userId/role", auth, admin, adminOnly, updateUserRole);
+userRouter.put(
+  "/admin/users/:userId/manager-permissions",
+  auth,
+  admin,
+  adminOnly,
+  updateManagerPermissions,
+);
+userRouter.put(
+  "/admin/users/:userId/status",
+  auth,
+  admin,
+  requireAdminPermission("manage_users"),
+  updateUserStatus,
+);
+userRouter.delete(
+  "/admin/users/:userId",
+  auth,
+  admin,
+  requireAdminPermission("manage_users"),
+  deleteUser,
+);
 
 export default userRouter;

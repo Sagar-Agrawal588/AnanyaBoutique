@@ -2,6 +2,7 @@
 import { useAdmin } from "@/context/AdminContext";
 import { useAdminRealtime } from "@/hooks/useAdminRealtime";
 import { useOrderNotifications } from "@/hooks/useOrderNotifications";
+import { hasAdminPermission } from "@/utils/adminPermissions";
 import { withAdminBasePath } from "@/utils/basePath";
 import { Avatar, Badge, Button, Menu, MenuItem, Tooltip } from "@mui/material";
 import { useRouter } from "next/navigation";
@@ -16,10 +17,11 @@ const Header = ({ onMenuClick }) => {
   const [notificationAnchor, setNotificationAnchor] = useState(null);
   const { notificationCount, orders, markOrderAsSeen, clearAllNotifications } =
     useOrderNotifications();
-  const { logout, token } = useAdmin();
+  const { logout, token, admin } = useAdmin();
   const router = useRouter();
   const { status: socketStatus } = useAdminRealtime({ token });
   const liveConnected = socketStatus === "connected";
+  const canOpenSettings = hasAdminPermission(admin, "manage_settings");
 
   const open = Boolean(anchorEl);
   const notificationOpen = Boolean(notificationAnchor);
@@ -98,9 +100,11 @@ const Header = ({ onMenuClick }) => {
         <MenuItem onClick={handleProfileMenu}>
           <AiOutlineUser /> Profile
         </MenuItem>
-        <MenuItem onClick={handleSettingsMenu}>
-          <FiSettings /> Settings
-        </MenuItem>
+        {canOpenSettings ? (
+          <MenuItem onClick={handleSettingsMenu}>
+            <FiSettings /> Settings
+          </MenuItem>
+        ) : null}
         <MenuItem onClick={handleLogout}>
           <MdLogout /> Logout
         </MenuItem>

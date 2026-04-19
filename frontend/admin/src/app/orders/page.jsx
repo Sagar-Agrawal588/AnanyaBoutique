@@ -61,19 +61,37 @@ const formatStatusLabel = (status, fallback = "Pending") => {
     .join(" ");
 };
 
-const resolvePaymentReference = (order = {}) => {
-  const candidates = [
-    order?.paymentId,
-    order?.paytmTransactionId,
-    order?.phonepeTransactionId,
-    order?.paytmOrderId,
-    order?.phonepeMerchantOrderId,
-    order?.phonepeOrderId,
-  ];
+const isGatewayMerchantReference = (value) =>
+  /^BOG_/i.test(String(value || "").trim());
 
-  return String(
-    candidates.find((value) => String(value || "").trim()) || "",
-  ).trim();
+const resolveGatewayTransactionReference = (order = {}) => {
+  const directReference = [order?.paytmTransactionId, order?.phonepeTransactionId]
+    .map((value) => String(value || "").trim())
+    .find(Boolean);
+
+  if (directReference) return directReference;
+
+  const fallbackPaymentId = String(order?.paymentId || "").trim();
+  if (fallbackPaymentId && !isGatewayMerchantReference(fallbackPaymentId)) {
+    return fallbackPaymentId;
+  }
+
+  return "";
+};
+
+const resolveMerchantReference = (order = {}) => {
+  const directReference = [order?.paytmOrderId, order?.phonepeMerchantOrderId]
+    .map((value) => String(value || "").trim())
+    .find(Boolean);
+
+  if (directReference) return directReference;
+
+  const fallbackPaymentId = String(order?.paymentId || "").trim();
+  return isGatewayMerchantReference(fallbackPaymentId) ? fallbackPaymentId : "";
+};
+
+const resolvePaymentReference = (order = {}) => {
+  return resolveGatewayTransactionReference(order);
 };
 
 const resolvePaymentProviderLabel = (order = {}) => {
@@ -334,15 +352,12 @@ const OrderRow = ({ order, index, token, onStatusUpdate }) => {
   const [orderReviews, setOrderReviews] = useState([]);
   const [reviewsLoading, setReviewsLoading] = useState(false);
   const trackingUrl = resolveTrackingUrl(order);
-  const paymentReference = resolvePaymentReference(order) || "N/A";
+  const paymentReference =
+    resolvePaymentReference(order) || "Pending / Not issued yet";
   const paymentProviderLabel = resolvePaymentProviderLabel(order);
-  const merchantReference = String(
-    order?.paytmOrderId || order?.phonepeMerchantOrderId || order?.paymentId || "",
-  ).trim();
+  const merchantReference = resolveMerchantReference(order);
   const gatewayOrderReference = String(order?.phonepeOrderId || "").trim();
-  const gatewayTransactionReference = String(
-    order?.paytmTransactionId || order?.phonepeTransactionId || "",
-  ).trim();
+  const gatewayTransactionReference = resolveGatewayTransactionReference(order);
 
   const canDownloadInvoice =
     normalizeOrderStatus(order?.payment_status) === "paid" ||
@@ -822,7 +837,7 @@ const OrderRow = ({ order, index, token, onStatusUpdate }) => {
                 </div>
                 <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
                   <span className="font-semibold text-gray-700">
-                    Payment Ref:
+                    Payment App Txn ID:
                   </span>{" "}
                   <span className="text-gray-800 break-all">
                     {paymentReference}
@@ -980,7 +995,7 @@ const OrdersTable = ({ orders, token, onStatusUpdate }) => (
             Customer
           </th>
           <th className="text-[13px] text-gray-700 font-[700] px-4 py-3 text-left uppercase tracking-wide">
-            Payment Ref
+            Payment App Txn ID
           </th>
           <th className="text-[13px] text-gray-700 font-[700] px-4 py-3 text-left uppercase tracking-wide">
             Phone Number
@@ -1032,6 +1047,7 @@ const Orders = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [backfillingPaymentIds, setBackfillingPaymentIds] = useState(false);
   const [repairingPaidOrders, setRepairingPaidOrders] = useState(false);
   const [removingPendingOrders, setRemovingPendingOrders] = useState(false);
   const [removingDemoOrders, setRemovingDemoOrders] = useState(false);
@@ -1230,6 +1246,48 @@ const Orders = () => {
     }
   };
 
+  const handleBackfillSuccessfulPaymentIds = async () => {
+    if (!token) {
+      toast.error("Admin session missing");
+      return;
+    }
+
+    const confirmed =
+      typeof window === "undefined"
+        ? true
+        : window.confirm(
+            "Backfill Payment App Txn IDs for successful orders only? This updates payment ID only when provider transaction IDs already exist.",
+          );
+    if (!confirmed) return;
+
+    setBackfillingPaymentIds(true);
+    try {
+      const response = await postData(
+        "/api/orders/admin/backfill-payment-ids?limit=250",
+        {},
+        token,
+      );
+
+      if (response?.success) {
+        const stats = response?.data || {};
+        const updated = Number(stats?.updated || 0);
+        const skipped = Number(stats?.skipped || 0);
+        const remaining = Number(stats?.remaining || 0);
+
+        toast.success(
+          `Backfill completed: ${updated} updated, ${skipped} skipped, ${remaining} remaining.`,
+        );
+        fetchOrders();
+      } else {
+        toast.error(response?.message || "Backfill failed");
+      }
+    } catch {
+      toast.error("Backfill failed");
+    } finally {
+      setBackfillingPaymentIds(false);
+    }
+  };
+
   const handleRemovePendingOrders = async () => {
     if (!token) {
       toast.error("Admin session missing");
@@ -1373,8 +1431,30 @@ const Orders = () => {
             <Button
               variant="outlined"
               size="small"
+              onClick={handleBackfillSuccessfulPaymentIds}
+              disabled={
+                backfillingPaymentIds ||
+                repairingPaidOrders ||
+                removingPendingOrders ||
+                removingDemoOrders
+              }
+              sx={{
+                textTransform: "none",
+                borderRadius: "10px",
+                px: 2,
+                py: 0.8,
+              }}
+            >
+              {backfillingPaymentIds
+                ? "Backfilling Txn IDs..."
+                : "Backfill Successful Txn IDs"}
+            </Button>
+            <Button
+              variant="outlined"
+              size="small"
               onClick={handleRepairPaidOrders}
               disabled={
+                backfillingPaymentIds ||
                 repairingPaidOrders ||
                 removingPendingOrders ||
                 removingDemoOrders
@@ -1397,6 +1477,7 @@ const Orders = () => {
               onClick={handleRemovePendingOrders}
               disabled={
                 removingPendingOrders ||
+                backfillingPaymentIds ||
                 repairingPaidOrders ||
                 removingDemoOrders
               }
@@ -1419,6 +1500,7 @@ const Orders = () => {
               disabled={
                 removingDemoOrders ||
                 removingPendingOrders ||
+                backfillingPaymentIds ||
                 repairingPaidOrders
               }
               sx={{

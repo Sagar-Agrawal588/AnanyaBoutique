@@ -12,6 +12,7 @@ import {
 } from "../controllers/settings.controller.js";
 import admin from "../middlewares/admin.js";
 import auth from "../middlewares/auth.js";
+import requireAdminPermission from "../middlewares/requireAdminPermission.js";
 
 const router = express.Router();
 
@@ -38,18 +39,48 @@ router.get("/public/:key", getSettingByKey);
 // ==================== ADMIN ROUTES ====================
 
 // Get all settings (admin)
-router.get("/admin/all", auth, admin, getAllSettings);
+router.get(
+  "/admin/all",
+  auth,
+  admin,
+  requireAdminPermission("manage_settings"),
+  getAllSettings,
+);
 
 // Create new setting
-router.post("/admin/create", auth, admin, createSetting);
+router.post(
+  "/admin/create",
+  auth,
+  admin,
+  requireAdminPermission("manage_settings"),
+  createSetting,
+);
 
 // Update setting
-router.put("/admin/:key", auth, admin, updateSetting);
+router.put(
+  "/admin/:key",
+  auth,
+  admin,
+  requireAdminPermission("manage_settings"),
+  updateSetting,
+);
 
 // Update header appearance setting
-router.put("/header", auth, admin, updateHeaderSettings);
+router.put(
+  "/header",
+  auth,
+  admin,
+  requireAdminPermission("manage_settings"),
+  updateHeaderSettings,
+);
 
 // Delete setting
-router.delete("/admin/:key", auth, admin, deleteSetting);
+router.delete(
+  "/admin/:key",
+  auth,
+  admin,
+  requireAdminPermission("manage_settings"),
+  deleteSetting,
+);
 
 export default router;

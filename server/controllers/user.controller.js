@@ -18,6 +18,15 @@ import VerificationEmail from "../utils/verifyEmailTemplate.js";
 import { emitTrackingEvent } from "../services/analytics/trackingEmitter.service.js";
 import OrderModel from "../models/order.model.js";
 import { getUserCoinSummary } from "../services/coin.service.js";
+import isPrivilegedAdminRole from "../utils/isPrivilegedAdminRole.js";
+import {
+  MANAGER_PERMISSION_KEYS,
+  normalizeManagerPermissions,
+} from "../utils/adminPermissions.js";
+
+const ADMIN_ASSIGNABLE_ROLES = ["User", "Admin", "Manager"];
+const parseManagerPermissions = (permissions) =>
+  normalizeManagerPermissions(Array.isArray(permissions) ? permissions : []);
 
 const AUTH_PERSIST_MAX_AGE = 365 * 24 * 60 * 60 * 1000; // 365 days
 const ACCESS_TOKEN_MAX_AGE = AUTH_PERSIST_MAX_AGE;
@@ -1016,7 +1025,7 @@ export async function getAllUsers(req, res) {
       ];
     }
 
-    if (role && ["User", "Admin"].includes(role)) {
+    if (role && ADMIN_ASSIGNABLE_ROLES.includes(role)) {
       query.role = role;
     }
 
@@ -1075,16 +1084,20 @@ export async function updateUserRole(req, res) {
     const { userId } = req.params;
     const { role } = req.body;
 
-    if (!["User", "Admin"].includes(role)) {
+    if (!ADMIN_ASSIGNABLE_ROLES.includes(role)) {
       return res.status(400).json({
         success: false,
         error: true,
-        message: "Invalid role. Must be 'User' or 'Admin'",
+        message: "Invalid role. Must be 'User', 'Admin', or 'Manager'",
       });
     }
 
-    // Prevent admin from demoting themselves
-    if (req.user._id.toString() === userId && role === "User") {
+    // Prevent privileged users from demoting themselves to a non-privileged role
+    if (
+      req.user._id.toString() === userId &&
+      role === "User" &&
+      isPrivilegedAdminRole(req.user?.role)
+    ) {
       return res.status(400).json({
         success: false,
         error: true,
@@ -1102,6 +1115,13 @@ export async function updateUserRole(req, res) {
     }
 
     user.role = role;
+
+    if (role !== "Manager") {
+      user.managerPermissions = [];
+    } else {
+      user.managerPermissions = parseManagerPermissions(user.managerPermissions);
+    }
+
     await user.save();
 
     return res.json({
@@ -1113,10 +1133,63 @@ export async function updateUserRole(req, res) {
         name: user.name,
         email: user.email,
         role: user.role,
+        managerPermissions: user.managerPermissions || [],
       },
     });
   } catch (error) {
     console.error("Update user role error:", error);
+    return res.status(500).json({
+      success: false,
+      error: true,
+      message: error.message || error,
+    });
+  }
+}
+
+// Update manager permissions (Admin only)
+export async function updateManagerPermissions(req, res) {
+  try {
+    const { userId } = req.params;
+    const permissions = Array.isArray(req.body?.permissions)
+      ? req.body.permissions
+      : [];
+
+    const user = await UserModel.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: true,
+        message: "User not found",
+      });
+    }
+
+    if (user.role !== "Manager") {
+      return res.status(400).json({
+        success: false,
+        error: true,
+        message: "Permissions can only be assigned to Manager accounts",
+      });
+    }
+
+    const normalizedPermissions = parseManagerPermissions(permissions);
+    user.managerPermissions = normalizedPermissions;
+    await user.save();
+
+    return res.json({
+      success: true,
+      error: false,
+      message: "Manager permissions updated successfully",
+      data: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        managerPermissions: user.managerPermissions || [],
+        availablePermissions: MANAGER_PERMISSION_KEYS,
+      },
+    });
+  } catch (error) {
+    console.error("Update manager permissions error:", error);
     return res.status(500).json({
       success: false,
       error: true,

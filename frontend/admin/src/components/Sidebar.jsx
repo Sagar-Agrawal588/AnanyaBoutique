@@ -1,6 +1,7 @@
 "use client";
 import { useAdmin } from "@/context/AdminContext";
 import { fetchUnresolvedSupportCount } from "@/services/supportApi";
+import { hasAdminPermission } from "@/utils/adminPermissions";
 import { withAdminBasePath } from "@/utils/basePath";
 import { Button } from "@mui/material";
 import Link from "next/link";
@@ -80,16 +81,19 @@ const Sidebar = ({ isOpen = false, onClose }) => {
       name: "Behavior",
       icon: <MdInsights size={22} />,
       href: "/behavior-analytics",
+      requiredPermission: "view_analytics",
     },
     {
       name: "Analytics",
       icon: <MdInsights size={22} />,
       href: "/analytics",
+      requiredPermission: "view_analytics",
     },
     {
       name: "Sales Analytics",
       icon: <MdInsights size={22} />,
       href: "/sales-analytics",
+      requiredPermission: "view_analytics",
     },
     {
       name: "Home Slides",
@@ -115,6 +119,7 @@ const Sidebar = ({ isOpen = false, onClose }) => {
       name: "Users",
       icon: <TbUsers size={22} />,
       href: "/users",
+      requiredPermission: "manage_users",
     },
     {
       name: "Orders",
@@ -131,6 +136,7 @@ const Sidebar = ({ isOpen = false, onClose }) => {
       name: "CRM",
       icon: <MdOutlineHub size={22} />,
       href: "/crm",
+      requiredPermission: "manage_crm",
     },
     {
       name: "Coupons",
@@ -181,6 +187,7 @@ const Sidebar = ({ isOpen = false, onClose }) => {
       name: "Membership",
       icon: <RiVipCrownLine size={22} />,
       href: "/membership",
+      requiredPermission: "manage_membership",
       children: [
         { name: "Settings", href: "/membership" },
         { name: "Members", href: "/membership/members" },
@@ -216,8 +223,14 @@ const Sidebar = ({ isOpen = false, onClose }) => {
       name: "Settings",
       icon: <MdSettings size={22} />,
       href: "/settings",
+      requiredPermission: "manage_settings",
     },
   ];
+
+  const visibleSidebarTabs = sidebarTabs.filter((tab) => {
+    if (!tab.requiredPermission) return true;
+    return hasAdminPermission(admin, tab.requiredPermission);
+  });
 
   const isActive = (href) => {
     if (href === "/") return pathname === "/";
@@ -288,9 +301,16 @@ const Sidebar = ({ isOpen = false, onClose }) => {
 
       {/* Navigation */}
       <div className="flex flex-col gap-1 mt-4 px-3 flex-1 overflow-y-auto">
-        {sidebarTabs.map((tab) => {
-          const childActive = Array.isArray(tab.children)
-            ? tab.children.some((child) => isChildActive(child.href))
+        {visibleSidebarTabs.map((tab) => {
+          const visibleChildren = Array.isArray(tab.children)
+            ? tab.children.filter((child) => {
+                if (!child.requiredPermission) return true;
+                return hasAdminPermission(admin, child.requiredPermission);
+              })
+            : [];
+
+          const childActive = visibleChildren.length
+            ? visibleChildren.some((child) => isChildActive(child.href))
             : false;
           const tabActive = isActive(tab.href) || childActive;
 
@@ -316,9 +336,9 @@ const Sidebar = ({ isOpen = false, onClose }) => {
                 )}
               </Link>
 
-              {Array.isArray(tab.children) && tab.children.length > 0 && (
+              {visibleChildren.length > 0 && (
                 <div className="ml-11 mt-1 mb-2 flex flex-col gap-1">
-                  {tab.children.map((child) => {
+                  {visibleChildren.map((child) => {
                     const childIsActive = isChildActive(child.href);
                     return (
                       <Link

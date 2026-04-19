@@ -20,6 +20,9 @@ import { MdEmail, MdLock, MdVisibility, MdVisibilityOff } from "react-icons/md";
 
 const label = { slotProps: { input: { "aria-label": "Checkbox demo" } } };
 const GOOGLE_REDIRECT_ATTEMPT_KEY = "googleAuthRedirectAttemptedAdmin";
+const PRIVILEGED_ADMIN_ROLES = new Set(["admin", "manager"]);
+const isPrivilegedAdminRole = (role) =>
+  PRIVILEGED_ADMIN_ROLES.has(String(role || "").trim().toLowerCase());
 
 const Login = () => {
   const [email, setEmail] = useState("");
@@ -58,12 +61,8 @@ const Login = () => {
       throw new Error(backendResponse?.message || "Google Sign-In failed");
     }
 
-    if (
-      String(backendResponse?.data?.role || "")
-        .trim()
-        .toLowerCase() !== "admin"
-    ) {
-      throw new Error("Access denied. Admin privileges required.");
+    if (!isPrivilegedAdminRole(backendResponse?.data?.role)) {
+      throw new Error("Access denied. Admin or Manager privileges required.");
     }
 
     localStorage.setItem("adminToken", backendResponse?.data?.accessToken);

@@ -1,6 +1,7 @@
 import express from "express";
 import admin from "../middlewares/admin.js";
 import auth from "../middlewares/auth.js";
+import requireAdminPermission from "../middlewares/requireAdminPermission.js";
 import {
   getShippingDisplayMetricsController,
   getShippingQuoteController,
@@ -24,6 +25,7 @@ router.get("/display-metrics", getShippingDisplayMetricsController);
 
 // Admin-only shipping operations
 router.use(auth, admin);
+router.use(requireAdminPermission("manage_shipping"));
 
 router.post("/xpressbees/login", xpressbeesLogin);
 router.get("/xpressbees/couriers", xpressbeesCouriers);
