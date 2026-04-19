@@ -1,8 +1,8 @@
-import OrderModel from "../models/order.model.js";
-import UserModel from "../models/user.model.js";
-import SettingsModel from "../models/settings.model.js";
-import EmailLogModel from "../models/emailLog.model.js";
 import { sendTemplatedEmail } from "../config/emailService.js";
+import EmailLogModel from "../models/emailLog.model.js";
+import OrderModel from "../models/order.model.js";
+import SettingsModel from "../models/settings.model.js";
+import UserModel from "../models/user.model.js";
 import { logger } from "../utils/errorHandler.js";
 
 const EMAIL_AUTOMATION_SETTINGS_KEY = "emailAutomationSettings";
@@ -38,20 +38,46 @@ const toBool = (value, fallback) => {
 
 const normalizeSettings = (raw = {}) => ({
   enabled: toBool(raw.enabled, DEFAULT_SETTINGS.enabled),
-  feedbackEnabled: toBool(raw.feedbackEnabled, DEFAULT_SETTINGS.feedbackEnabled),
-  retentionEnabled: toBool(raw.retentionEnabled, DEFAULT_SETTINGS.retentionEnabled),
-  feedbackDelayDays: Math.max(toInt(raw.feedbackDelayDays, DEFAULT_SETTINGS.feedbackDelayDays), 1),
-  retentionDelayDays: Math.max(toInt(raw.retentionDelayDays, DEFAULT_SETTINGS.retentionDelayDays), 1),
-  pollIntervalMinutes: Math.max(toInt(raw.pollIntervalMinutes, DEFAULT_SETTINGS.pollIntervalMinutes), 5),
-  maxEmailsPerRun: Math.max(toInt(raw.maxEmailsPerRun, DEFAULT_SETTINGS.maxEmailsPerRun), 10),
-  retryGapHours: Math.max(toInt(raw.retryGapHours, DEFAULT_SETTINGS.retryGapHours), 1),
-  sendHourIST: Math.min(Math.max(toInt(raw.sendHourIST, DEFAULT_SETTINGS.sendHourIST), 0), 23),
+  feedbackEnabled: toBool(
+    raw.feedbackEnabled,
+    DEFAULT_SETTINGS.feedbackEnabled,
+  ),
+  retentionEnabled: toBool(
+    raw.retentionEnabled,
+    DEFAULT_SETTINGS.retentionEnabled,
+  ),
+  feedbackDelayDays: Math.max(
+    toInt(raw.feedbackDelayDays, DEFAULT_SETTINGS.feedbackDelayDays),
+    1,
+  ),
+  retentionDelayDays: Math.max(
+    toInt(raw.retentionDelayDays, DEFAULT_SETTINGS.retentionDelayDays),
+    1,
+  ),
+  pollIntervalMinutes: Math.max(
+    toInt(raw.pollIntervalMinutes, DEFAULT_SETTINGS.pollIntervalMinutes),
+    5,
+  ),
+  maxEmailsPerRun: Math.max(
+    toInt(raw.maxEmailsPerRun, DEFAULT_SETTINGS.maxEmailsPerRun),
+    10,
+  ),
+  retryGapHours: Math.max(
+    toInt(raw.retryGapHours, DEFAULT_SETTINGS.retryGapHours),
+    1,
+  ),
+  sendHourIST: Math.min(
+    Math.max(toInt(raw.sendHourIST, DEFAULT_SETTINGS.sendHourIST), 0),
+    23,
+  ),
   retentionCouponCode:
-    String(raw.retentionCouponCode || DEFAULT_SETTINGS.retentionCouponCode).trim() ||
-    DEFAULT_SETTINGS.retentionCouponCode,
+    String(
+      raw.retentionCouponCode || DEFAULT_SETTINGS.retentionCouponCode,
+    ).trim() || DEFAULT_SETTINGS.retentionCouponCode,
   retentionDiscountText:
-    String(raw.retentionDiscountText || DEFAULT_SETTINGS.retentionDiscountText).trim() ||
-    DEFAULT_SETTINGS.retentionDiscountText,
+    String(
+      raw.retentionDiscountText || DEFAULT_SETTINGS.retentionDiscountText,
+    ).trim() || DEFAULT_SETTINGS.retentionDiscountText,
 });
 
 const getSiteUrl = () =>
@@ -76,10 +102,14 @@ const getSupportEmail = () =>
     .trim()
     .toLowerCase();
 
+const getSupportContactUrl = () => `${getSiteUrl()}/contact`;
+
 const getUnsubscribeUrl = (email) => {
   const siteUrl = getSiteUrl();
   return `${siteUrl}/api/newsletter/unsubscribe?email=${encodeURIComponent(
-    String(email || "").trim().toLowerCase(),
+    String(email || "")
+      .trim()
+      .toLowerCase(),
   )}`;
 };
 
@@ -87,15 +117,24 @@ const getOrderDeliveryDate = (order) => {
   if (order?.deliveryDate) return new Date(order.deliveryDate);
   if (order?.delivery_date) return new Date(order.delivery_date);
 
-  const timeline = Array.isArray(order?.statusTimeline) ? order.statusTimeline : [];
+  const timeline = Array.isArray(order?.statusTimeline)
+    ? order.statusTimeline
+    : [];
   const deliveredTimeline = timeline.find(
-    (item) => String(item?.status || "").trim().toLowerCase() === "delivered",
+    (item) =>
+      String(item?.status || "")
+        .trim()
+        .toLowerCase() === "delivered",
   );
-  return deliveredTimeline?.timestamp ? new Date(deliveredTimeline.timestamp) : null;
+  return deliveredTimeline?.timestamp
+    ? new Date(deliveredTimeline.timestamp)
+    : null;
 };
 
 const resolveDisplayOrderNumber = (order) => {
-  const fromOrder = String(order?.orderNumber || order?.displayOrderId || "").trim();
+  const fromOrder = String(
+    order?.orderNumber || order?.displayOrderId || "",
+  ).trim();
   if (fromOrder) return fromOrder;
   const id = String(order?._id || "").trim();
   return id ? id.slice(-8).toUpperCase() : "N/A";
@@ -116,16 +155,20 @@ const resolveOrderItemsText = (order) => {
 
 const resolveOrderRecipient = async (order) => {
   const directEmail = String(
-    order?.billingDetails?.email || order?.guestDetails?.email || order?.deliveryAddressSnapshot?.email || "",
+    order?.billingDetails?.email ||
+      order?.guestDetails?.email ||
+      order?.deliveryAddressSnapshot?.email ||
+      "",
   )
     .trim()
     .toLowerCase();
-  const directName = String(
-    order?.billingDetails?.fullName ||
-      order?.guestDetails?.fullName ||
-      order?.deliveryAddressSnapshot?.order_name ||
-      "Customer",
-  ).trim() || "Customer";
+  const directName =
+    String(
+      order?.billingDetails?.fullName ||
+        order?.guestDetails?.fullName ||
+        order?.deliveryAddressSnapshot?.order_name ||
+        "Customer",
+    ).trim() || "Customer";
 
   if (directEmail) {
     const linkedUser = order?.user
@@ -148,7 +191,9 @@ const resolveOrderRecipient = async (order) => {
     .select("_id email name email_opt_out notificationSettings")
     .lean();
   return {
-    email: String(user?.email || "").trim().toLowerCase(),
+    email: String(user?.email || "")
+      .trim()
+      .toLowerCase(),
     name: String(user?.name || directName).trim() || "Customer",
     user,
   };
@@ -298,7 +343,10 @@ const processFeedbackEmail = async ({ order, settings }) => {
   }
 
   if (isPromotionalBlocked(user)) {
-    await markEmailLogSkipped(emailLog?._id, "User opted out of promotional emails");
+    await markEmailLogSkipped(
+      emailLog?._id,
+      "User opted out of promotional emails",
+    );
     return { success: false, reason: "opted_out" };
   }
 
@@ -320,7 +368,7 @@ const processFeedbackEmail = async ({ order, settings }) => {
       delay_days: String(settings.feedbackDelayDays),
       site_url: siteUrl,
       support_contact: getSupportEmail(),
-      support_url: `mailto:${getSupportEmail()}`,
+      support_url: getSupportContactUrl(),
       unsubscribe_url: getUnsubscribeUrl(email),
       year: String(new Date().getFullYear()),
     },
@@ -363,7 +411,10 @@ const processRetentionEmail = async ({ order, settings }) => {
   }
 
   if (isPromotionalBlocked(user)) {
-    await markEmailLogSkipped(emailLog?._id, "User opted out of promotional emails");
+    await markEmailLogSkipped(
+      emailLog?._id,
+      "User opted out of promotional emails",
+    );
     return { success: false, reason: "opted_out" };
   }
 
@@ -399,7 +450,7 @@ const processRetentionEmail = async ({ order, settings }) => {
       cta_url: `${siteUrl}/products`,
       cta_label: "Shop Now",
       support_contact: getSupportEmail(),
-      support_url: `mailto:${getSupportEmail()}`,
+      support_url: getSupportContactUrl(),
       unsubscribe_url: getUnsubscribeUrl(email),
       year: String(new Date().getFullYear()),
       email_body_html: bodyHtml,
@@ -439,7 +490,10 @@ const fetchEligibleOrders = async ({ settings, now }) => {
     settings.feedbackEnabled
       ? OrderModel.find({
           order_status: { $in: ["delivered", "completed"] },
-          $or: [{ deliveryDate: { $lte: feedbackThreshold } }, { delivery_date: { $lte: feedbackThreshold } }],
+          $or: [
+            { deliveryDate: { $lte: feedbackThreshold } },
+            { delivery_date: { $lte: feedbackThreshold } },
+          ],
           feedbackEmailSentAt: null,
           feedbackEmailFailureCount: { $lt: 3 },
         })
@@ -450,7 +504,10 @@ const fetchEligibleOrders = async ({ settings, now }) => {
     settings.retentionEnabled
       ? OrderModel.find({
           order_status: { $in: ["delivered", "completed"] },
-          $or: [{ deliveryDate: { $lte: retentionThreshold } }, { delivery_date: { $lte: retentionThreshold } }],
+          $or: [
+            { deliveryDate: { $lte: retentionThreshold } },
+            { delivery_date: { $lte: retentionThreshold } },
+          ],
           retentionEmailSentAt: null,
           retentionEmailFailureCount: { $lt: 3 },
         })
@@ -472,10 +529,12 @@ export const processEmailAutomationQueue = async () => {
 
   const now = new Date();
   const retryGapMs = settings.retryGapHours * 60 * 60 * 1000;
-  const { feedbackCandidates, retentionCandidates } = await fetchEligibleOrders({
-    settings,
-    now,
-  });
+  const { feedbackCandidates, retentionCandidates } = await fetchEligibleOrders(
+    {
+      settings,
+      now,
+    },
+  );
 
   for (const order of feedbackCandidates) {
     if (!shouldRunEmailNow(order?.feedbackEmailLastAttemptAt, retryGapMs)) {

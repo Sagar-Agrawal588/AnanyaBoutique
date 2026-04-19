@@ -1,0 +1,984 @@
+{
+  "generatedAt": "2026-04-19T15:41:04.355Z",
+  "scope": {
+    "from": "2026-04-18T00:00:00.000Z",
+    "to": "2026-04-19T00:00:00.000Z",
+    "page": "1",
+    "limit": "250",
+    "source": "Live behavior analytics controllers"
+  },
+  "overview": {
+    "totalSessions": 13,
+    "activeUsers": 0,
+    "avgActiveTimeMs": 5433028,
+    "avgSessionDurationSeconds": 5433.03,
+    "bounceRate": 46.15,
+    "conversionRate": 0,
+    "revenue": 0,
+    "from": "2026-04-18T00:00:00.000Z",
+    "to": "2026-04-19T00:00:00.000Z"
+  },
+  "engagement": {
+    "avgTimePerProductMs": 958.2666666666667,
+    "avgScrollDepth": 61,
+    "maxScrollDepth": 100,
+    "rageClickCount": 2,
+    "sectionEngagementHeatmap": [],
+    "attractiveButtons": [
+      {
+        "target": "2.20 lb Refill Pack - 2.2 lb",
+        "score": 15.96,
+        "totalInteractions": 1,
+        "clickEvents": 1,
+        "rageClicks": 0,
+        "avgPreClickDwellMs": 149552,
+        "bannerId": null,
+        "bannerName": null,
+        "bannerPosition": null,
+        "bannerCampaign": null,
+        "guestInteractions": 0,
+        "loggedInInteractions": 1,
+        "topSections": [],
+        "topProducts": []
+      },
+      {
+        "target": "0.37 lb Travel Pack - 5 Sachets",
+        "score": 15.96,
+        "totalInteractions": 1,
+        "clickEvents": 1,
+        "rageClicks": 0,
+        "avgPreClickDwellMs": 149552,
+        "bannerId": null,
+        "bannerName": null,
+        "bannerPosition": null,
+        "bannerCampaign": null,
+        "guestInteractions": 0,
+        "loggedInInteractions": 1,
+        "topSections": [],
+        "topProducts": []
+      },
+      {
+        "target": "2.2 lb",
+        "score": 15.96,
+        "totalInteractions": 1,
+        "clickEvents": 1,
+        "rageClicks": 0,
+        "avgPreClickDwellMs": 149552,
+        "bannerId": null,
+        "bannerName": null,
+        "bannerPosition": null,
+        "bannerCampaign": null,
+        "guestInteractions": 0,
+        "loggedInInteractions": 1,
+        "topSections": [],
+        "topProducts": []
+      },
+      {
+        "target": "Product Details",
+        "score": 11,
+        "totalInteractions": 2,
+        "clickEvents": 2,
+        "rageClicks": 0,
+        "avgPreClickDwellMs": 90010.5,
+        "bannerId": null,
+        "bannerName": null,
+        "bannerPosition": null,
+        "bannerCampaign": null,
+        "guestInteractions": 0,
+        "loggedInInteractions": 2,
+        "topSections": [],
+        "topProducts": []
+      },
+      {
+        "target": "Products",
+        "score": 10.58,
+        "totalInteractions": 5,
+        "clickEvents": 5,
+        "rageClicks": 0,
+        "avgPreClickDwellMs": 55834.6,
+        "bannerId": null,
+        "bannerName": null,
+        "bannerPosition": null,
+        "bannerCampaign": null,
+        "guestInteractions": 3,
+        "loggedInInteractions": 2,
+        "topSections": [],
+        "topProducts": []
+      },
+      {
+        "target": "Home",
+        "score": 10,
+        "totalInteractions": 2,
+        "clickEvents": 2,
+        "rageClicks": 0,
+        "avgPreClickDwellMs": 80004.5,
+        "bannerId": null,
+        "bannerName": null,
+        "bannerPosition": null,
+        "bannerCampaign": null,
+        "guestInteractions": 1,
+        "loggedInInteractions": 1,
+        "topSections": [],
+        "topProducts": []
+      },
+      {
+        "target": "Next image",
+        "score": 9.6,
+        "totalInteractions": 8,
+        "clickEvents": 6,
+        "rageClicks": 2,
+        "avgPreClickDwellMs": 0,
+        "bannerId": null,
+        "bannerName": null,
+        "bannerPosition": null,
+        "bannerCampaign": null,
+        "guestInteractions": 0,
+        "loggedInInteractions": 8,
+        "topSections": [],
+        "topProducts": []
+      },
+      {
+        "target": "Description",
+        "score": 6.5,
+        "totalInteractions": 2,
+        "clickEvents": 2,
+        "rageClicks": 0,
+        "avgPreClickDwellMs": 45006,
+        "bannerId": null,
+        "bannerName": null,
+        "bannerPosition": null,
+        "bannerCampaign": null,
+        "guestInteractions": 0,
+        "loggedInInteractions": 2,
+        "topSections": [],
+        "topProducts": []
+      },
+      {
+        "target": "15% OFFBuy One GramDark Chocolate Smooth Peanut butter with Added Whey (30% Protein) - 500g26% Protein & Added Vitamin A&D500g(5)₹529₹449",
+        "score": 3.33,
+        "totalInteractions": 3,
+        "clickEvents": 3,
+        "rageClicks": 0,
+        "avgPreClickDwellMs": 3334,
+        "bannerId": null,
+        "bannerName": null,
+        "bannerPosition": null,
+        "bannerCampaign": null,
+        "guestInteractions": 3,
+        "loggedInInteractions": 0,
+        "topSections": [],
+        "topProducts": []
+      },
+      {
+        "target": "Close",
+        "score": 2,
+        "totalInteractions": 2,
+        "clickEvents": 2,
+        "rageClicks": 0,
+        "avgPreClickDwellMs": 0,
+        "bannerId": null,
+        "bannerName": null,
+        "bannerPosition": null,
+        "bannerCampaign": null,
+        "guestInteractions": 1,
+        "loggedInInteractions": 1,
+        "topSections": [],
+        "topProducts": []
+      },
+      {
+        "target": "11% OFFBuy One GramDark Chocolate Smooth Peanut butter with Added Whey (30% Protein) - 1 Kg26% Protein & Added Vitamin A&D1 kg(5)₹899₹799",
+        "score": 2,
+        "totalInteractions": 2,
+        "clickEvents": 2,
+        "rageClicks": 0,
+        "avgPreClickDwellMs": 0,
+        "bannerId": null,
+        "bannerName": null,
+        "bannerPosition": null,
+        "bannerCampaign": null,
+        "guestInteractions": 0,
+        "loggedInInteractions": 2,
+        "topSections": [],
+        "topProducts": []
+      },
+      {
+        "target": "Remove from Cart",
+        "score": 1,
+        "totalInteractions": 1,
+        "clickEvents": 1,
+        "rageClicks": 0,
+        "avgPreClickDwellMs": 0,
+        "bannerId": null,
+        "bannerName": null,
+        "bannerPosition": null,
+        "bannerCampaign": null,
+        "guestInteractions": 0,
+        "loggedInInteractions": 1,
+        "topSections": [],
+        "topProducts": []
+      }
+    ],
+    "bannerPerformance": [],
+    "topConvertingButtonsByProduct": [],
+    "userTypeMatrix": {
+      "guest": {
+        "sessions": 8,
+        "events": 772,
+        "addToCart": 0,
+        "checkoutStarted": 0,
+        "purchases": 0,
+        "clickEvents": 8,
+        "rageClicks": 0,
+        "avgSessionActiveTimeMs": 89567.25,
+        "avgPageActiveMs": 28776.870967741936
+      },
+      "logged_in": {
+        "sessions": 5,
+        "events": 391,
+        "addToCart": 0,
+        "checkoutStarted": 0,
+        "purchases": 0,
+        "clickEvents": 20,
+        "rageClicks": 2,
+        "avgSessionActiveTimeMs": 105262.2,
+        "avgPageActiveMs": 18003.61797752809
+      }
+    },
+    "movementByEvent": {
+      "button_hover_start": {
+        "total": 153,
+        "guest": 51,
+        "loggedIn": 102,
+        "avgDurationMs": 0
+      },
+      "button_hover_end": {
+        "total": 30,
+        "guest": 10,
+        "loggedIn": 20,
+        "avgDurationMs": 0
+      },
+      "button_hover_duration": {
+        "total": 30,
+        "guest": 10,
+        "loggedIn": 20,
+        "avgDurationMs": 1051.8
+      },
+      "button_focus": {
+        "total": 32,
+        "guest": 10,
+        "loggedIn": 22,
+        "avgDurationMs": 0
+      },
+      "button_blur": {
+        "total": 36,
+        "guest": 11,
+        "loggedIn": 25,
+        "avgDurationMs": 1555.18
+      }
+    },
+    "movementTargets": [
+      {
+        "target": "Products",
+        "total": 33,
+        "guest": 19,
+        "loggedIn": 14
+      },
+      {
+        "target": "11% OFFBuy One GramDark Chocolate Smooth Peanut butter with Added Whey (30% Protein) - 1 Kg26% Protein & Added Vitamin A&D1 kg(5)₹899₹799",
+        "total": 33,
+        "guest": 4,
+        "loggedIn": 29
+      },
+      {
+        "target": "15% OFFBuy One GramDark Chocolate Smooth Peanut butter with Added Whey (30% Protein) - 500g26% Protein & Added Vitamin A&D500g(5)₹529₹449",
+        "total": 24,
+        "guest": 24,
+        "loggedIn": 0
+      },
+      {
+        "target": "product_demo_live",
+        "total": 24,
+        "guest": 7,
+        "loggedIn": 17
+      },
+      {
+        "target": "Product Details",
+        "total": 21,
+        "guest": 0,
+        "loggedIn": 21
+      },
+      {
+        "target": "Home",
+        "total": 20,
+        "guest": 13,
+        "loggedIn": 7
+      },
+      {
+        "target": "Next image",
+        "total": 15,
+        "guest": 0,
+        "loggedIn": 15
+      },
+      {
+        "target": "Description",
+        "total": 13,
+        "guest": 1,
+        "loggedIn": 12
+      },
+      {
+        "target": "Buy Now",
+        "total": 13,
+        "guest": 10,
+        "loggedIn": 3
+      },
+      {
+        "target": "Close",
+        "total": 12,
+        "guest": 4,
+        "loggedIn": 8
+      },
+      {
+        "target": "0.37 lb Travel Pack - 5 Sachets",
+        "total": 11,
+        "guest": 0,
+        "loggedIn": 11
+      },
+      {
+        "target": "Remove from Cart",
+        "total": 10,
+        "guest": 0,
+        "loggedIn": 10
+      },
+      {
+        "target": "Shipping & Trust",
+        "total": 8,
+        "guest": 0,
+        "loggedIn": 8
+      },
+      {
+        "target": "Share product",
+        "total": 7,
+        "guest": 5,
+        "loggedIn": 2
+      },
+      {
+        "target": "2.20 lb Refill Pack - 2.2 lb",
+        "total": 5,
+        "guest": 0,
+        "loggedIn": 5
+      },
+      {
+        "target": "2.2 lb",
+        "total": 5,
+        "guest": 0,
+        "loggedIn": 5
+      },
+      {
+        "target": "20% OFFBuy One GramChoco Millet Crisp Peanut Butter - 500g14.7% Protein % Added Vitamin A&D 500g(5)₹499₹399",
+        "total": 4,
+        "guest": 0,
+        "loggedIn": 4
+      },
+      {
+        "target": "Membership",
+        "total": 4,
+        "guest": 2,
+        "loggedIn": 2
+      },
+      {
+        "target": "Previous image",
+        "total": 3,
+        "guest": 0,
+        "loggedIn": 3
+      },
+      {
+        "target": "Add All To Cart",
+        "total": 3,
+        "guest": 1,
+        "loggedIn": 2
+      }
+    ],
+    "drop_off_rate": 100,
+    "dropOffRate": 100,
+    "dropOffRateGuest": 100,
+    "dropOffRateLoggedIn": 100,
+    "from": "2026-04-18T00:00:00.000Z",
+    "to": "2026-04-19T00:00:00.000Z"
+  },
+  "performance": {
+    "eventsPerMinute": [
+      {
+        "minute": "2026-04-19 15:07",
+        "events": 1
+      },
+      {
+        "minute": "2026-04-19 15:08",
+        "events": 1
+      },
+      {
+        "minute": "2026-04-19 15:09",
+        "events": 1
+      },
+      {
+        "minute": "2026-04-19 15:10",
+        "events": 1
+      },
+      {
+        "minute": "2026-04-19 15:11",
+        "events": 1
+      },
+      {
+        "minute": "2026-04-19 15:12",
+        "events": 1
+      },
+      {
+        "minute": "2026-04-19 15:13",
+        "events": 1
+      },
+      {
+        "minute": "2026-04-19 15:14",
+        "events": 1
+      },
+      {
+        "minute": "2026-04-19 15:15",
+        "events": 1
+      },
+      {
+        "minute": "2026-04-19 15:16",
+        "events": 3
+      },
+      {
+        "minute": "2026-04-19 15:17",
+        "events": 3
+      },
+      {
+        "minute": "2026-04-19 15:22",
+        "events": 4
+      },
+      {
+        "minute": "2026-04-19 15:23",
+        "events": 2
+      },
+      {
+        "minute": "2026-04-19 15:24",
+        "events": 2
+      },
+      {
+        "minute": "2026-04-19 15:25",
+        "events": 2
+      },
+      {
+        "minute": "2026-04-19 15:26",
+        "events": 2
+      },
+      {
+        "minute": "2026-04-19 15:27",
+        "events": 2
+      },
+      {
+        "minute": "2026-04-19 15:28",
+        "events": 83
+      },
+      {
+        "minute": "2026-04-19 15:29",
+        "events": 1
+      },
+      {
+        "minute": "2026-04-19 15:30",
+        "events": 1
+      },
+      {
+        "minute": "2026-04-19 15:31",
+        "events": 3
+      },
+      {
+        "minute": "2026-04-19 15:32",
+        "events": 5
+      },
+      {
+        "minute": "2026-04-19 15:34",
+        "events": 3
+      },
+      {
+        "minute": "2026-04-19 15:35",
+        "events": 69
+      },
+      {
+        "minute": "2026-04-19 15:36",
+        "events": 33
+      }
+    ],
+    "pubSubBacklog": {
+      "estimatedMessages": 1,
+      "source": "worker_queue_depth_estimate"
+    },
+    "workerHealth": {
+      "totalWorkers": 10,
+      "healthyWorkers": 0,
+      "unhealthyWorkers": 10,
+      "workers": [
+        {
+          "workerId": "analytics-worker:9236",
+          "queueDepth": 0,
+          "isFlushing": false,
+          "updatedAt": "2026-03-27T05:32:35.753Z",
+          "stale": true,
+          "stats": {
+            "receivedMessages": 7,
+            "receivedEvents": 18,
+            "persistedEvents": 18,
+            "duplicateEvents": 0,
+            "invalidMessages": 0,
+            "invalidEvents": 0,
+            "failedBatches": 0,
+            "throughputPerMinute": 1.51,
+            "lastFlushAt": "2026-03-27T05:32:09.700Z",
+            "lastFlushDurationMs": 169
+          }
+        },
+        {
+          "workerId": "analytics-worker:23064",
+          "queueDepth": 0,
+          "isFlushing": false,
+          "updatedAt": "2026-03-27T05:15:24.720Z",
+          "stale": true,
+          "stats": {
+            "receivedMessages": 525,
+            "receivedEvents": 911,
+            "persistedEvents": 911,
+            "duplicateEvents": 0,
+            "invalidMessages": 0,
+            "invalidEvents": 0,
+            "failedBatches": 0,
+            "throughputPerMinute": 352.65,
+            "lastFlushAt": "2026-03-27T05:13:06.014Z",
+            "lastFlushDurationMs": 7018
+          }
+        },
+        {
+          "workerId": "analytics-worker:14660",
+          "queueDepth": 0,
+          "isFlushing": false,
+          "updatedAt": "2026-03-01T05:46:26.617Z",
+          "stale": true,
+          "stats": {
+            "receivedMessages": 342,
+            "receivedEvents": 655,
+            "persistedEvents": 655,
+            "duplicateEvents": 0,
+            "invalidMessages": 0,
+            "invalidEvents": 0,
+            "failedBatches": 0,
+            "throughputPerMinute": 7.21,
+            "lastFlushAt": "2026-03-01T05:46:16.707Z",
+            "lastFlushDurationMs": 148
+          }
+        },
+        {
+          "workerId": "analytics-worker:12748",
+          "queueDepth": 0,
+          "isFlushing": false,
+          "updatedAt": "2026-03-01T04:08:09.707Z",
+          "stale": true,
+          "stats": {
+            "receivedMessages": 6,
+            "receivedEvents": 7,
+            "persistedEvents": 7,
+            "duplicateEvents": 0,
+            "invalidMessages": 0,
+            "invalidEvents": 0,
+            "failedBatches": 0,
+            "throughputPerMinute": 0.53,
+            "lastFlushAt": "2026-03-01T04:00:13.269Z",
+            "lastFlushDurationMs": 763
+          }
+        },
+        {
+          "workerId": "analytics-worker:20980",
+          "queueDepth": 0,
+          "isFlushing": false,
+          "updatedAt": "2026-03-01T04:07:59.748Z",
+          "stale": true,
+          "stats": {
+            "receivedMessages": 114,
+            "receivedEvents": 198,
+            "persistedEvents": 198,
+            "duplicateEvents": 0,
+            "invalidMessages": 0,
+            "invalidEvents": 0,
+            "failedBatches": 0,
+            "throughputPerMinute": 14.28,
+            "lastFlushAt": "2026-03-01T04:06:12.227Z",
+            "lastFlushDurationMs": 408
+          }
+        },
+        {
+          "workerId": "analytics-worker:14600",
+          "queueDepth": 0,
+          "isFlushing": false,
+          "updatedAt": "2026-02-28T12:37:58.070Z",
+          "stale": true,
+          "stats": {
+            "receivedMessages": 0,
+            "receivedEvents": 0,
+            "persistedEvents": 0,
+            "duplicateEvents": 0,
+            "invalidMessages": 0,
+            "invalidEvents": 0,
+            "failedBatches": 0,
+            "throughputPerMinute": 0,
+            "lastFlushAt": null,
+            "lastFlushDurationMs": 0
+          }
+        },
+        {
+          "workerId": "analytics-worker:11652",
+          "queueDepth": 1,
+          "isFlushing": false,
+          "updatedAt": "2026-02-28T11:11:21.515Z",
+          "stale": true,
+          "stats": {
+            "receivedMessages": 7,
+            "receivedEvents": 7,
+            "persistedEvents": 0,
+            "duplicateEvents": 0,
+            "invalidMessages": 0,
+            "invalidEvents": 0,
+            "failedBatches": 6,
+            "throughputPerMinute": 0,
+            "lastFlushAt": "2026-02-28T11:11:18.915Z",
+            "lastFlushDurationMs": 63
+          }
+        },
+        {
+          "workerId": "analytics-worker:2636",
+          "queueDepth": 0,
+          "isFlushing": false,
+          "updatedAt": "2026-02-28T10:35:26.124Z",
+          "stale": true,
+          "stats": {
+            "receivedMessages": 0,
+            "receivedEvents": 0,
+            "persistedEvents": 0,
+            "duplicateEvents": 0,
+            "invalidMessages": 0,
+            "invalidEvents": 0,
+            "failedBatches": 0,
+            "throughputPerMinute": 0,
+            "lastFlushAt": null,
+            "lastFlushDurationMs": 0
+          }
+        },
+        {
+          "workerId": "analytics-worker:21508",
+          "queueDepth": 0,
+          "isFlushing": false,
+          "updatedAt": "2026-02-28T10:33:13.615Z",
+          "stale": true,
+          "stats": {
+            "receivedMessages": 0,
+            "receivedEvents": 0,
+            "persistedEvents": 0,
+            "duplicateEvents": 0,
+            "invalidMessages": 0,
+            "invalidEvents": 0,
+            "failedBatches": 0,
+            "throughputPerMinute": 0,
+            "lastFlushAt": null,
+            "lastFlushDurationMs": 0
+          }
+        },
+        {
+          "workerId": "analytics-worker:2240",
+          "queueDepth": 0,
+          "isFlushing": false,
+          "updatedAt": "2026-02-28T10:30:04.676Z",
+          "stale": true,
+          "stats": {
+            "receivedMessages": 0,
+            "receivedEvents": 0,
+            "persistedEvents": 0,
+            "duplicateEvents": 0,
+            "invalidMessages": 0,
+            "invalidEvents": 0,
+            "failedBatches": 0,
+            "throughputPerMinute": 0,
+            "lastFlushAt": null,
+            "lastFlushDurationMs": 0
+          }
+        }
+      ],
+      "staleThresholdMs": 60000
+    }
+  },
+  "sessions": {
+    "items": [
+      {
+        "sessionId": "guest_1776546140739_2v9a6rz8s",
+        "userId": null,
+        "ipAddress": "::ffff:127.0.0.1",
+        "startedAt": "2026-04-18T21:02:20.915Z",
+        "endedAt": null,
+        "lastSeenAt": "2026-04-18T21:02:20.921Z",
+        "totalActiveTime": 0,
+        "isActive": true,
+        "pageViews": 1,
+        "eventCount": 3,
+        "maxScrollDepth": 0,
+        "deviceType": "desktop",
+        "browser": "Chrome",
+        "location": {
+          "country": "unknown",
+          "city": "unknown"
+        }
+      },
+      {
+        "sessionId": "guest_1776546011474_bubs1pnhg",
+        "userId": null,
+        "ipAddress": "::ffff:127.0.0.1",
+        "startedAt": "2026-04-18T21:00:11.605Z",
+        "endedAt": null,
+        "lastSeenAt": "2026-04-18T21:02:01.617Z",
+        "totalActiveTime": 20010,
+        "isActive": true,
+        "pageViews": 1,
+        "eventCount": 14,
+        "maxScrollDepth": 0,
+        "deviceType": "desktop",
+        "browser": "Chrome",
+        "location": {
+          "country": "unknown",
+          "city": "unknown"
+        }
+      },
+      {
+        "sessionId": "5b715fbd-2594-4ba9-8e9b-6e3be1b08643",
+        "userId": null,
+        "ipAddress": "::ffff:127.0.0.1",
+        "startedAt": "2026-04-18T20:59:49.232Z",
+        "endedAt": "2026-04-19T06:48:14.677Z",
+        "lastSeenAt": "2026-04-19T06:48:22.660Z",
+        "totalActiveTime": 168278,
+        "isActive": true,
+        "pageViews": 1,
+        "eventCount": 2455,
+        "maxScrollDepth": 99,
+        "deviceType": "desktop",
+        "browser": "Chrome",
+        "location": {
+          "country": "unknown",
+          "city": "unknown"
+        }
+      },
+      {
+        "sessionId": "11ddf7e6-0b1b-4cb0-a646-e4fa31721df7",
+        "userId": null,
+        "ipAddress": "::ffff:127.0.0.1",
+        "startedAt": "2026-04-18T20:41:28.752Z",
+        "endedAt": "2026-04-18T20:59:45.813Z",
+        "lastSeenAt": "2026-04-18T20:59:45.813Z",
+        "totalActiveTime": 69048,
+        "isActive": false,
+        "pageViews": 1,
+        "eventCount": 54,
+        "maxScrollDepth": 99,
+        "deviceType": "desktop",
+        "browser": "Chrome",
+        "location": {
+          "country": "unknown",
+          "city": "unknown"
+        }
+      },
+      {
+        "sessionId": "9e3d89b2-d2dd-464a-a511-cd0f38d6603c",
+        "userId": null,
+        "ipAddress": "::ffff:127.0.0.1",
+        "startedAt": "2026-04-18T20:39:50.848Z",
+        "endedAt": "2026-04-18T20:41:25.567Z",
+        "lastSeenAt": "2026-04-18T20:41:25.567Z",
+        "totalActiveTime": 80003,
+        "isActive": false,
+        "pageViews": 2,
+        "eventCount": 19,
+        "maxScrollDepth": 93,
+        "deviceType": "desktop",
+        "browser": "Chrome",
+        "location": {
+          "country": "unknown",
+          "city": "unknown"
+        }
+      },
+      {
+        "sessionId": "20d05fdd-a377-4b90-977a-061fcd0619f6",
+        "userId": null,
+        "ipAddress": "::ffff:127.0.0.1",
+        "startedAt": "2026-04-18T20:34:17.952Z",
+        "endedAt": "2026-04-18T20:38:11.988Z",
+        "lastSeenAt": "2026-04-18T20:38:11.988Z",
+        "totalActiveTime": 99736,
+        "isActive": false,
+        "pageViews": 1,
+        "eventCount": 32,
+        "maxScrollDepth": 32,
+        "deviceType": "desktop",
+        "browser": "Chrome",
+        "location": {
+          "country": "unknown",
+          "city": "unknown"
+        }
+      },
+      {
+        "sessionId": "17ec3a2a-69a7-4371-aa03-0c2ff9767f35",
+        "userId": "6970b0799da902b64021249f",
+        "ipAddress": "::ffff:127.0.0.1",
+        "startedAt": "2026-04-18T20:01:27.555Z",
+        "endedAt": null,
+        "lastSeenAt": "2026-04-19T15:15:50.435Z",
+        "totalActiveTime": 0,
+        "isActive": true,
+        "pageViews": 2,
+        "eventCount": 55,
+        "maxScrollDepth": 23,
+        "deviceType": "desktop",
+        "browser": "Chrome",
+        "location": {
+          "country": "unknown",
+          "city": "unknown"
+        }
+      },
+      {
+        "sessionId": "453f2b65-a772-42b3-87b3-fc29c43a43b3",
+        "userId": "6970b0799da902b64021249f",
+        "ipAddress": "::ffff:127.0.0.1",
+        "startedAt": "2026-04-18T19:59:21.019Z",
+        "endedAt": "2026-04-18T20:01:24.648Z",
+        "lastSeenAt": "2026-04-18T20:01:24.648Z",
+        "totalActiveTime": 0,
+        "isActive": false,
+        "pageViews": 2,
+        "eventCount": 16,
+        "maxScrollDepth": 9,
+        "deviceType": "desktop",
+        "browser": "Chrome",
+        "location": {
+          "country": "unknown",
+          "city": "unknown"
+        }
+      },
+      {
+        "sessionId": "19aa4b57-73cc-4f29-89f3-925fc72e589e",
+        "userId": "6970b0799da902b64021249f",
+        "ipAddress": "::ffff:127.0.0.1",
+        "startedAt": "2026-04-18T19:52:37.982Z",
+        "endedAt": "2026-04-18T19:59:17.991Z",
+        "lastSeenAt": "2026-04-18T19:59:17.991Z",
+        "totalActiveTime": 208650,
+        "isActive": false,
+        "pageViews": 3,
+        "eventCount": 120,
+        "maxScrollDepth": 94,
+        "deviceType": "desktop",
+        "browser": "Chrome",
+        "location": {
+          "country": "unknown",
+          "city": "unknown"
+        }
+      },
+      {
+        "sessionId": "a8b96158-595d-410e-8042-bcbfd10e142d",
+        "userId": null,
+        "ipAddress": "::ffff:127.0.0.1",
+        "startedAt": "2026-04-18T19:47:39.049Z",
+        "endedAt": "2026-04-18T20:34:15.444Z",
+        "lastSeenAt": "2026-04-18T20:34:15.444Z",
+        "totalActiveTime": 239457,
+        "isActive": false,
+        "pageViews": 11,
+        "eventCount": 418,
+        "maxScrollDepth": 59,
+        "deviceType": "desktop",
+        "browser": "Chrome",
+        "location": {
+          "country": "unknown",
+          "city": "unknown"
+        }
+      },
+      {
+        "sessionId": "ab73ee3c-19b4-41bd-81cf-122e36385c71",
+        "userId": "6970b0799da902b64021249f",
+        "ipAddress": "::ffff:127.0.0.1",
+        "startedAt": "2026-04-18T19:47:20.619Z",
+        "endedAt": "2026-04-18T19:52:33.579Z",
+        "lastSeenAt": "2026-04-18T19:52:33.579Z",
+        "totalActiveTime": 269456,
+        "isActive": false,
+        "pageViews": 7,
+        "eventCount": 177,
+        "maxScrollDepth": 100,
+        "deviceType": "desktop",
+        "browser": "Chrome",
+        "location": {
+          "country": "unknown",
+          "city": "unknown"
+        }
+      },
+      {
+        "sessionId": "226bfcd7-45e7-4875-84b3-14fb541a6972",
+        "userId": null,
+        "ipAddress": "::ffff:127.0.0.1",
+        "startedAt": "2026-04-18T19:46:32.263Z",
+        "endedAt": "2026-04-18T19:47:36.530Z",
+        "lastSeenAt": "2026-04-18T19:47:36.530Z",
+        "totalActiveTime": 40006,
+        "isActive": false,
+        "pageViews": 1,
+        "eventCount": 27,
+        "maxScrollDepth": 33,
+        "deviceType": "desktop",
+        "browser": "Chrome",
+        "location": {
+          "country": "unknown",
+          "city": "unknown"
+        }
+      },
+      {
+        "sessionId": "92f6d111-e485-47d8-a988-6bf37b1e55bd",
+        "userId": "6970b0799da902b64021249f",
+        "ipAddress": "::ffff:127.0.0.1",
+        "startedAt": "2026-04-18T19:43:27.271Z",
+        "endedAt": "2026-04-18T19:47:16.830Z",
+        "lastSeenAt": "2026-04-18T19:47:16.830Z",
+        "totalActiveTime": 48205,
+        "isActive": false,
+        "pageViews": 2,
+        "eventCount": 36,
+        "maxScrollDepth": 0,
+        "deviceType": "desktop",
+        "browser": "Chrome",
+        "location": {
+          "country": "unknown",
+          "city": "unknown"
+        }
+      }
+    ],
+    "filter": {
+      "type": "all",
+      "q": "",
+      "from": "2026-04-18T00:00:00.000Z",
+      "to": "2026-04-19T00:00:00.000Z"
+    },
+    "pagination": {
+      "page": 1,
+      "limit": 250,
+      "total": 0,
+      "totalPages": 1,
+      "hasPrev": false,
+      "hasNext": false
+    },
+    "totals": {
+      "all": 0,
+      "guest": 0,
+      "loggedIn": 0
+    }
+  }
+}

@@ -1,9 +1,20 @@
 "use client";
-import Header from "@/components/Header";
-import Sidebar from "@/components/Sidebar";
 import { useAdmin } from "@/context/AdminContext";
+import dynamic from "next/dynamic";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+
+const Sidebar = dynamic(() => import("@/components/Sidebar"), {
+  ssr: false,
+  loading: () => (
+    <div className="hidden lg:block fixed top-0 left-0 h-screen w-[250px] border-r border-gray-100 bg-white" />
+  ),
+});
+
+const Header = dynamic(() => import("@/components/Header"), {
+  ssr: false,
+  loading: () => <div className="h-[60px] w-full bg-white shadow-md" />,
+});
 
 const publicPages = [
   "/login",
@@ -81,9 +92,7 @@ export default function AdminLayout({ children }) {
   }
 
   if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen bg-gray-50" aria-hidden="true" />
-    );
+    return <div className="min-h-screen bg-gray-50" aria-hidden="true" />;
   }
 
   return (

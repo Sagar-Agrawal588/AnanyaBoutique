@@ -29,7 +29,7 @@ const data = {
   payment_url: "https://healthyonegram.com/pay-order/H1G2526/0001",
   payment_cta_label: "Pay Now",
   site_url: "https://healthyonegram.com",
-  support_url: "https://healthyonegram.com/support",
+  support_url: "https://healthyonegram.com/contact",
   support_contact: "support@healthyonegram.com",
   year: "2026",
 };

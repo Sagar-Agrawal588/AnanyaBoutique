@@ -65,7 +65,10 @@ const isGatewayMerchantReference = (value) =>
   /^BOG_/i.test(String(value || "").trim());
 
 const resolveGatewayTransactionReference = (order = {}) => {
-  const directReference = [order?.paytmTransactionId, order?.phonepeTransactionId]
+  const directReference = [
+    order?.paytmTransactionId,
+    order?.phonepeTransactionId,
+  ]
     .map((value) => String(value || "").trim())
     .find(Boolean);
 
@@ -105,7 +108,9 @@ const resolvePaymentProviderLabel = (order = {}) => {
   if (paymentMethod.includes("paytm")) return "Paytm";
   if (paymentMethod) return formatStatusLabel(paymentMethod, "Gateway");
 
-  if (String(order?.phonepeMerchantOrderId || order?.phonepeOrderId || "").trim()) {
+  if (
+    String(order?.phonepeMerchantOrderId || order?.phonepeOrderId || "").trim()
+  ) {
     return "PhonePe";
   }
   if (String(order?.paytmOrderId || order?.paytmTransactionId || "").trim()) {
@@ -124,6 +129,39 @@ const isPendingQueueOrder = (order = {}) => {
     PENDING_ORDER_STATUSES.has(normalizedOrderStatus) ||
     PENDING_PAYMENT_STATUSES.has(normalizedPaymentStatus)
   );
+};
+
+const isDemoOrTestOrder = (order = {}) => {
+  const rawDemoFlag = order?.isDemoOrder;
+  const normalizedDemoFlag =
+    typeof rawDemoFlag === "string"
+      ? rawDemoFlag.trim().toLowerCase()
+      : rawDemoFlag;
+  if (
+    rawDemoFlag === true ||
+    rawDemoFlag === 1 ||
+    normalizedDemoFlag === "true" ||
+    normalizedDemoFlag === "1"
+  ) {
+    return true;
+  }
+
+  const paymentMethod = String(
+    order?.paymentMethod || order?.payment_method || "",
+  )
+    .trim()
+    .toLowerCase();
+  if (paymentMethod === "test") return true;
+
+  const paymentId = String(order?.paymentId || "")
+    .trim()
+    .toUpperCase();
+  if (paymentId.startsWith("TEST_")) return true;
+
+  const notes = String(order?.notes || "")
+    .trim()
+    .toLowerCase();
+  return notes.includes("demo test order");
 };
 
 const getPendingQueueReason = (order = {}) => {
@@ -1050,7 +1088,6 @@ const Orders = () => {
   const [backfillingPaymentIds, setBackfillingPaymentIds] = useState(false);
   const [repairingPaidOrders, setRepairingPaidOrders] = useState(false);
   const [removingPendingOrders, setRemovingPendingOrders] = useState(false);
-  const [removingDemoOrders, setRemovingDemoOrders] = useState(false);
   const { intervalMs } = useLiveRefreshSetting();
   const refreshConfig = useMemo(
     () => ({
@@ -1108,8 +1145,11 @@ const Orders = () => {
           const nextOrders = Array.isArray(payload?.orders)
             ? payload.orders
             : [];
+          const visibleOrders = nextOrders.filter(
+            (order) => !isDemoOrTestOrder(order),
+          );
           const nextTotalPages = Number(payload?.pagination?.totalPages || 1);
-          setOrders(nextOrders);
+          setOrders(visibleOrders);
           setTotalPages(nextTotalPages > 0 ? nextTotalPages : 1);
         } else {
           // Keep existing rows if request failed; avoid false empty state flashes.
@@ -1344,62 +1384,6 @@ const Orders = () => {
     }
   };
 
-  const handleRemoveDemoOrders = async () => {
-    if (!token) {
-      toast.error("Admin session missing");
-      return;
-    }
-
-    const confirmed =
-      typeof window === "undefined"
-        ? true
-        : window.confirm(
-            "Remove all demo orders? This permanently deletes demo orders from the database.",
-          );
-    if (!confirmed) return;
-
-    setRemovingDemoOrders(true);
-    try {
-      const response = await deleteData("/api/orders/admin/demo-orders", token);
-      if (response?.success) {
-        const deletedCount = Number(response?.data?.deletedCount || 0);
-        const skippedCount = Number(response?.data?.skippedCount || 0);
-
-        if (deletedCount > 0) {
-          toast.success(
-            `Removed ${deletedCount} demo order${deletedCount === 1 ? "" : "s"}`,
-          );
-        } else {
-          toast.success("No demo orders found");
-        }
-
-        if (skippedCount > 0) {
-          toast.error(
-            `${skippedCount} demo order${skippedCount === 1 ? " was" : "s were"} skipped. Check server logs.`,
-          );
-        }
-
-        const params = new URLSearchParams(searchParams?.toString() || "");
-        params.delete("status");
-        const query = params.toString();
-
-        setStatusFilter("all");
-        setPage(1);
-        router.replace(query ? `/orders?${query}` : "/orders");
-
-        if (statusFilter === "all") {
-          fetchOrders();
-        }
-      } else {
-        toast.error(response?.message || "Failed to remove demo orders");
-      }
-    } catch {
-      toast.error("Failed to remove demo orders");
-    } finally {
-      setRemovingDemoOrders(false);
-    }
-  };
-
   if (loading || !isAuthenticated) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -1423,7 +1407,8 @@ const Orders = () => {
             </p>
             {statusFilter === "all" ? (
               <p className="mt-1 text-xs text-gray-500">
-                Pending and payment-hold rows are kept in a separate queue below.
+                Pending and payment-hold rows are kept in a separate queue
+                below.
               </p>
             ) : null}
           </div>
@@ -1435,8 +1420,7 @@ const Orders = () => {
               disabled={
                 backfillingPaymentIds ||
                 repairingPaidOrders ||
-                removingPendingOrders ||
-                removingDemoOrders
+                removingPendingOrders
               }
               sx={{
                 textTransform: "none",
@@ -1456,8 +1440,7 @@ const Orders = () => {
               disabled={
                 backfillingPaymentIds ||
                 repairingPaidOrders ||
-                removingPendingOrders ||
-                removingDemoOrders
+                removingPendingOrders
               }
               sx={{
                 textTransform: "none",
@@ -1478,8 +1461,7 @@ const Orders = () => {
               disabled={
                 removingPendingOrders ||
                 backfillingPaymentIds ||
-                repairingPaidOrders ||
-                removingDemoOrders
+                repairingPaidOrders
               }
               sx={{
                 textTransform: "none",
@@ -1491,28 +1473,6 @@ const Orders = () => {
               {removingPendingOrders
                 ? "Removing Pending Orders..."
                 : "Remove Pending Orders"}
-            </Button>
-            <Button
-              variant="outlined"
-              color="error"
-              size="small"
-              onClick={handleRemoveDemoOrders}
-              disabled={
-                removingDemoOrders ||
-                removingPendingOrders ||
-                backfillingPaymentIds ||
-                repairingPaidOrders
-              }
-              sx={{
-                textTransform: "none",
-                borderRadius: "10px",
-                px: 2,
-                py: 0.8,
-              }}
-            >
-              {removingDemoOrders
-                ? "Removing Demo Orders..."
-                : "Remove Demo Orders"}
             </Button>
             <Button
               variant="outlined"
@@ -1588,8 +1548,9 @@ const Orders = () => {
           <>
             {showEmptyPrimaryState ? (
               <div className="mt-5 rounded-xl border border-dashed border-amber-200 bg-amber-50 px-4 py-5 text-sm text-amber-800">
-                All rows on this page are still in the pending queue. Review them below so
-                payment-hold and not-yet-confirmed orders stay separate from the main order list.
+                All rows on this page are still in the pending queue. Review
+                them below so payment-hold and not-yet-confirmed orders stay
+                separate from the main order list.
               </div>
             ) : primaryOrders.length > 0 ? (
               <OrdersTable
@@ -1611,8 +1572,8 @@ const Orders = () => {
                       Pending Queue
                     </h2>
                     <p className="mt-1 text-sm text-amber-800">
-                      These rows are waiting on payment confirmation or internal processing, so
-                      they sit apart from the main order list.
+                      These rows are waiting on payment confirmation or internal
+                      processing, so they sit apart from the main order list.
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">

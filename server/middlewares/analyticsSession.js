@@ -8,6 +8,24 @@ import { isTrackingSuppressed } from "../services/analytics/trackingEvent.servic
 
 const COOKIE_DOMAIN_REGEX =
   /^\.?([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)(\.([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?))+$/i;
+const ANALYTICS_SESSION_BYPASS_PATH_REGEX =
+  /^\/api\/(?:banners|home-slides|settings\/maintenance-status)(?:\/|$)/i;
+
+const shouldBypassAnalyticsSession = (req) => {
+  const method = String(req?.method || "")
+    .trim()
+    .toUpperCase();
+  if (method !== "GET" && method !== "HEAD") {
+    return false;
+  }
+
+  const normalizedPath = String(req?.originalUrl || req?.url || "")
+    .split("?")[0]
+    .trim()
+    .replace(/\/{2,}/g, "/");
+
+  return ANALYTICS_SESSION_BYPASS_PATH_REGEX.test(normalizedPath);
+};
 
 const normalizeCookieDomain = (value) => {
   const raw = String(value || "").trim();
@@ -20,7 +38,9 @@ const normalizeCookieDomain = (value) => {
 
 const buildCookieOptions = () => {
   const isProduction = process.env.NODE_ENV === "production";
-  const configuredCookieDomain = normalizeCookieDomain(process.env.COOKIE_DOMAIN);
+  const configuredCookieDomain = normalizeCookieDomain(
+    process.env.COOKIE_DOMAIN,
+  );
   const isLocalCookieDomain = /^(localhost|127\.0\.0\.1|\[::1\])$/i.test(
     configuredCookieDomain.replace(/^\./, ""),
   );
@@ -99,9 +119,14 @@ const shouldEmitSessionStartEvent = (req) => {
 };
 
 const analyticsSession = (req, res, next) => {
+  if (shouldBypassAnalyticsSession(req)) {
+    return next();
+  }
+
   const cookieName =
-    String(process.env.ANALYTICS_SESSION_COOKIE || DEFAULT_ANALYTICS_SESSION_COOKIE).trim() ||
-    DEFAULT_ANALYTICS_SESSION_COOKIE;
+    String(
+      process.env.ANALYTICS_SESSION_COOKIE || DEFAULT_ANALYTICS_SESSION_COOKIE,
+    ).trim() || DEFAULT_ANALYTICS_SESSION_COOKIE;
 
   let sessionId = resolveSessionId(req);
   const isNewSession = !sessionId;

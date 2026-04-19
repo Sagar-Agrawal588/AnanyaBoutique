@@ -117,6 +117,8 @@ bannerSchema.virtual("isCurrentlyActive").get(function () {
 });
 
 bannerSchema.index({ position: 1, isActive: 1, sortOrder: 1 });
+bannerSchema.index({ position: 1, isActive: 1, sortOrder: 1, createdAt: -1 });
+bannerSchema.index({ isActive: 1, sortOrder: 1, createdAt: -1 });
 
 const BannerModel = mongoose.model("Banner", bannerSchema);
 export default BannerModel;

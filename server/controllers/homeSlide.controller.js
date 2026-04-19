@@ -2,6 +2,53 @@ import { deleteFromCloudinary } from "../config/cloudinary.js";
 import HomeSlideModel from "../models/homeSlide.model.js";
 import { extractPublicIdFromUrl } from "../utils/imageUtils.js";
 
+const DEFAULT_HOME_SLIDE_LIMIT = 10;
+const DEFAULT_HOME_SLIDES_PUBLIC_CACHE_TTL_MS = 120000;
+const HOME_SLIDES_PUBLIC_CACHE_TTL_MS = Math.max(
+  Number(
+    process.env.HOME_SLIDES_PUBLIC_CACHE_TTL_MS ||
+      DEFAULT_HOME_SLIDES_PUBLIC_CACHE_TTL_MS,
+  ) || DEFAULT_HOME_SLIDES_PUBLIC_CACHE_TTL_MS,
+  10000,
+);
+const homeSlidesResponseCache = new Map();
+const homeSlidesInFlightRequests = new Map();
+
+const normalizeHomeSlideLimit = (value) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return DEFAULT_HOME_SLIDE_LIMIT;
+  }
+
+  return Math.floor(parsed);
+};
+
+const buildHomeSlidesCacheKey = ({ limit }) => `limit:${limit}`;
+
+const getCachedHomeSlidesPayload = (cacheKey) => {
+  const cached = homeSlidesResponseCache.get(cacheKey);
+  if (!cached) return null;
+
+  if (cached.expiresAt <= Date.now()) {
+    homeSlidesResponseCache.delete(cacheKey);
+    return null;
+  }
+
+  return cached.payload;
+};
+
+const setCachedHomeSlidesPayload = (cacheKey, payload) => {
+  homeSlidesResponseCache.set(cacheKey, {
+    payload,
+    expiresAt: Date.now() + HOME_SLIDES_PUBLIC_CACHE_TTL_MS,
+  });
+};
+
+const clearHomeSlidesPublicCache = () => {
+  homeSlidesResponseCache.clear();
+  homeSlidesInFlightRequests.clear();
+};
+
 /**
  * Home Slide Controller
  *
@@ -17,32 +64,60 @@ import { extractPublicIdFromUrl } from "../utils/imageUtils.js";
  */
 export const getHomeSlides = async (req, res) => {
   try {
-    const { limit = 10 } = req.query;
+    const limit = normalizeHomeSlideLimit(req.query.limit);
+    const cacheKey = buildHomeSlidesCacheKey({ limit });
 
-    const now = new Date();
-    const filter = {
-      isActive: true,
-      $or: [{ startDate: null }, { startDate: { $lte: now } }],
-      $and: [
-        {
-          $or: [{ endDate: null }, { endDate: { $gte: now } }],
-        },
-      ],
-    };
+    const cachedPayload = getCachedHomeSlidesPayload(cacheKey);
+    if (cachedPayload) {
+      return res.status(200).json(cachedPayload);
+    }
 
-    const slides = await HomeSlideModel.find(filter)
-      .select(
-        "title subtitle description image mobileImage buttonText buttonLink secondaryButtonText secondaryButtonLink backgroundColor textColor textPosition overlayOpacity sortOrder",
-      )
-      .sort({ sortOrder: 1, createdAt: -1 })
-      .limit(Number(limit))
-      .lean();
+    const existingInFlightRequest = homeSlidesInFlightRequests.get(cacheKey);
+    if (existingInFlightRequest) {
+      const inFlightPayload = await existingInFlightRequest;
+      return res.status(200).json(inFlightPayload);
+    }
 
-    res.status(200).json({
-      error: false,
-      success: true,
-      data: slides,
-    });
+    const fetchPromise = (async () => {
+      const now = new Date();
+      const filter = {
+        isActive: true,
+        $or: [{ startDate: null }, { startDate: { $lte: now } }],
+        $and: [
+          {
+            $or: [{ endDate: null }, { endDate: { $gte: now } }],
+          },
+        ],
+      };
+
+      const slides = await HomeSlideModel.find(filter)
+        .select(
+          "title subtitle description image mobileImage buttonText buttonLink secondaryButtonText secondaryButtonLink backgroundColor textColor textPosition overlayOpacity sortOrder",
+        )
+        .sort({ sortOrder: 1, createdAt: -1 })
+        .limit(limit)
+        .lean();
+
+      const payload = {
+        error: false,
+        success: true,
+        data: slides,
+      };
+
+      setCachedHomeSlidesPayload(cacheKey, payload);
+      return payload;
+    })();
+
+    homeSlidesInFlightRequests.set(cacheKey, fetchPromise);
+
+    let payload;
+    try {
+      payload = await fetchPromise;
+    } finally {
+      homeSlidesInFlightRequests.delete(cacheKey);
+    }
+
+    return res.status(200).json(payload);
   } catch (error) {
     console.error("Error fetching home slides:", error);
     res.status(500).json({
@@ -177,6 +252,7 @@ export const createSlide = async (req, res) => {
     });
 
     await slide.save();
+    clearHomeSlidesPublicCache();
 
     res.status(201).json({
       error: false,
@@ -243,6 +319,7 @@ export const updateSlide = async (req, res) => {
       { $set: updateData },
       { new: true, runValidators: true },
     );
+    clearHomeSlidesPublicCache();
 
     res.status(200).json({
       error: false,
@@ -296,6 +373,8 @@ export const deleteSlide = async (req, res) => {
       }
     }
 
+    clearHomeSlidesPublicCache();
+
     res.status(200).json({
       error: false,
       success: true,
@@ -335,6 +414,7 @@ export const reorderSlides = async (req, res) => {
     }));
 
     await HomeSlideModel.bulkWrite(bulkOps);
+    clearHomeSlidesPublicCache();
 
     res.status(200).json({
       error: false,

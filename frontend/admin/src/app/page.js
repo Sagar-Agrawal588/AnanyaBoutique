@@ -1,10 +1,10 @@
 "use client";
-import AdminDashboardComponent from "@/app/components/DashboardBoxes/AdminDashboard";
 import { useAdmin } from "@/context/AdminContext";
 import { useAdminRealtime } from "@/hooks/useAdminRealtime";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useLiveRefreshSetting } from "@/hooks/useLiveRefreshSetting";
 import { getData } from "@/utils/api";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -20,6 +20,18 @@ import {
 } from "react-icons/fi";
 import { MdOutlineSlideshow } from "react-icons/md";
 import { RiVipCrownLine } from "react-icons/ri";
+
+const AdminDashboardComponent = dynamic(
+  () => import("@/app/components/DashboardBoxes/AdminDashboard"),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="rounded-xl border border-gray-100 bg-white p-6 text-sm text-gray-500">
+        Loading analytics dashboard...
+      </div>
+    ),
+  },
+);
 
 const MAX_FEED_ITEMS = 30;
 

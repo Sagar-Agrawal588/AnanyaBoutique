@@ -12,8 +12,31 @@ const toPositiveInteger = (value, fallback) => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
 
-export const resolveRateLimitIp = (req) =>
-  String(req?.ip || req?.socket?.remoteAddress || "").trim() || "127.0.0.1";
+const toBoolean = (value, fallback = false) => {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase();
+
+  if (["true", "1", "yes", "on"].includes(normalized)) return true;
+  if (["false", "0", "no", "off"].includes(normalized)) return false;
+  return fallback;
+};
+
+export const resolveRateLimitIp = (req) => {
+  const forwardedFor = req?.headers?.["x-forwarded-for"];
+  const realIp = req?.headers?.["x-real-ip"];
+
+  const firstForwardedIp =
+    typeof forwardedFor === "string" ? forwardedFor.split(",")[0].trim() : "";
+  const normalizedRealIp = typeof realIp === "string" ? realIp.trim() : "";
+
+  return (
+    firstForwardedIp ||
+    normalizedRealIp ||
+    String(req?.ip || req?.socket?.remoteAddress || "").trim() ||
+    "127.0.0.1"
+  );
+};
 
 const getTopLevelApiBucket = (req) => {
   const rawPath = String(req.originalUrl || req.url || "").split("?")[0];
@@ -34,6 +57,16 @@ export const buildLimiterKey = (req, scope, includeApiBucket = false) => {
 };
 
 const skipPreflight = (req) => req.method === "OPTIONS";
+
+const normalizePath = (value) => {
+  const normalized = String(value || "")
+    .split("?")[0]
+    .trim()
+    .replace(/\/{2,}/g, "/")
+    .replace(/\/+$/, "");
+
+  return normalized || "/";
+};
 
 const limiterWindowMs =
   toPositiveInteger(process.env.RATE_LIMIT_WINDOW_SECONDS, 60) * 1000;
@@ -65,6 +98,66 @@ const supportLimitMax = toPositiveInteger(
   process.env.RATE_LIMIT_SUPPORT_MAX,
   defaultLimitMax,
 );
+const publicGetLimiterEnabled = toBoolean(
+  process.env.PERF_PUBLIC_GET_LIMITER_ENABLED,
+  true,
+);
+const publicGetLimiterWindowMs =
+  toPositiveInteger(process.env.PERF_PUBLIC_GET_LIMITER_WINDOW_SECONDS, 60) *
+  1000;
+const publicGetLimiterMax = toPositiveInteger(
+  process.env.PERF_PUBLIC_GET_LIMITER_MAX,
+  300,
+);
+const PUBLIC_GET_LIMITER_EXEMPT_PREFIXES = [
+  "/api/user",
+  "/api/admin",
+  "/api/orders",
+  "/api/membership",
+  "/api/webhooks",
+  "/api/upload",
+  "/api/support",
+  "/api/refunds",
+];
+const PUBLIC_GET_LIMITER_ALLOWED_PREFIXES = [
+  "/api/about",
+  "/api/api-docs",
+  "/api/banners",
+  "/api/blogs",
+  "/api/categories",
+  "/api/combos",
+  "/api/coupons",
+  "/api/home-slides",
+  "/api/policies",
+  "/api/products",
+  "/api/settings/public",
+  "/api/settings/maintenance-status",
+];
+
+const skipPublicGetLimiter = (req) => {
+  if (!publicGetLimiterEnabled) return true;
+  if (skipPreflight(req)) return true;
+
+  const method = String(req?.method || "")
+    .trim()
+    .toUpperCase();
+  if (method !== "GET" && method !== "HEAD") return true;
+
+  const requestPath = normalizePath(req?.originalUrl || req?.url || "");
+  if (!requestPath.startsWith("/api/")) return true;
+
+  if (
+    !PUBLIC_GET_LIMITER_ALLOWED_PREFIXES.some((prefix) =>
+      requestPath.startsWith(prefix),
+    )
+  ) {
+    return true;
+  }
+
+  return PUBLIC_GET_LIMITER_EXEMPT_PREFIXES.some((prefix) =>
+    requestPath.startsWith(prefix),
+  );
+};
 
 // General API rate limit - scoped by top-level /api/* route and client IP.
 export const generalLimiter = rateLimit({
@@ -79,6 +172,22 @@ export const generalLimiter = rateLimit({
   legacyHeaders: false,
   keyGenerator: (req) => buildLimiterKey(req, "general", true),
   skip: skipPreflight,
+});
+
+// Public GET rate limiter (safe mode): protects public read APIs from abuse,
+// while excluding auth/payment/admin-critical paths.
+export const publicGetLimiter = rateLimit({
+  windowMs: publicGetLimiterWindowMs,
+  max: publicGetLimiterMax,
+  message: {
+    error: true,
+    success: false,
+    message: "Too many requests. Please try again shortly.",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => buildLimiterKey(req, "public_get", true),
+  skip: skipPublicGetLimiter,
 });
 
 // Admin rate limit - Higher limit for admin panel operations

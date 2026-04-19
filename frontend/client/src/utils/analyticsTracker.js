@@ -5,9 +5,9 @@ import { API_BASE_URL } from "@/utils/api";
 const CONSENT_STORAGE_KEY = "hog_analytics_consent";
 const SESSION_MARKER_KEY = "hog_analytics_session_started";
 const LOCAL_SESSION_KEY = "hog_analytics_local_session_id";
-const DEFAULT_FLUSH_MIN_MS = 5000;
-const DEFAULT_FLUSH_MAX_MS = 10000;
-const HEARTBEAT_INTERVAL_MS = 10000;
+const DEFAULT_FLUSH_MIN_MS = 10000;
+const DEFAULT_FLUSH_MAX_MS = 20000;
+const HEARTBEAT_INTERVAL_MS = 30000;
 const IDLE_TIMEOUT_MS = 30000;
 const ACTIVITY_THROTTLE_MS = 300;
 const HOVER_MIN_DURATION_MS = 300;
@@ -656,7 +656,9 @@ const resolveHrefPath = (hrefValue = "") => {
 
   try {
     const parsed = new URL(raw, "https://tracking.local");
-    return String(parsed.pathname || "").trim().toLowerCase();
+    return String(parsed.pathname || "")
+      .trim()
+      .toLowerCase();
   } catch {
     return raw.split("?")[0].split("#")[0].trim().toLowerCase();
   }

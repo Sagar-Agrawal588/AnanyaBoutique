@@ -1,23 +1,49 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { usePathname } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { Toaster } from "react-hot-toast";
-import AnalyticsTracker from "../components/AnalyticsTracker";
-import CartDrawer from "../components/CartDrawer";
-import CoinRewardLayer from "../components/CoinRewardLayer";
 import ErrorBoundary from "../components/ErrorBoundary";
 import Footer from "../components/Footer";
 import Header from "../components/Header";
-import ManagedPopup from "../components/ManagedPopup";
-import NotificationHandler from "../components/NotificationHandler";
-import OfferPopup from "../components/OfferPopup";
 import { CartProvider } from "../context/CartContext";
 import { ProductProvider } from "../context/ProductContext";
 import { ReferralProvider } from "../context/ReferralContext";
 import { SettingsProvider, useSettings } from "../context/SettingsContext";
 import { WishlistProvider } from "../context/WishlistContext";
 import { API_BASE_URL } from "../utils/api";
+
+const AnalyticsTracker = dynamic(
+  () => import("../components/AnalyticsTracker"),
+  {
+    ssr: false,
+    loading: () => null,
+  },
+);
+const CartDrawer = dynamic(() => import("../components/CartDrawer"), {
+  ssr: false,
+  loading: () => null,
+});
+const CoinRewardLayer = dynamic(() => import("../components/CoinRewardLayer"), {
+  ssr: false,
+  loading: () => null,
+});
+const ManagedPopup = dynamic(() => import("../components/ManagedPopup"), {
+  ssr: false,
+  loading: () => null,
+});
+const NotificationHandler = dynamic(
+  () => import("../components/NotificationHandler"),
+  {
+    ssr: false,
+    loading: () => null,
+  },
+);
+const OfferPopup = dynamic(() => import("../components/OfferPopup"), {
+  ssr: false,
+  loading: () => null,
+});
 
 const API_URL = String(API_BASE_URL || "")
   .trim()
@@ -27,7 +53,18 @@ const FALLBACK_BRAND_NAME =
   process.env.NEXT_PUBLIC_BRAND_NAME ||
   process.env.NEXT_PUBLIC_STORE_NAME ||
   "HealthyOneGram";
-const STATUS_POLL_INTERVAL_MS = 30 * 1000;
+const toPollIntervalMs = (value, fallback) => {
+  const parsed = Number.parseInt(String(value || "").trim(), 10);
+  return Number.isFinite(parsed) && parsed >= 10000 ? parsed : fallback;
+};
+const STATUS_POLL_INTERVAL_MS = toPollIntervalMs(
+  process.env.NEXT_PUBLIC_MAINTENANCE_POLL_INTERVAL_MS,
+  2 * 60 * 1000,
+);
+const ACTIVE_STATUS_POLL_INTERVAL_MS = toPollIntervalMs(
+  process.env.NEXT_PUBLIC_MAINTENANCE_ACTIVE_POLL_INTERVAL_MS,
+  30 * 1000,
+);
 const COUNTDOWN_TICK_MS = 1000;
 
 const buildStatusUrlCandidates = () => {
@@ -154,7 +191,7 @@ const MaintenanceScreen = ({ brandName, status, loading, remainingTimeMs }) => {
   );
 };
 
-const ClientShell = ({ children, isAffiliateRoute }) => {
+const ClientShell = ({ children, isAffiliateRoute, enhancementsReady }) => {
   const { storeInfo } = useSettings();
   const [maintenanceStatus, setMaintenanceStatus] = useState({
     isMaintenanceMode: false,
@@ -207,19 +244,44 @@ const ClientShell = ({ children, isAffiliateRoute }) => {
   useEffect(() => {
     let alive = true;
 
-    const safeRefresh = async () => {
+    const safeRefresh = async ({ force = false } = {}) => {
       if (!alive) return;
+      if (!force && typeof document !== "undefined" && document.hidden) {
+        return;
+      }
       await refreshStatus();
     };
 
-    safeRefresh();
-    const pollId = window.setInterval(safeRefresh, STATUS_POLL_INTERVAL_MS);
+    const pollIntervalMs =
+      maintenanceStatus?.isMaintenanceMode || maintenanceStatus?.isScheduled
+        ? ACTIVE_STATUS_POLL_INTERVAL_MS
+        : STATUS_POLL_INTERVAL_MS;
+
+    void safeRefresh({ force: true });
+    const pollId = window.setInterval(() => {
+      void safeRefresh();
+    }, pollIntervalMs);
+
+    const handleFocus = () => {
+      void safeRefresh({ force: true });
+    };
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        void safeRefresh({ force: true });
+      }
+    };
+
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
       alive = false;
       window.clearInterval(pollId);
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, []);
+  }, [maintenanceStatus?.isMaintenanceMode, maintenanceStatus?.isScheduled]);
 
   useEffect(() => {
     if (
@@ -284,7 +346,7 @@ const ClientShell = ({ children, isAffiliateRoute }) => {
   return (
     <>
       <Header />
-      <CoinRewardLayer />
+      {enhancementsReady ? <CoinRewardLayer /> : null}
       <main
         className="min-h-screen overflow-x-hidden w-full"
         style={{ paddingTop: "var(--header-height, 128px)" }}
@@ -292,9 +354,13 @@ const ClientShell = ({ children, isAffiliateRoute }) => {
         {children}
       </main>
       <Footer />
-      <ManagedPopup />
-      <OfferPopup />
-      <NotificationHandler />
+      {enhancementsReady ? (
+        <>
+          <ManagedPopup />
+          <OfferPopup />
+          <NotificationHandler />
+        </>
+      ) : null}
       <CartDrawer />
     </>
   );
@@ -303,6 +369,33 @@ const ClientShell = ({ children, isAffiliateRoute }) => {
 export default function ClientLayout({ children }) {
   const pathname = usePathname();
   const isAffiliateRoute = pathname?.startsWith("/affiliate");
+  const [enhancementsReady, setEnhancementsReady] = useState(false);
+
+  useEffect(() => {
+    let disposed = false;
+    const markReady = () => {
+      if (!disposed) {
+        setEnhancementsReady(true);
+      }
+    };
+
+    if (
+      typeof window !== "undefined" &&
+      typeof window.requestIdleCallback === "function"
+    ) {
+      const idleId = window.requestIdleCallback(markReady, { timeout: 1800 });
+      return () => {
+        disposed = true;
+        window.cancelIdleCallback(idleId);
+      };
+    }
+
+    const timeoutId = window.setTimeout(markReady, 450);
+    return () => {
+      disposed = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, []);
 
   useEffect(() => {
     if (process.env.NODE_ENV === "production") {
@@ -331,10 +424,15 @@ export default function ClientLayout({ children }) {
             <CartProvider>
               <WishlistProvider>
                 <ErrorBoundary>
-                  <Suspense fallback={null}>
-                    <AnalyticsTracker />
-                  </Suspense>
-                  <ClientShell isAffiliateRoute={isAffiliateRoute}>
+                  {enhancementsReady ? (
+                    <Suspense fallback={null}>
+                      <AnalyticsTracker />
+                    </Suspense>
+                  ) : null}
+                  <ClientShell
+                    isAffiliateRoute={isAffiliateRoute}
+                    enhancementsReady={enhancementsReady}
+                  >
                     {children}
                   </ClientShell>
                 </ErrorBoundary>

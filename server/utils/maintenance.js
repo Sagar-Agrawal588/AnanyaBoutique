@@ -2,6 +2,44 @@ import SettingsModel from "../models/settings.model.js";
 
 const DEFAULT_MAINTENANCE_MESSAGE =
   "We are currently undergoing scheduled maintenance. Please check back soon.";
+const DEFAULT_MAINTENANCE_STATUS_CACHE_TTL_MS = 15 * 1000;
+
+const toPositiveInteger = (value, fallback) => {
+  const parsed = Number.parseInt(String(value || "").trim(), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+const getMaintenanceStatusCacheTtlMs = () =>
+  toPositiveInteger(
+    process.env.MAINTENANCE_STATUS_CACHE_TTL_MS,
+    DEFAULT_MAINTENANCE_STATUS_CACHE_TTL_MS,
+  );
+
+const getMaintenanceCacheKey = (autoDisable) =>
+  autoDisable ? "auto_disable_on" : "auto_disable_off";
+
+const maintenanceStatusCache = new Map();
+const maintenanceStatusInFlight = new Map();
+
+const getCachedMaintenanceStatus = ({ cacheKey, nowMs }) => {
+  const cached = maintenanceStatusCache.get(cacheKey);
+  if (!cached) return null;
+
+  const ttlMs = getMaintenanceStatusCacheTtlMs();
+  if (nowMs - Number(cached.cachedAtMs || 0) >= ttlMs) {
+    maintenanceStatusCache.delete(cacheKey);
+    return null;
+  }
+
+  return cached.value || null;
+};
+
+const setCachedMaintenanceStatus = ({ cacheKey, value, nowMs }) => {
+  maintenanceStatusCache.set(cacheKey, {
+    value,
+    cachedAtMs: nowMs,
+  });
+};
 
 const toValidDate = (value) => {
   if (!value) return null;
@@ -87,53 +125,83 @@ const syncMaintenanceSettingsIfExpired = async (settingsDoc, now) => {
 };
 
 export const resolveMaintenanceStatus = async ({ autoDisable = true } = {}) => {
-  const [maintenanceSettingsDoc, maintenanceModeDoc] = await Promise.all([
-    SettingsModel.findOne({ key: "maintenanceSettings" })
-      .select("value")
-      .lean(),
-    SettingsModel.findOne({ key: "maintenanceMode" }).select("value").lean(),
-  ]);
+  const cacheKey = getMaintenanceCacheKey(autoDisable);
+  const nowMs = Date.now();
+  const cachedStatus = getCachedMaintenanceStatus({ cacheKey, nowMs });
+  if (cachedStatus) {
+    return { ...cachedStatus };
+  }
 
-  const normalized = normalizeMaintenanceSettings(
-    maintenanceSettingsDoc?.value,
-    Boolean(maintenanceModeDoc?.value),
-  );
+  const inFlightRequest = maintenanceStatusInFlight.get(cacheKey);
+  if (inFlightRequest) {
+    return inFlightRequest;
+  }
 
-  const now = new Date();
-  const startDate = toValidDate(normalized.maintenanceStartTime);
-  const endDate = toValidDate(normalized.maintenanceEndTime);
+  const resolver = (async () => {
+    const [maintenanceSettingsDoc, maintenanceModeDoc] = await Promise.all([
+      SettingsModel.findOne({ key: "maintenanceSettings" })
+        .select("value")
+        .lean(),
+      SettingsModel.findOne({ key: "maintenanceMode" }).select("value").lean(),
+    ]);
 
-  let isScheduled = false;
-  let isActive = false;
-  let hasExpired = false;
+    const normalized = normalizeMaintenanceSettings(
+      maintenanceSettingsDoc?.value,
+      Boolean(maintenanceModeDoc?.value),
+    );
 
-  if (normalized.maintenanceEnabled) {
-    if (startDate && now < startDate) {
-      isScheduled = true;
-    } else if (endDate && now >= endDate) {
-      hasExpired = true;
-    } else {
-      isActive = true;
+    const now = new Date();
+    const startDate = toValidDate(normalized.maintenanceStartTime);
+    const endDate = toValidDate(normalized.maintenanceEndTime);
+
+    let isScheduled = false;
+    let isActive = false;
+    let hasExpired = false;
+
+    if (normalized.maintenanceEnabled) {
+      if (startDate && now < startDate) {
+        isScheduled = true;
+      } else if (endDate && now >= endDate) {
+        hasExpired = true;
+      } else {
+        isActive = true;
+      }
     }
-  }
 
-  if (autoDisable && hasExpired && normalized.maintenanceEnabled) {
-    await syncMaintenanceSettingsIfExpired(normalized, now);
-    normalized.maintenanceEnabled = false;
-  }
+    if (autoDisable && hasExpired && normalized.maintenanceEnabled) {
+      await syncMaintenanceSettingsIfExpired(normalized, now);
+      normalized.maintenanceEnabled = false;
+      maintenanceStatusCache.clear();
+    }
 
-  const remainingTimeMs =
-    isActive && endDate ? Math.max(0, endDate.getTime() - now.getTime()) : null;
+    const remainingTimeMs =
+      isActive && endDate
+        ? Math.max(0, endDate.getTime() - now.getTime())
+        : null;
 
-  return {
-    maintenanceEnabled: normalized.maintenanceEnabled,
-    isActive,
-    isScheduled,
-    maintenanceStartTime: normalized.maintenanceStartTime,
-    maintenanceEndTime: normalized.maintenanceEndTime,
-    maintenanceMessage: normalized.maintenanceMessage,
-    showCountdown: normalized.showCountdown,
-    remainingTimeMs,
-    now: now.toISOString(),
-  };
+    const status = {
+      maintenanceEnabled: normalized.maintenanceEnabled,
+      isActive,
+      isScheduled,
+      maintenanceStartTime: normalized.maintenanceStartTime,
+      maintenanceEndTime: normalized.maintenanceEndTime,
+      maintenanceMessage: normalized.maintenanceMessage,
+      showCountdown: normalized.showCountdown,
+      remainingTimeMs,
+      now: now.toISOString(),
+    };
+
+    setCachedMaintenanceStatus({
+      cacheKey,
+      value: status,
+      nowMs: Date.now(),
+    });
+
+    return { ...status };
+  })().finally(() => {
+    maintenanceStatusInFlight.delete(cacheKey);
+  });
+
+  maintenanceStatusInFlight.set(cacheKey, resolver);
+  return resolver;
 };

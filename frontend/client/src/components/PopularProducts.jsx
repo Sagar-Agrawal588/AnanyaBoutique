@@ -1,20 +1,43 @@
 "use client";
 
-import { FLAVORS, MyContext } from "@/context/ThemeContext";
 import { motion } from "framer-motion";
 import Link from "next/link";
-import { useContext } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FiArrowRight } from "react-icons/fi";
 import ProductSlider from "./ProductSlider";
 
 const PopularProducts = () => {
-  const context = useContext(MyContext);
-  const flavor = context?.flavor || FLAVORS.creamy;
+  const sectionRef = useRef(null);
+  const [isVisible, setIsVisible] = useState(false);
+
+  useEffect(() => {
+    if (isVisible) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          setIsVisible(true);
+          observer.disconnect();
+        }
+      },
+      {
+        rootMargin: "240px 0px",
+      },
+    );
+
+    const element = sectionRef.current;
+    if (element) {
+      observer.observe(element);
+    }
+
+    return () => observer.disconnect();
+  }, [isVisible]);
 
   return (
     <section
+      ref={sectionRef}
       className="relative py-12 sm:py-16 md:py-20 overflow-hidden transition-all duration-500"
-      style={{ backgroundColor: flavor.light }}
+      style={{ backgroundColor: "var(--flavor-light, #F7F1EF)" }}
     >
       {/* Decorative blobs */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
@@ -81,14 +104,26 @@ const PopularProducts = () => {
           transition={{ duration: 0.6, delay: 0.4 }}
           className="relative rounded-3xl p-4 sm:p-6 bg-white shadow-xl shadow-gray-200/50 border border-gray-100"
         >
-          <ProductSlider
-            limit={120}
-            sortBy="soldCount"
-            order="desc"
-            includeCombos={true}
-            productLimit={10}
-            comboLimit={4}
-          />
+          {isVisible ? (
+            <ProductSlider
+              limit={120}
+              sortBy="soldCount"
+              order="desc"
+              includeCombos={true}
+              productLimit={10}
+              comboLimit={4}
+            />
+          ) : (
+            <div className="flex gap-4 overflow-hidden py-4">
+              {[1, 2, 3, 4].map((item) => (
+                <div
+                  key={item}
+                  className="h-72 min-w-56 rounded-2xl animate-pulse"
+                  style={{ backgroundColor: "var(--flavor-glass, rgba(90,58,46,0.24))" }}
+                />
+              ))}
+            </div>
+          )}
         </motion.div>
       </div>
     </section>

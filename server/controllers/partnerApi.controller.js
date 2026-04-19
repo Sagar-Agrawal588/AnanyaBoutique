@@ -1,21 +1,21 @@
+import mongoose from "mongoose";
 import crypto from "node:crypto";
 import fs from "node:fs";
-import mongoose from "mongoose";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import PDFDocument from "pdfkit";
+import { getRedisClient } from "../config/redisClient.js";
+import { getPartnerLiveSnapshot } from "../middlewares/partnerApiActivity.js";
+import {
+  getPartnerDailyLimitSnapshot,
+  getPartnerRateLimitSnapshot,
+} from "../middlewares/partnerApiAuth.js";
 import Category from "../models/category.model.js";
 import Combo from "../models/combo.model.js";
 import Partner from "../models/partner.model.js";
 import PartnerApiKey from "../models/partnerApiKey.model.js";
 import PartnerApiRequestLog from "../models/partnerApiRequestLog.model.js";
 import Product from "../models/product.model.js";
-import { getPartnerLiveSnapshot } from "../middlewares/partnerApiActivity.js";
-import { getRedisClient } from "../config/redisClient.js";
-import {
-  getPartnerDailyLimitSnapshot,
-  getPartnerRateLimitSnapshot,
-} from "../middlewares/partnerApiAuth.js";
 import {
   applyPartnerDynamicAdminOverride,
   getPartnerDynamicLimitSnapshot,
@@ -27,13 +27,19 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const SITE_URL =
-  String(process.env.NEXT_PUBLIC_SITE_URL || process.env.CLIENT_URL || "https://healthyonegram.com")
+  String(
+    process.env.NEXT_PUBLIC_SITE_URL ||
+      process.env.CLIENT_URL ||
+      "https://healthyonegram.com",
+  )
     .split(",")[0]
     .trim()
     .replace(/\/+$/, "") || "https://healthyonegram.com";
 
 const SUPPORT_EMAIL = String(
-  process.env.SUPPORT_EMAIL || process.env.CONTACT_EMAIL || "support@healthyonegram.com",
+  process.env.SUPPORT_EMAIL ||
+    process.env.CONTACT_EMAIL ||
+    "support@healthyonegram.com",
 )
   .trim()
   .toLowerCase();
@@ -58,7 +64,8 @@ const sanitizeBaseUrl = (value) =>
   String(value || "")
     .trim()
     .replace(/\/+$/, "");
-const isLocalHostUrl = (value) => /https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i.test(String(value || ""));
+const isLocalHostUrl = (value) =>
+  /https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i.test(String(value || ""));
 
 const escapeHtml = (value) =>
   String(value || "").replace(/[&<>"']/g, (char) => {
@@ -70,11 +77,17 @@ const escapeHtml = (value) =>
   });
 
 const resolvePartnerApiBaseUrl = (req) => {
-  const envBase = sanitizeBaseUrl(process.env.BASE_URL || process.env.BACKEND_URL);
-  const forwardedProto = String(req.get("x-forwarded-proto") || req.protocol || "https")
+  const envBase = sanitizeBaseUrl(
+    process.env.BASE_URL || process.env.BACKEND_URL,
+  );
+  const forwardedProto = String(
+    req.get("x-forwarded-proto") || req.protocol || "https",
+  )
     .split(",")[0]
     .trim();
-  const forwardedHost = String(req.get("x-forwarded-host") || req.get("host") || "")
+  const forwardedHost = String(
+    req.get("x-forwarded-host") || req.get("host") || "",
+  )
     .split(",")[0]
     .trim();
   const requestBase = sanitizeBaseUrl(`${forwardedProto}://${forwardedHost}`);
@@ -93,10 +106,14 @@ const resolvePartnerApiBaseUrl = (req) => {
 };
 
 const resolvePartnerApiRuntimeBaseUrl = (req) => {
-  const forwardedProto = String(req.get("x-forwarded-proto") || req.protocol || "https")
+  const forwardedProto = String(
+    req.get("x-forwarded-proto") || req.protocol || "https",
+  )
     .split(",")[0]
     .trim();
-  const forwardedHost = String(req.get("x-forwarded-host") || req.get("host") || "")
+  const forwardedHost = String(
+    req.get("x-forwarded-host") || req.get("host") || "",
+  )
     .split(",")[0]
     .trim();
   const requestBase = sanitizeBaseUrl(`${forwardedProto}://${forwardedHost}`);
@@ -127,7 +144,9 @@ const pickComboImage = (combo) => {
     if (!value) return "";
     if (typeof value === "string") return value.trim();
     if (typeof value === "object") {
-      return String(value.url || value.secure_url || value.src || value.imageUrl || "").trim();
+      return String(
+        value.url || value.secure_url || value.src || value.imageUrl || "",
+      ).trim();
     }
     return "";
   };
@@ -142,7 +161,10 @@ const pickComboImage = (combo) => {
     const value = String(url || "").toLowerCase();
     if (!value) return -1;
     if (!comboTokens.length) return 0;
-    return comboTokens.reduce((score, token) => (value.includes(token) ? score + 1 : score), 0);
+    return comboTokens.reduce(
+      (score, token) => (value.includes(token) ? score + 1 : score),
+      0,
+    );
   };
 
   const comboImages = Array.isArray(combo?.comboImages)
@@ -153,7 +175,12 @@ const pickComboImage = (combo) => {
 
   const itemImages = Array.isArray(combo?.items)
     ? combo.items
-        .map((item) => item?.image || item?.thumbnail || (Array.isArray(item?.images) ? item.images[0] : ""))
+        .map(
+          (item) =>
+            item?.image ||
+            item?.thumbnail ||
+            (Array.isArray(item?.images) ? item.images[0] : ""),
+        )
         .filter(Boolean)
     : [];
 
@@ -163,7 +190,12 @@ const pickComboImage = (combo) => {
     if (candidate) candidates.push(candidate);
   });
 
-  [combo?.comboThumbnail, combo?.thumbnail, combo?.image, ...itemImages].forEach((entry) => {
+  [
+    combo?.comboThumbnail,
+    combo?.thumbnail,
+    combo?.image,
+    ...itemImages,
+  ].forEach((entry) => {
     const candidate = readImageUrl(entry);
     if (candidate) candidates.push(candidate);
   });
@@ -189,7 +221,10 @@ const pickProductImage = (product) => {
 };
 
 const hashApiKey = (value) =>
-  crypto.createHash("sha256").update(String(value || "")).digest("hex");
+  crypto
+    .createHash("sha256")
+    .update(String(value || ""))
+    .digest("hex");
 
 const createApiKey = () => {
   const prefix = `hogp_${crypto.randomBytes(4).toString("hex")}`;
@@ -233,11 +268,23 @@ const toSafeDate = (value) => {
 };
 
 const startOfUtcDay = (date = new Date()) =>
-  new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 0, 0, 0, 0));
+  new Date(
+    Date.UTC(
+      date.getUTCFullYear(),
+      date.getUTCMonth(),
+      date.getUTCDate(),
+      0,
+      0,
+      0,
+      0,
+    ),
+  );
 
 const resolveAnalyticsRange = ({ range, startDate, endDate }) => {
   const now = new Date();
-  const selectedRange = String(range || "24h").trim().toLowerCase();
+  const selectedRange = String(range || "24h")
+    .trim()
+    .toLowerCase();
 
   if (selectedRange === "custom") {
     const customStart = toSafeDate(startDate);
@@ -300,7 +347,9 @@ const csvEscape = (value) => {
 };
 
 const normalizeDynamicTier = (value, fallback = "custom") => {
-  const tier = String(value || fallback).trim().toLowerCase();
+  const tier = String(value || fallback)
+    .trim()
+    .toLowerCase();
   return ["free", "growth", "pro", "enterprise", "custom"].includes(tier)
     ? tier
     : fallback;
@@ -309,8 +358,14 @@ const normalizeDynamicTier = (value, fallback = "custom") => {
 const toPartnerDynamicPatch = (input = {}, currentPartner = null) => {
   const patch = {};
 
-  const baseRate = currentPartner?.rateLimitPlan?.baseRPM || currentPartner?.rateLimitPerMinute || 120;
-  const currentDaily = currentPartner?.rateLimitPlan?.dailyLimit || currentPartner?.dailyRequestLimit || 20000;
+  const baseRate =
+    currentPartner?.rateLimitPlan?.baseRPM ||
+    currentPartner?.rateLimitPerMinute ||
+    120;
+  const currentDaily =
+    currentPartner?.rateLimitPlan?.dailyLimit ||
+    currentPartner?.dailyRequestLimit ||
+    20000;
 
   if (input?.tier !== undefined) {
     patch["rateLimitPlan.tier"] = normalizeDynamicTier(
@@ -319,7 +374,10 @@ const toPartnerDynamicPatch = (input = {}, currentPartner = null) => {
     );
   }
   if (input?.baseRPM !== undefined) {
-    patch["rateLimitPlan.baseRPM"] = toNonNegativeLimit(input.baseRPM, baseRate);
+    patch["rateLimitPlan.baseRPM"] = toNonNegativeLimit(
+      input.baseRPM,
+      baseRate,
+    );
   }
   if (input?.burstRPM !== undefined) {
     const floor = Number.isFinite(Number(patch["rateLimitPlan.baseRPM"]))
@@ -331,7 +389,10 @@ const toPartnerDynamicPatch = (input = {}, currentPartner = null) => {
     );
   }
   if (input?.dailyLimit !== undefined) {
-    patch["rateLimitPlan.dailyLimit"] = toNonNegativeLimit(input.dailyLimit, currentDaily);
+    patch["rateLimitPlan.dailyLimit"] = toNonNegativeLimit(
+      input.dailyLimit,
+      currentDaily,
+    );
   }
   if (input?.minDynamicRPM !== undefined) {
     patch["rateLimitPlan.minDynamicRPM"] = toNonNegativeLimit(
@@ -346,23 +407,27 @@ const toPartnerDynamicPatch = (input = {}, currentPartner = null) => {
     );
   }
   if (input?.scalingEnabled !== undefined) {
-    patch["rateLimitPlan.scalingEnabled"] = Boolean(parseBoolean(input.scalingEnabled, true));
+    patch["rateLimitPlan.scalingEnabled"] = Boolean(
+      parseBoolean(input.scalingEnabled, true),
+    );
   }
 
   if (input?.lockScaling !== undefined) {
-    patch["dynamicControls.lockScaling"] = Boolean(parseBoolean(input.lockScaling, false));
+    patch["dynamicControls.lockScaling"] = Boolean(
+      parseBoolean(input.lockScaling, false),
+    );
   }
   if (input?.manualOverrideRPM !== undefined) {
     const override = parseNumber(input.manualOverrideRPM, 0);
-    patch["dynamicControls.manualOverrideRPM"] = override > 0
-      ? toNonNegativeLimit(override, baseRate)
-      : null;
+    patch["dynamicControls.manualOverrideRPM"] =
+      override > 0 ? toNonNegativeLimit(override, baseRate) : null;
   }
   if (input?.manualOverrideDailyLimit !== undefined) {
     const overrideDaily = parseNumber(input.manualOverrideDailyLimit, 0);
-    patch["dynamicControls.manualOverrideDailyLimit"] = overrideDaily > 0
-      ? toNonNegativeLimit(overrideDaily, currentDaily)
-      : null;
+    patch["dynamicControls.manualOverrideDailyLimit"] =
+      overrideDaily > 0
+        ? toNonNegativeLimit(overrideDaily, currentDaily)
+        : null;
   }
   if (input?.qualityScore !== undefined) {
     patch["dynamicControls.qualityScore"] = parseFloatInRange(
@@ -373,7 +438,9 @@ const toPartnerDynamicPatch = (input = {}, currentPartner = null) => {
     );
   }
   if (input?.safeModeForced !== undefined) {
-    patch["dynamicControls.safeModeForced"] = Boolean(parseBoolean(input.safeModeForced, false));
+    patch["dynamicControls.safeModeForced"] = Boolean(
+      parseBoolean(input.safeModeForced, false),
+    );
   }
 
   return patch;
@@ -420,7 +487,11 @@ const SCOPE_ALIASES = Object.freeze({
 const normalizeScopes = (rawScopes) => {
   const source = Array.isArray(rawScopes) ? rawScopes : [];
   const normalized = source
-    .map((scope) => String(scope || "").trim().toLowerCase())
+    .map((scope) =>
+      String(scope || "")
+        .trim()
+        .toLowerCase(),
+    )
     .map((scope) => SCOPE_ALIASES[scope] || scope)
     .filter((scope) => ALLOWED_SCOPES.includes(scope));
 
@@ -432,7 +503,9 @@ const normalizeScopes = (rawScopes) => {
 };
 
 const normalizeVisibleProductFields = (rawFields) => {
-  const incoming = Array.isArray(rawFields) ? rawFields : DEFAULT_VISIBLE_PRODUCT_FIELDS;
+  const incoming = Array.isArray(rawFields)
+    ? rawFields
+    : DEFAULT_VISIBLE_PRODUCT_FIELDS;
   const normalized = incoming
     .map((field) => String(field || "").trim())
     .filter((field) => ALLOWED_VISIBLE_PRODUCT_FIELDS.includes(field));
@@ -452,7 +525,11 @@ const normalizeTaxState = (value) =>
     .replace(/\s+/g, " ");
 
 const buildPriceTaxBreakup = (inclusiveAmount, stateForTax) => {
-  const summary = splitGstInclusiveAmount(inclusiveAmount, 5, stateForTax || "");
+  const summary = splitGstInclusiveAmount(
+    inclusiveAmount,
+    5,
+    stateForTax || "",
+  );
   const normalizedState = normalizeTaxState(stateForTax);
   const isRajasthan = normalizedState === "rajasthan";
 
@@ -497,18 +574,81 @@ const getAvailableStock = (product) => {
   return Math.max(directAvailable, 0);
 };
 
+const normalizeSku = (value) => {
+  const sku = String(value || "")
+    .trim()
+    .toUpperCase();
+  return sku || null;
+};
+
+const resolveProductSkuSummary = (product) => {
+  const productSku = normalizeSku(product?.sku);
+  const variants = Array.isArray(product?.variants) ? product.variants : [];
+
+  const variantSummaries = variants
+    .map((variant) => {
+      const sku = normalizeSku(variant?.sku);
+      if (!sku) return null;
+
+      const stockQuantity = Math.max(
+        Number(variant?.stock_quantity ?? variant?.stock ?? 0),
+        0,
+      );
+      const reservedQuantity = Math.max(
+        Number(variant?.reserved_quantity ?? 0),
+        0,
+      );
+      const availableQuantity = Math.max(stockQuantity - reservedQuantity, 0);
+
+      return { sku, availableQuantity };
+    })
+    .filter(Boolean);
+
+  const availableVariantSkus = Array.from(
+    new Set(
+      variantSummaries
+        .filter((entry) => entry.availableQuantity > 0)
+        .map((entry) => entry.sku),
+    ),
+  );
+  const variantSkus = Array.from(
+    new Set(variantSummaries.map((entry) => entry.sku)),
+  );
+
+  const primarySku =
+    availableVariantSkus[0] || productSku || variantSkus[0] || null;
+  const availableSkus = availableVariantSkus.length
+    ? availableVariantSkus
+    : primarySku
+      ? [primarySku]
+      : [];
+
+  return {
+    primarySku,
+    productSku,
+    availableSkus,
+    variantSkus,
+  };
+};
+
 const mapVariantStockBreakdown = (product) => {
   const variants = Array.isArray(product?.variants) ? product.variants : [];
 
   return variants.map((variant) => {
-    const stockQuantity = Math.max(Number(variant?.stock_quantity ?? variant?.stock ?? 0), 0);
-    const reservedQuantity = Math.max(Number(variant?.reserved_quantity ?? 0), 0);
+    const stockQuantity = Math.max(
+      Number(variant?.stock_quantity ?? variant?.stock ?? 0),
+      0,
+    );
+    const reservedQuantity = Math.max(
+      Number(variant?.reserved_quantity ?? 0),
+      0,
+    );
     const availableQuantity = Math.max(stockQuantity - reservedQuantity, 0);
 
     return {
       variantId: variant?._id ? String(variant._id) : null,
       name: String(variant?.name || "").trim() || null,
-      sku: String(variant?.sku || "").trim() || null,
+      sku: normalizeSku(variant?.sku),
       stockQuantity,
       reservedQuantity,
       availableQuantity,
@@ -521,8 +661,11 @@ const mapPartnerProduct = (product, options = {}) => {
   const visibleFields = normalizeVisibleProductFields(options.visibleFields);
   const stateForTax = String(options.stateForTax || "").trim();
   const availableQuantity = getAvailableStock(product);
+  const skuSummary = resolveProductSkuSummary(product);
   const discountedAmount = Number(product?.price || 0);
-  const originalAmount = Number(product?.originalPrice || discountedAmount || 0);
+  const originalAmount = Number(
+    product?.originalPrice || discountedAmount || 0,
+  );
   const discountValue = Number(product?.discount || 0);
 
   const discountedTax = buildPriceTaxBreakup(discountedAmount, stateForTax);
@@ -530,7 +673,10 @@ const mapPartnerProduct = (product, options = {}) => {
 
   const payload = {
     id: String(product._id),
-    sku: String(product.sku || "").trim() || null,
+    sku: skuSummary.primarySku,
+    productSku: skuSummary.productSku,
+    availableSkus: skuSummary.availableSkus,
+    variantSkus: skuSummary.variantSkus,
     name: product.name,
     productUrl: `${SITE_URL}/product/${String(product._id)}`,
     hsnCode: String(product?.hsnCode || "").trim() || null,
@@ -554,7 +700,9 @@ const mapPartnerProduct = (product, options = {}) => {
   }
 
   if (hasVisibleField(visibleFields, "images")) {
-    payload.images = Array.isArray(product.images) ? product.images.filter(Boolean) : [];
+    payload.images = Array.isArray(product.images)
+      ? product.images.filter(Boolean)
+      : [];
   }
 
   if (hasVisibleField(visibleFields, "category")) {
@@ -678,7 +826,10 @@ const setEtagAndHandle304 = (req, res, bodyObject) => {
 
 const getPartnerGuideDetails = (req) => {
   const baseUrl = resolvePartnerApiBaseUrl(req);
-  const sampleLimit = resolveSampleLimit(req.query?.sampleLimit, DEFAULT_PARTNER_SAMPLE_LIMIT);
+  const sampleLimit = resolveSampleLimit(
+    req.query?.sampleLimit,
+    DEFAULT_PARTNER_SAMPLE_LIMIT,
+  );
   const dashboardUrl = `${baseUrl}/dashboard`;
   const authHeaderExample = "x-api-key: YOUR_PARTNER_API_KEY";
   const authModes = [
@@ -690,7 +841,8 @@ const getPartnerGuideDetails = (req) => {
     {
       type: "bearer",
       header: "Authorization",
-      valueExample: "Bearer hogp_ab12cd34.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      valueExample:
+        "Bearer hogp_ab12cd34.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
     },
   ];
 
@@ -773,7 +925,8 @@ const getPartnerGuideDetails = (req) => {
     {
       step: 1,
       title: "Get API key",
-      description: "Create a partner from admin and securely save the generated key.",
+      description:
+        "Create a partner from admin and securely save the generated key.",
     },
     {
       step: 2,
@@ -788,15 +941,32 @@ const getPartnerGuideDetails = (req) => {
     {
       step: 4,
       title: "Handle errors",
-      description: "Handle 429 with backoff and 401/403 with re-authentication or scope update.",
+      description:
+        "Handle 429 with backoff and 401/403 with re-authentication or scope update.",
     },
   ];
 
   const errorCodes = [
-    { status: 401, code: "UNAUTHORIZED", message: "Missing or invalid API key" },
-    { status: 403, code: "INSUFFICIENT_SCOPE", message: "Scope does not allow this endpoint" },
-    { status: 429, code: "RATE_LIMIT_EXCEEDED", message: "Per-minute rate limit exceeded" },
-    { status: 429, code: "DAILY_LIMIT_EXCEEDED", message: "Daily request limit exceeded" },
+    {
+      status: 401,
+      code: "UNAUTHORIZED",
+      message: "Missing or invalid API key",
+    },
+    {
+      status: 403,
+      code: "INSUFFICIENT_SCOPE",
+      message: "Scope does not allow this endpoint",
+    },
+    {
+      status: 429,
+      code: "RATE_LIMIT_EXCEEDED",
+      message: "Per-minute rate limit exceeded",
+    },
+    {
+      status: 429,
+      code: "DAILY_LIMIT_EXCEEDED",
+      message: "Daily request limit exceeded",
+    },
     { status: 500, code: "INTERNAL_ERROR", message: "Unexpected server error" },
   ];
 
@@ -832,7 +1002,12 @@ const getPartnerGuideDetails = (req) => {
 
 export const getPartnerApiDashboard = async (req, res) => {
   try {
-    const dashboardPath = path.resolve(__dirname, "..", "assets", "partner-api-dashboard.html");
+    const dashboardPath = path.resolve(
+      __dirname,
+      "..",
+      "assets",
+      "partner-api-dashboard.html",
+    );
     const template = await fs.promises.readFile(dashboardPath, "utf8");
     const baseUrl = resolvePartnerApiRuntimeBaseUrl(req);
     const html = template.replace("__PARTNER_BASE_URL__", escapeHtml(baseUrl));
@@ -844,7 +1019,13 @@ export const getPartnerApiDashboard = async (req, res) => {
     return res.status(200).type("html").send(html);
   } catch (error) {
     console.error("getPartnerApiDashboard error:", error);
-    return sendError(req, res, 500, "INTERNAL_ERROR", "Failed to load partner API dashboard");
+    return sendError(
+      req,
+      res,
+      500,
+      "INTERNAL_ERROR",
+      "Failed to load partner API dashboard",
+    );
   }
 };
 
@@ -858,7 +1039,8 @@ const buildPartnerGuidePdfBuffer = ({ baseUrl, endpoints, sampleCurl }) =>
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
 
-    const pageWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+    const pageWidth =
+      doc.page.width - doc.page.margins.left - doc.page.margins.right;
     const startX = doc.page.margins.left;
 
     doc.rect(42, 42, pageWidth, 64).fill("#0f172a");
@@ -869,8 +1051,7 @@ const buildPartnerGuidePdfBuffer = ({ baseUrl, endpoints, sampleCurl }) =>
           fit: [34, 34],
           align: "left",
         });
-      } catch {
-      }
+      } catch {}
     }
 
     doc
@@ -881,10 +1062,18 @@ const buildPartnerGuidePdfBuffer = ({ baseUrl, endpoints, sampleCurl }) =>
     doc
       .font("Helvetica")
       .fontSize(10)
-      .text("Share this PDF with partners for direct API integration", logoPath ? 94 : 56, 82);
+      .text(
+        "Share this PDF with partners for direct API integration",
+        logoPath ? 94 : 56,
+        82,
+      );
 
     doc.moveDown(4.8);
-    doc.fillColor("#0f172a").font("Helvetica-Bold").fontSize(12).text("Base URL");
+    doc
+      .fillColor("#0f172a")
+      .font("Helvetica-Bold")
+      .fontSize(12)
+      .text("Base URL");
     doc
       .moveDown(0.3)
       .font("Helvetica")
@@ -895,7 +1084,11 @@ const buildPartnerGuidePdfBuffer = ({ baseUrl, endpoints, sampleCurl }) =>
       });
 
     doc.moveDown(0.8);
-    doc.fillColor("#0f172a").font("Helvetica-Bold").fontSize(12).text("Authentication");
+    doc
+      .fillColor("#0f172a")
+      .font("Helvetica-Bold")
+      .fontSize(12)
+      .text("Authentication");
     doc
       .moveDown(0.3)
       .font("Helvetica")
@@ -905,7 +1098,11 @@ const buildPartnerGuidePdfBuffer = ({ baseUrl, endpoints, sampleCurl }) =>
       .text("2) Authorization: Bearer YOUR_PARTNER_API_KEY");
 
     doc.moveDown(0.8);
-    doc.fillColor("#0f172a").font("Helvetica-Bold").fontSize(12).text("Contact & Support");
+    doc
+      .fillColor("#0f172a")
+      .font("Helvetica-Bold")
+      .fontSize(12)
+      .text("Contact & Support");
     doc
       .moveDown(0.25)
       .font("Helvetica")
@@ -916,7 +1113,11 @@ const buildPartnerGuidePdfBuffer = ({ baseUrl, endpoints, sampleCurl }) =>
       .text(`Contact Number: ${SUPPORT_PHONE}`);
 
     doc.moveDown(0.8);
-    doc.fillColor("#0f172a").font("Helvetica-Bold").fontSize(12).text("Endpoints");
+    doc
+      .fillColor("#0f172a")
+      .font("Helvetica-Bold")
+      .fontSize(12)
+      .text("Endpoints");
 
     const tableWidth = pageWidth;
     const rowHeight = 20;
@@ -926,9 +1127,18 @@ const buildPartnerGuidePdfBuffer = ({ baseUrl, endpoints, sampleCurl }) =>
     doc.rect(startX, y, tableWidth, rowHeight).fill("#e2e8f0");
     doc.fillColor("#0f172a").font("Helvetica-Bold").fontSize(9);
     doc.text("Method", startX + 6, y + 6, { width: colWidths[0] - 8 });
-    doc.text("Path", startX + colWidths[0] + 6, y + 6, { width: colWidths[1] - 8 });
-    doc.text("Scope", startX + colWidths[0] + colWidths[1] + 6, y + 6, { width: colWidths[2] - 8 });
-    doc.text("Description", startX + colWidths[0] + colWidths[1] + colWidths[2] + 6, y + 6, { width: colWidths[3] - 8 });
+    doc.text("Path", startX + colWidths[0] + 6, y + 6, {
+      width: colWidths[1] - 8,
+    });
+    doc.text("Scope", startX + colWidths[0] + colWidths[1] + 6, y + 6, {
+      width: colWidths[2] - 8,
+    });
+    doc.text(
+      "Description",
+      startX + colWidths[0] + colWidths[1] + colWidths[2] + 6,
+      y + 6,
+      { width: colWidths[3] - 8 },
+    );
 
     y += rowHeight;
     doc.font("Helvetica").fontSize(8.8);
@@ -939,31 +1149,53 @@ const buildPartnerGuidePdfBuffer = ({ baseUrl, endpoints, sampleCurl }) =>
         y = doc.page.margins.top;
       }
 
-      doc.rect(startX, y, tableWidth, rowHeight).fill(index % 2 === 0 ? "#ffffff" : "#f8fafc");
+      doc
+        .rect(startX, y, tableWidth, rowHeight)
+        .fill(index % 2 === 0 ? "#ffffff" : "#f8fafc");
       doc.fillColor("#0f172a");
       doc.text(item.method, startX + 6, y + 6, { width: colWidths[0] - 8 });
-      doc.text(item.path, startX + colWidths[0] + 6, y + 6, { width: colWidths[1] - 8 });
-      doc.text(item.scope, startX + colWidths[0] + colWidths[1] + 6, y + 6, { width: colWidths[2] - 8 });
-      doc.text(item.description, startX + colWidths[0] + colWidths[1] + colWidths[2] + 6, y + 6, { width: colWidths[3] - 8 });
+      doc.text(item.path, startX + colWidths[0] + 6, y + 6, {
+        width: colWidths[1] - 8,
+      });
+      doc.text(item.scope, startX + colWidths[0] + colWidths[1] + 6, y + 6, {
+        width: colWidths[2] - 8,
+      });
+      doc.text(
+        item.description,
+        startX + colWidths[0] + colWidths[1] + colWidths[2] + 6,
+        y + 6,
+        { width: colWidths[3] - 8 },
+      );
       y += rowHeight;
     });
 
     doc.y = y + 12;
-    doc.fillColor("#0f172a").font("Helvetica-Bold").fontSize(12).text("Sample cURL");
+    doc
+      .fillColor("#0f172a")
+      .font("Helvetica-Bold")
+      .fontSize(12)
+      .text("Sample cURL");
     doc.moveDown(0.25);
     const sampleTop = doc.y;
     doc.rect(startX, sampleTop, tableWidth, 62).fill("#0f172a");
     doc.fillColor("#e2e8f0").font("Courier").fontSize(8.6);
-    doc.text(sampleCurl, startX + 8, sampleTop + 12, { width: tableWidth - 16, lineGap: 2 });
+    doc.text(sampleCurl, startX + 8, sampleTop + 12, {
+      width: tableWidth - 16,
+      lineGap: 2,
+    });
     doc.y = sampleTop + 72;
 
     doc.moveDown(0.8);
-    doc.fillColor("#64748b").font("Helvetica").fontSize(8.5).text(
-      `Generated on ${new Date().toLocaleString("en-IN")} • Guide URL: ${baseUrl}/guide • Support: ${SUPPORT_EMAIL} • ${SUPPORT_PHONE}`,
-      startX,
-      doc.y,
-      { width: tableWidth },
-    );
+    doc
+      .fillColor("#64748b")
+      .font("Helvetica")
+      .fontSize(8.5)
+      .text(
+        `Generated on ${new Date().toLocaleString("en-IN")} • Guide URL: ${baseUrl}/guide • Support: ${SUPPORT_EMAIL} • ${SUPPORT_PHONE}`,
+        startX,
+        doc.y,
+        { width: tableWidth },
+      );
 
     doc.end();
   });
@@ -987,15 +1219,15 @@ const buildPartnerCredentialPdfBuffer = ({
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
 
-    const pageWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+    const pageWidth =
+      doc.page.width - doc.page.margins.left - doc.page.margins.right;
     const startX = doc.page.margins.left;
 
     doc.rect(42, 42, pageWidth, 68).fill("#0f172a");
     if (logoPath) {
       try {
         doc.image(logoPath, 52, 54, { fit: [34, 34], align: "left" });
-      } catch {
-      }
+      } catch {}
     }
 
     doc
@@ -1006,13 +1238,21 @@ const buildPartnerCredentialPdfBuffer = ({
     doc
       .font("Helvetica")
       .fontSize(10)
-      .text("Share this only with the intended receiver over a secure channel", logoPath ? 94 : 56, 82);
+      .text(
+        "Share this only with the intended receiver over a secure channel",
+        logoPath ? 94 : 56,
+        82,
+      );
 
     // Reset writing cursor so all detail blocks start from left margin.
     doc.x = startX;
 
     doc.moveDown(4.4);
-    doc.fillColor("#0f172a").font("Helvetica-Bold").fontSize(12).text("Partner", startX, doc.y);
+    doc
+      .fillColor("#0f172a")
+      .font("Helvetica-Bold")
+      .fontSize(12)
+      .text("Partner", startX, doc.y);
     doc
       .moveDown(0.3)
       .font("Helvetica")
@@ -1023,7 +1263,11 @@ const buildPartnerCredentialPdfBuffer = ({
       .text(`Generated: ${new Date().toLocaleString("en-IN")}`);
 
     doc.moveDown(0.8);
-    doc.fillColor("#0f172a").font("Helvetica-Bold").fontSize(12).text("API Base", startX, doc.y);
+    doc
+      .fillColor("#0f172a")
+      .font("Helvetica-Bold")
+      .fontSize(12)
+      .text("API Base", startX, doc.y);
     doc
       .moveDown(0.25)
       .font("Helvetica")
@@ -1032,7 +1276,11 @@ const buildPartnerCredentialPdfBuffer = ({
       .text(baseUrl, { width: pageWidth });
 
     doc.moveDown(0.8);
-    doc.fillColor("#0f172a").font("Helvetica-Bold").fontSize(12).text("API Key", startX, doc.y);
+    doc
+      .fillColor("#0f172a")
+      .font("Helvetica-Bold")
+      .fontSize(12)
+      .text("API Key", startX, doc.y);
     doc.moveDown(0.2);
     doc.rect(startX, doc.y, pageWidth, 58).fill("#f8fafc");
     doc
@@ -1045,30 +1293,59 @@ const buildPartnerCredentialPdfBuffer = ({
       });
 
     doc.moveDown(3.4);
-    doc.fillColor("#0f172a").font("Helvetica-Bold").fontSize(12).text("How receiver uses this", startX, doc.y);
+    doc
+      .fillColor("#0f172a")
+      .font("Helvetica-Bold")
+      .fontSize(12)
+      .text("How receiver uses this", startX, doc.y);
     doc
       .moveDown(0.3)
       .font("Helvetica")
       .fontSize(10)
       .fillColor("#334155")
-      .text("1) Save API key securely (password manager or backend secret store).")
+      .text(
+        "1) Save API key securely (password manager or backend secret store).",
+      )
       .text("2) Use header: x-api-key: YOUR_PARTNER_API_KEY")
       .text("3) Test: GET /health")
-      .text(`4) Start with GET /products?limit=${DEFAULT_PARTNER_SAMPLE_LIMIT} (you can set ${MIN_PARTNER_PAGE_LIMIT}-${MAX_PARTNER_PAGE_LIMIT})`);
+      .text(
+        `4) Start with GET /products?limit=${DEFAULT_PARTNER_SAMPLE_LIMIT} (you can set ${MIN_PARTNER_PAGE_LIMIT}-${MAX_PARTNER_PAGE_LIMIT})`,
+      );
 
     doc.moveDown(0.8);
-    doc.fillColor("#0f172a").font("Helvetica-Bold").fontSize(12).text("Links", startX, doc.y);
+    doc
+      .fillColor("#0f172a")
+      .font("Helvetica-Bold")
+      .fontSize(12)
+      .text("Links", startX, doc.y);
     doc.moveDown(0.3).font("Helvetica").fontSize(10).fillColor("#334155");
     doc.text("API Guide Page: ", startX, doc.y, { continued: true });
-    doc.fillColor("#1d4ed8").text(guideUrl, { link: guideUrl, underline: true });
-    doc.fillColor("#334155").text("API Guide PDF: ", startX, doc.y, { continued: true });
-    doc.fillColor("#1d4ed8").text(guidePdfUrl, { link: guidePdfUrl, underline: true });
-    doc.fillColor("#334155").text("Website: ", startX, doc.y, { continued: true });
-    doc.fillColor("#1d4ed8").text(websiteUrl || SITE_URL, { link: websiteUrl || SITE_URL, underline: true });
+    doc
+      .fillColor("#1d4ed8")
+      .text(guideUrl, { link: guideUrl, underline: true });
+    doc
+      .fillColor("#334155")
+      .text("API Guide PDF: ", startX, doc.y, { continued: true });
+    doc
+      .fillColor("#1d4ed8")
+      .text(guidePdfUrl, { link: guidePdfUrl, underline: true });
+    doc
+      .fillColor("#334155")
+      .text("Website: ", startX, doc.y, { continued: true });
+    doc
+      .fillColor("#1d4ed8")
+      .text(websiteUrl || SITE_URL, {
+        link: websiteUrl || SITE_URL,
+        underline: true,
+      });
     doc.fillColor("#334155");
 
     doc.moveDown(0.8);
-    doc.fillColor("#0f172a").font("Helvetica-Bold").fontSize(12).text("Contact & Support", startX, doc.y);
+    doc
+      .fillColor("#0f172a")
+      .font("Helvetica-Bold")
+      .fontSize(12)
+      .text("Contact & Support", startX, doc.y);
     doc
       .moveDown(0.25)
       .font("Helvetica")
@@ -1078,7 +1355,11 @@ const buildPartnerCredentialPdfBuffer = ({
       .text(`Contact Number: ${SUPPORT_PHONE}`);
 
     doc.moveDown(0.8);
-    doc.fillColor("#0f172a").font("Helvetica-Bold").fontSize(12).text("Sample cURL", startX, doc.y);
+    doc
+      .fillColor("#0f172a")
+      .font("Helvetica-Bold")
+      .fontSize(12)
+      .text("Sample cURL", startX, doc.y);
     doc.moveDown(0.2);
     const sampleTop = doc.y;
     doc.rect(startX, sampleTop, pageWidth, 64).fill("#0f172a");
@@ -1176,19 +1457,34 @@ export const getPartnerApiGuide = async (req, res) => {
     },
   };
 
-  const format = String(req.query?.format || "").trim().toLowerCase();
+  const format = String(req.query?.format || "")
+    .trim()
+    .toLowerCase();
   if (format === "json") {
     return res.status(200).json(payload);
   }
   if (format === "pdf") {
     try {
-      const pdfBuffer = await buildPartnerGuidePdfBuffer({ baseUrl, endpoints, sampleCurl });
+      const pdfBuffer = await buildPartnerGuidePdfBuffer({
+        baseUrl,
+        endpoints,
+        sampleCurl,
+      });
       res.setHeader("Content-Type", "application/pdf");
-      res.setHeader("Content-Disposition", 'inline; filename="healthyonegram-partner-api-guide.pdf"');
+      res.setHeader(
+        "Content-Disposition",
+        'inline; filename="healthyonegram-partner-api-guide.pdf"',
+      );
       return res.status(200).send(pdfBuffer);
     } catch (error) {
       console.error("Partner API guide PDF generation error:", error);
-      return sendError(req, res, 500, "INTERNAL_ERROR", "Failed to generate partner API PDF guide");
+      return sendError(
+        req,
+        res,
+        500,
+        "INTERNAL_ERROR",
+        "Failed to generate partner API PDF guide",
+      );
     }
   }
 
@@ -1320,21 +1616,38 @@ export const getPartnerApiGuide = async (req, res) => {
 export const getPartnerApiGuidePdf = async (req, res) => {
   try {
     const { baseUrl, endpoints, sampleCurl } = getPartnerGuideDetails(req);
-    const pdfBuffer = await buildPartnerGuidePdfBuffer({ baseUrl, endpoints, sampleCurl });
+    const pdfBuffer = await buildPartnerGuidePdfBuffer({
+      baseUrl,
+      endpoints,
+      sampleCurl,
+    });
 
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", 'attachment; filename="healthyonegram-partner-api-guide.pdf"');
+    res.setHeader(
+      "Content-Disposition",
+      'attachment; filename="healthyonegram-partner-api-guide.pdf"',
+    );
     return res.status(200).send(pdfBuffer);
   } catch (error) {
     console.error("getPartnerApiGuidePdf error:", error);
-    return sendError(req, res, 500, "INTERNAL_ERROR", "Failed to generate partner API PDF guide");
+    return sendError(
+      req,
+      res,
+      500,
+      "INTERNAL_ERROR",
+      "Failed to generate partner API PDF guide",
+    );
   }
 };
 
 export const getPartnerProducts = async (req, res) => {
   try {
-    const deliveryState = String(req.query.deliveryState || req.query.state || "").trim();
-    const visibleFields = normalizeVisibleProductFields(req.partner?.visibleProductFields);
+    const deliveryState = String(
+      req.query.deliveryState || req.query.state || "",
+    ).trim();
+    const visibleFields = normalizeVisibleProductFields(
+      req.partner?.visibleProductFields,
+    );
     const page = Math.max(parseNumber(req.query.page, 1), 1);
     const limit = Math.min(Math.max(parseNumber(req.query.limit, 20), 1), 100);
     const skip = (page - 1) * limit;
@@ -1344,7 +1657,11 @@ export const getPartnerProducts = async (req, res) => {
     const q = String(req.query.q || "").trim();
     if (q) {
       const regex = new RegExp(escapeRegex(q), "i");
-      query.$or = [{ name: regex }, { description: regex }, { shortDescription: regex }];
+      query.$or = [
+        { name: regex },
+        { description: regex },
+        { shortDescription: regex },
+      ];
     }
 
     const tag = String(req.query.tag || "").trim();
@@ -1357,7 +1674,10 @@ export const getPartnerProducts = async (req, res) => {
       if (mongoose.Types.ObjectId.isValid(category)) {
         query.category = category;
       } else {
-        const matchedCategory = await Category.findOne({ slug: category, isActive: true })
+        const matchedCategory = await Category.findOne({
+          slug: category,
+          isActive: true,
+        })
           .select("_id")
           .lean();
         if (matchedCategory?._id) {
@@ -1392,7 +1712,9 @@ export const getPartnerProducts = async (req, res) => {
       price_desc: { price: -1 },
       name_asc: { name: 1 },
     };
-    const sort = sortMap[String(req.query.sort || "").trim()] || { updatedAt: -1 };
+    const sort = sortMap[String(req.query.sort || "").trim()] || {
+      updatedAt: -1,
+    };
 
     const [items, total] = await Promise.all([
       Product.find(query)
@@ -1441,8 +1763,12 @@ export const getPartnerProducts = async (req, res) => {
 
 export const getPartnerProductById = async (req, res) => {
   try {
-    const deliveryState = String(req.query.deliveryState || req.query.state || "").trim();
-    const visibleFields = normalizeVisibleProductFields(req.partner?.visibleProductFields);
+    const deliveryState = String(
+      req.query.deliveryState || req.query.state || "",
+    ).trim();
+    const visibleFields = normalizeVisibleProductFields(
+      req.partner?.visibleProductFields,
+    );
     const id = String(req.params.productId || "").trim();
     const query = { isActive: true };
     if (mongoose.Types.ObjectId.isValid(id)) {
@@ -1542,7 +1868,10 @@ export const getPartnerInventory = async (req, res) => {
       const variantStock = mapVariantStockBreakdown(item);
       const availableQuantity = getAvailableStock(item);
       const reservedQuantity = variantStock.length
-        ? variantStock.reduce((sum, variant) => sum + variant.reservedQuantity, 0)
+        ? variantStock.reduce(
+            (sum, variant) => sum + variant.reservedQuantity,
+            0,
+          )
         : Math.max(Number(item?.reserved_quantity || 0), 0);
 
       return {
@@ -1589,8 +1918,12 @@ export const getPartnerInventory = async (req, res) => {
 
 export const getPartnerPricing = async (req, res) => {
   try {
-    const deliveryState = String(req.query.deliveryState || req.query.state || "").trim();
-    const visibleFields = normalizeVisibleProductFields(req.partner?.visibleProductFields);
+    const deliveryState = String(
+      req.query.deliveryState || req.query.state || "",
+    ).trim();
+    const visibleFields = normalizeVisibleProductFields(
+      req.partner?.visibleProductFields,
+    );
     const query = { isActive: true };
 
     const productId = String(req.query.productId || "").trim();
@@ -1608,16 +1941,23 @@ export const getPartnerPricing = async (req, res) => {
     }
 
     const items = await Product.find(query)
-      .select("_id sku name image thumbnail images price originalPrice discount updatedAt")
+      .select(
+        "_id sku name image thumbnail images price originalPrice discount updatedAt",
+      )
       .sort({ updatedAt: -1 })
       .limit(200)
       .lean();
 
     const data = items.map((item) => {
       const amountWithGst = Number(item.price || 0);
-      const originalAmountWithGst = Number(item.originalPrice || item.price || 0);
+      const originalAmountWithGst = Number(
+        item.originalPrice || item.price || 0,
+      );
       const discountedTax = buildPriceTaxBreakup(amountWithGst, deliveryState);
-      const originalTax = buildPriceTaxBreakup(originalAmountWithGst, deliveryState);
+      const originalTax = buildPriceTaxBreakup(
+        originalAmountWithGst,
+        deliveryState,
+      );
       const price = {
         amount: amountWithGst,
         currency: "INR",
@@ -1645,7 +1985,9 @@ export const getPartnerPricing = async (req, res) => {
           igst: Number(originalTax.igst || 0),
           taxableAmount: Number(originalTax.taxableAmount || 0),
           gstAmount: Number(originalTax.tax || 0),
-          amountWithGst: Number(originalTax.grossAmount || originalAmountWithGst),
+          amountWithGst: Number(
+            originalTax.grossAmount || originalAmountWithGst,
+          ),
         };
       }
 
@@ -1686,7 +2028,9 @@ export const getPartnerPricing = async (req, res) => {
 
 export const getPartnerGst = async (req, res) => {
   try {
-    const deliveryState = String(req.query.deliveryState || req.query.state || "").trim();
+    const deliveryState = String(
+      req.query.deliveryState || req.query.state || "",
+    ).trim();
     const amount = Number(req.query.amount || 0);
     if (!Number.isFinite(amount) || amount < 0) {
       return res.status(400).json(
@@ -1748,13 +2092,57 @@ export const getPartnerCombos = async (req, res) => {
 
     const [combos, total] = await Promise.all([
       Combo.find(query)
-        .select("_id slug name shortDescription image thumbnail comboThumbnail comboImages items comboPrice originalPrice discountPercentage updatedAt")
+        .select(
+          "_id slug name shortDescription sku image thumbnail comboThumbnail comboImages items comboPrice originalPrice discountPercentage updatedAt",
+        )
         .sort({ updatedAt: -1 })
         .skip(skip)
         .limit(limit)
         .lean(),
       Combo.countDocuments(query),
     ]);
+
+    const comboProductIds = Array.from(
+      new Set(
+        combos
+          .flatMap((combo) => (Array.isArray(combo?.items) ? combo.items : []))
+          .map((entry) =>
+            String(
+              entry?.productId || entry?.product || entry?.product_id || "",
+            ).trim(),
+          )
+          .filter((id) => mongoose.Types.ObjectId.isValid(id)),
+      ),
+    );
+
+    const productSkuLookup = new Map();
+    if (comboProductIds.length) {
+      const comboProducts = await Product.find({
+        _id: { $in: comboProductIds },
+      })
+        .select("_id sku variants._id variants.sku")
+        .lean();
+
+      comboProducts.forEach((product) => {
+        const variantSkuById = new Map();
+        const variants = Array.isArray(product?.variants)
+          ? product.variants
+          : [];
+
+        variants.forEach((variant) => {
+          const variantId = String(variant?._id || "").trim();
+          const variantSku = normalizeSku(variant?.sku);
+          if (variantId && variantSku) {
+            variantSkuById.set(variantId, variantSku);
+          }
+        });
+
+        productSkuLookup.set(String(product._id), {
+          productSku: normalizeSku(product?.sku),
+          variantSkuById,
+        });
+      });
+    }
 
     return res.status(200).json(
       withMeta(req, {
@@ -1764,34 +2152,85 @@ export const getPartnerCombos = async (req, res) => {
           const lightweightItems = rawItems
             .map((entry) => {
               if (!entry) return null;
-              if (typeof entry === "string") return { id: entry };
-              if (typeof entry === "object") {
-                const id = String(entry.product || entry.productId || entry._id || entry.id || "").trim();
+              if (typeof entry === "string") {
+                const id = String(entry).trim();
                 if (!id) return null;
+
+                const productLookup = productSkuLookup.get(id);
+                const productSku = productLookup?.productSku || null;
                 return {
                   id,
-                  quantity: Number(entry.quantity || entry.qty || 1),
+                  quantity: 1,
+                  sku: productSku,
+                  productSku,
+                  variantSku: null,
+                };
+              }
+              if (typeof entry === "object") {
+                const id = String(
+                  entry.productId ||
+                    entry.product ||
+                    entry.product_id ||
+                    entry._id ||
+                    entry.id ||
+                    "",
+                ).trim();
+                if (!id) return null;
+
+                const quantity = Number(entry.quantity || entry.qty || 1);
+                const variantId = String(
+                  entry.variantId || entry.variant_id || "",
+                ).trim();
+                const productLookup = productSkuLookup.get(id);
+                const productSku = productLookup?.productSku || null;
+                const variantSku =
+                  normalizeSku(entry.variantSku || entry.variant_sku) ||
+                  (variantId
+                    ? productLookup?.variantSkuById?.get(variantId) || null
+                    : null);
+
+                return {
+                  id,
+                  quantity:
+                    Number.isFinite(quantity) && quantity > 0 ? quantity : 1,
+                  sku: variantSku || productSku,
+                  productSku,
+                  variantSku,
                 };
               }
               return null;
             })
             .filter(Boolean);
 
+          const includedSkus = Array.from(
+            new Set(
+              lightweightItems
+                .map((entry) => normalizeSku(entry?.sku))
+                .filter(Boolean),
+            ),
+          );
+
           return {
             id: String(combo._id),
             slug: String(combo.slug || "").trim() || null,
             name: combo.name,
+            sku: normalizeSku(combo.sku),
+            includedSkus,
             shortDescription: combo.shortDescription || "",
             image: pickComboImage(combo),
             thumbnail: combo.thumbnail || combo.comboThumbnail || "",
             comboThumbnail: combo.comboThumbnail || combo.thumbnail || "",
-            comboImages: Array.isArray(combo.comboImages) ? combo.comboImages : [],
+            comboImages: Array.isArray(combo.comboImages)
+              ? combo.comboImages
+              : [],
             items: lightweightItems,
             itemCount: lightweightItems.length,
             price: {
               amount: Number(combo.comboPrice || combo.originalPrice || 0),
               currency: "INR",
-              originalAmount: Number(combo.originalPrice || combo.comboPrice || 0),
+              originalAmount: Number(
+                combo.originalPrice || combo.comboPrice || 0,
+              ),
               discountPercent: Number(combo.discountPercentage || 0),
             },
             updatedAt: combo.updatedAt,
@@ -1831,7 +2270,9 @@ export const getPartnerCategories = async (req, res) => {
       id: String(item._id),
       name: item.name,
       slug: item.slug,
-      parentCategoryId: item.parentCategory ? String(item.parentCategory) : null,
+      parentCategoryId: item.parentCategory
+        ? String(item.parentCategory)
+        : null,
     }));
 
     return res.status(200).json(withMeta(req, { success: true, data }));
@@ -1858,7 +2299,9 @@ export const getPartnerTags = async (req, res) => {
       .filter(Boolean)
       .sort((a, b) => a.localeCompare(b));
 
-    return res.status(200).json(withMeta(req, { success: true, data: cleanTags }));
+    return res
+      .status(200)
+      .json(withMeta(req, { success: true, data: cleanTags }));
   } catch (error) {
     console.error("getPartnerTags error:", error);
     return res.status(500).json(
@@ -1878,9 +2321,17 @@ export const adminCreatePartner = async (req, res) => {
   try {
     const name = String(req.body?.name || "").trim();
     const companyName = String(req.body?.companyName || "").trim();
-    const contactEmail = String(req.body?.contactEmail || "").trim().toLowerCase();
-    const rateLimitPerMinute = toNonNegativeLimit(req.body?.rateLimitPerMinute, 120);
-    const dailyRequestLimit = toNonNegativeLimit(req.body?.dailyRequestLimit, 20000);
+    const contactEmail = String(req.body?.contactEmail || "")
+      .trim()
+      .toLowerCase();
+    const rateLimitPerMinute = toNonNegativeLimit(
+      req.body?.rateLimitPerMinute,
+      120,
+    );
+    const dailyRequestLimit = toNonNegativeLimit(
+      req.body?.dailyRequestLimit,
+      20000,
+    );
     const dailyTokenLimit = toNonNegativeLimit(req.body?.dailyTokenLimit, 0);
 
     if (!name || !contactEmail) {
@@ -1929,19 +2380,28 @@ export const adminCreatePartner = async (req, res) => {
     const rateLimitPlan = {
       tier: dynamicPatch["rateLimitPlan.tier"] || "custom",
       baseRPM: dynamicPatch["rateLimitPlan.baseRPM"] || rateLimitPerMinute,
-      burstRPM: dynamicPatch["rateLimitPlan.burstRPM"] || Math.round(rateLimitPerMinute * 1.8),
+      burstRPM:
+        dynamicPatch["rateLimitPlan.burstRPM"] ||
+        Math.round(rateLimitPerMinute * 1.8),
       dailyLimit: dynamicPatch["rateLimitPlan.dailyLimit"] || dailyRequestLimit,
-      minDynamicRPM: dynamicPatch["rateLimitPlan.minDynamicRPM"] || Math.max(0, Math.floor(rateLimitPerMinute * 0.5)),
-      maxDynamicRPM: dynamicPatch["rateLimitPlan.maxDynamicRPM"] || Math.max(rateLimitPerMinute, 4000),
-      scalingEnabled: dynamicPatch["rateLimitPlan.scalingEnabled"] !== undefined
-        ? Boolean(dynamicPatch["rateLimitPlan.scalingEnabled"])
-        : true,
+      minDynamicRPM:
+        dynamicPatch["rateLimitPlan.minDynamicRPM"] ||
+        Math.max(0, Math.floor(rateLimitPerMinute * 0.5)),
+      maxDynamicRPM:
+        dynamicPatch["rateLimitPlan.maxDynamicRPM"] ||
+        Math.max(rateLimitPerMinute, 4000),
+      scalingEnabled:
+        dynamicPatch["rateLimitPlan.scalingEnabled"] !== undefined
+          ? Boolean(dynamicPatch["rateLimitPlan.scalingEnabled"])
+          : true,
     };
 
     const dynamicControls = {
       lockScaling: Boolean(dynamicPatch["dynamicControls.lockScaling"]),
-      manualOverrideRPM: dynamicPatch["dynamicControls.manualOverrideRPM"] ?? null,
-      manualOverrideDailyLimit: dynamicPatch["dynamicControls.manualOverrideDailyLimit"] ?? null,
+      manualOverrideRPM:
+        dynamicPatch["dynamicControls.manualOverrideRPM"] ?? null,
+      manualOverrideDailyLimit:
+        dynamicPatch["dynamicControls.manualOverrideDailyLimit"] ?? null,
       qualityScore: dynamicPatch["dynamicControls.qualityScore"] || 1,
       safeModeForced: Boolean(dynamicPatch["dynamicControls.safeModeForced"]),
     };
@@ -1952,13 +2412,17 @@ export const adminCreatePartner = async (req, res) => {
       contactEmail,
       status: "active",
       scopes: normalizeScopes(req.body?.scopes),
-      visibleProductFields: normalizeVisibleProductFields(req.body?.visibleProductFields),
+      visibleProductFields: normalizeVisibleProductFields(
+        req.body?.visibleProductFields,
+      ),
       rateLimitPerMinute,
       dailyRequestLimit,
       dailyTokenLimit,
       rateLimitPlan,
       dynamicControls,
-      allowedOrigins: Array.isArray(req.body?.allowedOrigins) ? req.body.allowedOrigins : [],
+      allowedOrigins: Array.isArray(req.body?.allowedOrigins)
+        ? req.body.allowedOrigins
+        : [],
       notes: String(req.body?.notes || "").trim(),
     });
 
@@ -1993,7 +2457,9 @@ export const adminCreatePartner = async (req, res) => {
           contactEmail: partner.contactEmail,
           status: partner.status,
           scopes: partner.scopes,
-          visibleProductFields: normalizeVisibleProductFields(partner.visibleProductFields),
+          visibleProductFields: normalizeVisibleProductFields(
+            partner.visibleProductFields,
+          ),
           rateLimitPerMinute: partner.rateLimitPerMinute,
           dailyRequestLimit: partner.dailyRequestLimit,
           dailyTokenLimit: partner.dailyTokenLimit,
@@ -2028,7 +2494,9 @@ export const adminListPartners = async (_req, res) => {
       .select("partnerId keyPrefix lastUsedAt createdAt")
       .lean();
 
-    const keyByPartner = new Map(keys.map((item) => [String(item.partnerId), item]));
+    const keyByPartner = new Map(
+      keys.map((item) => [String(item.partnerId), item]),
+    );
 
     const data = await Promise.all(
       partners.map(async (partner) => {
@@ -2059,7 +2527,9 @@ export const adminListPartners = async (_req, res) => {
           contactEmail: partner.contactEmail,
           status: partner.status,
           scopes: normalizeScopes(partner.scopes),
-          visibleProductFields: normalizeVisibleProductFields(partner.visibleProductFields),
+          visibleProductFields: normalizeVisibleProductFields(
+            partner.visibleProductFields,
+          ),
           rateLimitPerMinute: partner.rateLimitPerMinute,
           dailyRequestLimit: partner.dailyRequestLimit,
           dailyTokenLimit: partner.dailyTokenLimit,
@@ -2101,7 +2571,9 @@ export const adminExportPartnersCsv = async (_req, res) => {
       .select("partnerId keyPrefix lastUsedAt createdAt")
       .lean();
 
-    const keyByPartner = new Map(keys.map((item) => [String(item.partnerId), item]));
+    const keyByPartner = new Map(
+      keys.map((item) => [String(item.partnerId), item]),
+    );
 
     const csvEscape = (value) => {
       const text = String(value ?? "");
@@ -2148,15 +2620,21 @@ export const adminExportPartnersCsv = async (_req, res) => {
         partner.status || "",
         Array.isArray(partner.scopes) ? partner.scopes.join("|") : "",
         Array.isArray(partner.visibleProductFields)
-          ? normalizeVisibleProductFields(partner.visibleProductFields).join("|")
+          ? normalizeVisibleProductFields(partner.visibleProductFields).join(
+              "|",
+            )
           : "",
         String(partner.rateLimitPerMinute ?? ""),
         String(partner.dailyRequestLimit ?? ""),
         String(partner.dailyTokenLimit ?? ""),
         String(partner.rateLimitPlan?.tier || "custom"),
-        String(partner.rateLimitPlan?.baseRPM ?? partner.rateLimitPerMinute ?? ""),
+        String(
+          partner.rateLimitPlan?.baseRPM ?? partner.rateLimitPerMinute ?? "",
+        ),
         String(partner.rateLimitPlan?.burstRPM ?? ""),
-        String(partner.rateLimitPlan?.dailyLimit ?? partner.dailyRequestLimit ?? ""),
+        String(
+          partner.rateLimitPlan?.dailyLimit ?? partner.dailyRequestLimit ?? "",
+        ),
         String(partner.rateLimitPlan?.scalingEnabled !== false),
         String(Boolean(partner.dynamicControls?.lockScaling)),
         String(partner.dynamicControls?.manualOverrideRPM ?? ""),
@@ -2167,18 +2645,29 @@ export const adminExportPartnersCsv = async (_req, res) => {
         key?.createdAt ? new Date(key.createdAt).toISOString() : "",
         key?.lastUsedAt ? new Date(key.lastUsedAt).toISOString() : "",
         partner.createdAt ? new Date(partner.createdAt).toISOString() : "",
-      ].map(csvEscape).join(",");
+      ]
+        .map(csvEscape)
+        .join(",");
     });
 
     const csv = [headers.join(","), ...rows].join("\n");
     const fileName = `partner-api-partners-${new Date().toISOString().slice(0, 10)}.csv`;
 
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
-    res.setHeader("Content-Disposition", `attachment; filename=\"${fileName}\"`);
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename=\"${fileName}\"`,
+    );
     return res.status(200).send(csv);
   } catch (error) {
     console.error("adminExportPartnersCsv error:", error);
-    return sendError(_req, res, 500, "INTERNAL_ERROR", "Failed to export partners CSV");
+    return sendError(
+      _req,
+      res,
+      500,
+      "INTERNAL_ERROR",
+      "Failed to export partners CSV",
+    );
   }
 };
 
@@ -2215,7 +2704,13 @@ export const adminRotatePartnerKey = async (req, res) => {
     });
   } catch (error) {
     console.error("adminRotatePartnerKey error:", error);
-    return sendError(req, res, 500, "INTERNAL_ERROR", "Failed to rotate partner key");
+    return sendError(
+      req,
+      res,
+      500,
+      "INTERNAL_ERROR",
+      "Failed to rotate partner key",
+    );
   }
 };
 
@@ -2229,16 +2724,22 @@ export const adminUpdatePartner = async (req, res) => {
     }
 
     const update = {};
-    if (req.body?.name !== undefined) update.name = String(req.body.name || "").trim();
+    if (req.body?.name !== undefined)
+      update.name = String(req.body.name || "").trim();
     if (req.body?.companyName !== undefined) {
       update.companyName = String(req.body.companyName || "").trim();
     }
     if (req.body?.contactEmail !== undefined) {
-      update.contactEmail = String(req.body.contactEmail || "").trim().toLowerCase();
+      update.contactEmail = String(req.body.contactEmail || "")
+        .trim()
+        .toLowerCase();
     }
     if (req.body?.status !== undefined) {
-      const status = String(req.body.status || "").trim().toLowerCase();
-      if (["active", "paused", "revoked"].includes(status)) update.status = status;
+      const status = String(req.body.status || "")
+        .trim()
+        .toLowerCase();
+      if (["active", "paused", "revoked"].includes(status))
+        update.status = status;
     }
     if (req.body?.scopes !== undefined && Array.isArray(req.body.scopes)) {
       update.scopes = normalizeScopes(req.body.scopes);
@@ -2252,15 +2753,24 @@ export const adminUpdatePartner = async (req, res) => {
       );
     }
     if (req.body?.rateLimitPerMinute !== undefined) {
-      update.rateLimitPerMinute = toNonNegativeLimit(req.body.rateLimitPerMinute, 120);
+      update.rateLimitPerMinute = toNonNegativeLimit(
+        req.body.rateLimitPerMinute,
+        120,
+      );
     }
     if (req.body?.dailyRequestLimit !== undefined) {
-      update.dailyRequestLimit = toNonNegativeLimit(req.body.dailyRequestLimit, 20000);
+      update.dailyRequestLimit = toNonNegativeLimit(
+        req.body.dailyRequestLimit,
+        20000,
+      );
     }
     if (req.body?.dailyTokenLimit !== undefined) {
       update.dailyTokenLimit = toNonNegativeLimit(req.body.dailyTokenLimit, 0);
     }
-    if (req.body?.allowedOrigins !== undefined && Array.isArray(req.body.allowedOrigins)) {
+    if (
+      req.body?.allowedOrigins !== undefined &&
+      Array.isArray(req.body.allowedOrigins)
+    ) {
       update.allowedOrigins = req.body.allowedOrigins;
     }
 
@@ -2314,7 +2824,13 @@ export const adminUpdatePartner = async (req, res) => {
     if (update.status === "revoked") {
       await PartnerApiKey.updateMany(
         { partnerId, status: { $in: ["active", "paused"] } },
-        { $set: { status: "revoked", revokedAt: new Date(), expiresAt: new Date() } },
+        {
+          $set: {
+            status: "revoked",
+            revokedAt: new Date(),
+            expiresAt: new Date(),
+          },
+        },
       );
     }
 
@@ -2349,7 +2865,9 @@ export const adminUpdatePartner = async (req, res) => {
         contactEmail: partner.contactEmail,
         status: partner.status,
         scopes: normalizeScopes(partner.scopes),
-        visibleProductFields: normalizeVisibleProductFields(partner.visibleProductFields),
+        visibleProductFields: normalizeVisibleProductFields(
+          partner.visibleProductFields,
+        ),
         rateLimitPerMinute: partner.rateLimitPerMinute,
         dailyRequestLimit: partner.dailyRequestLimit,
         dailyTokenLimit: partner.dailyTokenLimit,
@@ -2358,7 +2876,13 @@ export const adminUpdatePartner = async (req, res) => {
     });
   } catch (error) {
     console.error("adminUpdatePartner error:", error);
-    return sendError(req, res, 500, "INTERNAL_ERROR", "Failed to update partner");
+    return sendError(
+      req,
+      res,
+      500,
+      "INTERNAL_ERROR",
+      "Failed to update partner",
+    );
   }
 };
 
@@ -2386,7 +2910,13 @@ export const adminDeletePartner = async (req, res) => {
     });
   } catch (error) {
     console.error("adminDeletePartner error:", error);
-    return sendError(req, res, 500, "INTERNAL_ERROR", "Failed to delete partner");
+    return sendError(
+      req,
+      res,
+      500,
+      "INTERNAL_ERROR",
+      "Failed to delete partner",
+    );
   }
 };
 
@@ -2424,7 +2954,13 @@ export const adminRevokePartnerKey = async (req, res) => {
     });
   } catch (error) {
     console.error("adminRevokePartnerKey error:", error);
-    return sendError(req, res, 500, "INTERNAL_ERROR", "Failed to revoke partner key");
+    return sendError(
+      req,
+      res,
+      500,
+      "INTERNAL_ERROR",
+      "Failed to revoke partner key",
+    );
   }
 };
 
@@ -2449,7 +2985,9 @@ export const adminGetPartnerOverview = async (_req, res) => {
         statusCode: { $gte: 400 },
       }),
       Partner.countDocuments({ "dynamicControls.lockScaling": true }),
-      Partner.countDocuments({ "dynamicControls.manualOverrideRPM": { $ne: null } }),
+      Partner.countDocuments({
+        "dynamicControls.manualOverrideRPM": { $ne: null },
+      }),
       Partner.countDocuments({ "dynamicControls.safeModeForced": true }),
     ]);
 
@@ -2461,9 +2999,10 @@ export const adminGetPartnerOverview = async (_req, res) => {
           partners,
           activeKeys,
           requestsLast24h: totalLogsLast24h,
-          errorRateLast24h: totalLogsLast24h > 0
-            ? Number(((errorLogsLast24h / totalLogsLast24h) * 100).toFixed(2))
-            : 0,
+          errorRateLast24h:
+            totalLogsLast24h > 0
+              ? Number(((errorLogsLast24h / totalLogsLast24h) * 100).toFixed(2))
+              : 0,
           lockedScalingPartners,
           manualOverridePartners,
           safeModeForcedPartners,
@@ -2482,7 +3021,9 @@ export const adminGetPartnerOverview = async (_req, res) => {
 
 export const adminGetPartnerAnalytics = async (req, res) => {
   try {
-    const format = String(req.query?.format || "json").trim().toLowerCase();
+    const format = String(req.query?.format || "json")
+      .trim()
+      .toLowerCase();
     const errorRateThreshold = toFloatInRange(
       req.query?.errorRateThreshold,
       ANALYTICS_DEFAULT_ERROR_RATE_THRESHOLD,
@@ -2497,11 +3038,15 @@ export const adminGetPartnerAnalytics = async (req, res) => {
     );
     const trafficSpikeMinRequests = Math.max(
       1,
-      parseNumber(req.query?.trafficSpikeMinRequests, ANALYTICS_DEFAULT_SPIKE_MIN_REQUESTS),
+      parseNumber(
+        req.query?.trafficSpikeMinRequests,
+        ANALYTICS_DEFAULT_SPIKE_MIN_REQUESTS,
+      ),
     );
 
     const partnerIdRaw = String(req.query?.partnerId || "").trim();
-    const hasPartnerFilter = partnerIdRaw && mongoose.Types.ObjectId.isValid(partnerIdRaw);
+    const hasPartnerFilter =
+      partnerIdRaw && mongoose.Types.ObjectId.isValid(partnerIdRaw);
     const selectedPartnerId = hasPartnerFilter ? partnerIdRaw : "";
     const range = resolveAnalyticsRange({
       range: req.query?.range,
@@ -2511,7 +3056,9 @@ export const adminGetPartnerAnalytics = async (req, res) => {
 
     const partnerQuery = selectedPartnerId ? { _id: selectedPartnerId } : {};
     const partners = await Partner.find(partnerQuery)
-      .select("name status lastUsedAt rateLimitPerMinute dailyRequestLimit rateLimitPlan dynamicControls")
+      .select(
+        "name status lastUsedAt rateLimitPerMinute dailyRequestLimit rateLimitPlan dynamicControls",
+      )
       .sort({ name: 1 })
       .lean();
 
@@ -2583,7 +3130,9 @@ export const adminGetPartnerAnalytics = async (req, res) => {
           dynamicCurrentRPM: 0,
           dynamicPolicy: "unknown",
           dynamicLockScaling: Boolean(partner?.dynamicControls?.lockScaling),
-          dynamicOverrideRPM: Number(partner?.dynamicControls?.manualOverrideRPM || 0),
+          dynamicOverrideRPM: Number(
+            partner?.dynamicControls?.manualOverrideRPM || 0,
+          ),
           alerts: {
             highErrorRate: false,
             trafficSpike: false,
@@ -2600,7 +3149,10 @@ export const adminGetPartnerAnalytics = async (req, res) => {
 
         const activeKeysForPartner = keysByPartner.get(partnerId) || [];
         const keyPrefix = String(activeKeysForPartner?.[0]?.keyPrefix || "");
-        const dynamic = await getPartnerDynamicLimitSnapshot({ partner, keyPrefix });
+        const dynamic = await getPartnerDynamicLimitSnapshot({
+          partner,
+          keyPrefix,
+        });
 
         stat.dynamicCurrentRPM = Number(dynamic?.effectiveRPM || 0);
         stat.dynamicPolicy = String(dynamic?.state?.policy || "unknown");
@@ -2648,110 +3200,139 @@ export const adminGetPartnerAnalytics = async (req, res) => {
           }
         }
       } catch (error) {
-        console.warn("adminGetPartnerAnalytics redis aggregation fallback:", error?.message || error);
+        console.warn(
+          "adminGetPartnerAnalytics redis aggregation fallback:",
+          error?.message || error,
+        );
       }
     }
 
     const todayStart = startOfUtcDay(new Date());
 
-    const [todayByPartner, rangeSeries, topEndpoints, rangeCountsByPartner] = await Promise.all([
-      PartnerApiRequestLog.aggregate([
-        {
-          $match: {
-            createdAt: { $gte: todayStart },
-            ...(selectedPartnerId
-              ? { partnerId: new mongoose.Types.ObjectId(selectedPartnerId) }
-              : { partnerId: { $in: partnerIds.map((id) => new mongoose.Types.ObjectId(id)) } }),
-          },
-        },
-        {
-          $group: {
-            _id: "$partnerId",
-            requests: { $sum: 1 },
-            errors: {
-              $sum: {
-                $cond: [{ $gte: ["$statusCode", 400] }, 1, 0],
-              },
+    const [todayByPartner, rangeSeries, topEndpoints, rangeCountsByPartner] =
+      await Promise.all([
+        PartnerApiRequestLog.aggregate([
+          {
+            $match: {
+              createdAt: { $gte: todayStart },
+              ...(selectedPartnerId
+                ? { partnerId: new mongoose.Types.ObjectId(selectedPartnerId) }
+                : {
+                    partnerId: {
+                      $in: partnerIds.map(
+                        (id) => new mongoose.Types.ObjectId(id),
+                      ),
+                    },
+                  }),
             },
-            lastActiveAt: { $max: "$createdAt" },
           },
-        },
-      ]),
-      PartnerApiRequestLog.aggregate([
-        {
-          $match: {
-            createdAt: { $gte: range.from, $lte: range.to },
-            ...(selectedPartnerId
-              ? { partnerId: new mongoose.Types.ObjectId(selectedPartnerId) }
-              : { partnerId: { $in: partnerIds.map((id) => new mongoose.Types.ObjectId(id)) } }),
+          {
+            $group: {
+              _id: "$partnerId",
+              requests: { $sum: 1 },
+              errors: {
+                $sum: {
+                  $cond: [{ $gte: ["$statusCode", 400] }, 1, 0],
+                },
+              },
+              lastActiveAt: { $max: "$createdAt" },
+            },
           },
-        },
-        {
-          $group: {
-            _id: {
-              bucket: {
-                $dateToString: {
-                  format: range.granularity === "day" ? "%Y-%m-%d" : "%m-%d %H:00",
-                  date: "$createdAt",
+        ]),
+        PartnerApiRequestLog.aggregate([
+          {
+            $match: {
+              createdAt: { $gte: range.from, $lte: range.to },
+              ...(selectedPartnerId
+                ? { partnerId: new mongoose.Types.ObjectId(selectedPartnerId) }
+                : {
+                    partnerId: {
+                      $in: partnerIds.map(
+                        (id) => new mongoose.Types.ObjectId(id),
+                      ),
+                    },
+                  }),
+            },
+          },
+          {
+            $group: {
+              _id: {
+                bucket: {
+                  $dateToString: {
+                    format:
+                      range.granularity === "day" ? "%Y-%m-%d" : "%m-%d %H:00",
+                    date: "$createdAt",
+                  },
+                },
+              },
+              requests: { $sum: 1 },
+              errors: {
+                $sum: {
+                  $cond: [{ $gte: ["$statusCode", 400] }, 1, 0],
                 },
               },
             },
-            requests: { $sum: 1 },
-            errors: {
-              $sum: {
-                $cond: [{ $gte: ["$statusCode", 400] }, 1, 0],
+          },
+          { $sort: { "_id.bucket": 1 } },
+        ]),
+        PartnerApiRequestLog.aggregate([
+          {
+            $match: {
+              createdAt: { $gte: range.from, $lte: range.to },
+              ...(selectedPartnerId
+                ? { partnerId: new mongoose.Types.ObjectId(selectedPartnerId) }
+                : {
+                    partnerId: {
+                      $in: partnerIds.map(
+                        (id) => new mongoose.Types.ObjectId(id),
+                      ),
+                    },
+                  }),
+            },
+          },
+          {
+            $group: {
+              _id: "$endpoint",
+              requests: { $sum: 1 },
+              errors: {
+                $sum: {
+                  $cond: [{ $gte: ["$statusCode", 400] }, 1, 0],
+                },
               },
             },
           },
-        },
-        { $sort: { "_id.bucket": 1 } },
-      ]),
-      PartnerApiRequestLog.aggregate([
-        {
-          $match: {
-            createdAt: { $gte: range.from, $lte: range.to },
-            ...(selectedPartnerId
-              ? { partnerId: new mongoose.Types.ObjectId(selectedPartnerId) }
-              : { partnerId: { $in: partnerIds.map((id) => new mongoose.Types.ObjectId(id)) } }),
-          },
-        },
-        {
-          $group: {
-            _id: "$endpoint",
-            requests: { $sum: 1 },
-            errors: {
-              $sum: {
-                $cond: [{ $gte: ["$statusCode", 400] }, 1, 0],
-              },
+          { $sort: { requests: -1 } },
+          { $limit: 8 },
+        ]),
+        PartnerApiRequestLog.aggregate([
+          {
+            $match: {
+              createdAt: { $gte: range.from, $lte: range.to },
+              ...(selectedPartnerId
+                ? { partnerId: new mongoose.Types.ObjectId(selectedPartnerId) }
+                : {
+                    partnerId: {
+                      $in: partnerIds.map(
+                        (id) => new mongoose.Types.ObjectId(id),
+                      ),
+                    },
+                  }),
             },
           },
-        },
-        { $sort: { requests: -1 } },
-        { $limit: 8 },
-      ]),
-      PartnerApiRequestLog.aggregate([
-        {
-          $match: {
-            createdAt: { $gte: range.from, $lte: range.to },
-            ...(selectedPartnerId
-              ? { partnerId: new mongoose.Types.ObjectId(selectedPartnerId) }
-              : { partnerId: { $in: partnerIds.map((id) => new mongoose.Types.ObjectId(id)) } }),
-          },
-        },
-        {
-          $group: {
-            _id: "$partnerId",
-            requests: { $sum: 1 },
-            errors: {
-              $sum: {
-                $cond: [{ $gte: ["$statusCode", 400] }, 1, 0],
+          {
+            $group: {
+              _id: "$partnerId",
+              requests: { $sum: 1 },
+              errors: {
+                $sum: {
+                  $cond: [{ $gte: ["$statusCode", 400] }, 1, 0],
+                },
               },
+              lastActiveAt: { $max: "$createdAt" },
             },
-            lastActiveAt: { $max: "$createdAt" },
           },
-        },
-      ]),
-    ]);
+        ]),
+      ]);
 
     for (const row of todayByPartner) {
       const partnerId = String(row?._id || "");
@@ -2779,11 +3360,14 @@ export const adminGetPartnerAnalytics = async (req, res) => {
         const rangeCounts = rangeCountMap.get(stat.partnerId);
         const rangeRequests = Math.max(Number(rangeCounts?.requests || 0), 0);
         const rangeErrors = Math.max(Number(rangeCounts?.errors || 0), 0);
-        const effectiveRequests = stat.totalRequestsToday > 0 ? stat.totalRequestsToday : rangeRequests;
-        const effectiveErrors = stat.errorsToday > 0 ? stat.errorsToday : rangeErrors;
-        const errorRate = effectiveRequests > 0
-          ? Number(((effectiveErrors / effectiveRequests) * 100).toFixed(2))
-          : 0;
+        const effectiveRequests =
+          stat.totalRequestsToday > 0 ? stat.totalRequestsToday : rangeRequests;
+        const effectiveErrors =
+          stat.errorsToday > 0 ? stat.errorsToday : rangeErrors;
+        const errorRate =
+          effectiveRequests > 0
+            ? Number(((effectiveErrors / effectiveRequests) * 100).toFixed(2))
+            : 0;
 
         const currentLast = toSafeDate(stat.lastActiveAt);
         const rangeLast = toSafeDate(rangeCounts?.lastActiveAt);
@@ -2823,7 +3407,8 @@ export const adminGetPartnerAnalytics = async (req, res) => {
         endpoint: String(row._id || "/"),
         requests,
         errors,
-        errorRate: requests > 0 ? Number(((errors / requests) * 100).toFixed(2)) : 0,
+        errorRate:
+          requests > 0 ? Number(((errors / requests) * 100).toFixed(2)) : 0,
       };
     });
 
@@ -2831,15 +3416,17 @@ export const adminGetPartnerAnalytics = async (req, res) => {
     const latestBucket = requestsOverTime[requestsOverTime.length - 1];
     const previousBuckets = requestsOverTime.slice(0, -1);
     const previousAverage = previousBuckets.length
-      ? previousBuckets.reduce((sum, row) => sum + row.requests, 0) / previousBuckets.length
+      ? previousBuckets.reduce((sum, row) => sum + row.requests, 0) /
+        previousBuckets.length
       : 0;
     const hasTrafficSpike = Boolean(
-      latestBucket
-      && previousAverage > 0
-      && latestBucket.requests >= Math.max(
-        trafficSpikeMinRequests,
-        Math.ceil(previousAverage * trafficSpikeMultiplier),
-      ),
+      latestBucket &&
+      previousAverage > 0 &&
+      latestBucket.requests >=
+        Math.max(
+          trafficSpikeMinRequests,
+          Math.ceil(previousAverage * trafficSpikeMultiplier),
+        ),
     );
 
     if (hasTrafficSpike) {
@@ -2850,7 +3437,9 @@ export const adminGetPartnerAnalytics = async (req, res) => {
       });
     }
 
-    const highErrorPartners = partnerStats.filter((item) => item.alerts.highErrorRate);
+    const highErrorPartners = partnerStats.filter(
+      (item) => item.alerts.highErrorRate,
+    );
     if (highErrorPartners.length) {
       globalAlerts.push({
         type: "high_error_rate",
@@ -2879,9 +3468,10 @@ export const adminGetPartnerAnalytics = async (req, res) => {
       (sum, stat) => sum + Number(stat.requestsPerMinuteLive || 0),
       0,
     );
-    const averageErrorRate = totalRequestsToday > 0
-      ? Number(((totalErrorsToday / totalRequestsToday) * 100).toFixed(2))
-      : 0;
+    const averageErrorRate =
+      totalRequestsToday > 0
+        ? Number(((totalErrorsToday / totalRequestsToday) * 100).toFixed(2))
+        : 0;
 
     const responsePayload = {
       summary: {
@@ -2889,11 +3479,15 @@ export const adminGetPartnerAnalytics = async (req, res) => {
         totalErrorsToday,
         averageErrorRate,
         liveRequestsPerMinute,
-        activePartners: partnerStatsWithSpike.filter((item) => item.status === "active").length,
-        lastActivityAt: partnerStatsWithSpike
-          .map((item) => toSafeDate(item.lastActiveAt))
-          .filter(Boolean)
-          .sort((a, b) => b.getTime() - a.getTime())?.[0]?.toISOString() || null,
+        activePartners: partnerStatsWithSpike.filter(
+          (item) => item.status === "active",
+        ).length,
+        lastActivityAt:
+          partnerStatsWithSpike
+            .map((item) => toSafeDate(item.lastActiveAt))
+            .filter(Boolean)
+            .sort((a, b) => b.getTime() - a.getTime())?.[0]
+            ?.toISOString() || null,
       },
       partnerStats: partnerStatsWithSpike,
       charts: {
@@ -2955,7 +3549,10 @@ export const adminGetPartnerAnalytics = async (req, res) => {
 
       const stamp = new Date().toISOString().slice(0, 10);
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
-      res.setHeader("Content-Disposition", `attachment; filename=partner-analytics-${stamp}.csv`);
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename=partner-analytics-${stamp}.csv`,
+      );
       return res.status(200).send(csv);
     }
 
@@ -2965,7 +3562,13 @@ export const adminGetPartnerAnalytics = async (req, res) => {
     });
   } catch (error) {
     console.error("adminGetPartnerAnalytics error:", error);
-    return sendError(req, res, 500, "INTERNAL_ERROR", "Failed to load partner analytics");
+    return sendError(
+      req,
+      res,
+      500,
+      "INTERNAL_ERROR",
+      "Failed to load partner analytics",
+    );
   }
 };
 
@@ -2996,7 +3599,9 @@ export const adminGetPartnerDetail = async (req, res) => {
         {
           $group: {
             _id: {
-              hour: { $dateToString: { format: "%Y-%m-%d %H:00", date: "$createdAt" } },
+              hour: {
+                $dateToString: { format: "%Y-%m-%d %H:00", date: "$createdAt" },
+              },
             },
             count: { $sum: 1 },
             errors: {
@@ -3018,7 +3623,9 @@ export const adminGetPartnerDetail = async (req, res) => {
         {
           $group: {
             _id: {
-              day: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
+              day: {
+                $dateToString: { format: "%Y-%m-%d", date: "$createdAt" },
+              },
             },
             count: { $sum: 1 },
             errors: {
@@ -3031,7 +3638,9 @@ export const adminGetPartnerDetail = async (req, res) => {
         { $sort: { "_id.day": 1 } },
       ]),
       PartnerApiRequestLog.find({ partnerId })
-        .select("method endpoint statusCode ipAddress location responseTimeMs createdAt errorCode")
+        .select(
+          "method endpoint statusCode ipAddress location responseTimeMs createdAt errorCode",
+        )
         .sort({ createdAt: -1 })
         .limit(20)
         .lean(),
@@ -3075,7 +3684,9 @@ export const adminGetPartnerDetail = async (req, res) => {
           dailyRequestLimit: partner.dailyRequestLimit,
           dailyTokenLimit: partner.dailyTokenLimit,
           dynamic,
-          visibleProductFields: normalizeVisibleProductFields(partner.visibleProductFields),
+          visibleProductFields: normalizeVisibleProductFields(
+            partner.visibleProductFields,
+          ),
           notes: partner.notes || "",
           createdAt: partner.createdAt,
           lastUsedAt: partner.lastUsedAt || activeKey?.lastUsedAt || null,
@@ -3101,7 +3712,13 @@ export const adminGetPartnerDetail = async (req, res) => {
     });
   } catch (error) {
     console.error("adminGetPartnerDetail error:", error);
-    return sendError(req, res, 500, "INTERNAL_ERROR", "Failed to load partner details");
+    return sendError(
+      req,
+      res,
+      500,
+      "INTERNAL_ERROR",
+      "Failed to load partner details",
+    );
   }
 };
 
@@ -3113,7 +3730,10 @@ export const adminGetPartnerDynamicState = async (req, res) => {
       return sendError(req, res, 404, "NOT_FOUND", "Partner not found");
     }
 
-    const activeKey = await PartnerApiKey.findOne({ partnerId, status: "active" })
+    const activeKey = await PartnerApiKey.findOne({
+      partnerId,
+      status: "active",
+    })
       .select("keyPrefix")
       .sort({ createdAt: -1 })
       .lean();
@@ -3135,7 +3755,13 @@ export const adminGetPartnerDynamicState = async (req, res) => {
     });
   } catch (error) {
     console.error("adminGetPartnerDynamicState error:", error);
-    return sendError(req, res, 500, "INTERNAL_ERROR", "Failed to load dynamic limiter state");
+    return sendError(
+      req,
+      res,
+      500,
+      "INTERNAL_ERROR",
+      "Failed to load dynamic limiter state",
+    );
   }
 };
 
@@ -3149,7 +3775,13 @@ export const adminUpdatePartnerDynamicState = async (req, res) => {
 
     const dynamicPatch = toPartnerDynamicPatch(req.body || {}, partner);
     if (!Object.keys(dynamicPatch).length) {
-      return sendError(req, res, 400, "VALIDATION_ERROR", "No dynamic limiter fields were provided");
+      return sendError(
+        req,
+        res,
+        400,
+        "VALIDATION_ERROR",
+        "No dynamic limiter fields were provided",
+      );
     }
 
     const updateDoc = { ...dynamicPatch };
@@ -3163,7 +3795,10 @@ export const adminUpdatePartnerDynamicState = async (req, res) => {
     await Partner.updateOne({ _id: partner._id }, { $set: updateDoc });
     const updatedPartner = await Partner.findById(partnerId).lean();
 
-    const activeKey = await PartnerApiKey.findOne({ partnerId, status: "active" })
+    const activeKey = await PartnerApiKey.findOne({
+      partnerId,
+      status: "active",
+    })
       .select("keyPrefix")
       .sort({ createdAt: -1 })
       .lean();
@@ -3192,7 +3827,13 @@ export const adminUpdatePartnerDynamicState = async (req, res) => {
     });
   } catch (error) {
     console.error("adminUpdatePartnerDynamicState error:", error);
-    return sendError(req, res, 500, "INTERNAL_ERROR", "Failed to update dynamic limiter state");
+    return sendError(
+      req,
+      res,
+      500,
+      "INTERNAL_ERROR",
+      "Failed to update dynamic limiter state",
+    );
   }
 };
 
@@ -3218,7 +3859,9 @@ export const adminGetPartnerLogs = async (req, res) => {
 
     const [rows, total] = await Promise.all([
       PartnerApiRequestLog.find(query)
-        .select("partnerId keyPrefix method endpoint statusCode ipAddress location responseTimeMs createdAt errorCode")
+        .select(
+          "partnerId keyPrefix method endpoint statusCode ipAddress location responseTimeMs createdAt errorCode",
+        )
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
@@ -3238,7 +3881,13 @@ export const adminGetPartnerLogs = async (req, res) => {
     });
   } catch (error) {
     console.error("adminGetPartnerLogs error:", error);
-    return sendError(req, res, 500, "INTERNAL_ERROR", "Failed to load partner logs");
+    return sendError(
+      req,
+      res,
+      500,
+      "INTERNAL_ERROR",
+      "Failed to load partner logs",
+    );
   }
 };
 
@@ -3252,7 +3901,9 @@ export const adminGetPartnerLiveMonitoring = async (req, res) => {
       createdAt: { $gte: new Date(Date.now() - 60 * 60 * 1000) },
       statusCode: { $gte: 400 },
     })
-      .select("partnerId keyPrefix method endpoint statusCode createdAt errorCode")
+      .select(
+        "partnerId keyPrefix method endpoint statusCode createdAt errorCode",
+      )
       .sort({ createdAt: -1 })
       .limit(30)
       .lean();
@@ -3262,7 +3913,10 @@ export const adminGetPartnerLiveMonitoring = async (req, res) => {
     if (partnerId && mongoose.Types.ObjectId.isValid(partnerId)) {
       const partner = await Partner.findById(partnerId).lean();
       if (partner) {
-        const activeKey = await PartnerApiKey.findOne({ partnerId, status: "active" })
+        const activeKey = await PartnerApiKey.findOne({
+          partnerId,
+          status: "active",
+        })
           .select("keyPrefix")
           .sort({ createdAt: -1 })
           .lean();
@@ -3286,7 +3940,13 @@ export const adminGetPartnerLiveMonitoring = async (req, res) => {
     });
   } catch (error) {
     console.error("adminGetPartnerLiveMonitoring error:", error);
-    return sendError(req, res, 500, "INTERNAL_ERROR", "Failed to load live monitoring");
+    return sendError(
+      req,
+      res,
+      500,
+      "INTERNAL_ERROR",
+      "Failed to load live monitoring",
+    );
   }
 };
 
@@ -3312,7 +3972,10 @@ export const adminGeneratePartnerCredentialPdf = async (req, res) => {
     const baseUrl = resolvePartnerApiBaseUrl(req);
     const guideUrl = `${baseUrl}/guide`;
     const guidePdfUrl = `${baseUrl}/guide.pdf`;
-    const sampleLimit = resolveSampleLimit(req.body?.sampleLimit, DEFAULT_PARTNER_SAMPLE_LIMIT);
+    const sampleLimit = resolveSampleLimit(
+      req.body?.sampleLimit,
+      DEFAULT_PARTNER_SAMPLE_LIMIT,
+    );
     const sampleCurl = `curl -X GET "${baseUrl}/products?limit=${sampleLimit}" -H "x-api-key: ${apiKey}"`;
 
     const pdfBuffer = await buildPartnerCredentialPdfBuffer({
@@ -3326,11 +3989,12 @@ export const adminGeneratePartnerCredentialPdf = async (req, res) => {
       sampleCurl,
     });
 
-    const safeName = String(partner.name || "partner")
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "") || "partner";
+    const safeName =
+      String(partner.name || "partner")
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "") || "partner";
 
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader(
@@ -3340,6 +4004,12 @@ export const adminGeneratePartnerCredentialPdf = async (req, res) => {
     return res.status(200).send(pdfBuffer);
   } catch (error) {
     console.error("adminGeneratePartnerCredentialPdf error:", error);
-    return sendError(req, res, 500, "INTERNAL_ERROR", "Failed to generate partner credential PDF");
+    return sendError(
+      req,
+      res,
+      500,
+      "INTERNAL_ERROR",
+      "Failed to generate partner credential PDF",
+    );
   }
 };

@@ -27,6 +27,13 @@ const API_ROOT = API_BASE_URL.endsWith("/api")
   ? API_BASE_URL
   : `${API_BASE_URL}/api`;
 const LIVE_FEED_URL = `${API_ROOT}/notifications/offers/live-feed`;
+const LIVE_FEED_POLL_INTERVAL_MS = Math.max(
+  Number.parseInt(
+    String(process.env.NEXT_PUBLIC_LIVE_FEED_POLL_INTERVAL_MS || "45000"),
+    10,
+  ) || 45000,
+  15000,
+);
 const MAX_DEDUPED_NOTIFICATION_IDS = 100;
 const LIVE_FEED_CURSOR_KEY = "live_offer_last_seen_ms";
 const DEFAULT_LIVE_FEED_LOOKBACK_MS = 2 * 60 * 1000; // 2 minutes
@@ -90,6 +97,7 @@ const NotificationHandler = () => {
   const [activeMessage, setActiveMessage] = useState(null);
   const seenNotificationIdsRef = useRef(new Set());
   const lastSeenOfferTimestampRef = useRef(0);
+  const socketConnectedRef = useRef(false);
 
   useEffect(() => {
     lastSeenOfferTimestampRef.current = readLiveFeedCursor();
@@ -209,6 +217,21 @@ const NotificationHandler = () => {
       timeout: 8000,
     });
 
+    const handleConnect = () => {
+      socketConnectedRef.current = true;
+    };
+
+    const handleDisconnect = () => {
+      socketConnectedRef.current = false;
+    };
+
+    socket.on("connect", handleConnect);
+    socket.on("disconnect", handleDisconnect);
+
+    if (socket.connected) {
+      socketConnectedRef.current = true;
+    }
+
     const handleLiveOffer = (payload) => {
       const liveData =
         payload?.data && typeof payload.data === "object" ? payload.data : {};
@@ -269,7 +292,10 @@ const NotificationHandler = () => {
 
     return () => {
       socket.off("offer:live", handleLiveOffer);
+      socket.off("connect", handleConnect);
+      socket.off("disconnect", handleDisconnect);
       socket.disconnect();
+      socketConnectedRef.current = false;
     };
   }, [rememberNotification]);
 
@@ -280,6 +306,8 @@ const NotificationHandler = () => {
     let isDisposed = false;
 
     const pollLiveFeed = async () => {
+      if (socketConnectedRef.current) return;
+
       const since = Number(lastSeenOfferTimestampRef.current || 0);
       const query = `?since=${since}&limit=10`;
 
@@ -341,6 +369,7 @@ const NotificationHandler = () => {
 
     const refresh = () => {
       if (document.hidden) return;
+      if (socketConnectedRef.current) return;
       void pollLiveFeed();
     };
 
@@ -352,7 +381,7 @@ const NotificationHandler = () => {
         if (!document.hidden) {
           void pollLiveFeed();
         }
-      }, 15000);
+      }, LIVE_FEED_POLL_INTERVAL_MS);
     };
 
     const handleVisibilityChange = () => {

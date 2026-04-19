@@ -2,7 +2,15 @@
 
 import { API_BASE_URL } from "@/utils/api";
 
-import { createContext, useContext, useEffect, useRef, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 const SettingsContext = createContext();
 
@@ -217,9 +225,13 @@ export const SettingsProvider = ({ children }) => {
   /**
    * Fetch public settings from API
    */
-  const fetchSettings = async () => {
+  const fetchSettings = useCallback(async ({ background = false } = {}) => {
+    const shouldShowLoading = !background || lastFetchedAtRef.current === 0;
+
     try {
-      setLoading(true);
+      if (shouldShowLoading) {
+        setLoading(true);
+      }
       setError(null);
       const candidates = buildApiUrlCandidates("/settings/public");
       let data = null;
@@ -262,14 +274,16 @@ export const SettingsProvider = ({ children }) => {
       setError(err.message);
       // Keep using default settings on error
     } finally {
-      setLoading(false);
+      if (shouldShowLoading) {
+        setLoading(false);
+      }
     }
-  };
+  }, []);
 
   // Fetch settings on mount
   useEffect(() => {
-    fetchSettings();
-  }, []);
+    void fetchSettings();
+  }, [fetchSettings]);
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
@@ -283,150 +297,183 @@ export const SettingsProvider = ({ children }) => {
       ) {
         return;
       }
-      fetchSettings();
+      void fetchSettings({ background: true });
     };
 
     window.addEventListener("focus", handleWindowFocus);
     return () => window.removeEventListener("focus", handleWindowFocus);
-  }, []);
+  }, [fetchSettings]);
 
   /**
    * Get a specific setting value with fallback
    * @param {string} key - The setting key (e.g., "shippingSettings.freeShippingThreshold")
    * @param {any} fallback - Fallback value if key not found
    */
-  const getSetting = (key, fallback = null) => {
-    const keys = key.split(".");
-    let value = settings;
+  const getSetting = useCallback(
+    (key, fallback = null) => {
+      const keys = key.split(".");
+      let value = settings;
 
-    for (const k of keys) {
-      if (value && typeof value === "object" && k in value) {
-        value = value[k];
-      } else {
-        return fallback;
+      for (const k of keys) {
+        if (value && typeof value === "object" && k in value) {
+          value = value[k];
+        } else {
+          return fallback;
+        }
       }
-    }
 
-    return value ?? fallback;
-  };
+      return value ?? fallback;
+    },
+    [settings],
+  );
 
   /**
    * Calculate shipping cost based on cart total
    * @param {number} cartTotal - Cart subtotal
    * @param {string} shippingType - "standard" or "express"
    */
-  const calculateShipping = (cartTotal, shippingType = "standard") => {
-    const shipping = settings.shippingSettings;
+  const calculateShipping = useCallback(
+    (cartTotal, shippingType = "standard") => {
+      const shipping = settings.shippingSettings;
 
-    // Free shipping if enabled and threshold met
-    if (
-      shipping.freeShippingEnabled &&
-      cartTotal >= shipping.freeShippingThreshold
-    ) {
-      return 0;
-    }
+      // Free shipping if enabled and threshold met
+      if (
+        shipping.freeShippingEnabled &&
+        cartTotal >= shipping.freeShippingThreshold
+      ) {
+        return 0;
+      }
 
-    // Return shipping cost based on type
-    return shippingType === "express"
-      ? shipping.expressShippingCost
-      : shipping.standardShippingCost;
-  };
+      // Return shipping cost based on type
+      return shippingType === "express"
+        ? shipping.expressShippingCost
+        : shipping.standardShippingCost;
+    },
+    [settings.shippingSettings],
+  );
 
   /**
    * Calculate tax amount based on subtotal
    * @param {number} subtotal - Subtotal amount
    */
-  const calculateTax = (subtotal) => {
-    const tax = settings.taxSettings;
+  const calculateTax = useCallback(
+    (subtotal) => {
+      const tax = settings.taxSettings;
 
-    if (!tax.enabled || tax.taxIncludedInPrice) {
-      return 0;
-    }
+      if (!tax.enabled || tax.taxIncludedInPrice) {
+        return 0;
+      }
 
-    return Math.round((subtotal * tax.taxRate) / 100);
-  };
+      return Math.round((subtotal * tax.taxRate) / 100);
+    },
+    [settings.taxSettings],
+  );
 
   /**
    * Format price with store currency symbol
    * @param {number} amount - Amount to format
    */
-  const formatPrice = (amount) => {
-    const symbol = settings.storeInfo?.currencySymbol || "₹";
-    return `${symbol}${Number(amount || 0).toLocaleString("en-IN")}`;
-  };
+  const formatPrice = useCallback(
+    (amount) => {
+      const symbol = settings.storeInfo?.currencySymbol || "₹";
+      return `${symbol}${Number(amount || 0).toLocaleString("en-IN")}`;
+    },
+    [settings.storeInfo?.currencySymbol],
+  );
 
   /**
    * Check if COD is available for given amount
    * @param {number} orderTotal - Order total
    */
-  const isCODAvailable = (orderTotal) => {
-    const order = settings.orderSettings;
+  const isCODAvailable = useCallback(
+    (orderTotal) => {
+      const order = settings.orderSettings;
 
-    if (!order.codEnabled) return false;
-    if (orderTotal < order.codMinOrder) return false;
-    if (orderTotal > order.codMaxOrder) return false;
+      if (!order.codEnabled) return false;
+      if (orderTotal < order.codMinOrder) return false;
+      if (orderTotal > order.codMaxOrder) return false;
 
-    return true;
-  };
+      return true;
+    },
+    [settings.orderSettings],
+  );
 
   /**
    * Check if order amount is valid
    * @param {number} orderTotal - Order total
    */
-  const isValidOrderAmount = (orderTotal) => {
-    const order = settings.orderSettings;
+  const isValidOrderAmount = useCallback(
+    (orderTotal) => {
+      const order = settings.orderSettings;
 
-    if (orderTotal < order.minimumOrderValue) {
-      return {
-        valid: false,
-        message: `Minimum order value is ${formatPrice(order.minimumOrderValue)}`,
-      };
-    }
+      if (orderTotal < order.minimumOrderValue) {
+        return {
+          valid: false,
+          message: `Minimum order value is ${formatPrice(order.minimumOrderValue)}`,
+        };
+      }
 
-    if (orderTotal > order.maximumOrderValue) {
-      return {
-        valid: false,
-        message: `Maximum order value is ${formatPrice(order.maximumOrderValue)}`,
-      };
-    }
+      if (orderTotal > order.maximumOrderValue) {
+        return {
+          valid: false,
+          message: `Maximum order value is ${formatPrice(order.maximumOrderValue)}`,
+        };
+      }
 
-    return { valid: true, message: "" };
-  };
+      return { valid: true, message: "" };
+    },
+    [settings.orderSettings, formatPrice],
+  );
 
-  const value = {
-    settings,
-    loading,
-    error,
-    lastFetched,
-    fetchSettings,
-    getSetting,
-    calculateShipping,
-    calculateTax,
-    formatPrice,
-    isCODAvailable,
-    isValidOrderAmount,
-    // Direct access to common settings
-    shippingSettings: settings.shippingSettings,
-    taxSettings: settings.taxSettings,
-    orderSettings: settings.orderSettings,
-    storeInfo: settings.storeInfo,
-    discountSettings: settings.discountSettings,
-    // Offer popup
-    showOfferPopup: settings.showOfferPopup,
-    offerCouponCode: settings.offerCouponCode,
-    offerTitle: settings.offerTitle,
-    offerDescription: settings.offerDescription,
-    offerDiscountText: settings.offerDiscountText,
-    // Other flags
-    highTrafficNotice: settings.highTrafficNotice,
-    maintenanceMode: Boolean(
-      settings?.maintenanceSettings?.maintenanceEnabled ??
-      settings?.maintenanceMode,
-    ),
-    maintenanceSettings: settings.maintenanceSettings,
-    paymentGatewayEnabled: settings.paymentGatewayEnabled,
-    defaultPaymentProvider: settings.defaultPaymentProvider,
-  };
+  const value = useMemo(
+    () => ({
+      settings,
+      loading,
+      error,
+      lastFetched,
+      fetchSettings,
+      getSetting,
+      calculateShipping,
+      calculateTax,
+      formatPrice,
+      isCODAvailable,
+      isValidOrderAmount,
+      // Direct access to common settings
+      shippingSettings: settings.shippingSettings,
+      taxSettings: settings.taxSettings,
+      orderSettings: settings.orderSettings,
+      storeInfo: settings.storeInfo,
+      discountSettings: settings.discountSettings,
+      // Offer popup
+      showOfferPopup: settings.showOfferPopup,
+      offerCouponCode: settings.offerCouponCode,
+      offerTitle: settings.offerTitle,
+      offerDescription: settings.offerDescription,
+      offerDiscountText: settings.offerDiscountText,
+      // Other flags
+      highTrafficNotice: settings.highTrafficNotice,
+      maintenanceMode: Boolean(
+        settings?.maintenanceSettings?.maintenanceEnabled ??
+        settings?.maintenanceMode,
+      ),
+      maintenanceSettings: settings.maintenanceSettings,
+      paymentGatewayEnabled: settings.paymentGatewayEnabled,
+      defaultPaymentProvider: settings.defaultPaymentProvider,
+    }),
+    [
+      settings,
+      loading,
+      error,
+      lastFetched,
+      fetchSettings,
+      getSetting,
+      calculateShipping,
+      calculateTax,
+      formatPrice,
+      isCODAvailable,
+      isValidOrderAmount,
+    ],
+  );
 
   return (
     <SettingsContext.Provider value={value}>

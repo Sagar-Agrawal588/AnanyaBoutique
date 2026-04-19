@@ -152,7 +152,7 @@ function ProductsPageContent() {
                 setTotalProducts(Number(res?.totalProducts || normalized.length));
                 setPages(Math.max(Number(res?.totalPages || 1), 1));
             } catch (error) {
-                console.error("Error loading products:", error);
+                console.warn("Error loading products:", error?.message || error);
                 if (page === 1) {
                     setProducts([]);
                     setPages(1);
