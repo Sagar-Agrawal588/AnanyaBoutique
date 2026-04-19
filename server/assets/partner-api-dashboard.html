@@ -1,0 +1,1618 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Partner API Simulator</title>
+    <style>
+      :root {
+        --bg-a: #0b1f3a;
+        --bg-b: #1d3557;
+        --panel: rgba(255, 255, 255, 0.94);
+        --ink: #10223a;
+        --ink-soft: #48607d;
+        --line: #c7d2e2;
+        --accent: #007f5f;
+        --accent-2: #118ab2;
+        --warn: #b26b00;
+        --error: #b42318;
+        --ok: #0a7f3f;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: "Trebuchet MS", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        color: var(--ink);
+        background:
+          radial-gradient(1200px 650px at 0% 0%, rgba(17, 138, 178, 0.24), transparent 55%),
+          radial-gradient(950px 600px at 100% 100%, rgba(0, 127, 95, 0.2), transparent 50%),
+          linear-gradient(140deg, var(--bg-a), var(--bg-b));
+        display: flex;
+        justify-content: center;
+        padding: 24px;
+        overflow-x: hidden;
+      }
+
+      .wrap {
+        width: min(1020px, 100%);
+        display: grid;
+        gap: 16px;
+        animation: rise-in 360ms ease-out;
+      }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        border-radius: 16px;
+        box-shadow: 0 16px 42px rgba(2, 6, 23, 0.24);
+        padding: 16px;
+        overflow: hidden;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(1.3rem, 2.3vw, 2rem);
+        letter-spacing: 0.01em;
+      }
+
+      h2 {
+        margin: 0 0 10px 0;
+        font-size: 1.05rem;
+      }
+
+      .muted {
+        margin-top: 8px;
+        color: var(--ink-soft);
+        font-size: 0.95rem;
+      }
+
+      .list {
+        margin: 8px 0 0 0;
+        padding-left: 18px;
+        color: var(--ink-soft);
+        line-height: 1.45;
+      }
+
+      .grid {
+        display: grid;
+        gap: 10px;
+        grid-template-columns: repeat(12, minmax(0, 1fr));
+      }
+
+      .field {
+        display: grid;
+        gap: 6px;
+      }
+
+      .field-help {
+        margin-top: -2px;
+        font-size: 0.74rem;
+        color: #5b6f8a;
+        line-height: 1.3;
+      }
+
+      label {
+        font-size: 0.84rem;
+        color: var(--ink-soft);
+        font-weight: 600;
+      }
+
+      input {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 10px 12px;
+        font-size: 0.95rem;
+        background: #fff;
+        color: var(--ink);
+      }
+
+      select {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 10px 12px;
+        font-size: 0.95rem;
+        background: #fff;
+        color: var(--ink);
+      }
+
+      .col-6 {
+        grid-column: span 6;
+      }
+
+      .col-4 {
+        grid-column: span 4;
+      }
+
+      .col-3 {
+        grid-column: span 3;
+      }
+
+      .col-12 {
+        grid-column: span 12;
+      }
+
+      .actions {
+        display: grid;
+        gap: 10px;
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+      }
+
+      .actions-wrap {
+        margin-top: 12px;
+      }
+
+      button {
+        border: none;
+        border-radius: 12px;
+        padding: 12px 10px;
+        font-weight: 700;
+        letter-spacing: 0.01em;
+        color: #fff;
+        background: linear-gradient(120deg, var(--accent), var(--accent-2));
+        cursor: pointer;
+        transition: transform 120ms ease, filter 160ms ease, box-shadow 160ms ease;
+      }
+
+      .secondary {
+        color: var(--ink);
+        background: linear-gradient(120deg, #e7edf8, #f4f8ff);
+        border: 1px solid #d7e0ef;
+      }
+
+      .endpoint-active {
+        outline: 2px solid rgba(10, 20, 36, 0.58);
+        background: linear-gradient(120deg, #0a3f58, #0d5c74);
+        box-shadow: 0 8px 18px rgba(5, 28, 42, 0.24);
+        filter: saturate(1.2);
+      }
+
+      .endpoint-active:hover {
+        background: linear-gradient(120deg, #072e40, #0a4e62);
+      }
+
+      .request-box {
+        margin-top: 12px;
+        border: 1px solid #d4deed;
+        border-radius: 12px;
+        background: #f8fbff;
+        padding: 10px 12px;
+      }
+
+      .request-box p {
+        margin: 2px 0;
+        color: var(--ink-soft);
+        font-size: 0.89rem;
+        word-break: break-word;
+      }
+
+      button:hover {
+        transform: translateY(-1px);
+        filter: saturate(1.12);
+      }
+
+      .status {
+        margin-top: 10px;
+        min-height: 24px;
+        font-weight: 600;
+      }
+
+      .status.error {
+        color: var(--error);
+      }
+
+      .status.warn {
+        color: var(--warn);
+      }
+
+      .status.ok {
+        color: var(--ok);
+      }
+
+      .debug-banner {
+        display: none;
+        margin-top: 10px;
+        border: 1px solid #fecaca;
+        background: #fff1f2;
+        color: #7f1d1d;
+        border-radius: 10px;
+        padding: 10px 12px;
+        font-size: 0.84rem;
+        line-height: 1.35;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      .debug-banner.show {
+        display: block;
+      }
+
+      .debug-actions {
+        margin-top: 8px;
+        display: none;
+      }
+
+      .debug-actions.show {
+        display: flex;
+      }
+
+      .debug-copy-btn {
+        border: 1px solid #fecaca;
+        background: #ffffff;
+        color: #7f1d1d;
+        border-radius: 8px;
+        padding: 6px 10px;
+        font-size: 0.78rem;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      .preview-grid {
+        display: grid;
+        gap: 12px;
+        grid-template-columns: repeat(12, minmax(0, 1fr));
+        min-height: 260px;
+        align-content: start;
+      }
+
+      .preview-card {
+        grid-column: span 6;
+        border: 1px solid #d5dfec;
+        border-radius: 12px;
+        padding: 10px;
+        background: #ffffff;
+      }
+
+      .preview-card.full {
+        grid-column: span 12;
+        overflow: visible;
+      }
+
+      .preview-empty {
+        border: 1px dashed #cdd9e8;
+        background: #f8fbff;
+        border-radius: 12px;
+        padding: 20px;
+        text-align: center;
+        color: #516987;
+        font-size: 0.9rem;
+      }
+
+      .preview-card h3 {
+        margin: 0 0 8px 0;
+        font-size: 0.96rem;
+      }
+
+      .preview-item {
+        border-top: 1px dashed #dde6f1;
+        padding-top: 8px;
+        margin-top: 8px;
+      }
+
+      .preview-image {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        border-radius: 0;
+        border: none;
+        background: #f8fafc;
+      }
+
+      .storefront-grid {
+        display: grid;
+        gap: 14px;
+        grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+        align-items: stretch;
+      }
+
+      .storefront-card {
+        border: 1px solid #dfe7f2;
+        border-radius: 14px;
+        overflow: hidden;
+        background: #ffffff;
+        box-shadow: 0 6px 20px rgba(16, 34, 58, 0.08);
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        transition: transform 140ms ease, box-shadow 180ms ease;
+      }
+
+      .storefront-card.combo-card .storefront-image-wrap {
+        aspect-ratio: 4 / 3;
+        background: linear-gradient(180deg, #f5f8fc, #eaf0f7);
+      }
+
+      .storefront-card.combo-card .preview-image {
+        object-fit: cover;
+        object-position: center;
+        transform: scale(1.05);
+      }
+
+      .storefront-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 24px rgba(16, 34, 58, 0.16);
+      }
+
+      .storefront-image-wrap {
+        width: 100%;
+        aspect-ratio: 4 / 3;
+        background: linear-gradient(180deg, #f7fbff, #edf4fb);
+        border-bottom: 1px solid #e7edf5;
+        display: grid;
+        place-items: center;
+        position: relative;
+      }
+
+      .storefront-image-wrap.no-image {
+        background:
+          radial-gradient(120px 70px at 20% 15%, rgba(17, 138, 178, 0.24), transparent 60%),
+          radial-gradient(110px 70px at 80% 85%, rgba(0, 127, 95, 0.2), transparent 60%),
+          linear-gradient(160deg, #eef5ff, #e5edf7);
+      }
+
+      .storefront-chip {
+        position: absolute;
+        top: 8px;
+        left: 8px;
+        font-size: 0.72rem;
+        font-weight: 700;
+        color: #0f3e64;
+        background: rgba(255, 255, 255, 0.9);
+        border: 1px solid #d7e4f3;
+        border-radius: 999px;
+        padding: 2px 8px;
+      }
+
+      .storefront-name {
+        margin: 0;
+        font-size: 0.88rem;
+        font-weight: 700;
+        color: var(--ink);
+        line-height: 1.35;
+        min-height: 2.3em;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+
+      .storefront-meta {
+        margin: 4px 0 0 0;
+        color: var(--ink-soft);
+        font-size: 0.82rem;
+      }
+
+      .combo-description {
+        margin: 0;
+        color: #4c6483;
+        font-size: 0.8rem;
+        line-height: 1.35;
+        min-height: 2.7em;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+
+      .storefront-body {
+        padding: 9px;
+        display: grid;
+        gap: 7px;
+        flex: 1;
+      }
+
+      .storefront-body.compact {
+        padding-top: 14px;
+      }
+
+      .storefront-brand {
+        margin: 0;
+        color: #4b6786;
+        font-size: 0.76rem;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+      }
+
+      .storefront-price-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .storefront-price {
+        font-size: 0.96rem;
+        font-weight: 800;
+        color: #0f172a;
+      }
+
+      .storefront-mrp {
+        font-size: 0.82rem;
+        color: #64748b;
+        text-decoration: line-through;
+      }
+
+      .storefront-offer {
+        font-size: 0.75rem;
+        font-weight: 700;
+        color: #0a7f3f;
+        background: #e7f8ee;
+        border-radius: 999px;
+        padding: 2px 7px;
+      }
+
+      .storefront-footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+        margin-top: auto;
+      }
+
+      .storefront-kv {
+        display: grid;
+        gap: 4px;
+        margin-top: 2px;
+      }
+
+      .storefront-kv-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        font-size: 0.8rem;
+      }
+
+      .storefront-kv-row span:first-child {
+        color: #4b6786;
+      }
+
+      .storefront-kv-row span:last-child {
+        color: #0f172a;
+        font-weight: 700;
+        text-align: right;
+      }
+
+      .storefront-link {
+        text-decoration: none;
+        font-size: 0.75rem;
+        font-weight: 700;
+        color: #ffffff;
+        background: linear-gradient(120deg, #007f5f, #118ab2);
+        border-radius: 8px;
+        padding: 6px 8px;
+        white-space: nowrap;
+      }
+
+      .storefront-link:hover {
+        filter: brightness(1.05);
+      }
+
+      .image-fallback {
+        width: 54px;
+        height: 54px;
+        border-radius: 14px;
+        border: 1px solid #cbd8ea;
+        background: rgba(255, 255, 255, 0.86);
+        display: grid;
+        place-items: center;
+        color: #3f5979;
+        font-size: 1.35rem;
+        font-weight: 700;
+      }
+
+      .stock-badge {
+        display: inline-block;
+        padding: 3px 9px;
+        border-radius: 999px;
+        font-size: 0.75rem;
+        font-weight: 700;
+      }
+
+      .stock-badge.in {
+        color: #0f6b43;
+        background: #e7f9ef;
+      }
+
+      .stock-badge.low {
+        color: #8a5a00;
+        background: #fff4db;
+      }
+
+      .stock-badge.out {
+        color: #b42318;
+        background: #ffeaea;
+      }
+
+      .preview-table-wrap {
+        overflow: auto;
+        border: 1px solid #dbe5f0;
+        border-radius: 12px;
+      }
+
+      .preview-table {
+        width: 100%;
+        border-collapse: collapse;
+        min-width: 760px;
+        background: #fff;
+      }
+
+      .preview-table th,
+      .preview-table td {
+        border-bottom: 1px solid #e8eef5;
+        padding: 9px 10px;
+        text-align: left;
+        font-size: 0.84rem;
+        vertical-align: top;
+      }
+
+      .preview-table thead th {
+        background: #f3f7fc;
+        color: #28415f;
+        font-weight: 700;
+        position: sticky;
+        top: 0;
+      }
+
+      .align-right {
+        text-align: right;
+      }
+
+      .pill {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 0.75rem;
+        font-weight: 700;
+        background: #e6f7f0;
+        color: #0b6b44;
+      }
+
+      pre {
+        margin: 0;
+        max-height: 360px;
+        overflow: auto;
+        border-radius: 12px;
+        background: #0b1220;
+        color: #e2e8f0;
+        padding: 14px;
+        font-size: 0.86rem;
+        line-height: 1.4;
+        overflow-wrap: anywhere;
+      }
+
+      .muted-mini {
+        margin: 0;
+        color: var(--ink-soft);
+        font-size: 0.84rem;
+      }
+
+      @keyframes rise-in {
+        from {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      @media (max-width: 860px) {
+        .actions {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .storefront-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .preview-grid {
+          min-height: 320px;
+        }
+
+        .storefront-image-wrap {
+          aspect-ratio: 1 / 1;
+        }
+
+        .preview-card,
+        .preview-card.full {
+          grid-column: span 12;
+        }
+
+        .col-6,
+        .col-4,
+        .col-3,
+        .col-12 {
+          grid-column: span 12;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <section class="panel">
+        <h1>Partner API Simulator (What Your End Users Will See)</h1>
+        <p class="muted">This page helps admin test Partner API exactly like a real partner app: same API key header, same endpoint calls, same response and error handling.</p>
+        <ul class="list">
+          <li>Step 1: paste partner API key.</li>
+          <li>Step 2: click any endpoint button.</li>
+          <li>Step 3: check both user-style preview and raw JSON.</li>
+        </ul>
+      </section>
+
+      <section class="panel">
+        <h2>Test Inputs</h2>
+        <div class="grid">
+          <div class="field col-12">
+            <label for="apiKey">API Key</label>
+            <input id="apiKey" type="password" placeholder="hogp_xxxxx.yyyyy" autocomplete="off" />
+          </div>
+          <div class="field col-4">
+            <label for="productLimit">Products limit</label>
+            <input id="productLimit" type="number" value="10" min="1" max="100" />
+          </div>
+          <div class="field col-4">
+            <label for="deliveryState">Delivery state</label>
+            <input id="deliveryStateSearch" type="text" placeholder="Search state..." autocomplete="off" />
+            <select id="deliveryState"></select>
+          </div>
+          <div class="field col-4">
+            <label for="gstAmount">GST test amount (used only for GST button)</label>
+            <input id="gstAmount" type="number" value="599" min="0" />
+            <small class="field-help">Ignored for Products, Combos, Inventory, and Pricing.</small>
+          </div>
+        </div>
+
+        <div class="actions actions-wrap">
+          <button type="button" data-endpoint="products">Products</button>
+          <button type="button" data-endpoint="combos">Combos</button>
+          <button type="button" data-endpoint="inventory">Inventory</button>
+          <button type="button" data-endpoint="pricing">Pricing</button>
+          <button type="button" data-endpoint="gst">GST</button>
+          <button type="button" class="secondary" id="btnClear">Clear</button>
+        </div>
+
+        <div class="request-box" id="requestBox">
+          <p><strong>Request URL:</strong> <span id="requestUrl">-</span></p>
+          <p><strong>Request Header:</strong> <span>x-api-key: ********</span></p>
+          <p><strong>Status:</strong> <span id="requestStatus">-</span></p>
+        </div>
+
+        <div id="status" class="status"></div>
+        <div id="debugBanner" class="debug-banner" aria-live="polite"></div>
+        <div id="debugActions" class="debug-actions">
+          <button type="button" id="copyDebugBtn" class="debug-copy-btn">Copy Debug Info</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Partner UI Preview</h2>
+        <div id="preview" class="preview-grid"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Raw API JSON</h2>
+        <pre id="output">{
+  "hint": "Raw JSON response appears here"
+}</pre>
+      </section>
+    </div>
+
+    <script>
+      (function () {
+        const INJECTED_API_BASE = "__PARTNER_BASE_URL__";
+        const apiKeyInput = document.getElementById("apiKey");
+        const productLimitInput = document.getElementById("productLimit");
+        const deliveryStateSearchInput = document.getElementById("deliveryStateSearch");
+        const deliveryStateInput = document.getElementById("deliveryState");
+        const gstAmountInput = document.getElementById("gstAmount");
+        const statusEl = document.getElementById("status");
+        const outputEl = document.getElementById("output");
+        const previewEl = document.getElementById("preview");
+        const requestUrlEl = document.getElementById("requestUrl");
+        const requestStatusEl = document.getElementById("requestStatus");
+        const clearButton = document.getElementById("btnClear");
+        const endpointButtons = Array.from(document.querySelectorAll("button[data-endpoint]"));
+        const debugBannerEl = document.getElementById("debugBanner");
+        const debugActionsEl = document.getElementById("debugActions");
+        const copyDebugBtn = document.getElementById("copyDebugBtn");
+
+        const clearDebug = () => {
+          if (!debugBannerEl) return;
+          debugBannerEl.textContent = "";
+          debugBannerEl.className = "debug-banner";
+          if (debugActionsEl) {
+            debugActionsEl.className = "debug-actions";
+          }
+        };
+
+        const showDebug = (message) => {
+          if (!debugBannerEl) return;
+          const text = String(message || "Unknown script error").trim();
+          debugBannerEl.textContent = "Debug: " + text;
+          debugBannerEl.className = "debug-banner show";
+          if (debugActionsEl) {
+            debugActionsEl.className = "debug-actions show";
+          }
+        };
+
+        window.addEventListener("error", (event) => {
+          const line = event && Number.isFinite(event.lineno) ? ` (line ${event.lineno})` : "";
+          showDebug(`${event.message || "Runtime error"}${line}`);
+        });
+
+        window.addEventListener("unhandledrejection", (event) => {
+          const reason = event && event.reason ? String(event.reason.message || event.reason) : "Unhandled promise rejection";
+          showDebug(reason);
+        });
+
+        const normalizePartnerApiBase = (value) => {
+          const raw = String(value || "").trim().replace(/\/+$/, "");
+          if (!raw) return "";
+          if (/\/api\/v1\/partner$/i.test(raw)) return raw;
+          if (/\/api$/i.test(raw)) return raw + "/v1/partner";
+          if (/^https?:\/\//i.test(raw)) return raw + "/api/v1/partner";
+          return "";
+        };
+
+        const injectedApiBase = normalizePartnerApiBase(INJECTED_API_BASE);
+        const runtimeFallbackApiBase = normalizePartnerApiBase(window.location.origin || "");
+        const resolvedApiBase = injectedApiBase || runtimeFallbackApiBase || "";
+
+        const buildEndpointPath = (type) => {
+          const state = encodeURIComponent((deliveryStateInput.value || "").trim());
+          const limit = Number(productLimitInput.value || 10);
+          const amount = Number(gstAmountInput.value || 599);
+
+          if (type === "products") {
+            return "/products?limit=" + Math.min(Math.max(limit, 1), 100) + "&page=1&deliveryState=" + state;
+          }
+          if (type === "combos") {
+            return "/combos?limit=" + Math.min(Math.max(limit, 1), 100) + "&page=1&deliveryState=" + state;
+          }
+          if (type === "inventory") {
+            return "/inventory?limit=" + Math.min(Math.max(limit, 1), 100) + "&page=1";
+          }
+          if (type === "pricing") {
+            return "/pricing?deliveryState=" + state;
+          }
+          return "/gst?amount=" + Math.max(amount, 0) + "&deliveryState=" + state;
+        };
+
+        const setStatus = (message, type) => {
+          statusEl.textContent = message;
+          statusEl.className = "status " + (type || "");
+        };
+
+        const renderOutput = (payload) => {
+          outputEl.textContent = JSON.stringify(payload, null, 2);
+        };
+
+        const renderEmptyPreview = (message) => {
+          previewEl.innerHTML =
+            '<div class="preview-card full"><div class="preview-empty">' +
+            String(message || "Run any endpoint to see preview here") +
+            "</div></div>";
+        };
+
+        const getApiBase = () => String(resolvedApiBase || "").replace(/\/+$/, "");
+
+        const INDIA_STATES_AND_UTS = [
+          "Andaman and Nicobar Islands",
+          "Andhra Pradesh",
+          "Arunachal Pradesh",
+          "Assam",
+          "Bihar",
+          "Chandigarh",
+          "Chhattisgarh",
+          "Dadra and Nagar Haveli and Daman and Diu",
+          "Delhi",
+          "Goa",
+          "Gujarat",
+          "Haryana",
+          "Himachal Pradesh",
+          "Jammu and Kashmir",
+          "Jharkhand",
+          "Karnataka",
+          "Kerala",
+          "Ladakh",
+          "Lakshadweep",
+          "Madhya Pradesh",
+          "Maharashtra",
+          "Manipur",
+          "Meghalaya",
+          "Mizoram",
+          "Nagaland",
+          "Odisha",
+          "Puducherry",
+          "Punjab",
+          "Rajasthan",
+          "Sikkim",
+          "Tamil Nadu",
+          "Telangana",
+          "Tripura",
+          "Uttar Pradesh",
+          "Uttarakhand",
+          "West Bengal",
+        ].sort((a, b) => a.localeCompare(b));
+
+        const initDeliveryStateSelect = () => {
+          const defaultState = "Rajasthan";
+          const renderStateOptions = (queryText) => {
+            const query = String(queryText || "").trim().toLowerCase();
+            const filteredStates = INDIA_STATES_AND_UTS.filter((stateName) =>
+              stateName.toLowerCase().includes(query),
+            );
+
+            if (!filteredStates.length) {
+              deliveryStateInput.innerHTML = '<option value="">No matching state</option>';
+              return;
+            }
+
+            deliveryStateInput.innerHTML = filteredStates
+              .map((stateName) => '<option value="' + stateName + '">' + stateName + "</option>")
+              .join("");
+          };
+
+          renderStateOptions("");
+          deliveryStateInput.value = defaultState;
+
+          if (deliveryStateSearchInput) {
+            deliveryStateSearchInput.value = "";
+            deliveryStateSearchInput.addEventListener("input", () => {
+              const previousValue = deliveryStateInput.value;
+              renderStateOptions(deliveryStateSearchInput.value);
+              if (Array.from(deliveryStateInput.options).some((option) => option.value === previousValue)) {
+                deliveryStateInput.value = previousValue;
+              } else if (deliveryStateInput.options.length > 0) {
+                deliveryStateInput.selectedIndex = 0;
+              }
+            });
+          }
+        };
+
+        const getApiOrigin = () => {
+          const base = getApiBase();
+          try {
+            return new URL(base).origin;
+          } catch {
+            return "";
+          }
+        };
+
+        const toCurrency = (value) => {
+          const num = Number(value || 0);
+          return Number.isFinite(num) ? "\u20B9" + num.toFixed(2) : "\u20B90.00";
+        };
+
+        const safeList = (value) => (Array.isArray(value) ? value : []);
+
+        const normalizeApiKey = (value) =>
+          String(value || "")
+            .replace(/\s+/g, "")
+            .replace(/[^A-Za-z0-9._-]/g, "")
+            .trim();
+
+        const runConnectivityProbe = async (baseUrl) => {
+          try {
+            const probeUrl = String(baseUrl || "").replace(/\/+$/, "") + "/guide?format=json";
+            const response = await fetch(probeUrl, {
+              method: "GET",
+              cache: "no-store",
+            });
+            return {
+              ok: true,
+              status: response.status,
+              url: probeUrl,
+            };
+          } catch (error) {
+            return {
+              ok: false,
+              error: String(error && error.message ? error.message : error),
+            };
+          }
+        };
+
+        const textOf = (value, fallback = "-") => {
+          if (value === null || value === undefined) return fallback;
+          if (typeof value === "string") {
+            const trimmed = value.trim();
+            return trimmed || fallback;
+          }
+          if (typeof value === "number" || typeof value === "boolean") return String(value);
+          if (Array.isArray(value)) {
+            const firstNonEmpty = value.find((item) => textOf(item, "") !== "");
+            return firstNonEmpty !== undefined ? textOf(firstNonEmpty, fallback) : fallback;
+          }
+          if (typeof value === "object") {
+            return textOf(value.name || value.title || value.label || value.value || value.code || "", fallback);
+          }
+          return fallback;
+        };
+
+        const toAbsoluteAssetUrl = (value) => {
+          const raw = String(value || "").trim();
+          if (!raw) return "";
+          if (/^https?:\/\//i.test(raw) || raw.startsWith("data:image/")) return raw;
+          if (raw.startsWith("res.cloudinary.com/")) return `https://${raw}`;
+          const origin = getApiOrigin();
+          if (!origin) return raw;
+          const normalized = raw.startsWith("/") ? raw : `/${raw}`;
+          return `${origin}${normalized}`;
+        };
+
+        const pickImage = (item) => {
+          const images = Array.isArray(item && item.images)
+            ? item.images
+            : Array.isArray(item && item.comboImages)
+              ? item.comboImages
+              : Array.isArray(item && item.combo_images)
+                ? item.combo_images
+                : [];
+
+          const firstImage = images[0];
+          const imageCandidate =
+            (typeof firstImage === "string" ? firstImage : firstImage && (firstImage.url || firstImage.secure_url || firstImage.src)) ||
+            item?.comboThumbnail ||
+            item?.combo_thumbnail ||
+            item?.thumbnail ||
+            item?.thumbnailUrl ||
+            item?.image ||
+            item?.imageUrl ||
+            item?.productImage ||
+            "";
+
+          return toAbsoluteAssetUrl(imageCandidate);
+        };
+
+        const catalogLookupBySku = new Map();
+        const catalogLookupById = new Map();
+
+        const indexCatalogRows = (rows) => {
+          safeList(rows).forEach((row) => {
+            const sku = textOf(row?.sku || row?.productSku, "");
+            const id = textOf(row?.productId || row?._id || row?.id, "");
+            if (sku) catalogLookupBySku.set(sku, row);
+            if (id) catalogLookupById.set(id, row);
+          });
+        };
+
+        const ensureCatalogLookup = async () => {
+          if (catalogLookupBySku.size > 0 || catalogLookupById.size > 0) return;
+          const state = encodeURIComponent((deliveryStateInput.value || "").trim());
+          const limit = Math.min(Math.max(Number(productLimitInput.value || 10), 1), 100);
+          const url = getApiBase() + `/products?limit=${limit}&page=1&deliveryState=${state}`;
+          const res = await fetch(url, {
+            method: "GET",
+            headers: {
+              Accept: "application/json",
+              "x-api-key": (apiKeyInput.value || "").trim(),
+            },
+          });
+          const body = await parseBody(res);
+          if (res.ok && body?.success === true) {
+            const rows = safeList(body?.data?.products || body?.data?.items || body?.data);
+            indexCatalogRows(rows);
+          }
+        };
+
+        const enrichFromCatalog = (row) => {
+          const sku = textOf(row?.sku || row?.productSku, "");
+          const id = textOf(row?.productId || row?._id || row?.id, "");
+          const ref = (sku && catalogLookupBySku.get(sku)) || (id && catalogLookupById.get(id)) || {};
+          return {
+            ...ref,
+            ...row,
+            images: row?.images || ref?.images,
+            image: row?.image || ref?.image,
+            thumbnail: row?.thumbnail || ref?.thumbnail,
+            name: row?.name || row?.productName || ref?.name || ref?.title,
+            brand: row?.brand || ref?.brand,
+          };
+        };
+
+        const toNumber = (value, fallback = 0) => {
+          const num = Number(value);
+          return Number.isFinite(num) ? num : fallback;
+        };
+
+        const quantityOf = (value) => {
+          if (typeof value === "number") return value;
+          if (typeof value === "string") {
+            const parsed = Number(value);
+            return Number.isFinite(parsed) ? parsed : 0;
+          }
+          if (value && typeof value === "object") {
+            const candidate =
+              value.available ??
+              value.availableQuantity ??
+              value.reserved ??
+              value.reservedQuantity ??
+              value.quantity ??
+              value.qty ??
+              value.value ??
+              value.count ??
+              0;
+            const parsed = Number(candidate);
+            return Number.isFinite(parsed) ? parsed : 0;
+          }
+          return 0;
+        };
+
+        const readVariantRows = (item) => {
+          const stockVariants = Array.isArray(item?.stock?.variants) ? item.stock.variants : [];
+          const directVariants = Array.isArray(item?.variants) ? item.variants : [];
+          const source = stockVariants.length ? stockVariants : directVariants;
+
+          return source
+            .map((variant) => {
+              const name = textOf(variant?.name || variant?.label || variant?.packSize || variant?.size, "");
+              const available = quantityOf(
+                variant?.availableQuantity ??
+                  variant?.available ??
+                  (variant?.stock && variant?.stock.available) ??
+                  (variant?.stock && variant?.stock.availableQuantity) ??
+                  variant?.stock_quantity ??
+                  variant?.stock,
+              );
+
+              if (!name) return null;
+              return { name, available };
+            })
+            .filter(Boolean);
+        };
+
+        const renderVariantRows = (variants) => {
+          if (!variants.length) return "";
+          const rows = variants
+            .map(
+              (variant) =>
+                '<div class="storefront-kv-row"><span>' +
+                String(variant.name) +
+                '</span><span>' +
+                String(variant.available) +
+                '</span></div>',
+            )
+            .join("");
+
+          return '<div class="storefront-kv variant-kv"><div class="storefront-kv-row"><span><strong>Variants</strong></span><span><strong>Available</strong></span></div>' + rows + "</div>";
+        };
+
+        const resolveComboImage = (combo) => {
+          const readImageUrl = (value) => {
+            if (!value) return "";
+            if (typeof value === "string") return value.trim();
+            if (typeof value === "object") {
+              return String(value.url || value.secure_url || value.src || value.imageUrl || "").trim();
+            }
+            return "";
+          };
+
+          const comboTokens = String(combo?.name || combo?.comboName || combo?.slug || "")
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, " ")
+            .split(/\s+/)
+            .filter((token) => token.length >= 3);
+
+          const scoreCandidate = (url) => {
+            const value = String(url || "").toLowerCase();
+            if (!value) return -1;
+            if (!comboTokens.length) return 0;
+            return comboTokens.reduce((score, token) => (value.includes(token) ? score + 1 : score), 0);
+          };
+
+          const comboImages = Array.isArray(combo?.images)
+            ? combo.images
+            : Array.isArray(combo?.comboImages)
+              ? combo.comboImages
+              : Array.isArray(combo?.combo_images)
+                ? combo.combo_images
+                : [];
+
+          const candidates = [];
+          comboImages.forEach((entry) => {
+            const candidate = readImageUrl(entry);
+            if (candidate) candidates.push(candidate);
+          });
+
+          [combo?.comboThumbnail, combo?.combo_thumbnail, combo?.thumbnail, combo?.image].forEach(
+            (entry) => {
+              const candidate = readImageUrl(entry);
+              if (candidate) candidates.push(candidate);
+            },
+          );
+
+          const uniqueCandidates = Array.from(new Set(candidates));
+          const bestCandidate = uniqueCandidates
+            .map((url) => ({ url, score: scoreCandidate(url) }))
+            .sort((left, right) => right.score - left.score)[0];
+
+          return toAbsoluteAssetUrl((bestCandidate && bestCandidate.url) || uniqueCandidates[0] || "");
+        };
+
+        const renderComboCards = (items) => {
+          if (!items.length) {
+            return '<div class="preview-card full"><h3>Combo Products</h3><p class="muted-mini">No combo products found.</p></div>';
+          }
+
+          const cards = items
+            .map((item) => {
+              const comboName = textOf(item.comboName || item.name || item.title || item.slug || item.comboSlug, "Combo");
+              const rawDescription = textOf(item.shortDescription || item.description, "");
+              const comboDescription = rawDescription.length >= 15 ? rawDescription : "Best-selling combo pack";
+              const comboSku = textOf(item.sku || item.comboSku || item.code, "-");
+              const products = safeList(item.items || item.products || item.comboItems || item.productIds);
+              const explicitCount = Number(item.itemCount);
+              const includedCount = Number.isFinite(explicitCount) && explicitCount >= 0 ? explicitCount : products.length;
+              const amount = toNumber((item.price && (item.price.amountWithGst || item.price.amount)) || item.amountWithGst || item.price, 0);
+              const imageUrl = resolveComboImage(item);
+              return (
+                '<div class="storefront-card combo-card">' +
+                '<div class="storefront-image-wrap' + (imageUrl ? '' : ' no-image') + '">' +
+                '<span class="storefront-chip">Combo</span>' +
+                (imageUrl
+                  ? '<img class="preview-image" src="' + String(imageUrl) + '" alt="' + comboName + '" />'
+                  : '<span class="image-fallback" aria-label="Image unavailable">📦</span>') +
+                '</div><div class="storefront-body"><p class="storefront-brand">Combo Pack</p><p class="storefront-name">' +
+                comboName +
+                '</p><p class="combo-description">' +
+                comboDescription +
+                '</p><p class="storefront-meta">SKU: ' +
+                comboSku +
+                '</p><p class="storefront-meta">Includes: ' +
+                String(includedCount) +
+                ' items</p><div class="storefront-price-row"><span class="storefront-price">' +
+                toCurrency(amount) +
+                '</span></div></div></div>'
+              );
+            })
+            .join("");
+
+          return '<div class="preview-card full"><h3>Combo Products</h3><div class="storefront-grid">' + cards + "</div></div>";
+        };
+
+        const renderInventoryTable = (items) => {
+          if (!items.length) {
+            return '<div class="preview-card full"><h3>Inventory Preview</h3><p class="muted-mini">No inventory rows found.</p></div>';
+          }
+
+          const cards = items
+            .map((item) => {
+              const name = textOf(item.name || item.productName || item.title || item.sku || item.productSku || item.code, "");
+              const sku = textOf(item.sku || item.productSku || item.code, "-");
+              const available =
+                item.availableStock ??
+                item.available ??
+                (item.stock && item.stock.available) ??
+                item.stock ??
+                0;
+              const reserved =
+                item.reservedStock ??
+                item.reserved ??
+                (item.stock && item.stock.reserved) ??
+                0;
+              const availableQty = quantityOf(available);
+              const reservedQty = quantityOf(reserved);
+              const total = availableQty + reservedQty;
+              const stockState = availableQty <= 0 ? "out" : availableQty <= 5 ? "low" : "in";
+              const variantRows = readVariantRows(item);
+              const stockLabel =
+                stockState === "out"
+                  ? "Out of stock"
+                  : stockState === "low"
+                    ? "Low stock"
+                    : "In stock";
+              const imageUrl = pickImage(item);
+
+              return (
+                '<div class="storefront-card">' +
+                '<div class="storefront-image-wrap' + (imageUrl ? '' : ' no-image') + '">' +
+                (imageUrl
+                  ? '<img class="preview-image" src="' + String(imageUrl) + '" alt="' + String(name) + '" />'
+                  : "") +
+                '</div><div class="storefront-body"><p class="storefront-name">' +
+                String(name || sku || "-") +
+                '</p><p class="storefront-meta">SKU: ' +
+                String(sku) +
+                '</p><div class="storefront-kv"><div class="storefront-kv-row"><span>Available</span><span>' +
+                String(availableQty) +
+                '</span></div><div class="storefront-kv-row"><span>Reserved</span><span>' +
+                String(reservedQty) +
+                '</span></div><div class="storefront-kv-row"><span>Total</span><span>' +
+                String(total) +
+                '</span></div></div>' +
+                renderVariantRows(variantRows) +
+                '<div class="storefront-footer"><span class="stock-badge ' +
+                stockState +
+                '">' +
+                stockLabel +
+                '</span></div></div></div>'
+              );
+            })
+            .join("");
+
+          return '<div class="preview-card full"><h3>Inventory Preview</h3><div class="storefront-grid">' + cards + "</div></div>";
+        };
+
+        const renderPricingTable = (items) => {
+          if (!items.length) {
+            return '<div class="preview-card full"><h3>Pricing Preview</h3><p class="muted-mini">No pricing rows found.</p></div>';
+          }
+
+          const cards = items
+            .map((item) => {
+              const name = textOf(
+                item.name || item.productName || item.title || item.sku || item.productSku || item.productId,
+                "",
+              );
+              const sku = textOf(item.sku || item.productSku, "-");
+              const priceObj = item && typeof item.price === "object" ? item.price : {};
+              const gstBreakup =
+                (priceObj && typeof priceObj.gstBreakup === "object" && priceObj.gstBreakup) ||
+                (item && typeof item.gstBreakup === "object" && item.gstBreakup) ||
+                {};
+
+              const taxable = toNumber(priceObj.taxableAmount ?? item.taxableAmount, 0);
+              const cgst = toNumber(gstBreakup.cgst ?? item.cgst, 0);
+              const sgst = toNumber(gstBreakup.sgst ?? item.sgst, 0);
+              const igst = toNumber(gstBreakup.igst ?? item.igst, 0);
+              const gstTotal = toNumber(priceObj.gstAmount ?? item.gstAmount, cgst + sgst + igst);
+              const finalAmount = toNumber(
+                priceObj.amountWithGst ?? item.amountWithGst ?? priceObj.amount ?? item.price,
+                0,
+              );
+              const gstPercentRaw = toNumber(
+                priceObj.gstPercent ?? priceObj.gstRate ?? item.gstPercent ?? item.gstRate,
+                Number.NaN,
+              );
+              const gstPercent = Number.isFinite(gstPercentRaw)
+                ? gstPercentRaw
+                : taxable > 0
+                  ? (gstTotal / taxable) * 100
+                  : 0;
+              const cgstPercent = taxable > 0 ? (cgst / taxable) * 100 : 0;
+              const sgstPercent = taxable > 0 ? (sgst / taxable) * 100 : 0;
+              const igstPercent = taxable > 0 ? (igst / taxable) * 100 : 0;
+              const isIgstMode = igst > 0;
+              const imageUrl = pickImage(item);
+
+              const taxRows = isIgstMode
+                ? '<div class="storefront-kv-row"><span>IGST</span><span>' +
+                  toCurrency(igst) +
+                  ' (' + String(igstPercent.toFixed(2)) + '%)</span></div>'
+                : '<div class="storefront-kv-row"><span>CGST</span><span>' +
+                  toCurrency(cgst) +
+                  ' (' + String(cgstPercent.toFixed(2)) + '%)</span></div>' +
+                  '<div class="storefront-kv-row"><span>SGST</span><span>' +
+                  toCurrency(sgst) +
+                  ' (' + String(sgstPercent.toFixed(2)) + '%)</span></div>';
+
+              return (
+                '<div class="storefront-card">' +
+                '<div class="storefront-image-wrap' + (imageUrl ? '' : ' no-image') + '">' +
+                (imageUrl
+                  ? '<img class="preview-image" src="' + String(imageUrl) + '" alt="' + String(name) + '" />'
+                  : "") +
+                '</div><div class="storefront-body"><p class="storefront-name">' +
+                String(name || sku || "-") +
+                '</p><p class="storefront-meta">SKU: ' +
+                String(sku) +
+                '</p><div class="storefront-kv"><div class="storefront-kv-row"><span>Taxable</span><span>' +
+                toCurrency(taxable) +
+                '</span></div>' +
+                taxRows +
+                '<div class="storefront-kv-row"><span>Tax Mode</span><span>' +
+                (isIgstMode ? "IGST" : "CGST + SGST") +
+                '</span></div><div class="storefront-kv-row"><span>GST %</span><span>' +
+                String(gstPercent.toFixed(2)) +
+                '</span></div></div><div class="storefront-price-row"><span class="storefront-price">' +
+                toCurrency(finalAmount) +
+                '</span></div></div></div>'
+              );
+            })
+            .join("");
+
+          return '<div class="preview-card full"><h3>Pricing Preview</h3><div class="storefront-grid">' + cards + "</div></div>";
+        };
+
+        const renderPreview = (type, payload) => {
+          const data = payload && payload.data ? payload.data : null;
+          previewEl.innerHTML = "";
+
+          if (!payload || payload.success !== true || !data) {
+            const error = payload && payload.error ? payload.error : { code: "UNKNOWN", message: "Request failed" };
+            renderEmptyPreview(String(error.message || "Request failed") + " (" + String(error.code || "ERROR") + ")");
+            return;
+          }
+
+          if (type === "products") {
+            const items = safeList(data.products || data.items || data).slice(0, 6);
+            if (!items.length) {
+              previewEl.innerHTML = '<div class="preview-card full"><h3>Products Preview</h3><p class="muted-mini">No products found.</p></div>';
+              return;
+            }
+            previewEl.innerHTML =
+              '<div class="preview-card full"><h3>Products Preview (Storefront Cards)</h3><div class="storefront-grid">' +
+              items
+              .map((item) => {
+                const name = textOf(item.name || item.title, "Unnamed Product");
+                const brand = textOf(item.brand || item.category || item.companyName, "HealthyOne");
+                const sizeChip = textOf(item.packSize || item.weight || item.unit, "");
+                const amountWithGst = toNumber(
+                  (item.price && (item.price.amountWithGst || item.price.amount)) || item.amountWithGst || item.price,
+                  0,
+                );
+                const originalAmount = toNumber(
+                  (item.price && (item.price.originalAmountWithGst || item.price.originalAmount || item.price.amount)) ||
+                    item.originalPrice ||
+                    item.originalAmountWithGst ||
+                    amountWithGst,
+                  amountWithGst,
+                );
+                const discountPct =
+                  originalAmount > amountWithGst
+                    ? Math.round(((originalAmount - amountWithGst) / originalAmount) * 100)
+                    : 0;
+                const available =
+                  item.availableStock ??
+                  item.available ??
+                  (item.stock && item.stock.available) ??
+                  item.stock ??
+                  0;
+                const variantRows = readVariantRows(item);
+                const availableQty = quantityOf(available);
+                const stockState = availableQty <= 0 ? "out" : availableQty <= 5 ? "low" : "in";
+                const stockLabel =
+                  stockState === "out"
+                    ? "Out of stock"
+                    : stockState === "low"
+                      ? "Low stock"
+                      : "In stock";
+                const imageUrl = pickImage(item);
+                const productUrl = textOf(item.productUrl || item.url, "");
+                return (
+                  '<div class="storefront-card">' +
+                  '<div class="storefront-image-wrap' + (imageUrl ? '' : ' no-image') + '">' +
+                  (sizeChip ? '<span class="storefront-chip">' + sizeChip + '</span>' : '') +
+                  (imageUrl
+                    ? '<img class="preview-image" src="' + String(imageUrl) + '" alt="' + String(name) + '" />'
+                    : '<span class="image-fallback" aria-label="Image unavailable">📦</span>') +
+                  '</div><div class="storefront-body"><p class="storefront-brand">' +
+                  brand +
+                  '</p><p class="storefront-name">' +
+                  String(name) +
+                  '</p><p class="storefront-meta">SKU: ' +
+                  textOf(item.sku, "-") +
+                  '</p><div class="storefront-price-row"><span class="storefront-price">' +
+                  toCurrency(amountWithGst) +
+                  "</span>" +
+                  (originalAmount > amountWithGst
+                    ? '<span class="storefront-mrp">' + toCurrency(originalAmount) + '</span>'
+                    : "") +
+                  (discountPct > 0 ? '<span class="storefront-offer">' + String(discountPct) + '% OFF</span>' : "") +
+                  '</div>' +
+                  renderVariantRows(variantRows) +
+                  '<div class="storefront-footer"><span class="stock-badge ' +
+                  stockState +
+                  '">' +
+                  stockLabel +
+                  '</span>' +
+                  (productUrl
+                    ? '<a class="storefront-link" href="' + productUrl + '" target="_blank" rel="noopener noreferrer">View Product</a>'
+                    : '<span class="muted-mini">No product URL</span>') +
+                  "</div></div></div>"
+                );
+              })
+              .join("") +
+              "</div></div>";
+            return;
+          }
+
+          if (type === "combos") {
+            const items = safeList(data.combos || data.items || data.products || data).slice(0, 8);
+            previewEl.innerHTML = renderComboCards(items);
+            return;
+          }
+
+          if (type === "inventory") {
+            const items = safeList(data.items || data.inventory || data.products || data).slice(0, 8);
+            previewEl.innerHTML = renderInventoryTable(items);
+            return;
+          }
+
+          if (type === "pricing") {
+            const items = safeList(data.items || data.products || data.pricing || data).slice(0, 8);
+            previewEl.innerHTML = renderPricingTable(items);
+            return;
+          }
+
+          const gst = data;
+          previewEl.innerHTML =
+            '<div class="preview-card full"><h3>GST Preview</h3><div class="storefront-kv">' +
+            '<div class="storefront-kv-row"><span>State</span><span>' + String(gst.state || "-") + '</span></div>' +
+            '<div class="storefront-kv-row"><span>Mode</span><span>' + String(gst.mode || "-") + '</span></div>' +
+            '<div class="storefront-kv-row"><span>Taxable Amount</span><span>' + toCurrency(gst.taxableAmount) + '</span></div>' +
+            '<div class="storefront-kv-row"><span>CGST</span><span>' + toCurrency(gst.cgst) + '</span></div>' +
+            '<div class="storefront-kv-row"><span>SGST</span><span>' + toCurrency(gst.sgst) + '</span></div>' +
+            '<div class="storefront-kv-row"><span>IGST</span><span>' + toCurrency(gst.igst) + '</span></div>' +
+            '</div></div>';
+        };
+
+        const parseBody = async (response) => {
+          try {
+            return await response.json();
+          } catch {
+            return { success: false, error: { code: "INVALID_JSON", message: "Server did not return JSON" } };
+          }
+        };
+
+        const runRequest = async (type) => {
+          clearDebug();
+          const rawApiKey = String(apiKeyInput.value || "");
+          const apiKey = normalizeApiKey(rawApiKey);
+          if (rawApiKey !== apiKey) {
+            apiKeyInput.value = apiKey;
+          }
+          if (!apiKey) {
+            setStatus("Enter a valid API key before calling endpoints.", "error");
+            return;
+          }
+
+          const baseUrl = getApiBase();
+          if (!baseUrl) {
+            setStatus("Dashboard base URL is not configured. Contact admin.", "error");
+            return;
+          }
+          const endpointPath = buildEndpointPath(type);
+          const url = baseUrl + endpointPath;
+          requestUrlEl.textContent = url;
+          requestStatusEl.textContent = "Calling...";
+
+          setStatus("Calling " + endpointPath + " ...", "");
+
+          try {
+            if (type === "inventory" || type === "pricing") {
+              await ensureCatalogLookup();
+            }
+
+            const response = await fetch(url, {
+              method: "GET",
+              headers: {
+                Accept: "application/json",
+                "x-api-key": apiKey,
+              },
+            });
+
+            const payload = await parseBody(response);
+
+            if (response.ok && payload?.success === true && (type === "inventory" || type === "pricing")) {
+              const root = payload.data;
+              const rows = safeList(
+                (root && (root.items || root.products || root.inventory || root.combos)) || root,
+              );
+              const enriched = rows.map((row) => enrichFromCatalog(row));
+
+              if (Array.isArray(root)) {
+                payload.data = enriched;
+              } else if (root && typeof root === "object") {
+                if (type === "combos") {
+                  root.combos = enriched;
+                } else if (Array.isArray(root.items)) {
+                  root.items = enriched;
+                } else if (Array.isArray(root.products)) {
+                  root.products = enriched;
+                } else if (Array.isArray(root.inventory)) {
+                  root.inventory = enriched;
+                } else {
+                  payload.data = enriched;
+                }
+              }
+            }
+
+            if (response.ok && payload?.success === true && type === "products") {
+              indexCatalogRows(safeList(payload?.data?.products || payload?.data?.items || payload?.data));
+            }
+            requestStatusEl.textContent = String(response.status);
+            renderOutput({
+              httpStatus: response.status,
+              endpoint: endpointPath,
+              payload,
+            });
+            renderPreview(type, payload);
+
+            if (response.ok) {
+              setStatus("Success: " + response.status + " - preview updated below.", "ok");
+              return;
+            }
+
+            if (response.status === 401) {
+              setStatus("Unauthorized (401): invalid or missing API key.", "error");
+              return;
+            }
+
+            if (response.status === 403) {
+              setStatus("Forbidden (403): scope denied, paused, or revoked.", "error");
+              return;
+            }
+
+            if (response.status === 429) {
+              const retryAfter = response.headers.get("Retry-After") || "n/a";
+              setStatus("Rate limited (429). Retry-After: " + retryAfter + "s", "warn");
+              return;
+            }
+
+            setStatus("Error: HTTP " + response.status, "error");
+          } catch (error) {
+            const errorMessage = String(error && error.message ? error.message : error);
+            const probe = await runConnectivityProbe(baseUrl);
+            const onlineState = typeof navigator !== "undefined" ? navigator.onLine : true;
+
+            requestStatusEl.textContent = "NETWORK_ERROR";
+            renderOutput({ success: false, error: { code: "NETWORK_ERROR", message: errorMessage } });
+            renderPreview(type, { success: false, error: { code: "NETWORK_ERROR", message: "Browser could not reach API" } });
+            const likelyHeaderFormatIssue = /header|invalid|character|value/i.test(errorMessage);
+            if (likelyHeaderFormatIssue || probe.ok) {
+              setStatus("API key format invalid. Remove spaces/newlines and try again.", "error");
+            } else {
+              setStatus("Network error while calling API.", "error");
+            }
+
+            showDebug(
+              `fetch_failed=${errorMessage}; online=${onlineState}; probe=${
+                probe.ok ? "ok:" + probe.status + " " + probe.url : "fail:" + probe.error
+              }`,
+            );
+          }
+        };
+
+        endpointButtons.forEach((button) => {
+          button.addEventListener("click", () => {
+            endpointButtons.forEach((btn) => btn.classList.remove("endpoint-active"));
+            button.classList.add("endpoint-active");
+            Promise.resolve(runRequest(button.getAttribute("data-endpoint"))).catch((error) => {
+              showDebug(error && error.message ? error.message : String(error));
+            });
+          });
+        });
+
+        if (clearButton) {
+          clearButton.addEventListener("click", () => {
+            endpointButtons.forEach((btn) => btn.classList.remove("endpoint-active"));
+            requestUrlEl.textContent = "-";
+            requestStatusEl.textContent = "-";
+            setStatus("Cleared. Enter API key and test again.", "");
+            renderEmptyPreview("Select any endpoint button to preview live partner response.");
+            renderOutput({ hint: "Raw JSON response appears here" });
+          });
+        }
+
+        if (copyDebugBtn) {
+          copyDebugBtn.addEventListener("click", async () => {
+            const text = String(debugBannerEl && debugBannerEl.textContent ? debugBannerEl.textContent : "").trim();
+            if (!text) {
+              setStatus("No debug info to copy.", "warn");
+              return;
+            }
+            try {
+              await navigator.clipboard.writeText(text);
+              setStatus("Debug info copied.", "ok");
+            } catch {
+              setStatus("Could not copy debug info.", "warn");
+            }
+          });
+        }
+
+        initDeliveryStateSelect();
+        renderEmptyPreview("Select any endpoint button to preview live partner response.");
+        renderOutput({ hint: "Raw JSON response appears here" });
+      })();
+    </script>
+  </body>
+</html>

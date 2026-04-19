@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import mongoose from "mongoose";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import PDFDocument from "pdfkit";
 import Category from "../models/category.model.js";
 import Combo from "../models/combo.model.js";
@@ -22,6 +23,9 @@ import {
 } from "../services/partnerApiDynamicScaling.service.js";
 import { splitGstInclusiveAmount } from "../services/tax.service.js";
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 const SITE_URL =
   String(process.env.NEXT_PUBLIC_SITE_URL || process.env.CLIENT_URL || "https://healthyonegram.com")
     .split(",")[0]
@@ -35,8 +39,72 @@ const SUPPORT_EMAIL = String(
   .toLowerCase();
 
 const SUPPORT_PHONE = String(
-  process.env.SUPPORT_PHONE || process.env.CONTACT_PHONE || "+91-00000-00000",
+  process.env.SUPPORT_PHONE || process.env.CONTACT_PHONE || "+91 86196 41968",
 ).trim();
+
+const PARTNER_LIMIT_MAX = Number.MAX_SAFE_INTEGER;
+
+const toNonNegativeLimit = (value, fallback) => {
+  const parsed = Number.parseInt(String(value ?? "").trim(), 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(0, Math.min(parsed, PARTNER_LIMIT_MAX));
+};
+
+const MIN_PARTNER_PAGE_LIMIT = 1;
+const MAX_PARTNER_PAGE_LIMIT = 100;
+const DEFAULT_PARTNER_SAMPLE_LIMIT = 20;
+
+const sanitizeBaseUrl = (value) =>
+  String(value || "")
+    .trim()
+    .replace(/\/+$/, "");
+const isLocalHostUrl = (value) => /https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i.test(String(value || ""));
+
+const escapeHtml = (value) =>
+  String(value || "").replace(/[&<>"']/g, (char) => {
+    if (char === "&") return "&amp;";
+    if (char === "<") return "&lt;";
+    if (char === ">") return "&gt;";
+    if (char === '"') return "&quot;";
+    return "&#39;";
+  });
+
+const resolvePartnerApiBaseUrl = (req) => {
+  const envBase = sanitizeBaseUrl(process.env.BASE_URL || process.env.BACKEND_URL);
+  const forwardedProto = String(req.get("x-forwarded-proto") || req.protocol || "https")
+    .split(",")[0]
+    .trim();
+  const forwardedHost = String(req.get("x-forwarded-host") || req.get("host") || "")
+    .split(",")[0]
+    .trim();
+  const requestBase = sanitizeBaseUrl(`${forwardedProto}://${forwardedHost}`);
+  const siteBase = sanitizeBaseUrl(SITE_URL);
+  const envLooksValid = /^https?:\/\//i.test(envBase);
+
+  if (envLooksValid && !isLocalHostUrl(envBase)) {
+    return `${envBase}/api/v1/partner`;
+  }
+
+  if (/^https?:\/\//i.test(requestBase) && !isLocalHostUrl(requestBase)) {
+    return `${requestBase}/api/v1/partner`;
+  }
+
+  return `${siteBase}/api/v1/partner`;
+};
+
+const resolvePartnerApiRuntimeBaseUrl = (req) => {
+  const forwardedProto = String(req.get("x-forwarded-proto") || req.protocol || "https")
+    .split(",")[0]
+    .trim();
+  const forwardedHost = String(req.get("x-forwarded-host") || req.get("host") || "")
+    .split(",")[0]
+    .trim();
+  const requestBase = sanitizeBaseUrl(`${forwardedProto}://${forwardedHost}`);
+  if (/^https?:\/\//i.test(requestBase)) {
+    return `${requestBase}/api/v1/partner`;
+  }
+  return resolvePartnerApiBaseUrl(req);
+};
 
 const resolvePartnerGuideLogoPath = () => {
   const cwd = process.cwd();
@@ -52,6 +120,72 @@ const resolvePartnerGuideLogoPath = () => {
   ];
 
   return candidates.find((filePath) => fs.existsSync(filePath)) || null;
+};
+
+const pickComboImage = (combo) => {
+  const readImageUrl = (value) => {
+    if (!value) return "";
+    if (typeof value === "string") return value.trim();
+    if (typeof value === "object") {
+      return String(value.url || value.secure_url || value.src || value.imageUrl || "").trim();
+    }
+    return "";
+  };
+
+  const comboTokens = String(combo?.name || combo?.slug || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .split(/\s+/)
+    .filter((token) => token.length >= 3);
+
+  const scoreCandidate = (url) => {
+    const value = String(url || "").toLowerCase();
+    if (!value) return -1;
+    if (!comboTokens.length) return 0;
+    return comboTokens.reduce((score, token) => (value.includes(token) ? score + 1 : score), 0);
+  };
+
+  const comboImages = Array.isArray(combo?.comboImages)
+    ? combo.comboImages
+    : Array.isArray(combo?.images)
+      ? combo.images
+      : [];
+
+  const itemImages = Array.isArray(combo?.items)
+    ? combo.items
+        .map((item) => item?.image || item?.thumbnail || (Array.isArray(item?.images) ? item.images[0] : ""))
+        .filter(Boolean)
+    : [];
+
+  const candidates = [];
+  comboImages.forEach((entry) => {
+    const candidate = readImageUrl(entry);
+    if (candidate) candidates.push(candidate);
+  });
+
+  [combo?.comboThumbnail, combo?.thumbnail, combo?.image, ...itemImages].forEach((entry) => {
+    const candidate = readImageUrl(entry);
+    if (candidate) candidates.push(candidate);
+  });
+
+  const uniqueCandidates = Array.from(new Set(candidates));
+  if (!uniqueCandidates.length) return "";
+
+  const bestCandidate = uniqueCandidates
+    .map((url) => ({ url, score: scoreCandidate(url) }))
+    .sort((left, right) => right.score - left.score)[0];
+
+  return (bestCandidate && bestCandidate.url) || uniqueCandidates[0] || "";
+};
+
+const pickProductImage = (product) => {
+  const images = Array.isArray(product?.images) ? product.images : [];
+  const first = images[0];
+  if (typeof first === "string" && first.trim()) return first;
+  if (first && typeof first === "object") {
+    return first.url || first.secure_url || first.src || "";
+  }
+  return product?.thumbnail || product?.image || "";
 };
 
 const hashApiKey = (value) =>
@@ -83,6 +217,9 @@ const parseNumber = (value, fallback) => {
 
 const clampNumber = (value, min, max, fallback) =>
   Math.min(max, Math.max(min, parseNumber(value, fallback)));
+
+const resolveSampleLimit = (value, fallback = DEFAULT_PARTNER_SAMPLE_LIMIT) =>
+  clampNumber(value, MIN_PARTNER_PAGE_LIMIT, MAX_PARTNER_PAGE_LIMIT, fallback);
 
 const parseFloatInRange = (value, min, max, fallback) => {
   const parsed = Number.parseFloat(String(value ?? "").trim());
@@ -182,20 +319,31 @@ const toPartnerDynamicPatch = (input = {}, currentPartner = null) => {
     );
   }
   if (input?.baseRPM !== undefined) {
-    patch["rateLimitPlan.baseRPM"] = clampNumber(input.baseRPM, 10, 50000, baseRate);
+    patch["rateLimitPlan.baseRPM"] = toNonNegativeLimit(input.baseRPM, baseRate);
   }
   if (input?.burstRPM !== undefined) {
-    const floor = patch["rateLimitPlan.baseRPM"] || baseRate;
-    patch["rateLimitPlan.burstRPM"] = clampNumber(input.burstRPM, floor, 50000, Math.round(floor * 1.8));
+    const floor = Number.isFinite(Number(patch["rateLimitPlan.baseRPM"]))
+      ? Number(patch["rateLimitPlan.baseRPM"])
+      : toNonNegativeLimit(baseRate, 120);
+    patch["rateLimitPlan.burstRPM"] = Math.max(
+      floor,
+      toNonNegativeLimit(input.burstRPM, Math.round(floor * 1.8)),
+    );
   }
   if (input?.dailyLimit !== undefined) {
-    patch["rateLimitPlan.dailyLimit"] = clampNumber(input.dailyLimit, 100, 10000000, currentDaily);
+    patch["rateLimitPlan.dailyLimit"] = toNonNegativeLimit(input.dailyLimit, currentDaily);
   }
   if (input?.minDynamicRPM !== undefined) {
-    patch["rateLimitPlan.minDynamicRPM"] = clampNumber(input.minDynamicRPM, 10, 50000, Math.floor(baseRate * 0.5));
+    patch["rateLimitPlan.minDynamicRPM"] = toNonNegativeLimit(
+      input.minDynamicRPM,
+      Math.floor(baseRate * 0.5),
+    );
   }
   if (input?.maxDynamicRPM !== undefined) {
-    patch["rateLimitPlan.maxDynamicRPM"] = clampNumber(input.maxDynamicRPM, 10, 50000, Math.max(baseRate, 4000));
+    patch["rateLimitPlan.maxDynamicRPM"] = toNonNegativeLimit(
+      input.maxDynamicRPM,
+      Math.max(baseRate, 4000),
+    );
   }
   if (input?.scalingEnabled !== undefined) {
     patch["rateLimitPlan.scalingEnabled"] = Boolean(parseBoolean(input.scalingEnabled, true));
@@ -207,13 +355,13 @@ const toPartnerDynamicPatch = (input = {}, currentPartner = null) => {
   if (input?.manualOverrideRPM !== undefined) {
     const override = parseNumber(input.manualOverrideRPM, 0);
     patch["dynamicControls.manualOverrideRPM"] = override > 0
-      ? clampNumber(override, 10, 50000, baseRate)
+      ? toNonNegativeLimit(override, baseRate)
       : null;
   }
   if (input?.manualOverrideDailyLimit !== undefined) {
     const overrideDaily = parseNumber(input.manualOverrideDailyLimit, 0);
     patch["dynamicControls.manualOverrideDailyLimit"] = overrideDaily > 0
-      ? clampNumber(overrideDaily, 100, 10000000, currentDaily)
+      ? toNonNegativeLimit(overrideDaily, currentDaily)
       : null;
   }
   if (input?.qualityScore !== undefined) {
@@ -349,6 +497,26 @@ const getAvailableStock = (product) => {
   return Math.max(directAvailable, 0);
 };
 
+const mapVariantStockBreakdown = (product) => {
+  const variants = Array.isArray(product?.variants) ? product.variants : [];
+
+  return variants.map((variant) => {
+    const stockQuantity = Math.max(Number(variant?.stock_quantity ?? variant?.stock ?? 0), 0);
+    const reservedQuantity = Math.max(Number(variant?.reserved_quantity ?? 0), 0);
+    const availableQuantity = Math.max(stockQuantity - reservedQuantity, 0);
+
+    return {
+      variantId: variant?._id ? String(variant._id) : null,
+      name: String(variant?.name || "").trim() || null,
+      sku: String(variant?.sku || "").trim() || null,
+      stockQuantity,
+      reservedQuantity,
+      availableQuantity,
+      status: availableQuantity > 0 ? "in_stock" : "out_of_stock",
+    };
+  });
+};
+
 const mapPartnerProduct = (product, options = {}) => {
   const visibleFields = normalizeVisibleProductFields(options.visibleFields);
   const stateForTax = String(options.stateForTax || "").trim();
@@ -411,9 +579,16 @@ const mapPartnerProduct = (product, options = {}) => {
   }
 
   if (hasVisibleField(visibleFields, "stock")) {
+    const variantStock = mapVariantStockBreakdown(product);
+    const reservedQuantity = variantStock.length
+      ? variantStock.reduce((sum, variant) => sum + variant.reservedQuantity, 0)
+      : Math.max(Number(product?.reserved_quantity || 0), 0);
+
     payload.stock = {
       status: availableQuantity > 0 ? "in_stock" : "out_of_stock",
       availableQuantity,
+      reservedQuantity,
+      variants: variantStock,
     };
   }
 
@@ -462,6 +637,18 @@ const withMeta = (req, payload) => ({
   },
 });
 
+const sendError = (req, res, status, code, message, details = null) =>
+  res.status(status).json(
+    withMeta(req, {
+      success: false,
+      error: {
+        code,
+        message,
+        details,
+      },
+    }),
+  );
+
 const buildDeterministicEtagPayload = (bodyObject) => {
   if (!bodyObject || typeof bodyObject !== "object") return bodyObject;
 
@@ -490,17 +677,20 @@ const setEtagAndHandle304 = (req, res, bodyObject) => {
 };
 
 const getPartnerGuideDetails = (req) => {
-  const baseUrl = `${req.protocol}://${req.get("host")}/api/v1/partner`;
+  const baseUrl = resolvePartnerApiBaseUrl(req);
+  const sampleLimit = resolveSampleLimit(req.query?.sampleLimit, DEFAULT_PARTNER_SAMPLE_LIMIT);
+  const dashboardUrl = `${baseUrl}/dashboard`;
+  const authHeaderExample = "x-api-key: YOUR_PARTNER_API_KEY";
   const authModes = [
     {
       type: "header",
       header: "x-api-key",
-      valueExample: "hogp_xxxxxxxx.yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+      valueExample: "hogp_ab12cd34.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
     },
     {
       type: "bearer",
       header: "Authorization",
-      valueExample: "Bearer hogp_xxxxxxxx.yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+      valueExample: "Bearer hogp_ab12cd34.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
     },
   ];
 
@@ -515,7 +705,7 @@ const getPartnerGuideDetails = (req) => {
     {
       method: "GET",
       path: "/products",
-      fullUrl: `${baseUrl}/products?limit=20&page=1&deliveryState=Rajasthan`,
+      fullUrl: `${baseUrl}/products?limit=${sampleLimit}&page=1&deliveryState=Rajasthan`,
       scope: "catalog.read",
       description: "List products (includes GST breakup by deliveryState)",
     },
@@ -550,7 +740,7 @@ const getPartnerGuideDetails = (req) => {
     {
       method: "GET",
       path: "/combos",
-      fullUrl: `${baseUrl}/combos?limit=20&page=1`,
+      fullUrl: `${baseUrl}/combos?limit=${sampleLimit}&page=1`,
       scope: "combos.read",
       description: "Partner-visible combo offers",
     },
@@ -568,16 +758,94 @@ const getPartnerGuideDetails = (req) => {
       scope: "catalog.read",
       description: "Tag list",
     },
+    {
+      method: "GET",
+      path: "/dashboard",
+      fullUrl: dashboardUrl,
+      scope: "none",
+      description: "Interactive browser tester for partner APIs",
+    },
   ];
 
-  const sampleCurl = `curl -X GET \"${baseUrl}/products?limit=20\" -H \"x-api-key: YOUR_PARTNER_API_KEY\"`;
+  const sampleCurl = `curl -X GET \"${baseUrl}/products?limit=${sampleLimit}\" -H \"x-api-key: YOUR_PARTNER_API_KEY\"`;
+
+  const userGuide = [
+    {
+      step: 1,
+      title: "Get API key",
+      description: "Create a partner from admin and securely save the generated key.",
+    },
+    {
+      step: 2,
+      title: "Use header",
+      description: "Attach x-api-key: YOUR_PARTNER_API_KEY to each request.",
+    },
+    {
+      step: 3,
+      title: "Call endpoints",
+      description: `Start with /health then /products?limit=${sampleLimit} (limit range ${MIN_PARTNER_PAGE_LIMIT}-${MAX_PARTNER_PAGE_LIMIT}), /inventory, /pricing and others by scope.`,
+    },
+    {
+      step: 4,
+      title: "Handle errors",
+      description: "Handle 429 with backoff and 401/403 with re-authentication or scope update.",
+    },
+  ];
+
+  const errorCodes = [
+    { status: 401, code: "UNAUTHORIZED", message: "Missing or invalid API key" },
+    { status: 403, code: "INSUFFICIENT_SCOPE", message: "Scope does not allow this endpoint" },
+    { status: 429, code: "RATE_LIMIT_EXCEEDED", message: "Per-minute rate limit exceeded" },
+    { status: 429, code: "DAILY_LIMIT_EXCEEDED", message: "Daily request limit exceeded" },
+    { status: 500, code: "INTERNAL_ERROR", message: "Unexpected server error" },
+  ];
+
+  const exampleResponses = {
+    success: {
+      success: true,
+      data: {
+        message: "sample payload",
+      },
+    },
+    error: {
+      success: false,
+      error: {
+        code: "RATE_LIMIT_EXCEEDED",
+        message: "Rate limit exceeded",
+      },
+    },
+  };
 
   return {
     baseUrl,
+    authHeaderExample,
     authModes,
     endpoints,
     sampleCurl,
+    userGuide,
+    errorCodes,
+    exampleResponses,
+    dashboardUrl,
+    sampleLimit,
   };
+};
+
+export const getPartnerApiDashboard = async (req, res) => {
+  try {
+    const dashboardPath = path.resolve(__dirname, "..", "assets", "partner-api-dashboard.html");
+    const template = await fs.promises.readFile(dashboardPath, "utf8");
+    const baseUrl = resolvePartnerApiRuntimeBaseUrl(req);
+    const html = template.replace("__PARTNER_BASE_URL__", escapeHtml(baseUrl));
+    // Helmet can block inline scripts by default; allow this self-contained simulator page to execute.
+    res.setHeader(
+      "Content-Security-Policy",
+      "default-src 'self' data: blob: https: http:; script-src 'self' 'unsafe-inline' https: http:; style-src 'self' 'unsafe-inline' https: http:; img-src 'self' data: blob: https: http:; connect-src 'self' https: http:; font-src 'self' data: https: http:;",
+    );
+    return res.status(200).type("html").send(html);
+  } catch (error) {
+    console.error("getPartnerApiDashboard error:", error);
+    return sendError(req, res, 500, "INTERNAL_ERROR", "Failed to load partner API dashboard");
+  }
 };
 
 const buildPartnerGuidePdfBuffer = ({ baseUrl, endpoints, sampleCurl }) =>
@@ -591,6 +859,7 @@ const buildPartnerGuidePdfBuffer = ({ baseUrl, endpoints, sampleCurl }) =>
     doc.on("error", reject);
 
     const pageWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+    const startX = doc.page.margins.left;
 
     doc.rect(42, 42, pageWidth, 64).fill("#0f172a");
 
@@ -636,9 +905,19 @@ const buildPartnerGuidePdfBuffer = ({ baseUrl, endpoints, sampleCurl }) =>
       .text("2) Authorization: Bearer YOUR_PARTNER_API_KEY");
 
     doc.moveDown(0.8);
+    doc.fillColor("#0f172a").font("Helvetica-Bold").fontSize(12).text("Contact & Support");
+    doc
+      .moveDown(0.25)
+      .font("Helvetica")
+      .fontSize(10)
+      .fillColor("#334155")
+      .text(`Website: ${SITE_URL}`)
+      .text(`Support Email: ${SUPPORT_EMAIL}`)
+      .text(`Contact Number: ${SUPPORT_PHONE}`);
+
+    doc.moveDown(0.8);
     doc.fillColor("#0f172a").font("Helvetica-Bold").fontSize(12).text("Endpoints");
 
-    const startX = doc.page.margins.left;
     const tableWidth = pageWidth;
     const rowHeight = 20;
     const colWidths = [60, 180, 110, tableWidth - 60 - 180 - 110];
@@ -672,11 +951,13 @@ const buildPartnerGuidePdfBuffer = ({ baseUrl, endpoints, sampleCurl }) =>
     doc.y = y + 12;
     doc.fillColor("#0f172a").font("Helvetica-Bold").fontSize(12).text("Sample cURL");
     doc.moveDown(0.25);
-    doc.rect(startX, doc.y, tableWidth, 46).fill("#0f172a");
-    doc.fillColor("#e2e8f0").font("Helvetica").fontSize(9);
-    doc.text(sampleCurl, startX + 8, doc.y + 14, { width: tableWidth - 16 });
+    const sampleTop = doc.y;
+    doc.rect(startX, sampleTop, tableWidth, 62).fill("#0f172a");
+    doc.fillColor("#e2e8f0").font("Courier").fontSize(8.6);
+    doc.text(sampleCurl, startX + 8, sampleTop + 12, { width: tableWidth - 16, lineGap: 2 });
+    doc.y = sampleTop + 72;
 
-    doc.moveDown(3.2);
+    doc.moveDown(0.8);
     doc.fillColor("#64748b").font("Helvetica").fontSize(8.5).text(
       `Generated on ${new Date().toLocaleString("en-IN")} • Guide URL: ${baseUrl}/guide • Support: ${SUPPORT_EMAIL} • ${SUPPORT_PHONE}`,
       startX,
@@ -691,6 +972,7 @@ const buildPartnerCredentialPdfBuffer = ({
   baseUrl,
   guideUrl,
   guidePdfUrl,
+  websiteUrl,
   partnerName,
   contactEmail,
   apiKey,
@@ -706,6 +988,7 @@ const buildPartnerCredentialPdfBuffer = ({
     doc.on("error", reject);
 
     const pageWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+    const startX = doc.page.margins.left;
 
     doc.rect(42, 42, pageWidth, 68).fill("#0f172a");
     if (logoPath) {
@@ -725,8 +1008,11 @@ const buildPartnerCredentialPdfBuffer = ({
       .fontSize(10)
       .text("Share this only with the intended receiver over a secure channel", logoPath ? 94 : 56, 82);
 
+    // Reset writing cursor so all detail blocks start from left margin.
+    doc.x = startX;
+
     doc.moveDown(4.4);
-    doc.fillColor("#0f172a").font("Helvetica-Bold").fontSize(12).text("Partner");
+    doc.fillColor("#0f172a").font("Helvetica-Bold").fontSize(12).text("Partner", startX, doc.y);
     doc
       .moveDown(0.3)
       .font("Helvetica")
@@ -737,7 +1023,7 @@ const buildPartnerCredentialPdfBuffer = ({
       .text(`Generated: ${new Date().toLocaleString("en-IN")}`);
 
     doc.moveDown(0.8);
-    doc.fillColor("#0f172a").font("Helvetica-Bold").fontSize(12).text("API Base");
+    doc.fillColor("#0f172a").font("Helvetica-Bold").fontSize(12).text("API Base", startX, doc.y);
     doc
       .moveDown(0.25)
       .font("Helvetica")
@@ -746,19 +1032,20 @@ const buildPartnerCredentialPdfBuffer = ({
       .text(baseUrl, { width: pageWidth });
 
     doc.moveDown(0.8);
-    doc.fillColor("#0f172a").font("Helvetica-Bold").fontSize(12).text("API Key");
+    doc.fillColor("#0f172a").font("Helvetica-Bold").fontSize(12).text("API Key", startX, doc.y);
     doc.moveDown(0.2);
-    doc.rect(doc.page.margins.left, doc.y, pageWidth, 44).fill("#f8fafc");
+    doc.rect(startX, doc.y, pageWidth, 58).fill("#f8fafc");
     doc
       .fillColor("#0f172a")
-      .font("Helvetica")
-      .fontSize(10)
-      .text(String(apiKey || "").trim() || "-", doc.page.margins.left + 8, doc.y + 13, {
+      .font("Courier")
+      .fontSize(8.8)
+      .text(String(apiKey || "").trim() || "-", startX + 8, doc.y + 12, {
         width: pageWidth - 16,
+        lineGap: 2,
       });
 
-    doc.moveDown(2.9);
-    doc.fillColor("#0f172a").font("Helvetica-Bold").fontSize(12).text("How receiver uses this");
+    doc.moveDown(3.4);
+    doc.fillColor("#0f172a").font("Helvetica-Bold").fontSize(12).text("How receiver uses this", startX, doc.y);
     doc
       .moveDown(0.3)
       .font("Helvetica")
@@ -767,41 +1054,64 @@ const buildPartnerCredentialPdfBuffer = ({
       .text("1) Save API key securely (password manager or backend secret store).")
       .text("2) Use header: x-api-key: YOUR_PARTNER_API_KEY")
       .text("3) Test: GET /health")
-      .text("4) Start with GET /products?limit=20");
+      .text(`4) Start with GET /products?limit=${DEFAULT_PARTNER_SAMPLE_LIMIT} (you can set ${MIN_PARTNER_PAGE_LIMIT}-${MAX_PARTNER_PAGE_LIMIT})`);
 
     doc.moveDown(0.8);
-    doc.fillColor("#0f172a").font("Helvetica-Bold").fontSize(12).text("Links");
+    doc.fillColor("#0f172a").font("Helvetica-Bold").fontSize(12).text("Links", startX, doc.y);
+    doc.moveDown(0.3).font("Helvetica").fontSize(10).fillColor("#334155");
+    doc.text("API Guide Page: ", startX, doc.y, { continued: true });
+    doc.fillColor("#1d4ed8").text(guideUrl, { link: guideUrl, underline: true });
+    doc.fillColor("#334155").text("API Guide PDF: ", startX, doc.y, { continued: true });
+    doc.fillColor("#1d4ed8").text(guidePdfUrl, { link: guidePdfUrl, underline: true });
+    doc.fillColor("#334155").text("Website: ", startX, doc.y, { continued: true });
+    doc.fillColor("#1d4ed8").text(websiteUrl || SITE_URL, { link: websiteUrl || SITE_URL, underline: true });
+    doc.fillColor("#334155");
+
+    doc.moveDown(0.8);
+    doc.fillColor("#0f172a").font("Helvetica-Bold").fontSize(12).text("Contact & Support", startX, doc.y);
     doc
-      .moveDown(0.3)
+      .moveDown(0.25)
       .font("Helvetica")
       .fontSize(10)
       .fillColor("#334155")
-      .text(`Guide: ${guideUrl}`)
-      .text(`Guide PDF: ${guidePdfUrl}`);
+      .text(`Support Email: ${SUPPORT_EMAIL}`)
+      .text(`Contact Number: ${SUPPORT_PHONE}`);
 
     doc.moveDown(0.8);
-    doc.fillColor("#0f172a").font("Helvetica-Bold").fontSize(12).text("Sample cURL");
+    doc.fillColor("#0f172a").font("Helvetica-Bold").fontSize(12).text("Sample cURL", startX, doc.y);
     doc.moveDown(0.2);
-    doc.rect(doc.page.margins.left, doc.y, pageWidth, 52).fill("#0f172a");
+    const sampleTop = doc.y;
+    doc.rect(startX, sampleTop, pageWidth, 64).fill("#0f172a");
     doc
       .fillColor("#e2e8f0")
-      .font("Helvetica")
-      .fontSize(9)
-      .text(sampleCurl, doc.page.margins.left + 8, doc.y + 16, {
+      .font("Courier")
+      .fontSize(8.4)
+      .text(sampleCurl, startX + 8, sampleTop + 12, {
         width: pageWidth - 16,
+        lineGap: 2,
       });
+    doc.y = sampleTop + 76;
 
-    doc.moveDown(3.2);
+    doc.moveDown(0.6);
     doc
       .fillColor("#64748b")
       .font("Helvetica")
       .fontSize(8.5)
       .text(
         `Security: API key is shown once. Rotate key immediately if leaked. Support: ${SUPPORT_EMAIL} • ${SUPPORT_PHONE}`,
-        doc.page.margins.left,
+        startX,
         doc.y,
         { width: pageWidth },
       );
+
+    doc
+      .moveDown(0.2)
+      .fillColor("#64748b")
+      .font("Helvetica")
+      .fontSize(8.5)
+      .text(`HealthyOneGram: ${websiteUrl || SITE_URL}`, startX, doc.y, {
+        width: pageWidth,
+      });
 
     doc.end();
   });
@@ -819,7 +1129,18 @@ export const partnerHealth = async (req, res) => {
 };
 
 export const getPartnerApiGuide = async (req, res) => {
-  const { baseUrl, authModes, endpoints, sampleCurl } = getPartnerGuideDetails(req);
+  const {
+    baseUrl,
+    authHeaderExample,
+    authModes,
+    endpoints,
+    sampleCurl,
+    userGuide,
+    errorCodes,
+    exampleResponses,
+    dashboardUrl,
+    sampleLimit,
+  } = getPartnerGuideDetails(req);
 
   const payload = {
     success: true,
@@ -827,12 +1148,30 @@ export const getPartnerApiGuide = async (req, res) => {
       title: "HealthyOneGram Partner API Guide",
       version: "v1",
       baseUrl,
+      websiteUrl: SITE_URL,
+      supportEmail: SUPPORT_EMAIL,
+      supportPhone: SUPPORT_PHONE,
+      limits: {
+        limit: {
+          min: MIN_PARTNER_PAGE_LIMIT,
+          max: MAX_PARTNER_PAGE_LIMIT,
+          sampleDefault: DEFAULT_PARTNER_SAMPLE_LIMIT,
+          activeSample: sampleLimit,
+        },
+      },
+      authHeaderExample,
       authentication: authModes,
       endpoints,
       sampleCurl,
+      userGuide,
+      errorCodes,
+      exampleResponses,
+      dashboardUrl,
       notes: [
         "All responses are JSON and include success/data or success/error envelopes.",
         "Use If-None-Match with returned ETag for cache-friendly polling on product endpoints.",
+        "Use /dashboard for interactive browser testing with your API key.",
+        `Pagination limit supports ${MIN_PARTNER_PAGE_LIMIT}-${MAX_PARTNER_PAGE_LIMIT}; sample uses ${sampleLimit}.`,
       ],
     },
   };
@@ -849,10 +1188,7 @@ export const getPartnerApiGuide = async (req, res) => {
       return res.status(200).send(pdfBuffer);
     } catch (error) {
       console.error("Partner API guide PDF generation error:", error);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to generate partner API PDF guide",
-      });
+      return sendError(req, res, 500, "INTERNAL_ERROR", "Failed to generate partner API PDF guide");
     }
   }
 
@@ -868,6 +1204,24 @@ export const getPartnerApiGuide = async (req, res) => {
     )
     .join("");
 
+  const userGuideRows = userGuide
+    .map(
+      (item) =>
+        `<li style=\"margin-bottom:6px;\"><strong>Step ${item.step}:</strong> ${item.title} - ${item.description}</li>`,
+    )
+    .join("");
+
+  const errorRows = errorCodes
+    .map(
+      (item) => `
+        <tr>
+          <td style=\"padding:10px;border:1px solid #e5e7eb;\">${item.status}</td>
+          <td style=\"padding:10px;border:1px solid #e5e7eb;\">${item.code}</td>
+          <td style=\"padding:10px;border:1px solid #e5e7eb;\">${item.message}</td>
+        </tr>`,
+    )
+    .join("");
+
   const html = `<!doctype html>
 <html>
   <head>
@@ -879,15 +1233,22 @@ export const getPartnerApiGuide = async (req, res) => {
     <div style=\"max-width:980px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:14px;padding:22px;\">
       <h1 style=\"margin:0 0 8px;font-size:26px;\">HealthyOneGram Partner API Guide</h1>
       <p style=\"margin:0 0 16px;color:#475569;\">Version v1 • Share this link with partners.</p>
+      <div style="padding:14px;background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;margin-bottom:16px;">
+        <div style="font-size:14px;font-weight:700;color:#9a3412;margin-bottom:6px;">Contact Us</div>
+        <div style="font-size:13px;color:#7c2d12;line-height:1.6;">Website: <a href="${SITE_URL}" target="_blank" rel="noopener noreferrer">${SITE_URL}</a></div>
+        <div style="font-size:13px;color:#7c2d12;line-height:1.6;">Support Email: <a href="mailto:${SUPPORT_EMAIL}">${SUPPORT_EMAIL}</a></div>
+        <div style="font-size:13px;color:#7c2d12;line-height:1.6;">Support Phone: <a href="tel:${SUPPORT_PHONE}">${SUPPORT_PHONE}</a></div>
+      </div>
 
       <div style=\"padding:12px;background:#f1f5f9;border-radius:10px;margin-bottom:16px;\">
         <div style=\"font-size:12px;color:#64748b;margin-bottom:6px;\">Base URL</div>
-        <div style=\"font-family:Consolas,monospace;font-size:13px;word-break:break-all;\">${baseUrl}</div>
+        <div id=\"base-url\" style=\"font-family:Consolas,monospace;font-size:13px;word-break:break-all;\">${baseUrl}</div>
+        <button type=\"button\" onclick=\"copyText('base-url')\" style=\"margin-top:8px;padding:6px 10px;border-radius:8px;border:1px solid #cbd5e1;background:#fff;cursor:pointer;\">Copy Base URL</button>
       </div>
 
       <h2 style=\"margin:16px 0 8px;font-size:18px;\">Authentication</h2>
       <ul style=\"margin:0 0 12px 18px;padding:0;color:#334155;\">
-        <li>Header: <code>x-api-key: YOUR_PARTNER_API_KEY</code></li>
+        <li>Header: <code>${authHeaderExample}</code></li>
         <li>Or Bearer: <code>Authorization: Bearer YOUR_PARTNER_API_KEY</code></li>
       </ul>
 
@@ -905,12 +1266,50 @@ export const getPartnerApiGuide = async (req, res) => {
       </table>
 
       <h2 style=\"margin:16px 0 8px;font-size:18px;\">Sample cURL</h2>
-      <pre style=\"background:#0f172a;color:#e2e8f0;padding:12px;border-radius:10px;overflow:auto;\">${sampleCurl}</pre>
+      <pre id=\"sample-curl\" style=\"background:#0f172a;color:#e2e8f0;padding:12px;border-radius:10px;overflow:auto;\">${sampleCurl}</pre>
+      <button type=\"button\" onclick=\"copyText('sample-curl')\" style=\"margin-top:8px;padding:6px 10px;border-radius:8px;border:1px solid #cbd5e1;background:#fff;cursor:pointer;\">Copy cURL</button>
+
+      <h2 style=\"margin:16px 0 8px;font-size:18px;\">How to Use API</h2>
+      <ol style=\"margin:0 0 12px 18px;padding:0;color:#334155;\">${userGuideRows}</ol>
+
+      <h2 style=\"margin:16px 0 8px;font-size:18px;\">Response Format</h2>
+      <div style=\"display:grid;grid-template-columns:1fr;gap:12px;\">
+        <div>
+          <div style=\"font-size:12px;color:#64748b;margin-bottom:6px;\">Success</div>
+          <pre style=\"background:#0f172a;color:#e2e8f0;padding:10px;border-radius:10px;overflow:auto;\">${JSON.stringify(exampleResponses.success, null, 2)}</pre>
+        </div>
+        <div>
+          <div style=\"font-size:12px;color:#64748b;margin-bottom:6px;\">Error</div>
+          <pre style=\"background:#0f172a;color:#e2e8f0;padding:10px;border-radius:10px;overflow:auto;\">${JSON.stringify(exampleResponses.error, null, 2)}</pre>
+        </div>
+      </div>
+
+      <h2 style=\"margin:16px 0 8px;font-size:18px;\">Error Codes</h2>
+      <table style=\"width:100%;border-collapse:collapse;font-size:14px;\">
+        <thead>
+          <tr style=\"background:#f8fafc;\">
+            <th style=\"text-align:left;padding:10px;border:1px solid #e5e7eb;\">HTTP</th>
+            <th style=\"text-align:left;padding:10px;border:1px solid #e5e7eb;\">Code</th>
+            <th style=\"text-align:left;padding:10px;border:1px solid #e5e7eb;\">Message</th>
+          </tr>
+        </thead>
+        <tbody>${errorRows}</tbody>
+      </table>
 
       <p style=\"margin-top:14px;font-size:12px;color:#64748b;\">JSON format of this guide: <a href=\"${baseUrl}/guide?format=json\">${baseUrl}/guide?format=json</a></p>
-        <p style="margin-top:6px;font-size:12px;color:#64748b;">PDF format: <a href="${baseUrl}/guide.pdf">${baseUrl}/guide.pdf</a></p>
-        <p style="margin-top:6px;font-size:12px;color:#64748b;">Support: ${SUPPORT_EMAIL} • ${SUPPORT_PHONE}</p>
+      <p style=\"margin-top:6px;font-size:12px;color:#64748b;\">PDF format: <a href=\"${baseUrl}/guide.pdf\">${baseUrl}/guide.pdf</a></p>
+      <p style=\"margin-top:6px;font-size:12px;color:#64748b;\">API simulator: <a href=\"${baseUrl}/dashboard\">${baseUrl}/dashboard</a></p>
+      <p style=\"margin-top:6px;font-size:12px;color:#64748b;\">Support: ${SUPPORT_EMAIL} • ${SUPPORT_PHONE}</p>
     </div>
+    <script>
+      function copyText(elementId) {
+        var node = document.getElementById(elementId);
+        if (!node) return;
+        var text = node.innerText || node.textContent || "";
+        if (!text) return;
+        navigator.clipboard.writeText(text);
+      }
+    </script>
   </body>
 </html>`;
 
@@ -928,10 +1327,7 @@ export const getPartnerApiGuidePdf = async (req, res) => {
     return res.status(200).send(pdfBuffer);
   } catch (error) {
     console.error("getPartnerApiGuidePdf error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to generate partner API PDF guide",
-    });
+    return sendError(req, res, 500, "INTERNAL_ERROR", "Failed to generate partner API PDF guide");
   }
 };
 
@@ -972,7 +1368,13 @@ export const getPartnerProducts = async (req, res) => {
 
     const inStock = parseBoolean(req.query.inStock);
     if (inStock === true) {
-      query.$or = [...(query.$or || []), { stock_quantity: { $gt: 0 } }, { stock: { $gt: 0 } }];
+      query.$or = [
+        ...(query.$or || []),
+        { stock_quantity: { $gt: 0 } },
+        { stock: { $gt: 0 } },
+        { "variants.stock_quantity": { $gt: 0 } },
+        { "variants.stock": { $gt: 0 } },
+      ];
     }
 
     const updatedSince = String(req.query.updatedSince || "").trim();
@@ -1116,12 +1518,19 @@ export const getPartnerInventory = async (req, res) => {
 
     const inStock = parseBoolean(req.query.inStock);
     if (inStock === true) {
-      query.$or = [{ stock_quantity: { $gt: 0 } }, { stock: { $gt: 0 } }];
+      query.$or = [
+        { stock_quantity: { $gt: 0 } },
+        { stock: { $gt: 0 } },
+        { "variants.stock_quantity": { $gt: 0 } },
+        { "variants.stock": { $gt: 0 } },
+      ];
     }
 
     const [items, total] = await Promise.all([
       Product.find(query)
-        .select("_id sku stock stock_quantity reserved_quantity updatedAt")
+        .select(
+          "_id sku name image thumbnail images stock stock_quantity reserved_quantity variants._id variants.name variants.sku variants.stock variants.stock_quantity variants.reserved_quantity updatedAt",
+        )
         .sort({ updatedAt: -1 })
         .skip(skip)
         .limit(limit)
@@ -1130,13 +1539,22 @@ export const getPartnerInventory = async (req, res) => {
     ]);
 
     const data = items.map((item) => {
+      const variantStock = mapVariantStockBreakdown(item);
       const availableQuantity = getAvailableStock(item);
+      const reservedQuantity = variantStock.length
+        ? variantStock.reduce((sum, variant) => sum + variant.reservedQuantity, 0)
+        : Math.max(Number(item?.reserved_quantity || 0), 0);
+
       return {
         productId: String(item._id),
         sku: String(item.sku || "").trim() || null,
+        name: String(item.name || "").trim() || null,
+        image: pickProductImage(item),
         stock: {
           status: availableQuantity > 0 ? "in_stock" : "out_of_stock",
           availableQuantity,
+          reservedQuantity,
+          variants: variantStock,
         },
         updatedAt: item.updatedAt,
       };
@@ -1190,7 +1608,7 @@ export const getPartnerPricing = async (req, res) => {
     }
 
     const items = await Product.find(query)
-      .select("_id sku price originalPrice discount updatedAt")
+      .select("_id sku name image thumbnail images price originalPrice discount updatedAt")
       .sort({ updatedAt: -1 })
       .limit(200)
       .lean();
@@ -1234,6 +1652,8 @@ export const getPartnerPricing = async (req, res) => {
       const record = {
         productId: String(item._id),
         sku: String(item.sku || "").trim() || null,
+        name: String(item.name || "").trim() || null,
+        image: pickProductImage(item),
         price,
         updatedAt: item.updatedAt,
       };
@@ -1328,7 +1748,7 @@ export const getPartnerCombos = async (req, res) => {
 
     const [combos, total] = await Promise.all([
       Combo.find(query)
-        .select("_id slug name shortDescription image comboPrice originalPrice discountPercentage updatedAt")
+        .select("_id slug name shortDescription image thumbnail comboThumbnail comboImages items comboPrice originalPrice discountPercentage updatedAt")
         .sort({ updatedAt: -1 })
         .skip(skip)
         .limit(limit)
@@ -1339,20 +1759,44 @@ export const getPartnerCombos = async (req, res) => {
     return res.status(200).json(
       withMeta(req, {
         success: true,
-        data: combos.map((combo) => ({
-          id: String(combo._id),
-          slug: String(combo.slug || "").trim() || null,
-          name: combo.name,
-          shortDescription: combo.shortDescription || "",
-          image: combo.image || "",
-          price: {
-            amount: Number(combo.comboPrice || combo.originalPrice || 0),
-            currency: "INR",
-            originalAmount: Number(combo.originalPrice || combo.comboPrice || 0),
-            discountPercent: Number(combo.discountPercentage || 0),
-          },
-          updatedAt: combo.updatedAt,
-        })),
+        data: combos.map((combo) => {
+          const rawItems = Array.isArray(combo.items) ? combo.items : [];
+          const lightweightItems = rawItems
+            .map((entry) => {
+              if (!entry) return null;
+              if (typeof entry === "string") return { id: entry };
+              if (typeof entry === "object") {
+                const id = String(entry.product || entry.productId || entry._id || entry.id || "").trim();
+                if (!id) return null;
+                return {
+                  id,
+                  quantity: Number(entry.quantity || entry.qty || 1),
+                };
+              }
+              return null;
+            })
+            .filter(Boolean);
+
+          return {
+            id: String(combo._id),
+            slug: String(combo.slug || "").trim() || null,
+            name: combo.name,
+            shortDescription: combo.shortDescription || "",
+            image: pickComboImage(combo),
+            thumbnail: combo.thumbnail || combo.comboThumbnail || "",
+            comboThumbnail: combo.comboThumbnail || combo.thumbnail || "",
+            comboImages: Array.isArray(combo.comboImages) ? combo.comboImages : [],
+            items: lightweightItems,
+            itemCount: lightweightItems.length,
+            price: {
+              amount: Number(combo.comboPrice || combo.originalPrice || 0),
+              currency: "INR",
+              originalAmount: Number(combo.originalPrice || combo.comboPrice || 0),
+              discountPercent: Number(combo.discountPercentage || 0),
+            },
+            updatedAt: combo.updatedAt,
+          };
+        }),
         pagination: {
           page,
           limit,
@@ -1435,9 +1879,9 @@ export const adminCreatePartner = async (req, res) => {
     const name = String(req.body?.name || "").trim();
     const companyName = String(req.body?.companyName || "").trim();
     const contactEmail = String(req.body?.contactEmail || "").trim().toLowerCase();
-    const rateLimitPerMinute = parseNumber(req.body?.rateLimitPerMinute, 120);
-    const dailyRequestLimit = parseNumber(req.body?.dailyRequestLimit, 20000);
-    const dailyTokenLimit = parseNumber(req.body?.dailyTokenLimit, 0);
+    const rateLimitPerMinute = toNonNegativeLimit(req.body?.rateLimitPerMinute, 120);
+    const dailyRequestLimit = toNonNegativeLimit(req.body?.dailyRequestLimit, 20000);
+    const dailyTokenLimit = toNonNegativeLimit(req.body?.dailyTokenLimit, 0);
 
     if (!name || !contactEmail) {
       return res.status(400).json({
@@ -1446,24 +1890,24 @@ export const adminCreatePartner = async (req, res) => {
       });
     }
 
-    if (rateLimitPerMinute < 10 || rateLimitPerMinute > 5000) {
+    if (rateLimitPerMinute < 0) {
       return res.status(400).json({
         success: false,
-        message: "rateLimitPerMinute must be between 10 and 5000",
+        message: "rateLimitPerMinute must be 0 or greater",
       });
     }
 
-    if (dailyRequestLimit < 100 || dailyRequestLimit > 5000000) {
+    if (dailyRequestLimit < 0) {
       return res.status(400).json({
         success: false,
-        message: "dailyRequestLimit must be between 100 and 5000000",
+        message: "dailyRequestLimit must be 0 or greater",
       });
     }
 
-    if (dailyTokenLimit < 0 || dailyTokenLimit > 50000000) {
+    if (dailyTokenLimit < 0) {
       return res.status(400).json({
         success: false,
-        message: "dailyTokenLimit must be between 0 and 50000000",
+        message: "dailyTokenLimit must be 0 or greater",
       });
     }
 
@@ -1487,7 +1931,7 @@ export const adminCreatePartner = async (req, res) => {
       baseRPM: dynamicPatch["rateLimitPlan.baseRPM"] || rateLimitPerMinute,
       burstRPM: dynamicPatch["rateLimitPlan.burstRPM"] || Math.round(rateLimitPerMinute * 1.8),
       dailyLimit: dynamicPatch["rateLimitPlan.dailyLimit"] || dailyRequestLimit,
-      minDynamicRPM: dynamicPatch["rateLimitPlan.minDynamicRPM"] || Math.max(10, Math.floor(rateLimitPerMinute * 0.5)),
+      minDynamicRPM: dynamicPatch["rateLimitPlan.minDynamicRPM"] || Math.max(0, Math.floor(rateLimitPerMinute * 0.5)),
       maxDynamicRPM: dynamicPatch["rateLimitPlan.maxDynamicRPM"] || Math.max(rateLimitPerMinute, 4000),
       scalingEnabled: dynamicPatch["rateLimitPlan.scalingEnabled"] !== undefined
         ? Boolean(dynamicPatch["rateLimitPlan.scalingEnabled"])
@@ -1556,6 +2000,11 @@ export const adminCreatePartner = async (req, res) => {
           dynamic,
         },
         apiKey: generated.apiKey,
+        guide: {
+          htmlUrl: `${resolvePartnerApiBaseUrl(req)}/guide`,
+          pdfUrl: `${resolvePartnerApiBaseUrl(req)}/guide.pdf`,
+          simulatorUrl: `${resolvePartnerApiBaseUrl(req)}/dashboard`,
+        },
       },
     });
   } catch (error) {
@@ -1729,10 +2178,7 @@ export const adminExportPartnersCsv = async (_req, res) => {
     return res.status(200).send(csv);
   } catch (error) {
     console.error("adminExportPartnersCsv error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to export partners CSV",
-    });
+    return sendError(_req, res, 500, "INTERNAL_ERROR", "Failed to export partners CSV");
   }
 };
 
@@ -1742,7 +2188,7 @@ export const adminRotatePartnerKey = async (req, res) => {
     const partner = await Partner.findById(partnerId);
 
     if (!partner) {
-      return res.status(404).json({ success: false, message: "Partner not found" });
+      return sendError(req, res, 404, "NOT_FOUND", "Partner not found");
     }
 
     await PartnerApiKey.updateMany(
@@ -1769,10 +2215,7 @@ export const adminRotatePartnerKey = async (req, res) => {
     });
   } catch (error) {
     console.error("adminRotatePartnerKey error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to rotate partner key",
-    });
+    return sendError(req, res, 500, "INTERNAL_ERROR", "Failed to rotate partner key");
   }
 };
 
@@ -1782,7 +2225,7 @@ export const adminUpdatePartner = async (req, res) => {
 
     const existingPartner = await Partner.findById(partnerId).lean();
     if (!existingPartner) {
-      return res.status(404).json({ success: false, message: "Partner not found" });
+      return sendError(req, res, 404, "NOT_FOUND", "Partner not found");
     }
 
     const update = {};
@@ -1809,19 +2252,13 @@ export const adminUpdatePartner = async (req, res) => {
       );
     }
     if (req.body?.rateLimitPerMinute !== undefined) {
-      update.rateLimitPerMinute = Math.min(Math.max(parseNumber(req.body.rateLimitPerMinute, 120), 10), 5000);
+      update.rateLimitPerMinute = toNonNegativeLimit(req.body.rateLimitPerMinute, 120);
     }
     if (req.body?.dailyRequestLimit !== undefined) {
-      update.dailyRequestLimit = Math.min(
-        Math.max(parseNumber(req.body.dailyRequestLimit, 20000), 100),
-        5000000,
-      );
+      update.dailyRequestLimit = toNonNegativeLimit(req.body.dailyRequestLimit, 20000);
     }
     if (req.body?.dailyTokenLimit !== undefined) {
-      update.dailyTokenLimit = Math.min(
-        Math.max(parseNumber(req.body.dailyTokenLimit, 0), 0),
-        50000000,
-      );
+      update.dailyTokenLimit = toNonNegativeLimit(req.body.dailyTokenLimit, 0);
     }
     if (req.body?.allowedOrigins !== undefined && Array.isArray(req.body.allowedOrigins)) {
       update.allowedOrigins = req.body.allowedOrigins;
@@ -1921,10 +2358,7 @@ export const adminUpdatePartner = async (req, res) => {
     });
   } catch (error) {
     console.error("adminUpdatePartner error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to update partner",
-    });
+    return sendError(req, res, 500, "INTERNAL_ERROR", "Failed to update partner");
   }
 };
 
@@ -1934,10 +2368,7 @@ export const adminDeletePartner = async (req, res) => {
 
     const partner = await Partner.findById(partnerId).lean();
     if (!partner) {
-      return res.status(404).json({
-        success: false,
-        message: "Partner not found",
-      });
+      return sendError(req, res, 404, "NOT_FOUND", "Partner not found");
     }
 
     await Promise.all([
@@ -1955,10 +2386,7 @@ export const adminDeletePartner = async (req, res) => {
     });
   } catch (error) {
     console.error("adminDeletePartner error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to delete partner",
-    });
+    return sendError(req, res, 500, "INTERNAL_ERROR", "Failed to delete partner");
   }
 };
 
@@ -1967,7 +2395,7 @@ export const adminRevokePartnerKey = async (req, res) => {
     const partnerId = String(req.params?.partnerId || "").trim();
     const partner = await Partner.findById(partnerId).lean();
     if (!partner) {
-      return res.status(404).json({ success: false, message: "Partner not found" });
+      return sendError(req, res, 404, "NOT_FOUND", "Partner not found");
     }
 
     const result = await PartnerApiKey.updateMany(
@@ -1996,10 +2424,7 @@ export const adminRevokePartnerKey = async (req, res) => {
     });
   } catch (error) {
     console.error("adminRevokePartnerKey error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to revoke partner key",
-    });
+    return sendError(req, res, 500, "INTERNAL_ERROR", "Failed to revoke partner key");
   }
 };
 
@@ -2540,10 +2965,7 @@ export const adminGetPartnerAnalytics = async (req, res) => {
     });
   } catch (error) {
     console.error("adminGetPartnerAnalytics error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to load partner analytics",
-    });
+    return sendError(req, res, 500, "INTERNAL_ERROR", "Failed to load partner analytics");
   }
 };
 
@@ -2552,7 +2974,7 @@ export const adminGetPartnerDetail = async (req, res) => {
     const partnerId = String(req.params?.partnerId || "").trim();
     const partner = await Partner.findById(partnerId).lean();
     if (!partner) {
-      return res.status(404).json({ success: false, message: "Partner not found" });
+      return sendError(req, res, 404, "NOT_FOUND", "Partner not found");
     }
 
     const activeKey = await PartnerApiKey.findOne({
@@ -2679,10 +3101,7 @@ export const adminGetPartnerDetail = async (req, res) => {
     });
   } catch (error) {
     console.error("adminGetPartnerDetail error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to load partner details",
-    });
+    return sendError(req, res, 500, "INTERNAL_ERROR", "Failed to load partner details");
   }
 };
 
@@ -2691,7 +3110,7 @@ export const adminGetPartnerDynamicState = async (req, res) => {
     const partnerId = String(req.params?.partnerId || "").trim();
     const partner = await Partner.findById(partnerId).lean();
     if (!partner) {
-      return res.status(404).json({ success: false, message: "Partner not found" });
+      return sendError(req, res, 404, "NOT_FOUND", "Partner not found");
     }
 
     const activeKey = await PartnerApiKey.findOne({ partnerId, status: "active" })
@@ -2716,7 +3135,7 @@ export const adminGetPartnerDynamicState = async (req, res) => {
     });
   } catch (error) {
     console.error("adminGetPartnerDynamicState error:", error);
-    return res.status(500).json({ success: false, message: "Failed to load dynamic limiter state" });
+    return sendError(req, res, 500, "INTERNAL_ERROR", "Failed to load dynamic limiter state");
   }
 };
 
@@ -2725,18 +3144,23 @@ export const adminUpdatePartnerDynamicState = async (req, res) => {
     const partnerId = String(req.params?.partnerId || "").trim();
     const partner = await Partner.findById(partnerId);
     if (!partner) {
-      return res.status(404).json({ success: false, message: "Partner not found" });
+      return sendError(req, res, 404, "NOT_FOUND", "Partner not found");
     }
 
     const dynamicPatch = toPartnerDynamicPatch(req.body || {}, partner);
     if (!Object.keys(dynamicPatch).length) {
-      return res.status(400).json({
-        success: false,
-        message: "No dynamic limiter fields were provided",
-      });
+      return sendError(req, res, 400, "VALIDATION_ERROR", "No dynamic limiter fields were provided");
     }
 
-    await Partner.updateOne({ _id: partner._id }, { $set: dynamicPatch });
+    const updateDoc = { ...dynamicPatch };
+    if (dynamicPatch["rateLimitPlan.baseRPM"] !== undefined) {
+      updateDoc.rateLimitPerMinute = dynamicPatch["rateLimitPlan.baseRPM"];
+    }
+    if (dynamicPatch["rateLimitPlan.dailyLimit"] !== undefined) {
+      updateDoc.dailyRequestLimit = dynamicPatch["rateLimitPlan.dailyLimit"];
+    }
+
+    await Partner.updateOne({ _id: partner._id }, { $set: updateDoc });
     const updatedPartner = await Partner.findById(partnerId).lean();
 
     const activeKey = await PartnerApiKey.findOne({ partnerId, status: "active" })
@@ -2768,7 +3192,7 @@ export const adminUpdatePartnerDynamicState = async (req, res) => {
     });
   } catch (error) {
     console.error("adminUpdatePartnerDynamicState error:", error);
-    return res.status(500).json({ success: false, message: "Failed to update dynamic limiter state" });
+    return sendError(req, res, 500, "INTERNAL_ERROR", "Failed to update dynamic limiter state");
   }
 };
 
@@ -2814,10 +3238,7 @@ export const adminGetPartnerLogs = async (req, res) => {
     });
   } catch (error) {
     console.error("adminGetPartnerLogs error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to load partner logs",
-    });
+    return sendError(req, res, 500, "INTERNAL_ERROR", "Failed to load partner logs");
   }
 };
 
@@ -2865,10 +3286,7 @@ export const adminGetPartnerLiveMonitoring = async (req, res) => {
     });
   } catch (error) {
     console.error("adminGetPartnerLiveMonitoring error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to load live monitoring",
-    });
+    return sendError(req, res, 500, "INTERNAL_ERROR", "Failed to load live monitoring");
   }
 };
 
@@ -2877,29 +3295,31 @@ export const adminGeneratePartnerCredentialPdf = async (req, res) => {
     const partnerId = String(req.params?.partnerId || "").trim();
     const partner = await Partner.findById(partnerId).lean();
     if (!partner) {
-      return res.status(404).json({
-        success: false,
-        message: "Partner not found",
-      });
+      return sendError(req, res, 404, "NOT_FOUND", "Partner not found");
     }
 
     const apiKey = String(req.body?.apiKey || "").trim();
     if (!apiKey || !apiKey.startsWith("hogp_")) {
-      return res.status(400).json({
-        success: false,
-        message: "Valid API key is required to generate credential PDF",
-      });
+      return sendError(
+        req,
+        res,
+        400,
+        "VALIDATION_ERROR",
+        "Valid API key is required to generate credential PDF",
+      );
     }
 
-    const baseUrl = `${req.protocol}://${req.get("host")}/api/v1/partner`;
+    const baseUrl = resolvePartnerApiBaseUrl(req);
     const guideUrl = `${baseUrl}/guide`;
     const guidePdfUrl = `${baseUrl}/guide.pdf`;
-    const sampleCurl = `curl -X GET "${baseUrl}/products?limit=20" -H "x-api-key: ${apiKey}"`;
+    const sampleLimit = resolveSampleLimit(req.body?.sampleLimit, DEFAULT_PARTNER_SAMPLE_LIMIT);
+    const sampleCurl = `curl -X GET "${baseUrl}/products?limit=${sampleLimit}" -H "x-api-key: ${apiKey}"`;
 
     const pdfBuffer = await buildPartnerCredentialPdfBuffer({
       baseUrl,
       guideUrl,
       guidePdfUrl,
+      websiteUrl: SITE_URL,
       partnerName: partner.name,
       contactEmail: partner.contactEmail,
       apiKey,
@@ -2920,9 +3340,6 @@ export const adminGeneratePartnerCredentialPdf = async (req, res) => {
     return res.status(200).send(pdfBuffer);
   } catch (error) {
     console.error("adminGeneratePartnerCredentialPdf error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to generate partner credential PDF",
-    });
+    return sendError(req, res, 500, "INTERNAL_ERROR", "Failed to generate partner credential PDF");
   }
 };

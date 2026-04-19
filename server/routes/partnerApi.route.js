@@ -16,6 +16,7 @@ import {
   adminUpdatePartnerDynamicState,
   adminUpdatePartner,
   getPartnerApiGuide,
+  getPartnerApiDashboard,
   getPartnerApiGuidePdf,
   getPartnerCategories,
   getPartnerCombos,
@@ -40,6 +41,7 @@ const router = express.Router();
 
 router.get("/guide", getPartnerApiGuide);
 router.get("/guide.pdf", getPartnerApiGuidePdf);
+router.get("/dashboard", getPartnerApiDashboard);
 router.use(partnerApiActivityTracker);
 
 router.get("/health", partnerApiAuth, partnerRuntimeLimiter, partnerHealth);

@@ -186,6 +186,140 @@ test("GET /api/v1/partner/inventory enforces scope checks", async () => {
   assert.equal(payload.error.code, "INSUFFICIENT_SCOPE");
 });
 
+test("GET /api/v1/partner/inventory returns variant-wise stock breakup", async () => {
+  const { apiKey } = await seedPartner({ scopes: ["inventory.read"] });
+  const category = await Category.create({
+    name: "Peanut Butter",
+    slug: `peanut-butter-${Date.now()}`,
+    isActive: true,
+  });
+
+  const product = await Product.create({
+    name: "Dark Chocolate Smooth Peanut Butter",
+    slug: `dark-choco-peanut-${Date.now()}`,
+    price: 449,
+    category: category._id,
+    sku: `BOG-${Date.now()}`,
+    isActive: true,
+    hasVariants: true,
+    stock: 37,
+    stock_quantity: 37,
+    reserved_quantity: 0,
+    variants: [
+      {
+        name: "500g",
+        sku: `BOG-500-${Date.now()}`,
+        price: 449,
+        stock: 16,
+        stock_quantity: 16,
+        reserved_quantity: 0,
+      },
+      {
+        name: "1kg",
+        sku: `BOG-1KG-${Date.now()}`,
+        price: 799,
+        stock: 21,
+        stock_quantity: 21,
+        reserved_quantity: 0,
+      },
+    ],
+  });
+
+  const { response, payload } = await requestJson(
+    `/api/v1/partner/inventory?productId=${String(product._id)}`,
+    {
+      headers: {
+        "x-api-key": apiKey,
+      },
+    },
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.success, true);
+  assert.ok(Array.isArray(payload.data));
+  assert.equal(payload.data.length, 1);
+
+  const [item] = payload.data;
+  assert.equal(item.stock.availableQuantity, 37);
+  assert.equal(item.stock.reservedQuantity, 0);
+  assert.ok(Array.isArray(item.stock.variants));
+  assert.equal(item.stock.variants.length, 2);
+
+  const variant500g = item.stock.variants.find((variant) => variant.name === "500g");
+  const variant1kg = item.stock.variants.find((variant) => variant.name === "1kg");
+
+  assert.ok(variant500g);
+  assert.equal(variant500g.availableQuantity, 16);
+  assert.equal(variant500g.status, "in_stock");
+
+  assert.ok(variant1kg);
+  assert.equal(variant1kg.availableQuantity, 21);
+  assert.equal(variant1kg.status, "in_stock");
+});
+
+test("GET /api/v1/partner/products returns variant-wise stock breakup", async () => {
+  const { apiKey } = await seedPartner({ scopes: ["catalog.read"] });
+  const category = await Category.create({
+    name: "Peanut Butter",
+    slug: `peanut-butter-products-${Date.now()}`,
+    isActive: true,
+  });
+
+  await Product.create({
+    name: "Choco Millet Crisp Peanut Butter",
+    slug: `choco-millet-${Date.now()}`,
+    price: 399,
+    category: category._id,
+    sku: `BOG-PROD-${Date.now()}`,
+    isActive: true,
+    hasVariants: true,
+    variants: [
+      {
+        name: "500g",
+        sku: `BOG-PROD-500-${Date.now()}`,
+        price: 399,
+        stock: 50,
+        stock_quantity: 50,
+        reserved_quantity: 0,
+      },
+      {
+        name: "1kg",
+        sku: `BOG-PROD-1KG-${Date.now()}`,
+        price: 699,
+        stock: 50,
+        stock_quantity: 50,
+        reserved_quantity: 0,
+      },
+    ],
+  });
+
+  const { response, payload } = await requestJson("/api/v1/partner/products?limit=10&page=1", {
+    headers: {
+      "x-api-key": apiKey,
+    },
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.success, true);
+  assert.ok(Array.isArray(payload.data));
+
+  const item = payload.data.find((entry) => entry.name === "Choco Millet Crisp Peanut Butter");
+  assert.ok(item);
+  assert.ok(item.stock);
+  assert.equal(item.stock.availableQuantity, 100);
+  assert.ok(Array.isArray(item.stock.variants));
+  assert.equal(item.stock.variants.length, 2);
+
+  const variant500g = item.stock.variants.find((variant) => variant.name === "500g");
+  const variant1kg = item.stock.variants.find((variant) => variant.name === "1kg");
+
+  assert.ok(variant500g);
+  assert.equal(variant500g.availableQuantity, 50);
+
+  assert.ok(variant1kg);
+  assert.equal(variant1kg.availableQuantity, 50);
+});
+
 test("GET /api/v1/partner/products returns expected partner payload with ETag", async () => {
   const { partner, apiKey } = await seedPartner();
   const { product } = await seedCatalog();

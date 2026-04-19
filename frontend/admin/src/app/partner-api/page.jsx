@@ -4,7 +4,6 @@ import { useAdmin } from "@/context/AdminContext";
 import { API_BASE_URL, deleteData, getData, patchData, postData } from "@/utils/api";
 import {
   Alert,
-  Box,
   Button,
   Chip,
   CircularProgress,
@@ -15,7 +14,6 @@ import {
   LinearProgress,
   MenuItem,
   Select,
-  Slider,
   TextField,
   Tooltip as MuiTooltip,
 } from "@mui/material";
@@ -182,14 +180,25 @@ const PartnerApiPage = () => {
     trafficSpikeMinRequests: 50,
   });
 
-  const [issuedKeyInfo, setIssuedKeyInfo] = useState({ partnerId: "", key: "" });
+  const [issuedKeyInfo, setIssuedKeyInfo] = useState({
+    partnerId: "",
+    key: "",
+    partnerName: "",
+    companyName: "",
+    contactEmail: "",
+  });
   const [detailPartnerId, setDetailPartnerId] = useState("");
   const [partnerDetail, setPartnerDetail] = useState(null);
+  const [selectedPartnerIds, setSelectedPartnerIds] = useState([]);
 
   const [permissionEditor, setPermissionEditor] = useState({ open: false, partnerId: "", scopes: [] });
   const [dynamicEditor, setDynamicEditor] = useState({
     open: false,
     partnerId: "",
+    baseRPM: "",
+    burstRPM: "",
+    dailyLimit: "",
+    dailyTokenLimit: "",
     lockScaling: false,
     scalingEnabled: true,
     safeModeForced: false,
@@ -224,12 +233,65 @@ const PartnerApiPage = () => {
     [partnerApiBase],
   );
 
+  const selectedPartners = useMemo(() => {
+    const selectedSet = new Set((selectedPartnerIds || []).map((id) => String(id)));
+    return (partners || []).filter((partner) => selectedSet.has(String(partner.id)));
+  }, [partners, selectedPartnerIds]);
+
+  const partnerSimulatorUrl = `${partnerApiBase}/dashboard`;
+
   const copyValue = async (value, label) => {
     try {
       await navigator.clipboard.writeText(String(value || ""));
       toast.success(`${label} copied`);
     } catch {
       toast.error(`Unable to copy ${label}`);
+    }
+  };
+
+  const downloadCredentialPdf = async ({ partnerId, apiKey }) => {
+    if (!token || !partnerId || !apiKey) {
+      toast.error("Partner ID and API key are required to generate credential PDF");
+      return;
+    }
+
+    try {
+      const response = await fetch(`${partnerApiBase}/admin/partners/${partnerId}/credential-pdf`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ apiKey }),
+      });
+
+      if (!response.ok) {
+        let message = "Failed to generate credential PDF";
+        try {
+          const payload = await response.json();
+          message = payload?.error?.message || payload?.message || message;
+        } catch {
+        }
+        toast.error(message);
+        return;
+      }
+
+      const blob = await response.blob();
+      const contentDisposition = response.headers.get("content-disposition") || "";
+      const match = contentDisposition.match(/filename=\"?([^\";]+)\"?/i);
+      const fileName = match?.[1] || `healthyonegram-partner-credentials-${Date.now()}.pdf`;
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = fileName;
+      link.rel = "noopener";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success("Credential PDF downloaded");
+    } catch {
+      toast.error("Failed to download credential PDF");
     }
   };
 
@@ -388,6 +450,11 @@ const PartnerApiPage = () => {
     return () => clearInterval(interval);
   }, [token, isAuthenticated, section, detailPartnerId, loadOverview, loadLive, loadPartners, loadPartnerDetail, loadLogs, loadAnalytics]);
 
+  useEffect(() => {
+    const validIds = new Set((partners || []).map((partner) => String(partner.id)));
+    setSelectedPartnerIds((prev) => prev.filter((id) => validIds.has(String(id))));
+  }, [partners]);
+
   const submitCreatePartner = async () => {
     if (!form.partnerName.trim() || !form.email.trim()) {
       toast.error("Partner name and email are required");
@@ -418,7 +485,23 @@ const PartnerApiPage = () => {
 
     if (response?.success) {
       toast.success("Partner created successfully");
-      setIssuedKeyInfo({ partnerId: String(response?.data?.partner?.id || ""), key: String(response?.data?.apiKey || "") });
+      const createdPartnerId = String(response?.data?.partner?.id || "");
+      const createdApiKey = String(response?.data?.apiKey || "");
+      setIssuedKeyInfo({
+        partnerId: createdPartnerId,
+        key: createdApiKey,
+        partnerName: String(response?.data?.partner?.name || ""),
+        companyName: String(response?.data?.partner?.companyName || ""),
+        contactEmail: String(response?.data?.partner?.contactEmail || ""),
+      });
+
+      if (createdPartnerId && createdApiKey) {
+        await downloadCredentialPdf({
+          partnerId: createdPartnerId,
+          apiKey: createdApiKey,
+        });
+      }
+
       setForm({
         partnerName: "",
         companyName: "",
@@ -442,7 +525,14 @@ const PartnerApiPage = () => {
     setIsBusy(true);
     const response = await postData(`/api/v1/partner/admin/partners/${partnerId}/rotate-key`, {}, token);
     if (response?.success) {
-      setIssuedKeyInfo({ partnerId, key: String(response?.data?.apiKey || "") });
+      const matchedPartner = (partners || []).find((item) => String(item.id) === String(partnerId));
+      setIssuedKeyInfo({
+        partnerId,
+        key: String(response?.data?.apiKey || ""),
+        partnerName: String(matchedPartner?.name || ""),
+        companyName: String(matchedPartner?.companyName || ""),
+        contactEmail: String(matchedPartner?.contactEmail || ""),
+      });
       toast.success("API key rotated");
       await Promise.all([loadPartners(), loadOverview(), detailPartnerId === partnerId ? loadPartnerDetail(partnerId) : Promise.resolve()]);
     } else {
@@ -496,6 +586,59 @@ const PartnerApiPage = () => {
     setIsBusy(false);
   };
 
+  const togglePartnerSelection = (partnerId) => {
+    const id = String(partnerId || "");
+    if (!id) return;
+    setSelectedPartnerIds((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
+  };
+
+  const selectAllPartners = () => {
+    setSelectedPartnerIds((partners || []).map((partner) => String(partner.id)));
+  };
+
+  const deselectAllPartners = () => {
+    setSelectedPartnerIds([]);
+  };
+
+  const deleteSelectedPartners = async () => {
+    if (!selectedPartnerIds.length) {
+      toast.error("Select at least one partner to delete");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Delete ${selectedPartners.length} selected partner(s)? This action cannot be undone.`,
+    );
+    if (!confirmed) return;
+
+    setIsBusy(true);
+    const results = await Promise.all(
+      selectedPartners.map((partner) =>
+        deleteData(`/api/v1/partner/admin/partners/${partner.id}`, token).then((response) => ({ partner, response })),
+      ),
+    );
+
+    const failed = results.filter((item) => !item.response?.success);
+    const deletedCount = results.length - failed.length;
+
+    if (detailPartnerId && selectedPartnerIds.includes(String(detailPartnerId))) {
+      setPartnerDetail(null);
+      setDetailPartnerId("");
+    }
+
+    if (deletedCount > 0) {
+      toast.success(`Deleted ${deletedCount} partner(s)`);
+    }
+
+    if (failed.length > 0) {
+      toast.error(`${failed.length} partner(s) failed to delete`);
+    }
+
+    setSelectedPartnerIds([]);
+    await Promise.all([loadPartners(), loadOverview()]);
+    setIsBusy(false);
+  };
+
   const openPermissionEditor = (partner) => {
     setPermissionEditor({
       open: true,
@@ -536,6 +679,15 @@ const PartnerApiPage = () => {
     setDynamicEditor({
       open: true,
       partnerId: partner.id,
+      baseRPM: dynamic?.plan?.baseRPM ? String(dynamic.plan.baseRPM) : String(partner?.rateLimitPerMinute || ""),
+      burstRPM: dynamic?.plan?.burstRPM ? String(dynamic.plan.burstRPM) : "",
+      dailyLimit: dynamic?.plan?.dailyLimit
+        ? String(dynamic.plan.dailyLimit)
+        : String(partner?.dailyRequestLimit || ""),
+      dailyTokenLimit:
+        partner?.dailyTokenLimit !== undefined && partner?.dailyTokenLimit !== null
+          ? String(partner.dailyTokenLimit)
+          : "0",
       lockScaling: Boolean(dynamic?.controls?.lockScaling),
       scalingEnabled: dynamic?.plan?.scalingEnabled !== false,
       safeModeForced: Boolean(dynamic?.controls?.safeModeForced),
@@ -554,9 +706,12 @@ const PartnerApiPage = () => {
     }
 
     setIsBusy(true);
-    const response = await patchData(
+    const dynamicResponse = await patchData(
       `/api/v1/partner/admin/partners/${dynamicEditor.partnerId}/dynamic`,
       {
+        baseRPM: Number(dynamicEditor.baseRPM || 0),
+        burstRPM: Number(dynamicEditor.burstRPM || 0),
+        dailyLimit: Number(dynamicEditor.dailyLimit || 0),
         lockScaling: dynamicEditor.lockScaling,
         scalingEnabled: dynamicEditor.scalingEnabled,
         safeModeForced: dynamicEditor.safeModeForced,
@@ -567,11 +722,25 @@ const PartnerApiPage = () => {
       token,
     );
 
-    if (response?.success) {
+    const limitsResponse = await patchData(
+      `/api/v1/partner/admin/partners/${dynamicEditor.partnerId}`,
+      {
+        rateLimitPerMinute: Number(dynamicEditor.baseRPM || 0),
+        dailyRequestLimit: Number(dynamicEditor.dailyLimit || 0),
+        dailyTokenLimit: Number(dynamicEditor.dailyTokenLimit || 0),
+      },
+      token,
+    );
+
+    if (dynamicResponse?.success && limitsResponse?.success) {
       toast.success("Dynamic limiter settings updated");
       setDynamicEditor({
         open: false,
         partnerId: "",
+        baseRPM: "",
+        burstRPM: "",
+        dailyLimit: "",
+        dailyTokenLimit: "",
         lockScaling: false,
         scalingEnabled: true,
         safeModeForced: false,
@@ -587,7 +756,9 @@ const PartnerApiPage = () => {
           : Promise.resolve(),
       ]);
     } else {
-      toast.error(response?.message || "Failed to update dynamic limiter settings");
+      toast.error(
+        dynamicResponse?.message || limitsResponse?.message || "Failed to update dynamic limiter settings",
+      );
     }
 
     setIsBusy(false);
@@ -675,6 +846,9 @@ const PartnerApiPage = () => {
           <Alert severity="warning" className="rounded-xl" sx={{ borderRadius: "12px" }}>
             <div className="space-y-2">
               <p className="font-semibold">Save this key securely. It will not be shown again.</p>
+              <p className="text-xs text-slate-700">
+                Partner: {issuedKeyInfo.partnerName || "-"} | Email: {issuedKeyInfo.contactEmail || "-"}
+              </p>
               <p className="text-xs break-all bg-amber-100/70 px-2 py-1 rounded">{issuedKeyInfo.key}</p>
               <div className="flex gap-2 flex-wrap">
                 <InfoButton
@@ -688,11 +862,33 @@ const PartnerApiPage = () => {
                 </InfoButton>
                 <InfoButton
                   size="small"
+                  variant="contained"
+                  color="success"
+                  tooltip="Generate a shareable credential PDF with partner details and this API key"
+                  onClick={() =>
+                    downloadCredentialPdf({
+                      partnerId: issuedKeyInfo.partnerId,
+                      apiKey: issuedKeyInfo.key,
+                    })
+                  }
+                >
+                  Download Credential PDF
+                </InfoButton>
+                <InfoButton
+                  size="small"
                   variant="outlined"
                   tooltip="Open partner guide in a new tab for sharing with partner developer"
                   onClick={() => window.open(`${partnerApiBase}/guide`, "_blank")}
                 >
                   Open Guide
+                </InfoButton>
+                <InfoButton
+                  size="small"
+                  variant="outlined"
+                  tooltip="Open the live API simulator dashboard in a new tab"
+                  onClick={() => window.open(partnerSimulatorUrl, "_blank")}
+                >
+                  Open API Simulator
                 </InfoButton>
               </div>
             </div>
@@ -1063,19 +1259,17 @@ const PartnerApiPage = () => {
                 RPM Limit
                 <InfoIcon title="Max requests allowed per minute" />
               </p>
-              <Box px={1}>
-                <Slider
-                  min={10}
-                  max={5000}
-                  step={10}
-                  value={Number(form.rateLimitPerMinute || 120)}
-                  onChange={(_event, value) =>
-                    setForm((prev) => ({ ...prev, rateLimitPerMinute: Number(value) }))
-                  }
-                  valueLabelDisplay="auto"
-                />
-              </Box>
-              <p className="text-xs text-slate-500">Current: {form.rateLimitPerMinute} requests / minute</p>
+              <TextField
+                label="Requests Per Minute"
+                type="number"
+                value={form.rateLimitPerMinute}
+                onChange={(event) =>
+                  setForm((prev) => ({ ...prev, rateLimitPerMinute: Number(event.target.value || 0) }))
+                }
+                size="small"
+                fullWidth
+                helperText="Manual value. Set 0 for unbounded behavior."
+              />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1134,10 +1328,69 @@ const PartnerApiPage = () => {
         {section === "partners" ? (
           <section className="space-y-4">
             <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-              <div className="overflow-auto">
+              <div className="border-b border-slate-200 bg-linear-to-r from-slate-50 to-white px-4 py-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800">Partner Records</p>
+                    <p className="text-xs text-slate-500">
+                      {selectedPartnerIds.length} selected of {partners.length}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <InfoButton
+                      size="small"
+                      variant="outlined"
+                      tooltip="Select all partners in current table"
+                      onClick={selectAllPartners}
+                    >
+                      Select All
+                    </InfoButton>
+                    <InfoButton
+                      size="small"
+                      variant="outlined"
+                      tooltip="Clear all selected partners"
+                      onClick={deselectAllPartners}
+                    >
+                      Deselect All
+                    </InfoButton>
+                    <InfoButton
+                      size="small"
+                      variant="outlined"
+                      color="error"
+                      tooltip="Delete all selected partners"
+                      onClick={deleteSelectedPartners}
+                      startIcon={<FiTrash />}
+                      disabled={!selectedPartnerIds.length || isBusy}
+                    >
+                      Delete Selected
+                    </InfoButton>
+                  </div>
+                </div>
+
+                {selectedPartners.length ? (
+                  <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                    {selectedPartners.slice(0, 12).map((partner) => (
+                      <Chip
+                        key={`selected-chip-${partner.id}`}
+                        size="small"
+                        label={partner.name || partner.contactEmail || String(partner.id)}
+                        onDelete={() => togglePartnerSelection(partner.id)}
+                        color="warning"
+                        variant="outlined"
+                      />
+                    ))}
+                    {selectedPartners.length > 12 ? (
+                      <span className="text-xs text-slate-500">+{selectedPartners.length - 12} more selected</span>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="max-h-[68vh] overflow-auto scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-slate-100">
                 <table className="min-w-full text-sm">
-                  <thead className="bg-slate-50 text-slate-600">
+                  <thead className="bg-slate-50 text-slate-600 sticky top-0 z-10">
                     <tr>
+                      <th className="px-4 py-3 text-left w-10">Select</th>
                       <th className="px-4 py-3 text-left">Name</th>
                       <th className="px-4 py-3 text-left">Status</th>
                       <th className="px-4 py-3 text-left">Scopes</th>
@@ -1150,11 +1403,22 @@ const PartnerApiPage = () => {
                   <tbody>
                     {partners.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="px-4 py-10 text-center text-slate-500">No partners found.</td>
+                        <td colSpan={8} className="px-4 py-10 text-center text-slate-500">No partners found.</td>
                       </tr>
                     ) : (
                       partners.map((partner) => (
-                        <tr key={partner.id} className="border-t border-slate-100 align-top">
+                        <tr
+                          key={partner.id}
+                          className={`border-t border-slate-100 align-top ${selectedPartnerIds.includes(String(partner.id)) ? "bg-amber-50/40" : ""}`}
+                        >
+                          <td className="px-4 py-4">
+                            <input
+                              type="checkbox"
+                              aria-label={`Select ${partner.name}`}
+                              checked={selectedPartnerIds.includes(String(partner.id))}
+                              onChange={() => togglePartnerSelection(partner.id)}
+                            />
+                          </td>
                           <td className="px-4 py-4">
                             <p className="font-semibold text-slate-900">{partner.name}</p>
                             <p className="text-xs text-slate-500">{partner.contactEmail}</p>
@@ -1194,7 +1458,15 @@ const PartnerApiPage = () => {
                                 size="small"
                                 variant="outlined"
                                 tooltip="View usage graph, quota, and recent logs for this partner"
-                                onClick={() => loadPartnerDetail(partner.id)}
+                                onClick={async () => {
+                                  await loadPartnerDetail(partner.id);
+                                  setTimeout(() => {
+                                    const node = document.getElementById("partner-detail-panel");
+                                    if (node) {
+                                      node.scrollIntoView({ behavior: "smooth", block: "start" });
+                                    }
+                                  }, 80);
+                                }}
                               >
                                 View
                               </InfoButton>
@@ -1262,7 +1534,7 @@ const PartnerApiPage = () => {
             </div>
 
             {partnerDetail ? (
-              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
+              <div id="partner-detail-panel" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <h3 className="text-lg font-semibold text-slate-900">{partnerDetail.partner?.name} Usage Detail</h3>
                   <InfoButton
@@ -1277,6 +1549,28 @@ const PartnerApiPage = () => {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="rounded-xl border border-slate-200 p-4 bg-slate-50">
+                    <p className="text-sm text-slate-500">API Key Prefix</p>
+                    <p className="text-xl font-semibold text-slate-800">{partnerDetail.activeKey?.keyPrefix || "-"}</p>
+                    <p className="text-xs text-slate-500 mt-1">Full key is intentionally hidden after creation.</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 p-4 bg-slate-50">
+                    <p className="text-sm text-slate-500">Last Activity</p>
+                    <p className="text-xl font-semibold text-slate-800">{normalizeDate(partnerDetail.partner?.lastUsedAt || partnerDetail.activeKey?.lastUsedAt)}</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 p-4 bg-slate-50 md:col-span-2">
+                    <p className="text-sm text-slate-500 mb-2">Scopes</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {(partnerDetail.partner?.scopes || []).map((scope) => (
+                        <span key={`detail-scope-${scope}`} className="text-[11px] rounded-full bg-white border border-slate-200 px-2 py-1 text-slate-700">
+                          {labelFromScope(scope)}
+                        </span>
+                      ))}
+                      {!(partnerDetail.partner?.scopes || []).length ? (
+                        <span className="text-xs text-slate-500">No scopes assigned</span>
+                      ) : null}
+                    </div>
+                  </div>
                   <div className="rounded-xl border border-slate-200 p-4 bg-slate-50">
                     <p className="text-sm text-slate-500">Current Minute Usage</p>
                     <p className="text-xl font-semibold text-slate-800">
@@ -1351,7 +1645,26 @@ const PartnerApiPage = () => {
                 <li>/api/v1/partner/inventory</li>
                 <li>/api/v1/partner/pricing</li>
                 <li>/api/v1/partner/gst</li>
+                <li>/api/v1/partner/combos</li>
+                <li>/api/v1/partner/categories</li>
+                <li>/api/v1/partner/tags</li>
               </ul>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 p-4 bg-slate-50 text-sm text-slate-700">
+              <p className="font-semibold mb-2">How to Use API</p>
+              <ol className="list-decimal list-inside space-y-1">
+                <li>Get API key from Partner API panel and store securely.</li>
+                <li>Use header x-api-key: YOUR_KEY for each request.</li>
+                <li>Call required scoped endpoints (products, inventory, pricing, gst).</li>
+                <li>Handle errors: 401 unauthorized and 429 rate limit with retry/backoff.</li>
+              </ol>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 p-4 bg-slate-50 text-sm text-slate-700">
+              <p className="font-semibold mb-2">Standard Response Format</p>
+              <pre className="text-xs bg-slate-900 text-slate-100 p-3 rounded-lg overflow-auto">{`{\n  "success": true,\n  "data": { ... }\n}`}</pre>
+              <pre className="text-xs bg-slate-900 text-slate-100 p-3 rounded-lg overflow-auto mt-2">{`{\n  "success": false,\n  "error": {\n    "code": "RATE_LIMIT_EXCEEDED",\n    "message": "Rate limit exceeded"\n  }\n}`}</pre>
             </div>
 
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
@@ -1415,6 +1728,13 @@ const PartnerApiPage = () => {
                 onClick={() => window.open(`${partnerApiBase}/guide.pdf`, "_blank")}
               >
                 Download PDF
+              </InfoButton>
+              <InfoButton
+                variant="outlined"
+                tooltip="Open full partner API simulator dashboard in a new tab"
+                onClick={() => window.open(partnerSimulatorUrl, "_blank")}
+              >
+                Open API Simulator
               </InfoButton>
             </div>
           </section>
@@ -1562,6 +1882,10 @@ const PartnerApiPage = () => {
           setDynamicEditor({
             open: false,
             partnerId: "",
+            baseRPM: "",
+            burstRPM: "",
+            dailyLimit: "",
+            dailyTokenLimit: "",
             lockScaling: false,
             scalingEnabled: true,
             safeModeForced: false,
@@ -1576,6 +1900,50 @@ const PartnerApiPage = () => {
         <DialogTitle>Dynamic Limiter Controls</DialogTitle>
         <DialogContent className="space-y-3">
           <p className="text-sm text-slate-600">Tune lock, override, and adaptive quality for this partner.</p>
+          <TextField
+            label="Base RPM"
+            size="small"
+            type="number"
+            value={dynamicEditor.baseRPM}
+            onChange={(event) =>
+              setDynamicEditor((prev) => ({ ...prev, baseRPM: event.target.value }))
+            }
+            helperText="Primary per-minute rate limit"
+            fullWidth
+          />
+          <TextField
+            label="Burst RPM"
+            size="small"
+            type="number"
+            value={dynamicEditor.burstRPM}
+            onChange={(event) =>
+              setDynamicEditor((prev) => ({ ...prev, burstRPM: event.target.value }))
+            }
+            helperText="Temporary burst allowance"
+            fullWidth
+          />
+          <TextField
+            label="Daily Request Limit"
+            size="small"
+            type="number"
+            value={dynamicEditor.dailyLimit}
+            onChange={(event) =>
+              setDynamicEditor((prev) => ({ ...prev, dailyLimit: event.target.value }))
+            }
+            helperText="Daily request cap"
+            fullWidth
+          />
+          <TextField
+            label="Daily Token Limit"
+            size="small"
+            type="number"
+            value={dynamicEditor.dailyTokenLimit}
+            onChange={(event) =>
+              setDynamicEditor((prev) => ({ ...prev, dailyTokenLimit: event.target.value }))
+            }
+            helperText="Manual value. Set 0 for unbounded behavior"
+            fullWidth
+          />
           <label className="flex items-center gap-2 text-sm text-slate-700">
             <input
               type="checkbox"
@@ -1650,6 +2018,10 @@ const PartnerApiPage = () => {
               setDynamicEditor({
                 open: false,
                 partnerId: "",
+                baseRPM: "",
+                burstRPM: "",
+                dailyLimit: "",
+                dailyTokenLimit: "",
                 lockScaling: false,
                 scalingEnabled: true,
                 safeModeForced: false,

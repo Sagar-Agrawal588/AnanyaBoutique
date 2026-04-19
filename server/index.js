@@ -96,6 +96,10 @@ if (!normalizedMongoUri) {
 process.env.MONGO_URI = normalizedMongoUri;
 
 const isProductionEnv = process.env.NODE_ENV === "production";
+const isCorsAllowAllEnabled =
+  String(process.env.CORS_ALLOW_ALL || (isProductionEnv ? "false" : "true"))
+    .trim()
+    .toLowerCase() === "true";
 const normalizeOrigin = (origin) =>
   String(origin || "")
     .trim()
@@ -293,11 +297,49 @@ app.use(
       allowedHeaders: [
         "Content-Type",
         "Authorization",
+        "x-api-key",
+        "X-API-Key",
         "X-Session-Id",
         "X-Analytics-Consent",
         "X-Page-Url",
       ],
+      exposedHeaders: [
+        "ETag",
+        "Retry-After",
+        "X-RateLimit-Limit",
+        "X-RateLimit-Remaining",
+        "X-RateLimit-Reset",
+        "RateLimit-Limit",
+        "RateLimit-Remaining",
+        "RateLimit-Reset",
+        "X-DailyLimit-Limit",
+        "X-DailyLimit-Remaining",
+        "X-RateLimit-Mode",
+        "X-RateLimit-Burst",
+        "X-RateLimit-Policy",
+      ],
     };
+
+    if (isCorsAllowAllEnabled) {
+      // Allow local/file-based testing while keeping credentialed browser requests valid.
+      if (!origin) {
+        callback(null, { ...corsOptions, origin: true });
+        return;
+      }
+
+      if (origin === "null") {
+        callback(null, { ...corsOptions, origin: "null" });
+        return;
+      }
+
+      if (isHttpOrigin(normalizedOrigin)) {
+        callback(null, { ...corsOptions, origin: normalizedOrigin });
+        return;
+      }
+
+      callback(new Error("Not allowed by CORS"));
+      return;
+    }
 
     if (
       !origin ||
