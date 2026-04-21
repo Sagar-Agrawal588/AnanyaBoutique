@@ -4,7 +4,7 @@ import { useAdmin } from "@/context/AdminContext";
 import { useAdminRealtime } from "@/hooks/useAdminRealtime";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useLiveRefreshSetting } from "@/hooks/useLiveRefreshSetting";
-import { getData } from "@/utils/api";
+import { getBlobData, getData } from "@/utils/api";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -68,7 +68,9 @@ const normalizePagePath = (pageUrl) => {
 const buildUserActivityInsights = (activity = null) => {
   const timeline = Array.isArray(activity?.timeline) ? activity.timeline : [];
   const sessions = Array.isArray(activity?.sessions) ? activity.sessions : [];
-  const purchases = Array.isArray(activity?.purchases) ? activity.purchases : [];
+  const purchases = Array.isArray(activity?.purchases)
+    ? activity.purchases
+    : [];
 
   const eventTypeMap = new Map();
   const pageMap = new Map();
@@ -108,15 +110,41 @@ const buildUserActivityInsights = (activity = null) => {
 
 const buildRangeQuery = (days) => {
   const to = new Date();
-  const from = new Date(to.getTime() - Number(days || 30) * 24 * 60 * 60 * 1000);
+  const from = new Date(
+    to.getTime() - Number(days || 30) * 24 * 60 * 60 * 1000,
+  );
   return {
     from: from.toISOString(),
     to: to.toISOString(),
   };
 };
 
+const toDateInputValue = (isoValue) => {
+  const date = new Date(isoValue);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toISOString().slice(0, 10);
+};
+
+const extractFileNameFromContentDisposition = (headerValue = "") => {
+  const raw = String(headerValue || "").trim();
+  if (!raw) return "";
+
+  const utf8Match = raw.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1].trim());
+    } catch {
+      return utf8Match[1].trim();
+    }
+  }
+
+  const plainMatch = raw.match(/filename="?([^";]+)"?/i);
+  return plainMatch?.[1] ? plainMatch[1].trim() : "";
+};
+
 const getApiErrorMessage = (response, fallback) =>
-  [response?.message, response?.details].filter(Boolean).join(" - ") || fallback;
+  [response?.message, response?.details].filter(Boolean).join(" - ") ||
+  fallback;
 
 export default function AnalyticsDashboardPage() {
   const { token, isAuthenticated, loading: authLoading } = useAdmin();
@@ -129,6 +157,14 @@ export default function AnalyticsDashboardPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [showGuide, setShowGuide] = useState(true);
+  const initialReportRange = useMemo(() => buildRangeQuery(30), []);
+  const [reportFromDate, setReportFromDate] = useState(
+    toDateInputValue(initialReportRange.from),
+  );
+  const [reportToDate, setReportToDate] = useState(
+    toDateInputValue(initialReportRange.to),
+  );
+  const [downloadingReport, setDownloadingReport] = useState(false);
 
   const [userIdInput, setUserIdInput] = useState("");
   const [userActivity, setUserActivity] = useState(null);
@@ -142,46 +178,55 @@ export default function AnalyticsDashboardPage() {
     [intervalMs],
   );
 
-  const activityInsights = useMemo(() => buildUserActivityInsights(userActivity), [userActivity]);
+  const activityInsights = useMemo(
+    () => buildUserActivityInsights(userActivity),
+    [userActivity],
+  );
+  const visitorIdentityTotal =
+    toNumber(overview?.newVisitors, 0) +
+    toNumber(overview?.returningVisitors, 0);
 
-  const fetchAnalytics = useCallback(async ({ silent = false } = {}) => {
-    if (!silent) {
-      setLoading(true);
-      setError("");
-    } else {
-      setRefreshing(true);
-    }
-
-    try {
-      const nextRange = buildRangeQuery(rangeDays);
-      const overviewRes = await getData(
-        `/api/admin/analytics/overview?from=${encodeURIComponent(nextRange.from)}&to=${encodeURIComponent(nextRange.to)}`,
-        token,
-      );
-
-      const chartsRes = await getData(
-        `/api/admin/analytics/charts?from=${encodeURIComponent(nextRange.from)}&to=${encodeURIComponent(nextRange.to)}&interval=day`,
-        token,
-      );
-
-      if (!overviewRes?.success || !chartsRes?.success) {
-        throw new Error(
-          getApiErrorMessage(
-            overviewRes?.success ? chartsRes : overviewRes,
-            "Failed to fetch analytics",
-          ),
-        );
+  const fetchAnalytics = useCallback(
+    async ({ silent = false } = {}) => {
+      if (!silent) {
+        setLoading(true);
+        setError("");
+      } else {
+        setRefreshing(true);
       }
 
-      setOverview(overviewRes.data);
-      setCharts(chartsRes.data);
-    } catch (requestError) {
-      setError(requestError?.message || "Failed to fetch analytics data");
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [rangeDays, token]);
+      try {
+        const nextRange = buildRangeQuery(rangeDays);
+        const overviewRes = await getData(
+          `/api/admin/analytics/overview?from=${encodeURIComponent(nextRange.from)}&to=${encodeURIComponent(nextRange.to)}`,
+          token,
+        );
+
+        const chartsRes = await getData(
+          `/api/admin/analytics/charts?from=${encodeURIComponent(nextRange.from)}&to=${encodeURIComponent(nextRange.to)}&interval=day`,
+          token,
+        );
+
+        if (!overviewRes?.success || !chartsRes?.success) {
+          throw new Error(
+            getApiErrorMessage(
+              overviewRes?.success ? chartsRes : overviewRes,
+              "Failed to fetch analytics",
+            ),
+          );
+        }
+
+        setOverview(overviewRes.data);
+        setCharts(chartsRes.data);
+      } catch (requestError) {
+        setError(requestError?.message || "Failed to fetch analytics data");
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [rangeDays, token],
+  );
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -223,7 +268,9 @@ export default function AnalyticsDashboardPage() {
       );
 
       if (!activityRes?.success) {
-        throw new Error(getApiErrorMessage(activityRes, "Failed to fetch user activity"));
+        throw new Error(
+          getApiErrorMessage(activityRes, "Failed to fetch user activity"),
+        );
       }
 
       setUserActivity(activityRes.data);
@@ -232,6 +279,73 @@ export default function AnalyticsDashboardPage() {
       setUserActivity(null);
     } finally {
       setUserActivityLoading(false);
+    }
+  };
+
+  const handleDownloadObservationPdf = async () => {
+    const fallbackRange = buildRangeQuery(rangeDays);
+    const fallbackFrom = new Date(fallbackRange.from);
+    const fallbackTo = new Date(fallbackRange.to);
+
+    const parsedFrom = reportFromDate
+      ? new Date(`${reportFromDate}T00:00:00.000Z`)
+      : fallbackFrom;
+    const parsedTo = reportToDate
+      ? new Date(`${reportToDate}T23:59:59.999Z`)
+      : fallbackTo;
+
+    if (
+      Number.isNaN(parsedFrom.getTime()) ||
+      Number.isNaN(parsedTo.getTime())
+    ) {
+      setError("Please select a valid report date range.");
+      return;
+    }
+
+    const fromDate = parsedFrom <= parsedTo ? parsedFrom : parsedTo;
+    const toDate = parsedFrom <= parsedTo ? parsedTo : parsedFrom;
+
+    setDownloadingReport(true);
+    setError("");
+
+    try {
+      const query = new URLSearchParams({
+        from: fromDate.toISOString(),
+        to: toDate.toISOString(),
+      });
+
+      const response = await getBlobData(
+        `/api/admin/analytics/export-report?${query.toString()}`,
+        token,
+      );
+
+      if (!response?.success || !response?.blob) {
+        throw new Error(
+          response?.message || "Failed to download analytics report PDF",
+        );
+      }
+
+      const contentDisposition =
+        response?.headers?.["content-disposition"] || "";
+      const fileNameFromHeader =
+        extractFileNameFromContentDisposition(contentDisposition);
+      const fallbackFileName = `admin-analytics-observations-${toDateInputValue(fromDate.toISOString())}-to-${toDateInputValue(toDate.toISOString())}.pdf`;
+      const fileName = fileNameFromHeader || fallbackFileName;
+
+      const blobUrl = window.URL.createObjectURL(response.blob);
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (downloadError) {
+      setError(
+        downloadError?.message || "Failed to download analytics report PDF",
+      );
+    } finally {
+      setDownloadingReport(false);
     }
   };
 
@@ -250,7 +364,8 @@ export default function AnalyticsDashboardPage() {
           <div>
             <h1 className="text-3xl font-bold text-gray-900">User Analytics</h1>
             <p className="text-sm text-gray-600 mt-1">
-              Event-driven analytics sourced from the dedicated analytics database
+              Event-driven analytics sourced from the dedicated analytics
+              database
             </p>
             <button
               type="button"
@@ -265,7 +380,12 @@ export default function AnalyticsDashboardPage() {
               <button
                 key={option.value}
                 type="button"
-                onClick={() => setRangeDays(option.value)}
+                onClick={() => {
+                  setRangeDays(option.value);
+                  const nextRange = buildRangeQuery(option.value);
+                  setReportFromDate(toDateInputValue(nextRange.from));
+                  setReportToDate(toDateInputValue(nextRange.to));
+                }}
                 className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${
                   rangeDays === option.value
                     ? "bg-blue-600 text-white"
@@ -278,13 +398,59 @@ export default function AnalyticsDashboardPage() {
           </div>
         </div>
 
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+          <h2 className="text-lg font-semibold text-gray-900">
+            Download Traffic Observation PDF
+          </h2>
+          <p className="text-sm text-gray-600 mt-1">
+            Select any duration to download a PDF with visitor count, time
+            spent, top clicked button, top interacted product, and simple
+            observations.
+          </p>
+
+          <div className="mt-4 flex flex-wrap items-end gap-3">
+            <label className="flex flex-col gap-1 text-xs font-semibold text-gray-600">
+              From Date
+              <input
+                type="date"
+                value={reportFromDate}
+                onChange={(event) => setReportFromDate(event.target.value)}
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-800"
+              />
+            </label>
+
+            <label className="flex flex-col gap-1 text-xs font-semibold text-gray-600">
+              To Date
+              <input
+                type="date"
+                value={reportToDate}
+                onChange={(event) => setReportToDate(event.target.value)}
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-800"
+              />
+            </label>
+
+            <button
+              type="button"
+              onClick={handleDownloadObservationPdf}
+              disabled={downloadingReport}
+              className="bg-slate-900 text-white px-4 py-2 rounded-lg font-semibold disabled:opacity-60"
+            >
+              {downloadingReport
+                ? "Preparing PDF..."
+                : "Download Observation PDF"}
+            </button>
+          </div>
+        </div>
+
         {refreshing ? (
           <div className="text-xs text-gray-500">Refreshing live data...</div>
         ) : null}
 
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-lg font-semibold text-gray-900">How To Read This Dashboard</h2>
+            <h2 className="text-lg font-semibold text-gray-900">
+              How To Read This Dashboard
+            </h2>
             <button
               type="button"
               onClick={() => setShowGuide((prev) => !prev)}
@@ -333,6 +499,20 @@ export default function AnalyticsDashboardPage() {
             hint="Unique sessions in selected date range."
           />
           <MetricCard
+            title="New Visitors"
+            value={toNumber(overview?.newVisitors, 0)}
+            hint="First-time visitor identities seen in this range."
+          />
+          <MetricCard
+            title="Returning Visitors"
+            value={toNumber(overview?.returningVisitors, 0)}
+            hint={
+              visitorIdentityTotal > 0
+                ? `${toNumber((toNumber(overview?.returningVisitors, 0) / visitorIdentityTotal) * 100, 0).toFixed(1)}% of tracked visitor identities.`
+                : "Tracked visitors who had activity before this range."
+            }
+          />
+          <MetricCard
             title="Active Users"
             value={overview?.activeUsers || 0}
             hint="Logged-in users active recently."
@@ -371,7 +551,12 @@ export default function AnalyticsDashboardPage() {
                   <XAxis dataKey="bucket" />
                   <YAxis />
                   <Tooltip />
-                  <Line type="monotone" dataKey="visitors" stroke="#2563eb" strokeWidth={2} />
+                  <Line
+                    type="monotone"
+                    dataKey="visitors"
+                    stroke="#2563eb"
+                    strokeWidth={2}
+                  />
                 </LineChart>
               </ResponsiveContainer>
             ) : (
@@ -404,7 +589,11 @@ export default function AnalyticsDashboardPage() {
           >
             {(charts?.topProductsViewed || []).length > 0 ? (
               <ResponsiveContainer width="100%" height={280}>
-                <BarChart data={charts?.topProductsViewed || []} layout="vertical" margin={{ left: 40 }}>
+                <BarChart
+                  data={charts?.topProductsViewed || []}
+                  layout="vertical"
+                  margin={{ left: 40 }}
+                >
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis type="number" />
                   <YAxis type="category" dataKey="productName" width={120} />
@@ -453,7 +642,10 @@ export default function AnalyticsDashboardPage() {
                     label={({ source, visits }) => `${source}: ${visits}`}
                   >
                     {(charts?.trafficSources || []).map((entry, index) => (
-                      <Cell key={entry.source} fill={SOURCE_COLORS[index % SOURCE_COLORS.length]} />
+                      <Cell
+                        key={entry.source}
+                        fill={SOURCE_COLORS[index % SOURCE_COLORS.length]}
+                      />
                     ))}
                   </Pie>
                   <Tooltip />
@@ -466,9 +658,12 @@ export default function AnalyticsDashboardPage() {
         </div>
 
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-          <h2 className="text-xl font-semibold text-gray-900">User Activity Viewer</h2>
+          <h2 className="text-xl font-semibold text-gray-900">
+            User Activity Viewer
+          </h2>
           <p className="text-sm text-gray-600 mt-1">
-            Search by user ID to inspect timeline, sessions, and purchase history.
+            Search by user ID to inspect timeline, sessions, and purchase
+            history.
           </p>
 
           <div className="flex flex-wrap items-center gap-3 mt-4">
@@ -497,22 +692,44 @@ export default function AnalyticsDashboardPage() {
           {userActivity ? (
             <div className="space-y-4 mt-6">
               <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
-                <MiniMetricCard title="Events" value={activityInsights.totalEvents} />
-                <MiniMetricCard title="Sessions" value={activityInsights.totalSessions} />
-                <MiniMetricCard title="Purchases" value={activityInsights.totalPurchases} />
-                <MiniMetricCard title="Add To Cart" value={activityInsights.addToCartSignals} />
-                <MiniMetricCard title="Checkout" value={activityInsights.checkoutSignals} />
-                <MiniMetricCard title="Purchase Signals" value={activityInsights.purchaseSignals} />
+                <MiniMetricCard
+                  title="Events"
+                  value={activityInsights.totalEvents}
+                />
+                <MiniMetricCard
+                  title="Sessions"
+                  value={activityInsights.totalSessions}
+                />
+                <MiniMetricCard
+                  title="Purchases"
+                  value={activityInsights.totalPurchases}
+                />
+                <MiniMetricCard
+                  title="Add To Cart"
+                  value={activityInsights.addToCartSignals}
+                />
+                <MiniMetricCard
+                  title="Checkout"
+                  value={activityInsights.checkoutSignals}
+                />
+                <MiniMetricCard
+                  title="Purchase Signals"
+                  value={activityInsights.purchaseSignals}
+                />
               </div>
 
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                 <InsightCard
                   title="Top Event Types"
-                  rows={activityInsights.eventTypes.slice(0, 12).map((row) => `${row.eventType}: ${row.count}`)}
+                  rows={activityInsights.eventTypes
+                    .slice(0, 12)
+                    .map((row) => `${row.eventType}: ${row.count}`)}
                 />
                 <InsightCard
                   title="Top Pages"
-                  rows={activityInsights.pages.slice(0, 12).map((row) => `${row.path}: ${row.events}`)}
+                  rows={activityInsights.pages
+                    .slice(0, 12)
+                    .map((row) => `${row.path}: ${row.events}`)}
                 />
               </div>
 
@@ -522,12 +739,23 @@ export default function AnalyticsDashboardPage() {
                   {(userActivity.timeline || []).length > 0 ? (
                     <div className="max-h-80 overflow-auto space-y-2">
                       {(userActivity.timeline || []).map((event) => (
-                        <div key={event.eventId} className="bg-white rounded-md border border-gray-200 p-3">
-                          <div className="text-xs text-gray-500">{formatDateTime(event.timestamp)}</div>
-                          <div className="text-sm font-semibold text-gray-800">{event.eventType}</div>
-                          <div className="text-xs text-gray-600 break-all">Session: {event.sessionId || "-"}</div>
+                        <div
+                          key={event.eventId}
+                          className="bg-white rounded-md border border-gray-200 p-3"
+                        >
+                          <div className="text-xs text-gray-500">
+                            {formatDateTime(event.timestamp)}
+                          </div>
+                          <div className="text-sm font-semibold text-gray-800">
+                            {event.eventType}
+                          </div>
+                          <div className="text-xs text-gray-600 break-all">
+                            Session: {event.sessionId || "-"}
+                          </div>
                           {event.pageUrl ? (
-                            <div className="text-xs text-gray-600 break-all">Page: {normalizePagePath(event.pageUrl)}</div>
+                            <div className="text-xs text-gray-600 break-all">
+                              Page: {normalizePagePath(event.pageUrl)}
+                            </div>
                           ) : null}
                         </div>
                       ))}
@@ -538,18 +766,29 @@ export default function AnalyticsDashboardPage() {
                 </div>
 
                 <div className="bg-gray-50 rounded-lg p-4">
-                  <h3 className="font-semibold text-gray-800 mb-2">Session History</h3>
+                  <h3 className="font-semibold text-gray-800 mb-2">
+                    Session History
+                  </h3>
                   {(userActivity.sessions || []).length > 0 ? (
                     <div className="max-h-80 overflow-auto space-y-2">
                       {(userActivity.sessions || []).map((session) => (
-                        <div key={session.sessionId} className="bg-white rounded-md border border-gray-200 p-3">
-                          <div className="text-xs text-gray-500 break-all">{session.sessionId}</div>
-                          <div className="text-xs text-gray-700">Started: {formatDateTime(session.startedAt)}</div>
-                          <div className="text-xs text-gray-700">
-                            Duration: {formatDuration((session.durationMs || 0) / 1000)}
+                        <div
+                          key={session.sessionId}
+                          className="bg-white rounded-md border border-gray-200 p-3"
+                        >
+                          <div className="text-xs text-gray-500 break-all">
+                            {session.sessionId}
                           </div>
                           <div className="text-xs text-gray-700">
-                            Events: {session.eventCount || 0} | Page Views: {session.pageViews || 0}
+                            Started: {formatDateTime(session.startedAt)}
+                          </div>
+                          <div className="text-xs text-gray-700">
+                            Duration:{" "}
+                            {formatDuration((session.durationMs || 0) / 1000)}
+                          </div>
+                          <div className="text-xs text-gray-700">
+                            Events: {session.eventCount || 0} | Page Views:{" "}
+                            {session.pageViews || 0}
                           </div>
                         </div>
                       ))}
@@ -561,7 +800,9 @@ export default function AnalyticsDashboardPage() {
               </div>
 
               <div className="bg-gray-50 rounded-lg p-4">
-                <h3 className="font-semibold text-gray-800 mb-2">Purchase History</h3>
+                <h3 className="font-semibold text-gray-800 mb-2">
+                  Purchase History
+                </h3>
                 <div className="overflow-auto">
                   {(userActivity.purchases || []).length > 0 ? (
                     <table className="min-w-full text-sm">
@@ -574,14 +815,30 @@ export default function AnalyticsDashboardPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {(userActivity.purchases || []).map((purchase, index) => (
-                          <tr key={purchase.eventId || `${purchase.orderId}-${index}`} className="border-b border-gray-100 text-gray-700">
-                            <td className="py-2 pr-4">{formatDateTime(purchase.timestamp)}</td>
-                            <td className="py-2 pr-4 break-all">{purchase.orderId || "-"}</td>
-                            <td className="py-2 pr-4">{formatCurrency(purchase.amount)}</td>
-                            <td className="py-2 pr-4">{purchase.paymentMethod || "-"}</td>
-                          </tr>
-                        ))}
+                        {(userActivity.purchases || []).map(
+                          (purchase, index) => (
+                            <tr
+                              key={
+                                purchase.eventId ||
+                                `${purchase.orderId}-${index}`
+                              }
+                              className="border-b border-gray-100 text-gray-700"
+                            >
+                              <td className="py-2 pr-4">
+                                {formatDateTime(purchase.timestamp)}
+                              </td>
+                              <td className="py-2 pr-4 break-all">
+                                {purchase.orderId || "-"}
+                              </td>
+                              <td className="py-2 pr-4">
+                                {formatCurrency(purchase.amount)}
+                              </td>
+                              <td className="py-2 pr-4">
+                                {purchase.paymentMethod || "-"}
+                              </td>
+                            </tr>
+                          ),
+                        )}
                       </tbody>
                     </table>
                   ) : (
@@ -615,7 +872,9 @@ function ChartCard({ title, description, children }) {
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
       <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
-      {description ? <p className="text-sm text-gray-600 mt-1 mb-3">{description}</p> : null}
+      {description ? (
+        <p className="text-sm text-gray-600 mt-1 mb-3">{description}</p>
+      ) : null}
       {children}
     </div>
   );

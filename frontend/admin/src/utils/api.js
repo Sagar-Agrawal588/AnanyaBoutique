@@ -47,7 +47,9 @@ const resolveAlternateLocalhostBaseUrl = (value) => {
 };
 
 const resolveApiBaseUrl = () => {
-  const localDevBaseUrl = sanitizeBaseUrl(process.env.NEXT_PUBLIC_LOCAL_API_URL);
+  const localDevBaseUrl = sanitizeBaseUrl(
+    process.env.NEXT_PUBLIC_LOCAL_API_URL,
+  );
   const envCandidates = [
     localDevBaseUrl,
     process.env.NEXT_PUBLIC_APP_API_URL,
@@ -282,6 +284,46 @@ export const getData = async (url, token = null) =>
     token,
     fallbackMessage: "Failed to fetch data",
   });
+
+export const getBlobData = async (url, token = null) => {
+  const requestConfig = {
+    method: "get",
+    url: normalizePath(url),
+    headers: buildHeaders(token),
+    responseType: "blob",
+  };
+
+  try {
+    const response = await axiosClient.request(requestConfig);
+    return {
+      success: true,
+      error: false,
+      blob: response.data,
+      headers: response.headers || {},
+    };
+  } catch (error) {
+    if (error?.response?.status === 401 && !requestConfig._retry) {
+      requestConfig._retry = true;
+      const newToken = await refreshAdminToken();
+      if (newToken) {
+        requestConfig.headers = buildHeaders(newToken);
+        try {
+          const retryResponse = await axiosClient.request(requestConfig);
+          return {
+            success: true,
+            error: false,
+            blob: retryResponse.data,
+            headers: retryResponse.headers || {},
+          };
+        } catch (retryError) {
+          return toErrorPayload(retryError, "Failed to download file");
+        }
+      }
+    }
+
+    return toErrorPayload(error, "Failed to download file");
+  }
+};
 
 export const putData = async (url, formData, token = null) =>
   requestWithRetry({

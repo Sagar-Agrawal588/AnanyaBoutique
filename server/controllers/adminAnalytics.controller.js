@@ -1,3 +1,4 @@
+import PDFDocument from "pdfkit";
 import {
   ensureAnalyticsIndexes,
   getAnalyticsDb,
@@ -160,6 +161,208 @@ const toPercent = (numerator, denominator) => {
   return Number(((numerator / denominator) * 100).toFixed(2));
 };
 
+const formatCount = (value) => Number(value || 0).toLocaleString("en-IN");
+
+const formatPercent = (value) => `${toFiniteNumber(value, 0).toFixed(2)}%`;
+
+const formatDurationFromSeconds = (value) => {
+  const totalSeconds = Math.max(Math.floor(toFiniteNumber(value, 0)), 0);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}h ${minutes}m ${seconds}s`;
+  }
+
+  if (minutes > 0) {
+    return `${minutes}m ${seconds}s`;
+  }
+
+  return `${seconds}s`;
+};
+
+const toDateFileKey = (value) => {
+  const candidate = new Date(value);
+  if (Number.isNaN(candidate.getTime())) return "unknown";
+  return candidate.toISOString().slice(0, 10);
+};
+
+const ensurePdfSpace = (doc, requiredHeight = 80) => {
+  if (doc.y + requiredHeight > doc.page.height - doc.page.margins.bottom) {
+    doc.addPage();
+  }
+};
+
+const writePdfSection = (doc, title) => {
+  ensurePdfSpace(doc, 45);
+  doc.moveDown(0.7);
+  doc.fontSize(14).fillColor("#0f172a").text(title, { underline: true });
+  doc.moveDown(0.25);
+};
+
+const writePdfList = (doc, items = []) => {
+  const rows = (items || [])
+    .map((item) => String(item || "").trim())
+    .filter(Boolean);
+
+  if (!rows.length) {
+    ensurePdfSpace(doc, 25);
+    doc.fontSize(11).fillColor("#475569").text("No data available.");
+    return;
+  }
+
+  for (const row of rows) {
+    ensurePdfSpace(doc, 24);
+    doc.fontSize(11).fillColor("#111827").text(`- ${row}`);
+  }
+};
+
+const buildAnalyticsObservations = ({
+  overview,
+  chartData,
+  engagement,
+  from,
+  to,
+}) => {
+  const totalVisitors = toFiniteNumber(overview?.totalSessions, 0);
+  const avgSessionDurationSeconds = toFiniteNumber(
+    overview?.avgSessionDurationSeconds,
+    0,
+  );
+  const estimatedTotalEngagedSeconds =
+    totalVisitors * avgSessionDurationSeconds;
+  const newVisitors = toFiniteNumber(overview?.newVisitors, 0);
+  const returningVisitors = toFiniteNumber(overview?.returningVisitors, 0);
+  const visitorIdentityTotal = newVisitors + returningVisitors;
+  const returningShare = toPercent(returningVisitors, visitorIdentityTotal);
+
+  const topClickedButton =
+    String(
+      engagement?.attractiveButtons?.[0]?.target ||
+        engagement?.movementTargets?.[0]?.target ||
+        "",
+    ).trim() || "No clear button data";
+  const topClickedCount = toFiniteNumber(
+    engagement?.attractiveButtons?.[0]?.totalInteractions ||
+      engagement?.movementTargets?.[0]?.total,
+    0,
+  );
+
+  const topProductName =
+    String(chartData?.topProductsViewed?.[0]?.productName || "").trim() ||
+    "No product interaction data";
+  const topProductViews = toFiniteNumber(
+    chartData?.topProductsViewed?.[0]?.views,
+    0,
+  );
+
+  const topSource = String(chartData?.trafficSources?.[0]?.source || "").trim();
+  const topSourceVisits = toFiniteNumber(
+    chartData?.trafficSources?.[0]?.visits,
+    0,
+  );
+
+  const fromIso = new Date(from).toISOString();
+  const toIso = new Date(to).toISOString();
+
+  return [
+    `This report covers traffic from ${fromIso} to ${toIso}.`,
+    `Total visitors (quality sessions) were ${formatCount(totalVisitors)}.`,
+    `Average time spent per session was ${formatDurationFromSeconds(avgSessionDurationSeconds)}.`,
+    `Estimated total engaged time was ${formatDurationFromSeconds(estimatedTotalEngagedSeconds)}.`,
+    `New visitors were ${formatCount(newVisitors)}, returning visitors were ${formatCount(returningVisitors)} (${formatPercent(returningShare)} returning share).`,
+    `Most clicked button/target was "${topClickedButton}" with ${formatCount(topClickedCount)} interactions.`,
+    `Most interacted product was "${topProductName}" with ${formatCount(topProductViews)} tracked views.`,
+    topSource
+      ? `Top traffic source was ${topSource} with ${formatCount(topSourceVisits)} visits.`
+      : "Traffic source split is not available for this range.",
+    `Conversion rate was ${formatPercent(overview?.conversionRate)} and bounce rate was ${formatPercent(overview?.bounceRate)}.`,
+  ];
+};
+
+const buildBehaviorObservations = ({
+  overview,
+  engagement,
+  performance,
+  from,
+  to,
+}) => {
+  const totalSessions = toFiniteNumber(overview?.totalSessions, 0);
+  const avgActiveTimeMs = toFiniteNumber(overview?.avgActiveTimeMs, 0);
+  const avgActiveSeconds = avgActiveTimeMs / 1000;
+  const estimatedTotalActiveSeconds = (totalSessions * avgActiveTimeMs) / 1000;
+  const rageClicks = toFiniteNumber(engagement?.rageClickCount, 0);
+  const dropOffRate = toFiniteNumber(
+    engagement?.dropOffRate ?? engagement?.drop_off_rate,
+    0,
+  );
+
+  const topButtonRow =
+    engagement?.attractiveButtons?.[0] ||
+    engagement?.movementTargets?.[0] ||
+    null;
+  const topButtonTarget =
+    String(topButtonRow?.target || "").trim() || "No clear button data";
+  const topButtonInteractions = toFiniteNumber(
+    topButtonRow?.totalInteractions ?? topButtonRow?.total,
+    0,
+  );
+
+  const topConvertingPath =
+    engagement?.topConvertingButtonsByProduct?.[0] || null;
+  const topProductId =
+    String(topConvertingPath?.productId || "").trim() ||
+    "No product conversion path data";
+  const topConvertingButton =
+    String(topConvertingPath?.target || "").trim() ||
+    "No top converting button";
+  const topConvertingRate = toFiniteNumber(
+    topConvertingPath?.clickToPurchaseRate,
+    0,
+  );
+
+  const guestSessions = toFiniteNumber(
+    engagement?.userTypeMatrix?.guest?.sessions,
+    0,
+  );
+  const loggedInSessions = toFiniteNumber(
+    engagement?.userTypeMatrix?.logged_in?.sessions,
+    0,
+  );
+
+  const peakThroughputRow = Array.isArray(performance?.eventsPerMinute)
+    ? performance.eventsPerMinute.reduce(
+        (peak, row) => {
+          const events = toFiniteNumber(row?.events, 0);
+          if (events > peak.events) {
+            return {
+              minute: String(row?.minute || "unknown"),
+              events,
+            };
+          }
+          return peak;
+        },
+        { minute: "unknown", events: 0 },
+      )
+    : { minute: "unknown", events: 0 };
+
+  const fromIso = new Date(from).toISOString();
+  const toIso = new Date(to).toISOString();
+
+  return [
+    `This behavior report covers ${fromIso} to ${toIso}.`,
+    `Total quality sessions were ${formatCount(totalSessions)}.`,
+    `Average active time per session was ${formatDurationFromSeconds(avgActiveSeconds)}.`,
+    `Estimated total active engagement time was ${formatDurationFromSeconds(estimatedTotalActiveSeconds)}.`,
+    `Guest sessions were ${formatCount(guestSessions)} and logged-in sessions were ${formatCount(loggedInSessions)}.`,
+    `Drop-off rate was ${formatPercent(dropOffRate)} and rage clicks were ${formatCount(rageClicks)}.`,
+    `Most interacted button/target was "${topButtonTarget}" with ${formatCount(topButtonInteractions)} interactions.`,
+    `Top converting button-product path was "${topConvertingButton}" -> ${topProductId} at ${formatPercent(topConvertingRate)} click-to-purchase.`,
+    `Peak event throughput was ${formatCount(peakThroughputRow.events)} events/min at ${peakThroughputRow.minute}.`,
+  ];
+};
+
 const sanitizeTimelineEvent = (event) => ({
   eventId: String(event?.eventId || ""),
   eventType: String(event?.eventType || ""),
@@ -233,74 +436,133 @@ const getOverviewData = async (db, from, to) => {
   const activeThreshold = new Date(
     Date.now() - ACTIVE_WINDOW_MINUTES * 60 * 1000,
   );
-  const [sessionOverviewRows, purchasesDistinctSessions, revenueAggregation] =
-    await Promise.all([
-      sessions
-        .aggregate([
-          {
-            $addFields: {
-              startedAtDate: toDateExpression("$startedAt"),
-              endedAtDate: toDateExpression("$endedAt"),
-              lastSeenAtDate: toDateExpression("$lastSeenAt"),
-              totalActiveTimeValue: toNumberExpression("$totalActiveTime", 0),
-              durationMsValue: toNumberExpression("$durationMs", 0),
-              pageViewsValue: toNumberExpression("$pageViews", 0),
-              eventCountValue: toNumberExpression("$eventCount", 0),
+  const [
+    sessionOverviewRows,
+    purchasesDistinctSessions,
+    revenueAggregation,
+    visitorSegmentRows,
+  ] = await Promise.all([
+    sessions
+      .aggregate([
+        {
+          $addFields: {
+            startedAtDate: toDateExpression("$startedAt"),
+            endedAtDate: toDateExpression("$endedAt"),
+            lastSeenAtDate: toDateExpression("$lastSeenAt"),
+            totalActiveTimeValue: toNumberExpression("$totalActiveTime", 0),
+            durationMsValue: toNumberExpression("$durationMs", 0),
+            pageViewsValue: toNumberExpression("$pageViews", 0),
+            eventCountValue: toNumberExpression("$eventCount", 0),
+          },
+        },
+        {
+          $match: {
+            startedAtDate: {
+              $gte: from,
+              $lte: to,
+            },
+            ...buildBehaviorSessionQualityMatch(),
+          },
+        },
+        {
+          $project: {
+            userId: 1,
+            isActive: 1,
+            lastSeenAtDate: 1,
+            isBounce: {
+              $or: [
+                { $lte: ["$pageViewsValue", 1] },
+                { $lte: ["$eventCountValue", 1] },
+              ],
+            },
+            activeTimeMs: {
+              $let: {
+                vars: {
+                  endDate: { $ifNull: ["$endedAtDate", "$lastSeenAtDate"] },
+                },
+                in: {
+                  $cond: [
+                    { $gt: ["$totalActiveTimeValue", 0] },
+                    "$totalActiveTimeValue",
+                    {
+                      $cond: [
+                        { $gt: ["$durationMsValue", 0] },
+                        "$durationMsValue",
+                        {
+                          $cond: [
+                            {
+                              $and: [
+                                { $ne: ["$startedAtDate", null] },
+                                { $ne: ["$$endDate", null] },
+                              ],
+                            },
+                            {
+                              $max: [
+                                {
+                                  $subtract: ["$$endDate", "$startedAtDate"],
+                                },
+                                0,
+                              ],
+                            },
+                            0,
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              },
             },
           },
-          {
-            $match: {
-              startedAtDate: {
-                $gte: from,
-                $lte: to,
+        },
+        {
+          $group: {
+            _id: null,
+            totalSessions: { $sum: 1 },
+            bounceSessions: {
+              $sum: {
+                $cond: ["$isBounce", 1, 0],
               },
-              ...buildBehaviorSessionQualityMatch(),
             },
-          },
-          {
-            $project: {
-              userId: 1,
-              isActive: 1,
-              lastSeenAtDate: 1,
-              isBounce: {
-                $or: [
-                  { $lte: ["$pageViewsValue", 1] },
-                  { $lte: ["$eventCountValue", 1] },
-                ],
-              },
-              activeTimeMs: {
-                $let: {
-                  vars: {
-                    endDate: { $ifNull: ["$endedAtDate", "$lastSeenAtDate"] },
-                  },
-                  in: {
-                    $cond: [
-                      { $gt: ["$totalActiveTimeValue", 0] },
-                      "$totalActiveTimeValue",
+            avgActiveTimeMs: { $avg: "$activeTimeMs" },
+            activeUsersSet: {
+              $addToSet: {
+                $cond: [
+                  {
+                    $and: [
+                      { $eq: ["$isActive", true] },
+                      { $gte: ["$lastSeenAtDate", activeThreshold] },
                       {
-                        $cond: [
-                          { $gt: ["$durationMsValue", 0] },
-                          "$durationMsValue",
+                        $not: [
                           {
-                            $cond: [
-                              {
-                                $and: [
-                                  { $ne: ["$startedAtDate", null] },
-                                  { $ne: ["$$endDate", null] },
-                                ],
-                              },
-                              {
-                                $max: [
-                                  {
-                                    $subtract: ["$$endDate", "$startedAtDate"],
-                                  },
-                                  0,
-                                ],
-                              },
-                              0,
-                            ],
+                            $in: ["$userId", [null, ""]],
                           },
                         ],
+                      },
+                    ],
+                  },
+                  "$userId",
+                  null,
+                ],
+              },
+            },
+          },
+        },
+        {
+          $project: {
+            _id: 0,
+            totalSessions: 1,
+            bounceSessions: 1,
+            avgActiveTimeMs: { $ifNull: ["$avgActiveTimeMs", 0] },
+            activeUsers: {
+              $size: {
+                $filter: {
+                  input: "$activeUsersSet",
+                  as: "uid",
+                  cond: {
+                    $not: [
+                      {
+                        $in: ["$$uid", [null, ""]],
                       },
                     ],
                   },
@@ -308,118 +570,209 @@ const getOverviewData = async (db, from, to) => {
               },
             },
           },
-          {
-            $group: {
-              _id: null,
-              totalSessions: { $sum: 1 },
-              bounceSessions: {
-                $sum: {
-                  $cond: ["$isBounce", 1, 0],
+        },
+      ])
+      .toArray(),
+    purchases
+      .aggregate([
+        {
+          $addFields: {
+            timestampDate: toDateExpression("$timestamp"),
+          },
+        },
+        {
+          $match: {
+            timestampDate: {
+              $gte: from,
+              $lte: to,
+            },
+            sessionId: { $nin: [null, ""] },
+          },
+        },
+        {
+          $group: {
+            _id: "$sessionId",
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            count: { $sum: 1 },
+          },
+        },
+      ])
+      .toArray(),
+    purchases
+      .aggregate([
+        {
+          $addFields: {
+            timestampDate: toDateExpression("$timestamp"),
+            amountValue: toNumberExpression("$amount", 0),
+          },
+        },
+        {
+          $match: {
+            timestampDate: {
+              $gte: from,
+              $lte: to,
+            },
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            revenue: { $sum: "$amountValue" },
+          },
+        },
+      ])
+      .toArray(),
+    sessions
+      .aggregate([
+        {
+          $addFields: {
+            startedAtDate: toDateExpression("$startedAt"),
+            endedAtDate: toDateExpression("$endedAt"),
+            lastSeenAtDate: toDateExpression("$lastSeenAt"),
+            totalActiveTimeValue: toNumberExpression("$totalActiveTime", 0),
+            pageViewsValue: toNumberExpression("$pageViews", 0),
+            eventCountValue: toNumberExpression("$eventCount", 0),
+            userIdText: {
+              $trim: {
+                input: {
+                  $ifNull: [
+                    {
+                      $convert: {
+                        input: "$userId",
+                        to: "string",
+                        onError: "",
+                        onNull: "",
+                      },
+                    },
+                    "",
+                  ],
                 },
               },
-              avgActiveTimeMs: { $avg: "$activeTimeMs" },
-              activeUsersSet: {
-                $addToSet: {
-                  $cond: [
+            },
+            sessionIdText: {
+              $trim: {
+                input: {
+                  $ifNull: [
                     {
-                      $and: [
-                        { $eq: ["$isActive", true] },
-                        { $gte: ["$lastSeenAtDate", activeThreshold] },
-                        {
-                          $not: [
-                            {
-                              $in: ["$userId", [null, ""]],
-                            },
-                          ],
-                        },
-                      ],
+                      $convert: {
+                        input: "$sessionId",
+                        to: "string",
+                        onError: "",
+                        onNull: "",
+                      },
                     },
-                    "$userId",
-                    null,
+                    "",
                   ],
                 },
               },
             },
           },
-          {
-            $project: {
-              _id: 0,
-              totalSessions: 1,
-              bounceSessions: 1,
-              avgActiveTimeMs: { $ifNull: ["$avgActiveTimeMs", 0] },
-              activeUsers: {
-                $size: {
-                  $filter: {
-                    input: "$activeUsersSet",
-                    as: "uid",
-                    cond: {
-                      $not: [
-                        {
-                          $in: ["$$uid", [null, ""]],
-                        },
-                      ],
-                    },
-                  },
+        },
+        {
+          $match: {
+            ...buildBehaviorSessionQualityMatch(),
+          },
+        },
+        {
+          $addFields: {
+            visitorKey: {
+              $cond: [
+                { $ne: ["$userIdText", ""] },
+                { $concat: ["u:", "$userIdText"] },
+                {
+                  $cond: [
+                    { $ne: ["$sessionIdText", ""] },
+                    { $concat: ["s:", "$sessionIdText"] },
+                    "",
+                  ],
                 },
+              ],
+            },
+            sessionStartDate: {
+              $ifNull: ["$startedAtDate", "$lastSeenAtDate"],
+            },
+            sessionEndDate: {
+              $ifNull: [
+                "$endedAtDate",
+                {
+                  $ifNull: ["$lastSeenAtDate", "$startedAtDate"],
+                },
+              ],
+            },
+          },
+        },
+        {
+          $match: {
+            visitorKey: { $ne: "" },
+            sessionStartDate: { $ne: null },
+            sessionEndDate: { $ne: null },
+          },
+        },
+        {
+          $group: {
+            _id: "$visitorKey",
+            firstSeenAt: { $min: "$sessionStartDate" },
+            hasInRangeSession: {
+              $max: {
+                $cond: [
+                  {
+                    $and: [
+                      { $lte: ["$sessionStartDate", to] },
+                      { $gte: ["$sessionEndDate", from] },
+                    ],
+                  },
+                  1,
+                  0,
+                ],
               },
             },
           },
-        ])
-        .toArray(),
-      purchases
-        .aggregate([
-          {
-            $addFields: {
-              timestampDate: toDateExpression("$timestamp"),
-            },
+        },
+        {
+          $match: {
+            hasInRangeSession: 1,
           },
-          {
-            $match: {
-              timestampDate: {
-                $gte: from,
-                $lte: to,
-              },
-              sessionId: { $nin: [null, ""] },
-            },
-          },
-          {
-            $group: {
-              _id: "$sessionId",
-            },
-          },
-          {
-            $group: {
-              _id: null,
-              count: { $sum: 1 },
-            },
-          },
-        ])
-        .toArray(),
-      purchases
-        .aggregate([
-          {
-            $addFields: {
-              timestampDate: toDateExpression("$timestamp"),
-              amountValue: toNumberExpression("$amount", 0),
-            },
-          },
-          {
-            $match: {
-              timestampDate: {
-                $gte: from,
-                $lte: to,
+        },
+        {
+          $group: {
+            _id: null,
+            newVisitors: {
+              $sum: {
+                $cond: [
+                  {
+                    $and: [
+                      { $gte: ["$firstSeenAt", from] },
+                      { $lte: ["$firstSeenAt", to] },
+                    ],
+                  },
+                  1,
+                  0,
+                ],
               },
             },
-          },
-          {
-            $group: {
-              _id: null,
-              revenue: { $sum: "$amountValue" },
+            returningVisitors: {
+              $sum: {
+                $cond: [{ $lt: ["$firstSeenAt", from] }, 1, 0],
+              },
             },
+            totalVisitorIdentities: { $sum: 1 },
           },
-        ])
-        .toArray(),
-    ]);
+        },
+        {
+          $project: {
+            _id: 0,
+            newVisitors: 1,
+            returningVisitors: 1,
+            totalVisitorIdentities: 1,
+          },
+        },
+      ])
+      .toArray(),
+  ]);
 
   const overviewRow = sessionOverviewRows?.[0] || {};
   const totalSessions = Number(overviewRow.totalSessions || 0);
@@ -430,6 +783,13 @@ const getOverviewData = async (db, from, to) => {
     purchasesDistinctSessions?.[0]?.count || 0,
   );
   const revenue = Number(revenueAggregation?.[0]?.revenue || 0);
+  const newVisitors = Number(visitorSegmentRows?.[0]?.newVisitors || 0);
+  const returningVisitors = Number(
+    visitorSegmentRows?.[0]?.returningVisitors || 0,
+  );
+  const totalVisitorIdentities = Number(
+    visitorSegmentRows?.[0]?.totalVisitorIdentities || 0,
+  );
   const conversionRate = toPercent(sessionsWithPurchase, totalSessions);
   const bounceRate = toPercent(bounceSessions, totalSessions);
 
@@ -441,6 +801,9 @@ const getOverviewData = async (db, from, to) => {
     bounceRate,
     conversionRate,
     revenue,
+    newVisitors,
+    returningVisitors,
+    totalVisitorIdentities,
   };
 };
 
@@ -2081,6 +2444,291 @@ export const getAdminAnalyticsCharts = async (req, res) => {
   }
 };
 
+export const exportAdminAnalyticsPdfReport = async (req, res) => {
+  try {
+    await ensureAnalyticsIndexes();
+    const db = await getAnalyticsDb();
+    const { from, to } = resolveDateRange(req.query);
+
+    const [overview, chartData, engagement] = await Promise.all([
+      getOverviewData(db, from, to),
+      getChartData(db, from, to, "day"),
+      getEngagementData(db, from, to),
+    ]);
+
+    const topClickedButton =
+      String(
+        engagement?.attractiveButtons?.[0]?.target ||
+          engagement?.movementTargets?.[0]?.target ||
+          "",
+      ).trim() || "No clear button data";
+    const topClickedCount = toFiniteNumber(
+      engagement?.attractiveButtons?.[0]?.totalInteractions ||
+        engagement?.movementTargets?.[0]?.total,
+      0,
+    );
+
+    const topProductName =
+      String(chartData?.topProductsViewed?.[0]?.productName || "").trim() ||
+      "No product interaction data";
+    const topProductViews = toFiniteNumber(
+      chartData?.topProductsViewed?.[0]?.views,
+      0,
+    );
+
+    const observations = buildAnalyticsObservations({
+      overview,
+      chartData,
+      engagement,
+      from,
+      to,
+    });
+
+    const fromKey = toDateFileKey(from);
+    const toKey = toDateFileKey(to);
+    const fileName = `admin-analytics-observations-${fromKey}-to-${toKey}.pdf`;
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename=\"${fileName}\"`,
+    );
+
+    const doc = new PDFDocument({ size: "A4", margin: 50 });
+    doc.pipe(res);
+
+    doc
+      .fontSize(22)
+      .fillColor("#0f172a")
+      .text("Admin Analytics Observation Report", { align: "left" });
+
+    doc.moveDown(0.4);
+    doc
+      .fontSize(11)
+      .fillColor("#334155")
+      .text(`From: ${new Date(from).toISOString()}`)
+      .text(`To: ${new Date(to).toISOString()}`)
+      .text(`Generated At: ${new Date().toISOString()}`);
+
+    writePdfSection(doc, "Traffic Overview");
+    writePdfList(doc, [
+      `Total visitors: ${formatCount(overview?.totalSessions)}`,
+      `New visitors: ${formatCount(overview?.newVisitors)}`,
+      `Returning visitors: ${formatCount(overview?.returningVisitors)}`,
+      `Active users: ${formatCount(overview?.activeUsers)}`,
+      `Average session duration: ${formatDurationFromSeconds(
+        overview?.avgSessionDurationSeconds,
+      )}`,
+      `Conversion rate: ${formatPercent(overview?.conversionRate)}`,
+      `Bounce rate: ${formatPercent(overview?.bounceRate)}`,
+      `Revenue: Rs ${Number(overview?.revenue || 0).toLocaleString("en-IN", {
+        maximumFractionDigits: 2,
+      })}`,
+    ]);
+
+    writePdfSection(doc, "Interaction Highlights");
+    writePdfList(doc, [
+      `Most clicked button/target: ${topClickedButton} (${formatCount(topClickedCount)} interactions)`,
+      `Most interacted product: ${topProductName} (${formatCount(topProductViews)} views)`,
+    ]);
+
+    writePdfSection(doc, "Simple Observations");
+    writePdfList(doc, observations);
+
+    writePdfSection(doc, "Visitors Over Time");
+    writePdfList(
+      doc,
+      (chartData?.visitorsOverTime || []).map(
+        (item) => `${item.bucket}: ${formatCount(item.visitors)} visitors`,
+      ),
+    );
+
+    writePdfSection(doc, "Top Products");
+    writePdfList(
+      doc,
+      (chartData?.topProductsViewed || []).map(
+        (item) => `${item.productName}: ${formatCount(item.views)} views`,
+      ),
+    );
+
+    doc.end();
+  } catch (error) {
+    console.error(
+      "[admin-analytics] export pdf error:",
+      error?.message || error,
+    );
+
+    if (!res.headersSent) {
+      return res
+        .status(500)
+        .json(
+          buildErrorResponse("Failed to export analytics PDF report", error),
+        );
+    }
+
+    return res.end();
+  }
+};
+
+export const exportBehaviorAnalyticsPdfReport = async (req, res) => {
+  try {
+    await ensureAnalyticsIndexes();
+    const db = await getAnalyticsDb();
+    const { from, to } = resolveDateRange(req.query);
+
+    const [overview, engagement, performance] = await Promise.all([
+      getOverviewData(db, from, to),
+      getEngagementData(db, from, to),
+      getPerformanceData(db),
+    ]);
+
+    const topButtonRow =
+      engagement?.attractiveButtons?.[0] ||
+      engagement?.movementTargets?.[0] ||
+      null;
+    const topButtonTarget =
+      String(topButtonRow?.target || "").trim() || "No clear button data";
+    const topButtonInteractions = toFiniteNumber(
+      topButtonRow?.totalInteractions ?? topButtonRow?.total,
+      0,
+    );
+
+    const topConvertingPath =
+      engagement?.topConvertingButtonsByProduct?.[0] || null;
+    const topConvertingPathLabel = topConvertingPath
+      ? `${topConvertingPath.target || "unknown_button"} -> ${topConvertingPath.productId || "unknown_product"}`
+      : "No conversion path data";
+
+    const observations = buildBehaviorObservations({
+      overview,
+      engagement,
+      performance,
+      from,
+      to,
+    });
+
+    const fromKey = toDateFileKey(from);
+    const toKey = toDateFileKey(to);
+    const fileName = `behavior-analytics-observations-${fromKey}-to-${toKey}.pdf`;
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename=\"${fileName}\"`,
+    );
+
+    const doc = new PDFDocument({ size: "A4", margin: 50 });
+    doc.pipe(res);
+
+    doc
+      .fontSize(22)
+      .fillColor("#0f172a")
+      .text("Behavior Analytics Observation Report", { align: "left" });
+
+    doc.moveDown(0.4);
+    doc
+      .fontSize(11)
+      .fillColor("#334155")
+      .text(`From: ${new Date(from).toISOString()}`)
+      .text(`To: ${new Date(to).toISOString()}`)
+      .text(`Generated At: ${new Date().toISOString()}`);
+
+    writePdfSection(doc, "Behavior Overview");
+    writePdfList(doc, [
+      `Total sessions: ${formatCount(overview?.totalSessions)}`,
+      `Average active time: ${formatDurationFromSeconds(
+        toFiniteNumber(overview?.avgActiveTimeMs, 0) / 1000,
+      )}`,
+      `Bounce rate: ${formatPercent(overview?.bounceRate)}`,
+      `Conversion rate: ${formatPercent(overview?.conversionRate)}`,
+      `Drop-off rate: ${formatPercent(
+        engagement?.dropOffRate ?? engagement?.drop_off_rate,
+      )}`,
+      `Rage clicks: ${formatCount(engagement?.rageClickCount)}`,
+    ]);
+
+    writePdfSection(doc, "Interaction Highlights");
+    writePdfList(doc, [
+      `Most interacted button/target: ${topButtonTarget} (${formatCount(topButtonInteractions)} interactions)`,
+      `Top converting path: ${topConvertingPathLabel}`,
+      `Top path click-to-purchase: ${formatPercent(
+        topConvertingPath?.clickToPurchaseRate,
+      )}`,
+    ]);
+
+    writePdfSection(doc, "User Type Breakdown");
+    writePdfList(doc, [
+      `Guest sessions: ${formatCount(engagement?.userTypeMatrix?.guest?.sessions)}`,
+      `Guest events: ${formatCount(engagement?.userTypeMatrix?.guest?.events)}`,
+      `Guest purchases: ${formatCount(
+        engagement?.userTypeMatrix?.guest?.purchases,
+      )}`,
+      `Logged-in sessions: ${formatCount(
+        engagement?.userTypeMatrix?.logged_in?.sessions,
+      )}`,
+      `Logged-in events: ${formatCount(
+        engagement?.userTypeMatrix?.logged_in?.events,
+      )}`,
+      `Logged-in purchases: ${formatCount(
+        engagement?.userTypeMatrix?.logged_in?.purchases,
+      )}`,
+    ]);
+
+    writePdfSection(doc, "Simple Behavior Observations");
+    writePdfList(doc, observations);
+
+    writePdfSection(doc, "Top Movement Targets");
+    writePdfList(
+      doc,
+      (engagement?.movementTargets || [])
+        .slice(0, 12)
+        .map(
+          (item) =>
+            `${item.target}: ${formatCount(item.total)} events (Guest ${formatCount(item.guest)}, Logged ${formatCount(item.loggedIn)})`,
+        ),
+    );
+
+    writePdfSection(doc, "Top Converting Buttons By Product");
+    writePdfList(
+      doc,
+      (engagement?.topConvertingButtonsByProduct || [])
+        .slice(0, 12)
+        .map(
+          (item) =>
+            `${item.target || "unknown_button"} -> ${item.productId || "unknown_product"}: ${formatCount(item.sessionsClicked)} clicked sessions, ${formatPercent(item.clickToPurchaseRate)} click-to-purchase`,
+        ),
+    );
+
+    writePdfSection(doc, "System Throughput Snapshot");
+    writePdfList(doc, [
+      `Workers healthy: ${formatCount(performance?.workerHealth?.healthyWorkers)} / ${formatCount(performance?.workerHealth?.totalWorkers)}`,
+      `Estimated backlog messages: ${formatCount(
+        performance?.pubSubBacklog?.estimatedMessages,
+      )}`,
+      `Latest events/min datapoints: ${formatCount(
+        performance?.eventsPerMinute?.length,
+      )}`,
+    ]);
+
+    doc.end();
+  } catch (error) {
+    console.error(
+      "[behavior-analytics] export pdf error:",
+      error?.message || error,
+    );
+
+    if (!res.headersSent) {
+      return res
+        .status(500)
+        .json(
+          buildErrorResponse("Failed to export behavior PDF report", error),
+        );
+    }
+
+    return res.end();
+  }
+};
+
 export const getAdminUserActivity = async (req, res) => {
   try {
     await ensureAnalyticsIndexes();
@@ -3010,6 +3658,8 @@ export const getBehaviorTimeline = async (req, res) => {
 export default {
   getAdminAnalyticsOverview,
   getAdminAnalyticsCharts,
+  exportAdminAnalyticsPdfReport,
+  exportBehaviorAnalyticsPdfReport,
   getAdminUserActivity,
   getBehaviorAnalyticsOverview,
   getBehaviorAnalyticsEngagement,

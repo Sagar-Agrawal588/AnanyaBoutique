@@ -23,7 +23,10 @@ ROOT = Path(r"d:\BogEcom")
 TEMPLATE_PPT = ROOT / "PPT Format.pptx"
 OUTPUT_PPT = ROOT / "Piyush_Songara_Mid_Review_Presentation.pptx"
 OUTPUT_DOCX = ROOT / "Piyush_Songara_Mid_Review_Report.docx"
+FALLBACK_OUTPUT_DOCX = ROOT / "Piyush_Songara_Mid_Review_Report_Updated.docx"
+FALLBACK_OUTPUT_PPT = ROOT / "Piyush_Songara_Mid_Review_Presentation_Updated.pptx"
 LOGO_PATH = ROOT / "frontend" / "client" / "public" / "logo.png"
+REPORT_PATHS = ["frontend/client", "frontend/admin", "server"]
 
 
 def run_git(*args: str) -> str:
@@ -41,7 +44,7 @@ def run_git(*args: str) -> str:
 def get_repo_stats() -> dict[str, object]:
     email = "piyushsongara69@gmail.com"
     commit_count = int(
-        run_git("rev-list", "--count", f"--author={email}", "HEAD", "--", "frontend/client", "frontend/admin").strip()
+        run_git("rev-list", "--count", f"--author={email}", "HEAD", "--", *REPORT_PATHS).strip()
     )
 
     file_lines = run_git(
@@ -50,8 +53,7 @@ def get_repo_stats() -> dict[str, object]:
         "--name-only",
         "--pretty=format:",
         "--",
-        "frontend/client",
-        "frontend/admin",
+        *REPORT_PATHS,
     ).splitlines()
     files = [line.strip() for line in file_lines if line.strip()]
     unique_files = sorted(set(files))
@@ -65,8 +67,7 @@ def get_repo_stats() -> dict[str, object]:
             "--format=%ad",
             "--date=short",
             "--",
-            "frontend/client",
-            "frontend/admin",
+            *REPORT_PATHS,
         ).splitlines()
         if line.strip()
     ]
@@ -80,8 +81,7 @@ def get_repo_stats() -> dict[str, object]:
             "-n",
             "10",
             "--",
-            "frontend/client",
-            "frontend/admin",
+            *REPORT_PATHS,
         ).splitlines()
         if line.strip()
     ]
@@ -93,8 +93,7 @@ def get_repo_stats() -> dict[str, object]:
         "--date=short",
         '--pretty=format:%ad|%h|%s',
         "--",
-        "frontend/client",
-        "frontend/admin",
+        *REPORT_PATHS,
     ).splitlines():
         line = line.strip().strip('"')
         if not line:
@@ -116,7 +115,9 @@ def get_repo_stats() -> dict[str, object]:
     category_counter: Counter[str] = Counter()
     for file_path in unique_files:
         normalized = file_path.replace("\\", "/")
-        if "/src/components/" in normalized:
+        if normalized.startswith("server/"):
+            category_counter["Server and API"] += 1
+        elif "/src/components/" in normalized:
             category_counter["UI components"] += 1
         elif "/src/app/" in normalized:
             category_counter["Pages and flows"] += 1
@@ -139,8 +140,7 @@ def get_repo_stats() -> dict[str, object]:
         "--numstat",
         "--pretty=tformat:",
         "--",
-        "frontend/client",
-        "frontend/admin",
+        *REPORT_PATHS,
     ).splitlines()
     churn_counter: Counter[str] = Counter()
     additions = 0
@@ -180,7 +180,7 @@ def get_repo_stats() -> dict[str, object]:
             "2026-04",
             "April 2026",
             monthly_commit_counter.get("2026-04", 0),
-            "Closed the period with order-id flow fixes, responsive product-detail improvements, share flow updates, and final product presentation polishing.",
+            "Closed the period with order-id flow fixes, responsive product-detail improvements, share flow updates, payment handling updates, admin authentication improvements, and final bug-fix work across connected modules.",
         ),
     ]
 
@@ -216,7 +216,8 @@ def get_repo_stats() -> dict[str, object]:
             "Built and improved reusable UI modules such as Header, Footer, ProductItem, ProductSlider, CartDrawer, Search, FlavorSwitcherBar, and support views.",
             "Fixed pricing, GST, coupon, combo, order-display, and checkout logic by aligning frontend calculations with backend behavior.",
             "Integrated cart state, wishlist state, notifications, share handling, support flows, and payment-related updates across the client app.",
-            "Contributed to admin-side pages such as orders, settings, shipping, customer care, purchase orders, and membership management.",
+            "Contributed to admin-side pages such as orders, settings, shipping, customer care, purchase orders, analytics, and membership management.",
+            "Handled API and payment-related changes in recent work, including PhonePe flow refinement, authorization logic updates, and linked order context fixes.",
         ],
         "outcomes": [
             "Improved responsiveness and consistency of product listing and product detail experiences.",
@@ -281,6 +282,10 @@ def get_repo_stats() -> dict[str, object]:
             (
                 "Admin Support Screens",
                 "Although my strongest contribution area was the client frontend, I also worked on admin-facing pages such as orders, settings, shipping, purchase orders, customer care, membership, products, and layout/sidebar structures. This gave me broader understanding of how operational workflows connect with the storefront experience.",
+            ),
+            (
+                "Server and Integration Support",
+                "In the more recent phase of work, my contribution also included connected API and payment-flow changes. This involved handling logic around payment processing, order context, and authorization-related updates that influenced how frontend and backend behavior stayed aligned.",
             ),
         ],
         "case_studies": [
@@ -398,6 +403,78 @@ def add_table_of_contents_placeholder(doc: Document) -> None:
     run._r.append(fld_char3)
 
 
+def add_index_table(doc: Document) -> None:
+    table = doc.add_table(rows=1, cols=3)
+    table.style = "Table Grid"
+    headers = ["Sr no.", "Description", "Page no."]
+    for idx, value in enumerate(headers):
+        cell = table.rows[0].cells[idx]
+        cell.text = value
+        for paragraph in cell.paragraphs:
+            paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            for run in paragraph.runs:
+                run.bold = True
+                run.font.name = "Times New Roman"
+                run.font.size = Pt(12)
+
+    rows = [
+        ("i", "DECLARATION", "i"),
+        ("ii", "ACKNOWLEDGEMENT", "ii"),
+        ("iii", "INDEX", "iii"),
+        ("iv", "LIST OF ILLUSTRATIONS", "iv"),
+        ("v", "ABSTRACT", "1"),
+        ("1", "INTRODUCTION", "2"),
+        ("2", "INTRODUCTION ABOUT COMPANY", "4"),
+        ("3", "ABOUT PROJECT", "6"),
+        ("3.1", "TECHNOLOGIES WORKED ON", "7"),
+        ("3.2", "MONTHLY PROGRESSION OF PROJECT", "9"),
+        ("3.3", "TESTING (IF DONE)", "10"),
+        ("3.4", "DEPLOYMENT (IF DONE)", "13"),
+        ("4", "ANY OTHER POINTS", "14"),
+        ("5", "LEARNING OUTCOME FROM 6 MONTHS INTERNSHIP", "18"),
+        ("6", "CONCLUSION", "20"),
+        ("", "REFERENCES", "21"),
+    ]
+    for sr_no, desc, page_no in rows:
+        row = table.add_row().cells
+        row[0].text = sr_no
+        row[1].text = desc
+        row[2].text = page_no
+
+
+def add_illustrations_table(doc: Document) -> None:
+    table = doc.add_table(rows=1, cols=3)
+    table.style = "Table Grid"
+    headers = ["Illustration Type", "Illustration Description", "Page Number"]
+    for idx, value in enumerate(headers):
+        cell = table.rows[0].cells[idx]
+        cell.text = value
+        for paragraph in cell.paragraphs:
+            paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            for run in paragraph.runs:
+                run.bold = True
+                run.font.name = "Times New Roman"
+                run.font.size = Pt(12)
+
+    rows = [
+        ("Table", "", ""),
+        ("Table 1", "Index Table", "iii"),
+        ("Table 2", "List of Illustrations", "iv"),
+        ("Table 3", "Monthly Progression of Project", "9"),
+        ("Table 4", "Contribution Summary by Work Area", "15"),
+        ("Figure", "", ""),
+        ("Figure 1", "Project Architecture Overview", "5"),
+        ("Figure 2", "Frontend Work Distribution", "14"),
+        ("Figure 3", "Testing and Validation Flow", "12"),
+        ("Figure 4", "Learning Outcome Framework", "19"),
+    ]
+    for kind, desc, page in rows:
+        row = table.add_row().cells
+        row[0].text = kind
+        row[1].text = desc
+        row[2].text = page
+
+
 def build_report(data: dict[str, object]) -> None:
     doc = Document()
     set_doc_defaults(doc)
@@ -454,18 +531,25 @@ def build_report(data: dict[str, object]) -> None:
 
     doc.add_page_break()
     add_heading(doc, "INDEX")
-    add_table_of_contents_placeholder(doc)
-    add_body(doc, "Update the table of contents in Word by right-clicking it and selecting 'Update Field'.", align=WD_ALIGN_PARAGRAPH.LEFT)
+    add_index_table(doc)
+
+    doc.add_page_break()
+    add_heading(doc, "LIST OF ILLUSTRATIONS")
+    add_body(
+        doc,
+        "The list of illustrations gives systematic information about the tables and figures used in this report. It provides a structured overview of where important visual summaries and chapter support material appear in the document.",
+    )
+    add_illustrations_table(doc)
 
     doc.add_page_break()
     add_heading(doc, "ABSTRACT")
     add_body(
         doc,
-        f"This report presents the work completed during my internship on {data['company_name']}, where I contributed primarily as a {data['role']}. The project is an ecommerce platform with separate client and admin interfaces. My contribution focused mainly on frontend development, UI refinement, state management, order and checkout flow improvements, and integration of API-driven behaviors across user-facing journeys.",
+        f"This report presents the work completed during my internship on {data['company_name']}, where I contributed primarily as a {data['role']}. The project is an ecommerce platform with separate client and admin interfaces supported by connected server logic. My contribution focused mainly on frontend development, UI refinement, state management, order and checkout flow improvements, and integration-oriented updates across user-facing and operational journeys.",
     )
     add_body(
         doc,
-        f"Using repository history as evidence, I contributed to approximately {data['frontend_commit_count']} frontend-related commits, spanning about {data['unique_files']} unique files across the client and admin applications between {data['start_date']} and {data['end_date']}. The cumulative code churn visible in my authored history covers roughly {data['total_additions']} added lines and {data['total_deletions']} deleted lines, which indicates sustained iteration rather than isolated edits. This internship strengthened my understanding of production-grade React and Next.js development, reusable component design, debugging of complex pricing workflows, and collaborative software delivery.",
+        f"Using repository history as evidence, I contributed to approximately {data['frontend_commit_count']} authored commits across the covered project modules, spanning about {data['unique_files']} unique files across frontend, admin, and linked server work between {data['start_date']} and {data['end_date']}. The cumulative code churn visible in my authored history covers roughly {data['total_additions']} added lines and {data['total_deletions']} deleted lines, which indicates sustained iteration rather than isolated edits. This internship strengthened my understanding of production-grade React and Next.js development, reusable component design, debugging of complex pricing workflows, and collaborative software delivery.",
     )
     add_body(
         doc,
@@ -502,6 +586,10 @@ def build_report(data: dict[str, object]) -> None:
     add_body(
         doc,
         "The project structure reflects a realistic product environment where frontend logic must remain aligned with backend APIs, business rules, and edge-case handling. This created a meaningful environment for learning how production issues are diagnosed and resolved.",
+    )
+    add_body(
+        doc,
+        "Figure 1: Project Architecture Overview. The project can be understood as a linked system of customer storefront, admin dashboard, shared frontend logic, and backend-connected APIs that together support product browsing, order placement, and operational workflows.",
     )
     add_body(
         doc,
@@ -558,7 +646,7 @@ def build_report(data: dict[str, object]) -> None:
         add_subheading(doc, f"{month} Detailed Progress")
         add_body(
             doc,
-            f"Repository history shows {count} authored frontend/admin commits during {month}. This indicates active participation across the internship period and shows how my responsibilities evolved with project familiarity.",
+            f"Repository history shows {count} authored commits during {month} across the covered project modules. This indicates active participation across the internship period and shows how my responsibilities evolved with project familiarity.",
         )
         add_body(doc, summary)
         if key == "2026-01":
@@ -615,6 +703,10 @@ def build_report(data: dict[str, object]) -> None:
         doc,
         "Another important aspect of testing was business-flow correctness. In ecommerce applications, frontend behavior must align with backend expectations around totals, discounts, stock, and identifiers. My work repeatedly involved verifying that rendered values and user-facing behavior matched the intended system logic.",
     )
+    add_body(
+        doc,
+        "Figure 3: Testing and Validation Flow. In practice, testing followed a cycle of requirement understanding, source tracing, implementation, manual flow validation, regression checking, and readiness review before the work was treated as stable.",
+    )
     for point in data["testing_observations"]:
         add_bullet(doc, str(point))
 
@@ -630,16 +722,20 @@ def build_report(data: dict[str, object]) -> None:
 
     add_heading(doc, "4 ANY OTHER POINTS")
     add_subheading(doc, "Evidence of Work from Repository History")
-    add_bullet(doc, f"Frontend-focused commits by my author email: {data['frontend_commit_count']}")
+    add_bullet(doc, f"Authored commits across covered project modules: {data['frontend_commit_count']}")
     add_bullet(doc, f"Overall commits in repository across my author identities: {data['overall_commit_count']}")
-    add_bullet(doc, f"Unique frontend/admin files touched: {data['unique_files']}")
+    add_bullet(doc, f"Unique files touched across frontend, admin, and server: {data['unique_files']}")
     add_bullet(doc, f"Approximate authored line additions: {data['total_additions']}")
     add_bullet(doc, f"Approximate authored line deletions: {data['total_deletions']}")
     for label, count in data["category_counter"].most_common():
         add_bullet(doc, f"{label}: {count} unique files")
     add_body(
         doc,
-        "These metrics do not claim sole ownership of the project, but they do provide strong evidence of sustained and broad contribution. The spread across pages, components, contexts, utilities, and admin screens supports the conclusion that my work was substantial, recurring, and strongly frontend-oriented.",
+        "These metrics do not claim sole ownership of the project, but they do provide strong evidence of sustained and broad contribution. The spread across pages, components, contexts, utilities, admin screens, and connected server logic supports the conclusion that my work was substantial, recurring, and strongly implementation-oriented with frontend as the major focus.",
+    )
+    add_body(
+        doc,
+        "Figure 2: Frontend Work Distribution. The contribution pattern was strongest in pages and flows, followed by reusable UI components, utilities, settings/state handling, and admin support areas. This distribution reflects a frontend role centered on user journey quality rather than only isolated styling updates.",
     )
 
     add_subheading(doc, "Key Responsibilities Executed")
@@ -653,6 +749,26 @@ def build_report(data: dict[str, object]) -> None:
     add_subheading(doc, "Detailed Contribution Areas")
     for title, paragraph in data["detailed_role_areas"]:
         add_body(doc, f"{title}: {paragraph}")
+
+    add_subheading(doc, "Project Impact of My Work")
+    add_body(
+        doc,
+        "My work had visible impact on both usability and correctness. On the client side, many changes improved how products were displayed, how users moved through cart and checkout, and how order-related details were shown after purchase. On the admin side, the work supported smoother operational interfaces for orders, shipping, purchase orders, combos, and settings.",
+    )
+    add_body(
+        doc,
+        "The most valuable aspect of this contribution was that several changes affected high-trust areas of the platform. In ecommerce applications, issues in totals, product presentation, order identifiers, or account-related information can directly reduce user confidence. Therefore, many of the fixes carried more significance than simple UI polishing.",
+    )
+
+    add_subheading(doc, "Coordination Between Client and Admin Work")
+    add_body(
+        doc,
+        "One important learning from the project was that storefront and admin work cannot be treated as separate worlds. Many client-side changes made more sense only after understanding what the admin panel controlled or how operational data was generated. This coordination improved my awareness of the full product lifecycle from internal configuration to customer-facing experience.",
+    )
+    add_body(
+        doc,
+        "For example, order flows, shipping information, product management, combo handling, and membership-related experiences are shaped by both backend and admin configurations. Contributing to both sides of these flows helped me build a more practical understanding of feature ownership and data dependency.",
+    )
 
     add_subheading(doc, "Representative Files Frequently Touched")
     for file_path, count in data["top_files"]:
@@ -723,6 +839,31 @@ def build_report(data: dict[str, object]) -> None:
         doc,
         "Finally, the experience strengthened my appreciation for delivery discipline. Correctness in pricing, responsiveness in product display, continuity in user journeys, and maintainability of shared components are all part of professional frontend engineering, and this internship provided practical exposure to each of those dimensions.",
     )
+    add_subheading(doc, "Technical Learning")
+    add_body(
+        doc,
+        "Technically, the internship made me more capable in React and Next.js development within an existing codebase. I improved in reading established code structures, tracing state interactions, diagnosing rendering issues, and making changes that stayed compatible with surrounding modules rather than breaking reuse.",
+    )
+    add_body(
+        doc,
+        "I also became more comfortable with frontend logic that is closely tied to business behavior. Cart totals, order calculations, membership display, wishlist state, and support-related flows showed me that frontend development often includes logic-sensitive responsibilities rather than only visual composition.",
+    )
+
+    add_subheading(doc, "Project and Product Learning")
+    add_body(
+        doc,
+        "From a product perspective, I learned to think in terms of end-to-end user journeys. A good feature is not only one that renders correctly on a single page, but one that remains coherent from discovery to checkout to order follow-up. This mindset helped me evaluate my own work more carefully and understand why regressions in one area can damage the entire experience.",
+    )
+    add_body(
+        doc,
+        "Figure 4: Learning Outcome Framework. The internship strengthened my growth across four connected areas: technical implementation, debugging discipline, product understanding, and collaborative development practices.",
+    )
+
+    add_subheading(doc, "Professional Learning")
+    add_body(
+        doc,
+        "Professionally, the internship improved my discipline in working within a collaborative repository. I learned to treat changes more carefully, respect existing structures, understand linked modules before editing them, and rely on history and evidence when describing my contribution. This is one of the most important shifts from academic coding to real project work.",
+    )
 
     add_heading(doc, "6 CONCLUSION")
     add_body(
@@ -744,52 +885,21 @@ def build_report(data: dict[str, object]) -> None:
 
     add_heading(doc, "REFERENCES")
     add_bullet(doc, "Project repository history and authored Git commits from the BogEcom workspace.")
-    add_bullet(doc, "Frontend source modules under frontend/client and frontend/admin.")
+    add_bullet(doc, "Project source modules under frontend/client, frontend/admin, and server.")
     add_bullet(doc, "Next.js and React documentation used as standard technology references during development.")
     add_bullet(doc, "Internal file and commit evidence summarized from version-control records in the local workspace.")
-
-    doc.add_page_break()
-    add_heading(doc, "APPENDIX A COMPLETE AUTHORED COMMIT LOG")
-    add_body(
-        doc,
-        "This appendix lists the commit history used to summarize my internship contribution. Including the raw log improves transparency by linking the written report to repository evidence.",
-    )
-    for entry in data["authored_commit_entries"]:
-        add_bullet(doc, f"{entry['date']} | {entry['hash']} | {entry['subject']}")
-
-    doc.add_page_break()
-    add_heading(doc, "APPENDIX B COMPLETE FRONTEND FILE INVENTORY")
-    add_body(
-        doc,
-        "This appendix lists the frontend and admin files touched in my authored history. The breadth of files illustrates the range of modules, pages, components, and supporting layers influenced during the internship period.",
-    )
-    for file_path in data["unique_files_list"]:
-        add_bullet(doc, file_path)
-
-    doc.add_page_break()
-    add_heading(doc, "APPENDIX C TOP FILES BY CHANGE VOLUME")
-    add_body(
-        doc,
-        "The following list highlights the files with the highest line-level activity in my authored changes. These files typically represent high-importance flows or components that required repeated iteration.",
-    )
-    for file_path, count in data["top_churn_files"]:
-        add_bullet(doc, f"{file_path} | total changed lines: {count}")
-
-    doc.add_page_break()
-    add_heading(doc, "APPENDIX D FILE TOUCH FREQUENCY")
-    add_body(
-        doc,
-        "This appendix lists file touch frequency from my authored commit history. It helps show which modules received repeated attention during the internship and strengthens the evidence behind the responsibility summary.",
-    )
-    for file_path, count in data["all_file_touch_counts"]:
-        add_bullet(doc, f"{file_path} | touched in {count} authored commit entries")
 
     section = doc.sections[-1]
     footer = section.footer.paragraphs[0]
     footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
     add_page_number(footer)
 
-    doc.save(OUTPUT_DOCX)
+    try:
+        doc.save(OUTPUT_DOCX)
+        print(f"Generated: {OUTPUT_DOCX}")
+    except PermissionError:
+        doc.save(FALLBACK_OUTPUT_DOCX)
+        print(f"Generated: {FALLBACK_OUTPUT_DOCX}")
 
 
 def clear_slide(slide) -> None:
@@ -1015,12 +1125,15 @@ def build_presentation(data: dict[str, object]) -> None:
         ],
     )
 
-    prs.save(str(OUTPUT_PPT))
+    try:
+        prs.save(str(OUTPUT_PPT))
+        print(f"Generated: {OUTPUT_PPT}")
+    except PermissionError:
+        prs.save(str(FALLBACK_OUTPUT_PPT))
+        print(f"Generated: {FALLBACK_OUTPUT_PPT}")
 
 
 if __name__ == "__main__":
     stats = get_repo_stats()
     build_report(stats)
     build_presentation(stats)
-    print(f"Generated: {OUTPUT_DOCX}")
-    print(f"Generated: {OUTPUT_PPT}")
