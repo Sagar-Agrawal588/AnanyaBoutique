@@ -60,6 +60,8 @@ const getSupportContactEmail = () =>
     .trim()
     .toLowerCase();
 
+const getSupportContactUrl = () => `${getFrontendBaseUrl()}/contact`;
+
 const normalizeNotificationTargetPath = (value, fallbackPath = "/products") => {
   const raw = String(value || "").trim();
   if (!raw) return fallbackPath;
@@ -1230,9 +1232,7 @@ export const manualSendPromotionalEmail = async (req, res) => {
     const ctaLabel = rawCtaLabel || "Shop now";
     const headline = rawHeadline || rawSubject;
     const supportContact = getSupportContactEmail();
-    const supportUrl = supportContact
-      ? `mailto:${supportContact}`
-      : frontendBaseUrl;
+    const supportUrl = getSupportContactUrl();
     const offerDetails = [
       rawDiscountText,
       rawCoupon ? `Use code ${rawCoupon}` : "",

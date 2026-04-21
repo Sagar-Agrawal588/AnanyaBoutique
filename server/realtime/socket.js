@@ -5,6 +5,29 @@ import isPrivilegedAdminRole from "../utils/isPrivilegedAdminRole.js";
 
 let ioInstance = null;
 
+const toBoolean = (value, fallback = false) => {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase();
+  if (["true", "1", "yes", "on"].includes(normalized)) return true;
+  if (["false", "0", "no", "off"].includes(normalized)) return false;
+  return fallback;
+};
+
+const resolveSocketTransports = () => {
+  const preferWebsocket = toBoolean(
+    process.env.PERF_SOCKET_PREFER_WEBSOCKET,
+    false,
+  );
+  const allowPolling = toBoolean(process.env.PERF_SOCKET_ALLOW_POLLING, true);
+
+  if (!allowPolling) {
+    return ["websocket"];
+  }
+
+  return preferWebsocket ? ["websocket", "polling"] : ["polling", "websocket"];
+};
+
 const parseCookies = (cookieHeader) => {
   if (!cookieHeader) return {};
   return cookieHeader.split(";").reduce((acc, part) => {
@@ -18,12 +41,27 @@ const parseCookies = (cookieHeader) => {
 export const initSocket = (httpServer, { origins = [], jwtSecret } = {}) => {
   if (ioInstance) return ioInstance;
 
+  const socketTransports = resolveSocketTransports();
+  const transportLogEnabled = toBoolean(
+    process.env.PERF_SOCKET_TRANSPORT_LOG_ENABLED,
+    true,
+  );
+
   ioInstance = new Server(httpServer, {
     cors: {
       origin: origins,
       credentials: true,
     },
+    transports: socketTransports,
+    allowUpgrades: true,
   });
+
+  if (transportLogEnabled) {
+    console.info("[socket] Transport policy", {
+      transports: socketTransports,
+      preferWebsocket: socketTransports[0] === "websocket",
+    });
+  }
 
   ioInstance.use((socket, next) => {
     const cookies = parseCookies(socket.handshake.headers?.cookie || "");
@@ -49,13 +87,30 @@ export const initSocket = (httpServer, { origins = [], jwtSecret } = {}) => {
   });
 
   ioInstance.on("connection", async (socket) => {
+    if (transportLogEnabled) {
+      console.info("[socket] Connection established", {
+        socketId: socket.id,
+        transport: socket.conn?.transport?.name || "unknown",
+      });
+    }
+
+    socket.conn?.on("upgrade", (transport) => {
+      if (!transportLogEnabled) return;
+      console.info("[socket] Transport upgraded", {
+        socketId: socket.id,
+        transport: transport?.name || "unknown",
+      });
+    });
+
     socket.join("audience:all");
 
     if (socket.userId) {
       socket.join("audience:user");
       socket.join(`user:${socket.userId}`);
       try {
-        const user = await UserModel.findById(socket.userId).select("role status");
+        const user = await UserModel.findById(socket.userId).select(
+          "role status",
+        );
         if (isPrivilegedAdminRole(user?.role) && user?.status === "active") {
           socket.join("admin:orders");
           socket.join("admin:analytics");

@@ -18,14 +18,18 @@ import {
 import connectDb from "./config/connectDb.js";
 import "./config/dayjs.js";
 import analyticsSession from "./middlewares/analyticsSession.js";
+import botProtectionMonitor from "./middlewares/botProtection.js";
 import createCookieCsrfGuard from "./middlewares/csrfGuard.js";
 import maintenanceModeMiddleware from "./middlewares/maintenanceMode.js";
+import publicCacheHeadersMiddleware from "./middlewares/publicCacheHeaders.js";
 import {
   adminLimiter,
   analyticsLimiter,
   generalLimiter,
+  publicGetLimiter,
   uploadLimiter,
 } from "./middlewares/rateLimiter.js";
+import slowRequestLogger from "./middlewares/slowRequestLogger.js";
 import { UPLOAD_ROOT } from "./middlewares/upload.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -70,6 +74,20 @@ const normalizeEnvValue = (value) => {
   }
 
   return normalized;
+};
+
+const toBoolean = (value, fallback = false) => {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase();
+  if (["true", "1", "yes", "on"].includes(normalized)) return true;
+  if (["false", "0", "no", "off"].includes(normalized)) return false;
+  return fallback;
+};
+
+const toPositiveInteger = (value, fallback) => {
+  const parsed = Number.parseInt(String(value || "").trim(), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
 
 const isValidMongoUri = (value) => /^mongodb(\+srv)?:\/\//.test(value);
@@ -357,6 +375,143 @@ app.use(
   }),
 );
 
+const baseServerStatusPayload = Object.freeze({
+  message: "Server is running",
+  version: "1.0.0",
+});
+const ACCESS_LOG_SKIP_PATHS = new Set([
+  "/healthz",
+  "/api/banners",
+  "/api/home-slides",
+  "/api/settings/maintenance-status",
+]);
+
+const normalizeRequestPath = (value) => {
+  const normalized = String(value || "")
+    .split("?")[0]
+    .trim()
+    .replace(/\/{2,}/g, "/")
+    .replace(/\/+$/, "");
+
+  return normalized || "/";
+};
+
+const PERF_MIDDLEWARE_BYPASS_ENABLED = toBoolean(
+  process.env.PERF_MIDDLEWARE_BYPASS_ENABLED,
+  true,
+);
+const PERF_COMPRESSION_ENABLED = toBoolean(
+  process.env.PERF_COMPRESSION_ENABLED,
+  true,
+);
+const PERF_COMPRESSION_THRESHOLD_BYTES = toPositiveInteger(
+  process.env.PERF_COMPRESSION_THRESHOLD_BYTES,
+  1024,
+);
+const PUBLIC_GET_HEAVY_BYPASS_PREFIXES = [
+  "/api/about",
+  "/api/blogs",
+  "/api/banners",
+  "/api/categories",
+  "/api/home-slides",
+  "/api/policies",
+  "/api/settings/public",
+  "/api/settings/maintenance-status",
+];
+const HEAVY_BYPASS_EXEMPT_PREFIXES = [
+  "/api/user",
+  "/api/admin",
+  "/api/orders",
+  "/api/membership",
+  "/api/upload",
+  "/api/webhooks",
+  "/api/support",
+  "/api/refunds",
+  "/api/location-logs",
+];
+const COMPRESSED_ASSET_PATH_REGEX =
+  /\.(?:br|gz|zip|7z|rar|png|jpe?g|gif|webp|avif|mp4|webm|mp3|ogg|pdf|woff2?|ttf|otf)$/i;
+
+const isHealthRoute = (requestPath) =>
+  requestPath === "/healthz" || requestPath === "/";
+
+const isPublicGetHeavyBypassPath = (requestPath) => {
+  if (!requestPath.startsWith("/api/")) return false;
+
+  if (
+    HEAVY_BYPASS_EXEMPT_PREFIXES.some((prefix) =>
+      requestPath.startsWith(prefix),
+    )
+  ) {
+    return false;
+  }
+
+  if (requestPath.includes("/admin")) {
+    return false;
+  }
+
+  return PUBLIC_GET_HEAVY_BYPASS_PREFIXES.some((prefix) =>
+    requestPath.startsWith(prefix),
+  );
+};
+
+const shouldBypassHeavyMiddleware = (req) => {
+  if (!PERF_MIDDLEWARE_BYPASS_ENABLED) return false;
+
+  const method = String(req?.method || "")
+    .trim()
+    .toUpperCase();
+  if (method !== "GET" && method !== "HEAD") return false;
+
+  const requestPath = normalizeRequestPath(req?.originalUrl || req?.url || "");
+  return isHealthRoute(requestPath) || isPublicGetHeavyBypassPath(requestPath);
+};
+
+const shouldSkipCompression = (req) => {
+  const requestPath = normalizeRequestPath(req?.originalUrl || req?.url || "");
+  if (isHealthRoute(requestPath)) return true;
+  if (requestPath.startsWith("/uploads/")) return true;
+  return COMPRESSED_ASSET_PATH_REGEX.test(requestPath);
+};
+
+const compressionFilter = (req, res) => {
+  if (!PERF_COMPRESSION_ENABLED) return false;
+  if (shouldSkipCompression(req)) return false;
+  return compression.filter(req, res);
+};
+
+const shouldSkipAccessLog = (req) => {
+  if (String(req?.method || "").toUpperCase() === "OPTIONS") {
+    return true;
+  }
+
+  const requestPath = normalizeRequestPath(req?.originalUrl || req?.url || "");
+
+  if (ACCESS_LOG_SKIP_PATHS.has(requestPath)) {
+    return true;
+  }
+
+  return requestPath.startsWith("/uploads/");
+};
+
+app.get("/healthz", (_req, res) => {
+  res.set("Cache-Control", "no-store, max-age=0");
+  res.type("text/plain");
+  res.status(200).send("ok");
+});
+
+app.get("/", (_req, res) => {
+  res.set("Cache-Control", "public, max-age=120, s-maxage=300");
+  res.status(200).json({
+    ...baseServerStatusPayload,
+    port: process.env.PORT,
+  });
+});
+
+app.use(slowRequestLogger);
+app.use(botProtectionMonitor);
+app.use(publicCacheHeadersMiddleware);
+
 const shouldCaptureRawBody = (req) => {
   const requestPath = String(req?.originalUrl || req?.url || "");
   return (
@@ -366,17 +521,23 @@ const shouldCaptureRawBody = (req) => {
   );
 };
 
-app.use(
-  express.json({
-    limit: "50mb",
-    verify: (req, _res, buf) => {
-      if (!buf || buf.length === 0) return;
-      if (shouldCaptureRawBody(req)) {
-        req.rawBody = buf.toString("utf8");
-      }
-    },
-  }),
-);
+const jsonParserMiddleware = express.json({
+  limit: "50mb",
+  verify: (req, _res, buf) => {
+    if (!buf || buf.length === 0) return;
+    if (shouldCaptureRawBody(req)) {
+      req.rawBody = buf.toString("utf8");
+    }
+  },
+});
+
+app.use((req, res, next) => {
+  if (shouldBypassHeavyMiddleware(req)) {
+    return next();
+  }
+
+  return jsonParserMiddleware(req, res, next);
+});
 
 const isPaymentCallbackPath = (req) => {
   const requestPath = String(req?.originalUrl || req?.url || "").toLowerCase();
@@ -441,15 +602,47 @@ app.use((err, req, _res, next) => {
     return next(err);
   }
 });
-app.use(express.urlencoded({ extended: true, limit: "50mb" }));
-app.use(cookieParser());
-app.use(analyticsSession);
-app.use(
-  createCookieCsrfGuard({
-    allowedOrigins,
-    isProduction: isProductionEnv,
-  }),
-);
+const urlEncodedParserMiddleware = express.urlencoded({
+  extended: true,
+  limit: "50mb",
+});
+const cookieParserMiddleware = cookieParser();
+const csrfGuardMiddleware = createCookieCsrfGuard({
+  allowedOrigins,
+  isProduction: isProductionEnv,
+});
+
+app.use((req, res, next) => {
+  if (shouldBypassHeavyMiddleware(req)) {
+    return next();
+  }
+
+  return urlEncodedParserMiddleware(req, res, next);
+});
+
+app.use((req, res, next) => {
+  if (shouldBypassHeavyMiddleware(req)) {
+    return next();
+  }
+
+  return cookieParserMiddleware(req, res, next);
+});
+
+app.use((req, res, next) => {
+  if (shouldBypassHeavyMiddleware(req)) {
+    return next();
+  }
+
+  return analyticsSession(req, res, next);
+});
+
+app.use((req, res, next) => {
+  if (shouldBypassHeavyMiddleware(req)) {
+    return next();
+  }
+
+  return csrfGuardMiddleware(req, res, next);
+});
 app.use(
   helmet({
     crossOriginResourcePolicy: false,
@@ -458,12 +651,17 @@ app.use(
 
 app.use(
   compression({
-    threshold: 1024,
+    threshold: PERF_COMPRESSION_THRESHOLD_BYTES,
+    filter: compressionFilter,
   }),
 );
 
 if (process.env.NODE_ENV === "production") {
-  app.use(morgan("short"));
+  app.use(
+    morgan("short", {
+      skip: shouldSkipAccessLog,
+    }),
+  );
 } else {
   app.use(morgan("dev"));
 }
@@ -471,16 +669,9 @@ if (process.env.NODE_ENV === "production") {
 // Serve uploaded files from the same root multer writes to.
 app.use("/uploads", express.static(UPLOAD_ROOT));
 
-app.get("/", (req, res) => {
-  res.json({
-    message: "Server is running",
-    port: process.env.PORT,
-    version: "1.0.0",
-  });
-});
-
 // API routes with rate limiting
 app.use("/api", maintenanceModeMiddleware);
+app.use("/api", publicGetLimiter);
 app.use("/api/about", generalLimiter, aboutPageRouter);
 app.use("/api/api-docs", generalLimiter, apiDocumentRouter);
 app.use("/api", analyticsLimiter, trackingRouter);

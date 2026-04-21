@@ -2,6 +2,56 @@ import { deleteFromCloudinary } from "../config/cloudinary.js";
 import BannerModel from "../models/banner.model.js";
 import { extractPublicIdFromUrl } from "../utils/imageUtils.js";
 
+const DEFAULT_BANNER_LIMIT = 10;
+const DEFAULT_BANNER_PUBLIC_CACHE_TTL_MS = 120000;
+const BANNER_PUBLIC_CACHE_TTL_MS = Math.max(
+  Number(
+    process.env.BANNERS_PUBLIC_CACHE_TTL_MS ||
+      DEFAULT_BANNER_PUBLIC_CACHE_TTL_MS,
+  ) || DEFAULT_BANNER_PUBLIC_CACHE_TTL_MS,
+  10000,
+);
+const bannerResponseCache = new Map();
+const bannerInFlightRequests = new Map();
+
+const normalizeBannerLimit = (value) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return DEFAULT_BANNER_LIMIT;
+  }
+
+  return Math.floor(parsed);
+};
+
+const buildBannerCacheKey = ({ position, limit }) =>
+  `${String(position || "all")
+    .trim()
+    .toLowerCase()}:${limit}`;
+
+const getCachedBannerPayload = (cacheKey) => {
+  const cached = bannerResponseCache.get(cacheKey);
+  if (!cached) return null;
+
+  if (cached.expiresAt <= Date.now()) {
+    bannerResponseCache.delete(cacheKey);
+    return null;
+  }
+
+  return cached.payload;
+};
+
+const setCachedBannerPayload = (cacheKey, payload) => {
+  bannerResponseCache.set(cacheKey, {
+    payload,
+    expiresAt: Date.now() + BANNER_PUBLIC_CACHE_TTL_MS,
+  });
+};
+
+const clearBannerPublicCache = () => {
+  bannerResponseCache.clear();
+  bannerInFlightRequests.clear();
+};
+
 /**
  * Banner Controller
  *
@@ -17,36 +67,65 @@ import { extractPublicIdFromUrl } from "../utils/imageUtils.js";
  */
 export const getBanners = async (req, res) => {
   try {
-    const { position, limit = 10 } = req.query;
+    const { position } = req.query;
+    const limit = normalizeBannerLimit(req.query.limit);
+    const cacheKey = buildBannerCacheKey({ position, limit });
 
-    const now = new Date();
-    const filter = {
-      isActive: true,
-      $or: [{ startDate: null }, { startDate: { $lte: now } }],
-      $and: [
-        {
-          $or: [{ endDate: null }, { endDate: { $gte: now } }],
-        },
-      ],
-    };
-
-    if (position) {
-      filter.position = position;
+    const cachedPayload = getCachedBannerPayload(cacheKey);
+    if (cachedPayload) {
+      return res.status(200).json(cachedPayload);
     }
 
-    const banners = await BannerModel.find(filter)
-      .select(
-        "title subtitle image mobileImage link linkText position backgroundColor textColor mediaType videoUrl buttonText sortOrder",
-      )
-      .sort({ sortOrder: 1, createdAt: -1 })
-      .limit(Number(limit))
-      .lean();
+    const existingInFlightRequest = bannerInFlightRequests.get(cacheKey);
+    if (existingInFlightRequest) {
+      const inFlightPayload = await existingInFlightRequest;
+      return res.status(200).json(inFlightPayload);
+    }
 
-    res.status(200).json({
-      error: false,
-      success: true,
-      data: banners,
-    });
+    const fetchPromise = (async () => {
+      const now = new Date();
+      const filter = {
+        isActive: true,
+        $or: [{ startDate: null }, { startDate: { $lte: now } }],
+        $and: [
+          {
+            $or: [{ endDate: null }, { endDate: { $gte: now } }],
+          },
+        ],
+      };
+
+      if (position) {
+        filter.position = position;
+      }
+
+      const banners = await BannerModel.find(filter)
+        .select(
+          "title subtitle image mobileImage link linkText position backgroundColor textColor mediaType videoUrl buttonText sortOrder",
+        )
+        .sort({ sortOrder: 1, createdAt: -1 })
+        .limit(limit)
+        .lean();
+
+      const payload = {
+        error: false,
+        success: true,
+        data: banners,
+      };
+
+      setCachedBannerPayload(cacheKey, payload);
+      return payload;
+    })();
+
+    bannerInFlightRequests.set(cacheKey, fetchPromise);
+
+    let payload;
+    try {
+      payload = await fetchPromise;
+    } finally {
+      bannerInFlightRequests.delete(cacheKey);
+    }
+
+    return res.status(200).json(payload);
   } catch (error) {
     console.error("Error fetching banners:", error);
     res.status(500).json({
@@ -247,6 +326,7 @@ export const createBanner = async (req, res) => {
     });
 
     await banner.save();
+    clearBannerPublicCache();
 
     res.status(201).json({
       error: false,
@@ -353,6 +433,7 @@ export const updateBanner = async (req, res) => {
       { $set: updateData },
       { new: true, runValidators: true },
     );
+    clearBannerPublicCache();
 
     res.status(200).json({
       error: false,
@@ -405,6 +486,8 @@ export const deleteBanner = async (req, res) => {
         });
       }
     }
+
+    clearBannerPublicCache();
 
     res.status(200).json({
       error: false,

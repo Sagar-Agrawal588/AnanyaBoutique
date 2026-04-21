@@ -22,9 +22,18 @@ const DEFAULT_PUBLIC_GET_CACHE_TTL_MS = Math.max(
   ) || 15000,
   0,
 );
+const DEFAULT_HOMEPAGE_HOT_PATH_CACHE_TTL_MS = Math.max(
+  Number.parseInt(
+    String(process.env.NEXT_PUBLIC_HOMEPAGE_CACHE_TTL_MS ?? "120000"),
+    10,
+  ) || 120000,
+  0,
+);
 
 const PUBLIC_GET_CACHE_PATH_REGEX =
   /^\/api\/(?:products|categories|banners|home-slides|combos|settings\/public)(?:\/|\?|$)/i;
+const HOMEPAGE_HOT_PATH_CACHE_REGEX =
+  /^\/api\/(?:banners|home-slides|settings\/maintenance-status)(?:\/|\?|$)/i;
 
 const publicGetCacheStore = new Map();
 const inflightGetRequests = new Map();
@@ -55,8 +64,18 @@ const normalizeLocalFallbacks = () =>
 
 const getGetCacheKey = (url) => `GET:${String(url || "").trim()}`;
 
-const shouldUsePublicGetCache = (url) =>
-  PUBLIC_GET_CACHE_PATH_REGEX.test(String(url || ""));
+const getDefaultPublicGetCacheTtlMs = (url) => {
+  const normalizedUrl = String(url || "").trim();
+  if (HOMEPAGE_HOT_PATH_CACHE_REGEX.test(normalizedUrl)) {
+    return DEFAULT_HOMEPAGE_HOT_PATH_CACHE_TTL_MS;
+  }
+
+  if (PUBLIC_GET_CACHE_PATH_REGEX.test(normalizedUrl)) {
+    return DEFAULT_PUBLIC_GET_CACHE_TTL_MS;
+  }
+
+  return 0;
+};
 
 const getCachedGetResponse = (cacheKey) => {
   const cached = publicGetCacheStore.get(cacheKey);
@@ -234,21 +253,36 @@ const handleApiError = (error, fallbackMessage) => {
 const getApiBaseCandidates = () => {
   const preferred = sanitizeBaseUrl(preferredApiBaseUrl);
   const resolvedBase = sanitizeBaseUrl(API_BASE_URL);
+  const localDevBase = sanitizeBaseUrl(process.env.NEXT_PUBLIC_LOCAL_API_URL);
   const candidates = [];
-
-  if (preferred) {
-    candidates.push(preferred);
-  }
 
   if (typeof window !== "undefined") {
     const hostname = String(window.location.hostname || "").toLowerCase();
     const isLocalhost = hostname === "localhost" || hostname === "127.0.0.1";
     if (isLocalhost) {
-      if (resolvedBase) {
-        candidates.push(resolvedBase);
+      // On local dev, prefer local API targets first to avoid remote CORS/network failures.
+      if (preferred && isLocalhostUrl(preferred)) {
+        candidates.push(preferred);
+      }
+      if (localDevBase) {
+        candidates.push(localDevBase);
       }
       candidates.push(...normalizeLocalFallbacks());
+
+      // Keep remote bases as final fallback candidates.
+      if (preferred && !isLocalhostUrl(preferred)) {
+        candidates.push(preferred);
+      }
+      if (resolvedBase && !isLocalhostUrl(resolvedBase)) {
+        candidates.push(resolvedBase);
+      }
+
+      return [...new Set(candidates.filter(Boolean))];
     }
+  }
+
+  if (preferred) {
+    candidates.push(preferred);
   }
 
   candidates.push(resolvedBase);
@@ -331,9 +365,7 @@ export const fetchDataFromApi = async (url, options = {}) => {
   );
   const cacheTtlMs = Number.isFinite(configuredTtl)
     ? Math.max(configuredTtl, 0)
-    : shouldUsePublicGetCache(normalizedUrl)
-      ? DEFAULT_PUBLIC_GET_CACHE_TTL_MS
-      : 0;
+    : getDefaultPublicGetCacheTtlMs(normalizedUrl);
 
   const shouldUseCache = cacheTtlMs > 0 && options?.skipCache !== true;
   if (shouldUseCache) {

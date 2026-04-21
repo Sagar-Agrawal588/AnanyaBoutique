@@ -1,9 +1,62 @@
 "use client";
-import Header from "@/components/Header";
-import Sidebar from "@/components/Sidebar";
 import { useAdmin } from "@/context/AdminContext";
+import dynamic from "next/dynamic";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+
+const MANAGER_ROUTE_PERMISSION_RULES = [
+  {
+    permission: "manage_users",
+    prefixes: ["/users"],
+  },
+  {
+    permission: "view_analytics",
+    prefixes: ["/analytics", "/behavior-analytics", "/sales-analytics"],
+  },
+  {
+    permission: "manage_crm",
+    prefixes: [
+      "/crm",
+      "/customer-care",
+      "/notifications",
+      "/newsletter",
+      "/email-templates",
+    ],
+  },
+  {
+    permission: "manage_shipping",
+    prefixes: ["/orders", "/shipping", "/purchase-orders"],
+  },
+  {
+    permission: "manage_membership",
+    prefixes: ["/membership", "/coins"],
+  },
+];
+
+const resolveRequiredManagerPermission = (pathname) => {
+  const normalizedPath = String(pathname || "").trim();
+  if (!normalizedPath || normalizedPath === "/") return null;
+
+  for (const rule of MANAGER_ROUTE_PERMISSION_RULES) {
+    if (rule.prefixes.some((prefix) => normalizedPath.startsWith(prefix))) {
+      return rule.permission;
+    }
+  }
+
+  return "manage_settings";
+};
+
+const Sidebar = dynamic(() => import("@/components/Sidebar"), {
+  ssr: false,
+  loading: () => (
+    <div className="hidden lg:block fixed top-0 left-0 h-screen w-[250px] border-r border-gray-100 bg-white" />
+  ),
+});
+
+const Header = dynamic(() => import("@/components/Header"), {
+  ssr: false,
+  loading: () => <div className="h-[60px] w-full bg-white shadow-md" />,
+});
 
 const publicPages = [
   "/login",
@@ -15,9 +68,19 @@ const publicPages = [
 
 export default function AdminLayout({ children }) {
   const pathname = usePathname();
-  const { loading, isAuthenticated } = useAdmin();
+  const { admin, loading, isAuthenticated, hasPermission } = useAdmin();
   const isPublicPage = publicPages.some((p) => pathname.startsWith(p));
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const isManager =
+    String(admin?.role || "")
+      .trim()
+      .toLowerCase() === "manager";
+  const requiredPermission = useMemo(
+    () => resolveRequiredManagerPermission(pathname),
+    [pathname],
+  );
+  const hasRoutePermission =
+    !isManager || !requiredPermission || hasPermission(requiredPermission);
 
   useEffect(() => {
     if (process.env.NODE_ENV === "production") {
@@ -81,8 +144,21 @@ export default function AdminLayout({ children }) {
   }
 
   if (!isAuthenticated) {
+    return <div className="min-h-screen bg-gray-50" aria-hidden="true" />;
+  }
+
+  if (!hasRoutePermission) {
     return (
-      <div className="min-h-screen bg-gray-50" aria-hidden="true" />
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+        <div className="max-w-md w-full rounded-xl border border-red-200 bg-white p-6 text-center shadow-sm">
+          <h1 className="text-lg font-semibold text-gray-900">
+            Access Restricted
+          </h1>
+          <p className="mt-2 text-sm text-gray-600">
+            You do not have permission to open this admin module.
+          </p>
+        </div>
+      </div>
     );
   }
 

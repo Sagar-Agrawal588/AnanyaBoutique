@@ -1,6 +1,29 @@
 ﻿runtime: nodejs22
 service: default
 
+automatic_scaling:
+  min_num_instances: 1
+  max_num_instances: 3
+  cool_down_period_sec: 120
+  cpu_utilization:
+    target_utilization: 0.65
+
+liveness_check:
+  path: "/healthz"
+  check_interval_sec: 30
+  timeout_sec: 4
+  failure_threshold: 4
+  success_threshold: 2
+  initial_delay_sec: 300
+
+readiness_check:
+  path: "/healthz"
+  check_interval_sec: 10
+  timeout_sec: 4
+  failure_threshold: 3
+  success_threshold: 2
+  app_start_timeout_sec: 300
+
 env_variables:
   NODE_ENV: "production"
   MONGO_URI: "SET_AT_DEPLOY"
@@ -23,10 +46,18 @@ env_variables:
   FIREBASE_PROJECT_ID: "SET_OPTIONAL_AT_DEPLOY"
   FIREBASE_CLIENT_EMAIL: "SET_OPTIONAL_AT_DEPLOY"
   FIREBASE_PRIVATE_KEY: "SET_OPTIONAL_AT_DEPLOY"
+  WHATSAPP_ACCESS_TOKEN: "SET_AT_DEPLOY"
+  WHATSAPP_PHONE_NUMBER_ID: "SET_AT_DEPLOY"
+  WHATSAPP_BUSINESS_ACCOUNT_ID: "SET_AT_DEPLOY"
+  WHATSAPP_WEBHOOK_VERIFY_TOKEN: "SET_AT_DEPLOY"
+  WHATSAPP_APP_SECRET: "SET_AT_DEPLOY"
+  WHATSAPP_GRAPH_API_VERSION: "v22.0"
   ANALYTICS_PUBSUB_ENABLED: "true"
   GOOGLE_CLOUD_PROJECT: "SET_AT_DEPLOY"
   ANALYTICS_PUBSUB_TOPIC: "user-behavior-events"
   ANALYTICS_PUBSUB_SUBSCRIPTION: "user-behavior-events-sub"
   ANALYTICS_PUBSUB_DEAD_LETTER_TOPIC: "user-behavior-events-dead-letter"
+  BANNERS_PUBLIC_CACHE_TTL_MS: "120000"
+  HOME_SLIDES_PUBLIC_CACHE_TTL_MS: "120000"
   ANALYTICS_SESSION_COOKIE: "hog_sid"
   ANALYTICS_DB_NAME: "analytics"

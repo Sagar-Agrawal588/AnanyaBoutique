@@ -100,6 +100,7 @@ import {
   generateInvoicePdf,
   getAbsolutePathFromStoredInvoicePath,
 } from "../utils/generateInvoicePdf.js";
+import isPrivilegedAdminRole from "../utils/isPrivilegedAdminRole.js";
 import {
   syncOrderStatus,
   syncOrderToFirestore,
@@ -706,6 +707,19 @@ const getPrimaryStoreUrl = () =>
     .split(",")[0]
     .trim()
     .replace(/\/+$/, "");
+
+const getSupportContactEmail = () =>
+  String(
+    process.env.SUPPORT_ADMIN_EMAIL ||
+      process.env.SUPPORT_EMAIL ||
+      process.env.EMAIL_FROM_ADDRESS ||
+      process.env.SMTP_USER ||
+      "support@healthyonegram.com",
+  )
+    .trim()
+    .toLowerCase();
+
+const getSupportContactUrl = () => `${getPrimaryStoreUrl()}/contact`;
 
 const CONTROLLER_DIR = path.dirname(fileURLToPath(import.meta.url));
 const TEST_INVOICE_EXPORT_DIR = path.resolve(
@@ -1317,12 +1331,8 @@ const sendOrderConfirmationEmail = async (order) => {
 
     const rawOrderId = String(order?._id || "").trim();
     const displayOrderNumber = resolveDisplayOrderNumber(order);
-    const supportContact = "healthyonegram.com";
-    const supportUrl = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(supportContact)
-      ? `mailto:${supportContact}`
-      : /^https?:\/\//i.test(supportContact)
-        ? supportContact
-        : `https://${supportContact.replace(/^\/+/, "")}`;
+    const supportContact = getSupportContactEmail();
+    const supportUrl = getSupportContactUrl();
     const siteUrl = getPrimaryStoreUrl();
     const normalizedPaymentStatus = String(order?.payment_status || "")
       .trim()
@@ -1504,12 +1514,8 @@ const sendOrderPaymentSuccessEmail = async (
 
     const rawOrderId = String(order?._id || "").trim();
     const displayOrderNumber = resolveDisplayOrderNumber(order);
-    const supportContact = "healthyonegram.com";
-    const supportUrl = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(supportContact)
-      ? `mailto:${supportContact}`
-      : /^https?:\/\//i.test(supportContact)
-        ? supportContact
-        : `https://${supportContact.replace(/^\/+/, "")}`;
+    const supportContact = getSupportContactEmail();
+    const supportUrl = getSupportContactUrl();
     const siteUrl = getPrimaryStoreUrl();
     const actionUrl =
       order?.user && rawOrderId
@@ -1588,12 +1594,8 @@ const sendOrderCancelledEmail = async (order) => {
 
     const rawOrderId = String(order?._id || "").trim();
     const displayOrderNumber = resolveDisplayOrderNumber(order);
-    const supportContact = "healthyonegram.com";
-    const supportUrl = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(supportContact)
-      ? `mailto:${supportContact}`
-      : /^https?:\/\//i.test(supportContact)
-        ? supportContact
-        : `https://${supportContact.replace(/^\/+/, "")}`;
+    const supportContact = getSupportContactEmail();
+    const supportUrl = getSupportContactUrl();
     const siteUrl = getPrimaryStoreUrl();
 
     const text = [
@@ -1757,12 +1759,8 @@ const sendOrderPaymentReminderEmail = async (
     }
 
     const rawOrderId = String(order?._id || "").trim();
-    const supportContact = "healthyonegram.com";
-    const supportUrl = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(supportContact)
-      ? `mailto:${supportContact}`
-      : /^https?:\/\//i.test(supportContact)
-        ? supportContact
-        : `https://${supportContact.replace(/^\/+/, "")}`;
+    const supportContact = getSupportContactEmail();
+    const supportUrl = getSupportContactUrl();
     const siteUrl = getPrimaryStoreUrl();
     const paymentUrl = await buildPayOrderUrl(order);
     const actionUrl =
@@ -4109,6 +4107,14 @@ export const getAllOrders = asyncHandler(async (req, res) => {
         { paymentId: { $regex: normalizedSearch, $options: "i" } },
         { paytmTransactionId: { $regex: normalizedSearch, $options: "i" } },
         { paytmOrderId: { $regex: normalizedSearch, $options: "i" } },
+        { phonepeTransactionId: { $regex: normalizedSearch, $options: "i" } },
+        {
+          phonepeMerchantOrderId: {
+            $regex: normalizedSearch,
+            $options: "i",
+          },
+        },
+        { phonepeOrderId: { $regex: normalizedSearch, $options: "i" } },
         { orderNumber: { $regex: normalizedSearch, $options: "i" } },
         { displayOrderId: { $regex: normalizedSearch, $options: "i" } },
         { "billingDetails.email": { $regex: normalizedSearch, $options: "i" } },

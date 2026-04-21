@@ -1,9 +1,17 @@
 import Banners from "@/components/Banners";
 import CatSlider from "@/components/CatSlider";
-import HomeComboDeals from "@/components/HomeComboDeals";
 import HomeSlider from "@/components/HomeSlider";
-import MembershipCTA from "@/components/MembershipCTA";
-import PopularProducts from "@/components/PopularProducts";
+import dynamic from "next/dynamic";
+
+const HomeComboDeals = dynamic(() => import("@/components/HomeComboDeals"), {
+  loading: () => null,
+});
+const PopularProducts = dynamic(() => import("@/components/PopularProducts"), {
+  loading: () => null,
+});
+const MembershipCTA = dynamic(() => import("@/components/MembershipCTA"), {
+  loading: () => null,
+});
 
 const sanitizeBaseUrl = (value) =>
   String(value || "")
@@ -14,41 +22,71 @@ const sanitizeBaseUrl = (value) =>
 const API_BASE_URL = sanitizeBaseUrl(
   process.env.NEXT_PUBLIC_APP_API_URL || process.env.NEXT_PUBLIC_API_URL,
 );
-const SERVER_FETCH_TIMEOUT_MS = 3000;
+const LOCAL_DEV_API_BASE_URL = sanitizeBaseUrl(
+  process.env.NEXT_PUBLIC_LOCAL_API_URL || "http://127.0.0.1:8001",
+);
+const HOMEPAGE_FETCH_TIMEOUT_MS = Math.max(
+  Number.parseInt(
+    String(process.env.NEXT_PUBLIC_HOMEPAGE_FETCH_TIMEOUT_MS || "1800"),
+    10,
+  ) || 1800,
+  500,
+);
 
-const fetchWithTimeout = async (url, options = {}) => {
+const fetchWithTimeout = async (url, timeoutMs) => {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), SERVER_FETCH_TIMEOUT_MS);
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     return await fetch(url, {
-      ...options,
       signal: controller.signal,
+      next: { revalidate: 60 },
     });
   } finally {
     clearTimeout(timeoutId);
   }
 };
 
+const getHomepageBaseCandidates = () => {
+  if (process.env.NODE_ENV === "production") {
+    return [API_BASE_URL].filter(Boolean);
+  }
+
+  const candidates = [LOCAL_DEV_API_BASE_URL, API_BASE_URL].filter(
+    (candidate, index, arr) => candidate && arr.indexOf(candidate) === index,
+  );
+
+  return candidates;
+};
+
 const getHomepageData = async (path) => {
-  if (!API_BASE_URL) {
+  const baseCandidates = getHomepageBaseCandidates();
+  if (!baseCandidates.length) {
     return [];
   }
 
-  try {
-    const response = await fetchWithTimeout(`${API_BASE_URL}${path}`, {
-      next: { revalidate: 60 },
-    });
+  for (const base of baseCandidates) {
+    try {
+      const response = await fetchWithTimeout(
+        `${base}${path}`,
+        HOMEPAGE_FETCH_TIMEOUT_MS,
+      );
 
-    if (!response.ok) {
-      return [];
+      if (!response || !response.ok) {
+        continue;
+      }
+
+      const payload = await response.json();
+      const data = Array.isArray(payload?.data) ? payload.data : [];
+      if (data.length > 0 || process.env.NODE_ENV === "production") {
+        return data;
+      }
+    } catch {
+      // Fall through to next candidate.
     }
-
-    const payload = await response.json();
-    return Array.isArray(payload?.data) ? payload.data : [];
-  } catch {
-    return [];
   }
+
+  return [];
 };
 
 export default async function Home() {

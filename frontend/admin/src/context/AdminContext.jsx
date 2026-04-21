@@ -10,6 +10,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
 } from "react";
 
@@ -178,7 +179,7 @@ export const AdminProvider = ({ children }) => {
       window.removeEventListener("adminTokenRefreshed", handleTokenRefreshed);
   }, []);
 
-  const login = async (email, password) => {
+  const login = useCallback(async (email, password) => {
     try {
       const response = await postData("/api/admin/login", { email, password });
 
@@ -228,18 +229,21 @@ export const AdminProvider = ({ children }) => {
       console.error("Login error:", error);
       return { error: true, message: "Login failed. Please try again." };
     }
-  };
+  }, []);
 
-  const value = {
-    admin,
-    token,
-    loading,
-    login,
-    logout,
-    updateAdminProfile,
-    hasPermission: (permission) => hasAdminPermission(admin, permission),
-    isAuthenticated: !!admin,
-  };
+  const value = useMemo(
+    () => ({
+      admin,
+      token,
+      loading,
+      login,
+      logout,
+      updateAdminProfile,
+      hasPermission: (permission) => hasAdminPermission(admin, permission),
+      isAuthenticated: !!admin,
+    }),
+    [admin, token, loading, login, logout, updateAdminProfile],
+  );
 
   return (
     <AdminContext.Provider value={value}>{children}</AdminContext.Provider>

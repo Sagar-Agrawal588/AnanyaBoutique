@@ -1,6 +1,6 @@
+import { sendTemplatedEmail } from "../config/emailService.js";
 import OrderModel from "../models/order.model.js";
 import UserModel from "../models/user.model.js";
-import { sendTemplatedEmail } from "../config/emailService.js";
 import { logger } from "../utils/errorHandler.js";
 
 const DEFAULT_DELAY_DAYS = 3;
@@ -50,13 +50,18 @@ const getSupportContactEmail = () =>
 const resolveDisplayOrderId = (order) => {
   const rawDisplay = String(order?.displayOrderId || "").trim();
   if (rawDisplay) return rawDisplay;
-  const fallback = String(order?._id || "").trim().slice(-8).toUpperCase();
+  const fallback = String(order?._id || "")
+    .trim()
+    .slice(-8)
+    .toUpperCase();
   return fallback || "N/A";
 };
 
 const resolveDeliveredAt = (order) => {
   if (order?.deliveryDate) return new Date(order.deliveryDate);
-  const timeline = Array.isArray(order?.statusTimeline) ? order.statusTimeline : [];
+  const timeline = Array.isArray(order?.statusTimeline)
+    ? order.statusTimeline
+    : [];
   const delivered = timeline.find(
     (entry) => String(entry?.status || "").toLowerCase() === "delivered",
   );
@@ -86,7 +91,11 @@ const resolveOrderRecipient = async (order) => {
     .toLowerCase();
 
   if (directEmail) {
-    return { email: directEmail, name: fallbackName, user: order?.user || null };
+    return {
+      email: directEmail,
+      name: fallbackName,
+      user: order?.user || null,
+    };
   }
 
   const userId = order?.user?._id || order?.user || null;
@@ -98,7 +107,9 @@ const resolveOrderRecipient = async (order) => {
     const user = await UserModel.findById(userId)
       .select("email name notificationSettings")
       .lean();
-    const resolvedEmail = String(user?.email || "").trim().toLowerCase();
+    const resolvedEmail = String(user?.email || "")
+      .trim()
+      .toLowerCase();
     const resolvedName =
       String(user?.name || fallbackName || "Customer").trim() || "Customer";
     return { email: resolvedEmail, name: resolvedName, user };
@@ -136,7 +147,7 @@ const sendFeedbackEmail = async ({ order, delayDays }) => {
 
   const siteUrl = getFrontendBaseUrl();
   const supportContact = getSupportContactEmail();
-  const supportUrl = supportContact ? `mailto:${supportContact}` : siteUrl;
+  const supportUrl = `${siteUrl}/contact`;
   const orderId = resolveDisplayOrderId(order);
   const orderDate = order?.createdAt
     ? new Date(order.createdAt).toLocaleDateString("en-IN")
@@ -191,7 +202,10 @@ export const processOrderFeedbackQueue = async () => {
   const delayMs = delayDays * 24 * 60 * 60 * 1000;
   const retryGapMs =
     Math.max(
-      toInt(process.env.ORDER_FEEDBACK_RETRY_GAP_HOURS, DEFAULT_RETRY_GAP_HOURS),
+      toInt(
+        process.env.ORDER_FEEDBACK_RETRY_GAP_HOURS,
+        DEFAULT_RETRY_GAP_HOURS,
+      ),
       1,
     ) *
     60 *
@@ -261,7 +275,10 @@ export const processOrderFeedbackQueue = async () => {
 export const startOrderFeedbackJob = () => {
   if (feedbackTimer) return;
   const intervalMs = Math.max(
-    toInt(process.env.ORDER_FEEDBACK_POLL_INTERVAL_MS, DEFAULT_POLL_INTERVAL_MS),
+    toInt(
+      process.env.ORDER_FEEDBACK_POLL_INTERVAL_MS,
+      DEFAULT_POLL_INTERVAL_MS,
+    ),
     60 * 1000,
   );
 
@@ -271,7 +288,9 @@ export const startOrderFeedbackJob = () => {
       error: error?.message || String(error),
     }),
   );
-  logger.info("orderFeedback", "Feedback email scheduler started", { intervalMs });
+  logger.info("orderFeedback", "Feedback email scheduler started", {
+    intervalMs,
+  });
 };
 
 export const stopOrderFeedbackJob = () => {

@@ -1,18 +1,18 @@
 import fs from "fs/promises";
-import path from "path";
 import mongoose from "mongoose";
-import { sendEmail, sendTemplatedEmail } from "../config/emailService.js";
-import { supportUploadConfig } from "../middlewares/supportUpload.js";
-import { UPLOAD_ROOT } from "../middlewares/upload.js";
-import OrderModel from "../models/order.model.js";
-import SupportTicketModel from "../models/supportTicket.model.js";
-import UserModel from "../models/user.model.js";
+import path from "path";
 import {
   buildIstTicketTimestampPayload,
   formatIstTicketTimestamp,
   getIstYear,
   parseIstDateBoundary,
 } from "../config/dayjs.js";
+import { sendEmail, sendTemplatedEmail } from "../config/emailService.js";
+import { supportUploadConfig } from "../middlewares/supportUpload.js";
+import { UPLOAD_ROOT } from "../middlewares/upload.js";
+import OrderModel from "../models/order.model.js";
+import SupportTicketModel from "../models/supportTicket.model.js";
+import UserModel from "../models/user.model.js";
 import { captureCrmTouchpointSafely } from "../services/crm/crmTracking.service.js";
 import { logger } from "../utils/errorHandler.js";
 import {
@@ -40,7 +40,10 @@ const sendError = (res, message, statusCode = 400, data = {}) =>
 const escapeRegExp = (value) =>
   String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-const sanitizeText = (value, { maxLength = 5000, allowNewLines = false } = {}) => {
+const sanitizeText = (
+  value,
+  { maxLength = 5000, allowNewLines = false } = {},
+) => {
   if (typeof value !== "string") return "";
 
   const normalized = value
@@ -48,7 +51,9 @@ const sanitizeText = (value, { maxLength = 5000, allowNewLines = false } = {}) =
     .replace(/<[^>]*>/g, "")
     .trim();
 
-  const controlCharRegex = allowNewLines ? /[\u0001-\u0008\u000B-\u001F\u007F]/g : /[\u0001-\u001F\u007F]/g;
+  const controlCharRegex = allowNewLines
+    ? /[\u0001-\u0008\u000B-\u001F\u007F]/g
+    : /[\u0001-\u001F\u007F]/g;
   const stripped = normalized.replace(controlCharRegex, "");
   return stripped.slice(0, maxLength);
 };
@@ -94,7 +99,9 @@ const toPublicFileUrl = (req, filePath) => {
 };
 
 const normalizeStatus = (status) => {
-  const normalized = String(status || "").trim().toUpperCase();
+  const normalized = String(status || "")
+    .trim()
+    .toUpperCase();
   if (normalized === "IN_PROGRESS") return "PENDING";
   return normalized;
 };
@@ -112,7 +119,10 @@ const normalizeStatusForDisplay = (status) =>
 
 const coercePagination = (query) => {
   const page = Math.max(Number.parseInt(query.page, 10) || 1, 1);
-  const limit = Math.min(Math.max(Number.parseInt(query.limit, 10) || 10, 1), 100);
+  const limit = Math.min(
+    Math.max(Number.parseInt(query.limit, 10) || 10, 1),
+    100,
+  );
   const skip = (page - 1) * limit;
   return { page, limit, skip };
 };
@@ -243,7 +253,9 @@ const resolveLinkedOrderForTicket = async ({ rawOrderId, userId }) => {
     return { error: "Invalid order ID." };
   }
 
-  const tokenRegexes = tokens.map((token) => new RegExp(`^${escapeRegExp(token)}$`, "i"));
+  const tokenRegexes = tokens.map(
+    (token) => new RegExp(`^${escapeRegExp(token)}$`, "i"),
+  );
 
   const candidateOrders = await OrderModel.find({ user: normalizedUserId })
     .select("_id displayOrderId orderNumber order_id createdAt")
@@ -260,11 +272,17 @@ const resolveLinkedOrderForTicket = async ({ rawOrderId, userId }) => {
       .map((item) => String(item || "").trim())
       .filter(Boolean);
 
-    if (displayCandidates.some((item) => tokenRegexes.some((regex) => regex.test(item)))) {
+    if (
+      displayCandidates.some((item) =>
+        tokenRegexes.some((regex) => regex.test(item)),
+      )
+    ) {
       return true;
     }
 
-    const orderIdValue = String(order?._id || "").trim().toUpperCase();
+    const orderIdValue = String(order?._id || "")
+      .trim()
+      .toUpperCase();
     if (!orderIdValue) return false;
 
     const shortId = orderIdValue.slice(-8);
@@ -314,8 +332,14 @@ const sanitizeTicketForResponse = (ticket) => {
   const normalizedTicket =
     typeof ticket.toObject === "function" ? ticket.toObject() : { ...ticket };
 
-  normalizedTicket.created_at = getTicketTimestamp(normalizedTicket, "created_at");
-  normalizedTicket.updated_at = getTicketTimestamp(normalizedTicket, "updated_at");
+  normalizedTicket.created_at = getTicketTimestamp(
+    normalizedTicket,
+    "created_at",
+  );
+  normalizedTicket.updated_at = getTicketTimestamp(
+    normalizedTicket,
+    "updated_at",
+  );
   normalizedTicket.created_at_ts = getTicketTimestampMs(
     normalizedTicket,
     "created_at",
@@ -374,7 +398,13 @@ const ADMIN_PANEL_URL = String(process.env.ADMIN_URL || SUPPORT_STORE_URL)
   .trim()
   .replace(/\/+$/, "");
 
-const sendSupportEmail = async ({ to, subject, text, html, context = "support" }) => {
+const sendSupportEmail = async ({
+  to,
+  subject,
+  text,
+  html,
+  context = "support",
+}) => {
   const result = await sendEmail({
     to,
     subject,
@@ -461,12 +491,15 @@ const sendTicketRegistrationEmail = async (ticket) => {
   const safeTicketId = escapeHtml(ticket.ticketId || "");
   const safeStatus = escapeHtml(normalizeStatusForDisplay(ticket.status));
   const safeSubject = escapeHtml(ticket.subject || "Support Request");
-  const safeOrderId = ticket.orderId ? escapeHtml(String(ticket.orderId)) : "Not linked";
+  const safeOrderId = ticket.orderId
+    ? escapeHtml(String(ticket.orderId))
+    : "Not linked";
   const createdAt = formatTicketDate(getTicketTimestamp(ticket, "created_at"));
 
   const html = buildSupportEmailLayout({
     title: "Support Ticket Generated Successfully",
-    subtitle: "Your request has been registered with HealthyOneGram Customer Care",
+    subtitle:
+      "Your request has been registered with HealthyOneGram Customer Care",
     greeting: `Hello, ${safeName}!`,
     intro:
       "Thank you for contacting us. Your support ticket has been generated successfully and registered with our support team.",
@@ -481,7 +514,8 @@ const sendTicketRegistrationEmail = async (ticket) => {
       "Please keep your Ticket ID for tracking. You will also receive email notifications for every status update on this ticket.",
     ctaLabel: "Visit HealthyOneGram",
     ctaUrl: SUPPORT_STORE_URL,
-    closingLine: "We are here to help and will get back to you as soon as possible.",
+    closingLine:
+      "We are here to help and will get back to you as soon as possible.",
   });
 
   const text = [
@@ -545,10 +579,14 @@ const sendAdminTicketNotificationEmail = async (ticket) => {
   });
 
   if (!result?.success) {
-    logger.error("support.sendAdminTicketNotificationEmail", "Failed to send admin alert", {
-      ticketId: payload.ticket_id,
-      error: result?.error || "Unknown error",
-    });
+    logger.error(
+      "support.sendAdminTicketNotificationEmail",
+      "Failed to send admin alert",
+      {
+        ticketId: payload.ticket_id,
+        error: result?.error || "Unknown error",
+      },
+    );
     return false;
   }
 
@@ -585,6 +623,7 @@ const sendTicketUpdateEmail = async (ticket) => {
       status,
       updated_at: updatedAt,
       admin_reply: safeReply,
+      support_contact: SUPPORT_ADMIN_EMAIL || "support@healthyonegram.com",
       support_url: `${SUPPORT_STORE_URL}/contact`,
       year: getIstYear(),
     },
@@ -596,10 +635,14 @@ const sendTicketUpdateEmail = async (ticket) => {
     return true;
   }
 
-  logger.warn("support.sendTicketUpdateEmail", "Template email failed, falling back to inline HTML", {
-    ticketId,
-    error: templatedResult?.error || "Unknown error",
-  });
+  logger.warn(
+    "support.sendTicketUpdateEmail",
+    "Template email failed, falling back to inline HTML",
+    {
+      ticketId,
+      error: templatedResult?.error || "Unknown error",
+    },
+  );
 
   const fallbackHtml = buildSupportEmailLayout({
     title: "Support Ticket Status Update",
@@ -639,15 +682,21 @@ export const createSupportTicket = async (req, res) => {
         ? await UserModel.findById(userId).select("name email mobile").lean()
         : null;
 
-    const name = sanitizeText(req.body?.name || user?.name || "", { maxLength: 80 });
+    const name = sanitizeText(req.body?.name || user?.name || "", {
+      maxLength: 80,
+    });
     const email = normalizeEmail(req.body?.email || user?.email || "");
-    const phone = sanitizeText(req.body?.phone || user?.mobile || "", { maxLength: 25 });
+    const phone = sanitizeText(req.body?.phone || user?.mobile || "", {
+      maxLength: 25,
+    });
     const subject = sanitizeText(req.body?.subject || "", { maxLength: 160 });
     const message = sanitizeText(req.body?.message || "", {
       maxLength: 5000,
       allowNewLines: true,
     });
-    const rawOrderId = sanitizeText(req.body?.orderId || "", { maxLength: 120 });
+    const rawOrderId = sanitizeText(req.body?.orderId || "", {
+      maxLength: 120,
+    });
 
     const fieldErrors = {};
 
@@ -681,7 +730,10 @@ export const createSupportTicket = async (req, res) => {
 
     let orderId = null;
     if (rawOrderId) {
-      const resolvedOrder = await resolveLinkedOrderForTicket({ rawOrderId, userId });
+      const resolvedOrder = await resolveLinkedOrderForTicket({
+        rawOrderId,
+        userId,
+      });
       if (resolvedOrder.error) {
         fieldErrors.orderId = resolvedOrder.error;
       } else {
@@ -722,10 +774,9 @@ export const createSupportTicket = async (req, res) => {
       orderId: createdTicket.orderId || null,
       supportTicketId: createdTicket._id,
       message: `${createdTicket.subject}\n${createdTicket.message}`.trim(),
-      happenedAt:
-        Number.isFinite(createdTicket.created_at_ts)
-          ? new Date(createdTicket.created_at_ts)
-          : new Date(),
+      happenedAt: Number.isFinite(createdTicket.created_at_ts)
+        ? new Date(createdTicket.created_at_ts)
+        : new Date(),
       idempotencyKey: `crm:support:${createdTicket._id}:created`,
       metadata: {
         source: "support_ticket_create",
@@ -754,7 +805,8 @@ export const createSupportTicket = async (req, res) => {
           "User confirmation email failed",
           {
             ticketId: createdTicket.ticketId,
-            error: userMailResult.reason?.message || String(userMailResult.reason),
+            error:
+              userMailResult.reason?.message || String(userMailResult.reason),
           },
         );
       }
@@ -770,10 +822,14 @@ export const createSupportTicket = async (req, res) => {
         );
       }
     } catch (emailError) {
-      logger.error("support.createSupportTicket", "Ticket email dispatch failed", {
-        ticketId: createdTicket.ticketId,
-        error: emailError?.message || "Unexpected error",
-      });
+      logger.error(
+        "support.createSupportTicket",
+        "Ticket email dispatch failed",
+        {
+          ticketId: createdTicket.ticketId,
+          error: emailError?.message || "Unexpected error",
+        },
+      );
     }
 
     return sendSuccess(
@@ -793,12 +849,18 @@ export const createSupportTicket = async (req, res) => {
     );
   } catch (error) {
     await cleanupUploadedFiles(allFiles);
-    console.error("createSupportTicket error:", error?.message || "Unexpected error");
-    const fallbackMessage = "Unable to create support ticket right now. Please try again.";
+    console.error(
+      "createSupportTicket error:",
+      error?.message || "Unexpected error",
+    );
+    const fallbackMessage =
+      "Unable to create support ticket right now. Please try again.";
     const isProduction = process.env.NODE_ENV === "production";
     return sendError(
       res,
-      isProduction ? fallbackMessage : `${fallbackMessage} (${error?.message || "unknown error"})`,
+      isProduction
+        ? fallbackMessage
+        : `${fallbackMessage} (${error?.message || "unknown error"})`,
       500,
     );
   }
@@ -833,7 +895,10 @@ export const getMySupportTickets = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("getMySupportTickets error:", error?.message || "Unexpected error");
+    console.error(
+      "getMySupportTickets error:",
+      error?.message || "Unexpected error",
+    );
     return sendError(res, "Failed to fetch your tickets.", 500);
   }
 };
@@ -857,7 +922,9 @@ export const getAllSupportTicketsAdmin = async (req, res) => {
       query.email = { $regex: escapeRegExp(email), $options: "i" };
     }
 
-    const orderFilter = sanitizeText(req.query.orderId || "", { maxLength: 40 });
+    const orderFilter = sanitizeText(req.query.orderId || "", {
+      maxLength: 40,
+    });
     if (orderFilter) {
       const { error, ids } = await resolveOrderIdsForFilter(orderFilter);
       if (error) {
@@ -969,7 +1036,10 @@ export const updateSupportTicketAdmin = async (req, res) => {
     }
 
     const statusInput = req.body?.status;
-    const hasReplyField = Object.prototype.hasOwnProperty.call(req.body || {}, "adminReply");
+    const hasReplyField = Object.prototype.hasOwnProperty.call(
+      req.body || {},
+      "adminReply",
+    );
     const adminReply = sanitizeText(req.body?.adminReply || "", {
       maxLength: 5000,
       allowNewLines: true,
@@ -1015,10 +1085,9 @@ export const updateSupportTicketAdmin = async (req, res) => {
         maxLength: 4000,
         allowNewLines: true,
       }),
-      happenedAt:
-        Number.isFinite(ticket.updated_at_ts)
-          ? new Date(ticket.updated_at_ts)
-          : new Date(),
+      happenedAt: Number.isFinite(ticket.updated_at_ts)
+        ? new Date(ticket.updated_at_ts)
+        : new Date(),
       idempotencyKey: `crm:support:${ticket._id}:updated:${Number(ticket.updated_at_ts || Date.now())}`,
       metadata: {
         source: "support_ticket_admin_update",

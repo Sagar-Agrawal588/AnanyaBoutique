@@ -26,12 +26,7 @@
         "clear": true
       },
       "problemMatcher": {
-        "owner": "custom",
-        "pattern": [
-          {
-            "regexp": "."
-          }
-        ],
+        "base": "$tsc-watch",
         "background": {
           "activeOnStart": true,
           "beginsPattern": ".",

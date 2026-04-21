@@ -101,6 +101,13 @@ const DEFAULT_COIN_SUMMARY = {
     expiryDays: 0,
   },
 };
+const COIN_SUMMARY_POLL_INTERVAL_MS = Math.max(
+  Number.parseInt(
+    String(process.env.NEXT_PUBLIC_COIN_SUMMARY_POLL_INTERVAL_MS || "60000"),
+    10,
+  ) || 60000,
+  15000,
+);
 const normalizeCoinSummary = (summary) => ({
   ...DEFAULT_COIN_SUMMARY,
   ...(summary || {}),
@@ -484,7 +491,7 @@ const Header = () => {
         if (!document.hidden) {
           fetchCoinSummary();
         }
-      }, 15000);
+      }, COIN_SUMMARY_POLL_INTERVAL_MS);
     };
 
     const handleVisibilityChange = () => {

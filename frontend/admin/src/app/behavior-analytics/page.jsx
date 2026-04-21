@@ -178,12 +178,24 @@ const resolvePreviewTarget = (event = {}) =>
       "unknown_target",
   );
 
+const DAY_IN_MS = 24 * 60 * 60 * 1000;
+
+const normalizePresetDays = (value, fallback = 30) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(0, Math.floor(parsed));
+};
+
 const buildRangeQuery = (days) => {
-  const to = new Date();
-  const from = new Date(
-    to.getTime() - Number(days || 30) * 24 * 60 * 60 * 1000,
-  );
-  return { from: from.toISOString(), to: to.toISOString() };
+  const normalizedDays = normalizePresetDays(days, 30);
+  const todayUtcStart = new Date();
+  todayUtcStart.setUTCHours(0, 0, 0, 0);
+
+  const daySpan = Math.max(normalizedDays, 1);
+  const from = new Date(todayUtcStart.getTime() - (daySpan - 1) * DAY_IN_MS);
+  const to = new Date(todayUtcStart.getTime() + DAY_IN_MS - 1);
+
+  return { from: from.toISOString(), to: to.toISOString(), days: daySpan };
 };
 
 const formatDateInput = (value) => {
@@ -198,10 +210,16 @@ const buildRangeFromDates = (startInput, endInput, fallbackDays = 30) => {
   const fallbackFrom = new Date(fallback.from);
   const fallbackTo = new Date(fallback.to);
 
-  const start = startInput ? new Date(`${startInput}T00:00:00.000Z`) : fallbackFrom;
+  const start = startInput
+    ? new Date(`${startInput}T00:00:00.000Z`)
+    : fallbackFrom;
   const end = endInput ? new Date(`${endInput}T23:59:59.999Z`) : fallbackTo;
 
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) {
+  if (
+    Number.isNaN(start.getTime()) ||
+    Number.isNaN(end.getTime()) ||
+    end < start
+  ) {
     return {
       from: fallback.from,
       to: fallback.to,
@@ -209,8 +227,10 @@ const buildRangeFromDates = (startInput, endInput, fallbackDays = 30) => {
     };
   }
 
-  const days =
-    Math.max(1, Math.floor((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1);
+  const days = Math.max(
+    1,
+    Math.floor((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1,
+  );
 
   return {
     from: start.toISOString(),
@@ -398,7 +418,11 @@ const buildTimelineInsights = (timeline = [], productInteractions = []) => {
   };
 };
 
-const buildPlainLanguageSummary = ({ overview, engagement, timelineInsights }) => {
+const buildPlainLanguageSummary = ({
+  overview,
+  engagement,
+  timelineInsights,
+}) => {
   const conversionRate = toNumber(overview?.conversionRate, 0);
   const bounceRate = toNumber(overview?.bounceRate, 0);
   const rageClicks = toNumber(engagement?.rageClickCount, 0);
@@ -407,8 +431,10 @@ const buildPlainLanguageSummary = ({ overview, engagement, timelineInsights }) =
   const purchases = toNumber(timelineInsights?.purchases, 0);
 
   const topPage = timelineInsights?.pages?.[0]?.path || "No dominant page yet";
-  const topSection = timelineInsights?.sections?.[0]?.sectionName || "No dominant section yet";
-  const topButton = timelineInsights?.clickTargets?.[0]?.target || "No dominant button yet";
+  const topSection =
+    timelineInsights?.sections?.[0]?.sectionName || "No dominant section yet";
+  const topButton =
+    timelineInsights?.clickTargets?.[0]?.target || "No dominant button yet";
 
   const highlights = [
     `Top customer path: ${topPage}`,
@@ -418,22 +444,34 @@ const buildPlainLanguageSummary = ({ overview, engagement, timelineInsights }) =
 
   const recommendations = [];
   if (bounceRate >= 55) {
-    recommendations.push("Bounce rate is high. Simplify landing content and show a stronger first CTA.");
+    recommendations.push(
+      "Bounce rate is high. Simplify landing content and show a stronger first CTA.",
+    );
   }
   if (rageClicks >= 10) {
-    recommendations.push("Rage clicks are high. Review button visibility, response speed, and click targets.");
+    recommendations.push(
+      "Rage clicks are high. Review button visibility, response speed, and click targets.",
+    );
   }
   if (checkoutStarted > addToCart) {
-    recommendations.push("Checkout starts exceed add-to-cart. Validate event instrumentation for cart and checkout.");
+    recommendations.push(
+      "Checkout starts exceed add-to-cart. Validate event instrumentation for cart and checkout.",
+    );
   }
   if (checkoutStarted > 0 && purchases === 0) {
-    recommendations.push("Customers start checkout but do not finish. Audit payment and delivery messaging on checkout.");
+    recommendations.push(
+      "Customers start checkout but do not finish. Audit payment and delivery messaging on checkout.",
+    );
   }
   if (conversionRate < 1 && addToCart > 0) {
-    recommendations.push("Add-to-cart exists but conversion is low. Test trust badges, delivery promise, and payment clarity.");
+    recommendations.push(
+      "Add-to-cart exists but conversion is low. Test trust badges, delivery promise, and payment clarity.",
+    );
   }
   if (recommendations.length === 0) {
-    recommendations.push("Current flow is stable. Focus next on improving top performing pages and buttons.");
+    recommendations.push(
+      "Current flow is stable. Focus next on improving top performing pages and buttons.",
+    );
   }
 
   return {
@@ -448,7 +486,9 @@ export default function BehaviorAnalyticsPage() {
 
   const [rangeDays, setRangeDays] = useState(30);
   const defaultRange = useMemo(() => buildRangeQuery(30), []);
-  const [startDate, setStartDate] = useState(formatDateInput(defaultRange.from));
+  const [startDate, setStartDate] = useState(
+    formatDateInput(defaultRange.from),
+  );
   const [endDate, setEndDate] = useState(formatDateInput(defaultRange.to));
   const [yearJump, setYearJump] = useState(String(new Date().getFullYear()));
   const [overview, setOverview] = useState(null);
@@ -624,7 +664,8 @@ export default function BehaviorAnalyticsPage() {
   const yearOptions = useMemo(() => {
     const years = [];
     const currentYear = new Date().getFullYear();
-    for (let year = currentYear; year >= 2015; year -= 1) years.push(String(year));
+    for (let year = currentYear; year >= 2015; year -= 1)
+      years.push(String(year));
     return years;
   }, []);
 
@@ -648,12 +689,13 @@ export default function BehaviorAnalyticsPage() {
         setRangeDays(365);
         return;
       }
-      const nextRange = buildRangeQuery(Number(preset.value || 30));
+      const presetDays = normalizePresetDays(preset.value, 30);
+      const nextRange = buildRangeQuery(presetDays);
       applyBehaviorRange({
         startDate: formatDateInput(nextRange.from),
         endDate: formatDateInput(nextRange.to),
       });
-      setRangeDays(Number(preset.value || 30));
+      setRangeDays(presetDays);
     },
     [applyBehaviorRange],
   );
@@ -964,7 +1006,8 @@ export default function BehaviorAnalyticsPage() {
               Customer Behavior Insights
             </h1>
             <p className="text-sm text-gray-600 mt-1">
-              Understand where shoppers engage, where they drop, and what to improve next.
+              Understand where shoppers engage, where they drop, and what to
+              improve next.
             </p>
             <div className="mt-3">
               <StatusPill
@@ -1019,7 +1062,9 @@ export default function BehaviorAnalyticsPage() {
                   </option>
                 ))}
               </select>
-              <span className="text-xs text-gray-500">{selectedRange.days} days</span>
+              <span className="text-xs text-gray-500">
+                {selectedRange.days} days
+              </span>
             </div>
           </div>
         </div>
@@ -1266,7 +1311,8 @@ export default function BehaviorAnalyticsPage() {
                 Live Button Activity Feed
               </h2>
               <p className="text-sm text-gray-600 mt-1">
-                Real-time click, hover, and focus activity from current sessions.
+                Real-time click, hover, and focus activity from current
+                sessions.
               </p>
             </div>
           </div>
@@ -1362,10 +1408,13 @@ export default function BehaviorAnalyticsPage() {
                 Most Attractive Buttons
               </h2>
               <p className="text-sm text-gray-600 mt-1">
-                Ranked by interaction quality: clicks, rage clicks, and attention time.
+                Ranked by interaction quality: clicks, rage clicks, and
+                attention time.
               </p>
             </div>
-            <div className="text-xs text-gray-500">Range: {selectedRange.days} days</div>
+            <div className="text-xs text-gray-500">
+              Range: {selectedRange.days} days
+            </div>
           </div>
 
           {attractiveButtons.length > 0 ? (
@@ -1466,7 +1515,9 @@ export default function BehaviorAnalyticsPage() {
                 Banner click engagement split by guest and logged-in visitors.
               </p>
             </div>
-            <div className="text-xs text-gray-500">Range: {selectedRange.days} days</div>
+            <div className="text-xs text-gray-500">
+              Range: {selectedRange.days} days
+            </div>
           </div>
 
           {bannerPerformance.length > 0 ? (
@@ -1541,10 +1592,13 @@ export default function BehaviorAnalyticsPage() {
                 Top Converting Button By Product
               </h2>
               <p className="text-sm text-gray-600 mt-1">
-                Product-wise funnel from click to add-to-cart to checkout to purchase.
+                Product-wise funnel from click to add-to-cart to checkout to
+                purchase.
               </p>
             </div>
-            <div className="text-xs text-gray-500">Range: {selectedRange.days} days</div>
+            <div className="text-xs text-gray-500">
+              Range: {selectedRange.days} days
+            </div>
           </div>
 
           <div className="mt-4 flex flex-wrap items-center gap-3">

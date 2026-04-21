@@ -23,7 +23,7 @@ const common = {
   year: "2026",
   site_url: "https://healthyonegram.com",
   products_url: "https://healthyonegram.com/products",
-  support_url: "https://healthyonegram.com/support",
+  support_url: "https://healthyonegram.com/contact",
   support_contact: "support@healthyonegram.com",
   order_status: "Pending",
   payment_provider: "PhonePe",
@@ -179,7 +179,7 @@ const jobs = [
       status: "Resolved",
       updated_at: "21 March 2026",
       admin_reply: "Your issue has been resolved successfully.",
-      support_url: "https://healthyonegram.com/support",
+      support_url: "https://healthyonegram.com/contact",
     },
   },
 ];

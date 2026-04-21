@@ -1,16 +1,12 @@
 "use client";
 
 import ComboCard from "@/components/ComboCard";
-import { FLAVORS, MyContext } from "@/context/ThemeContext";
 import { trackEvent } from "@/utils/analyticsTracker";
 import { fetchDataFromApi } from "@/utils/api";
 import Link from "next/link";
-import { useContext, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 const HomeComboDeals = () => {
-  const context = useContext(MyContext);
-  const flavor = context?.flavor || FLAVORS.creamy;
-
   const [combos, setCombos] = useState([]);
   const [loading, setLoading] = useState(false);
   const viewTracker = useRef(new Set());
@@ -70,7 +66,7 @@ const HomeComboDeals = () => {
   return (
     <section
       className="relative py-12 sm:py-16 md:py-20 overflow-hidden transition-all duration-500"
-      style={{ backgroundColor: flavor.light }}
+      style={{ backgroundColor: "var(--flavor-light, #F7F1EF)" }}
     >
       <div className="relative max-w-7xl mx-auto px-4 z-10 space-y-8">
         <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">

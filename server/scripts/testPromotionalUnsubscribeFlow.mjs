@@ -122,7 +122,7 @@ const run = async () => {
       valid_until: "Valid until: Test run",
       site_url: "https://healthyonegram.com",
       support_contact: "support@healthyonegram.com",
-      support_url: "mailto:support@healthyonegram.com",
+      support_url: "https://healthyonegram.com/contact",
       unsubscribe_url: unsubscribeUrl,
       year: String(new Date().getFullYear()),
     },

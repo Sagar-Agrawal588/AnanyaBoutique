@@ -98,6 +98,7 @@ homeSlideSchema.virtual("isCurrentlyActive").get(function () {
 });
 
 homeSlideSchema.index({ isActive: 1, sortOrder: 1 });
+homeSlideSchema.index({ isActive: 1, sortOrder: 1, createdAt: -1 });
 
 const HomeSlideModel = mongoose.model("HomeSlide", homeSlideSchema);
 export default HomeSlideModel;

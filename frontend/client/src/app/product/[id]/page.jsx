@@ -26,7 +26,12 @@ import { Alert, CircularProgress, Rating, Snackbar } from "@mui/material";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { FiChevronLeft, FiChevronRight } from "react-icons/fi";
+import {
+  FiChevronLeft,
+  FiChevronRight,
+  FiMaximize2,
+  FiX,
+} from "react-icons/fi";
 import { IoMdCart } from "react-icons/io";
 import {
   MdLocalShipping,
@@ -123,12 +128,18 @@ const stripHtml = (value) =>
 
 const getAvailabilityLabel = (availableQty, demandStatus) => {
   if (availableQty > 0) {
-    return String(demandStatus || "").trim().toUpperCase() === "HIGH"
+    return String(demandStatus || "")
+      .trim()
+      .toUpperCase() === "HIGH"
       ? "Selling fast"
       : "In stock";
   }
 
-  if (String(demandStatus || "").trim().toUpperCase() === "HIGH") {
+  if (
+    String(demandStatus || "")
+      .trim()
+      .toUpperCase() === "HIGH"
+  ) {
     return "High demand";
   }
 
@@ -138,7 +149,11 @@ const getAvailabilityLabel = (availableQty, demandStatus) => {
 const getHeroStatusLabel = (product, reviewCount) => {
   if (product?.isBestSeller) return "Best seller";
   if (product?.isNewArrival) return "New arrival";
-  if (String(product?.demandStatus || "").trim().toUpperCase() === "HIGH") {
+  if (
+    String(product?.demandStatus || "")
+      .trim()
+      .toUpperCase() === "HIGH"
+  ) {
     return "High demand";
   }
   if (Number(reviewCount || 0) > 0) return "Top rated";
@@ -230,7 +245,9 @@ const buildSnapshotItems = ({
   items.push(`Brand: ${brandLabel}`);
   if (displaySku) items.push(`SKU: ${displaySku}`);
   if (selectedLabel) items.push(`Selected pack: ${selectedLabel}`);
-  items.push(`Availability: ${getAvailabilityLabel(availableQty, product?.demandStatus)}`);
+  items.push(
+    `Availability: ${getAvailabilityLabel(availableQty, product?.demandStatus)}`,
+  );
   if (Number(productRating) > 0) {
     items.push(
       `Rating: ${Number(productRating).toFixed(1)} / 5 from ${Math.max(Number(reviewCount || 0), 0)} review${Number(reviewCount || 0) === 1 ? "" : "s"}`,
@@ -254,7 +271,11 @@ const resolveVariantLabel = (variant, baseProduct) => {
   return formatVariantWeight({ weight, unit });
 };
 
-const resolveProductImages = (product, selectedVariant, fallbackImages = []) => {
+const resolveProductImages = (
+  product,
+  selectedVariant,
+  fallbackImages = [],
+) => {
   const variantImages = Array.isArray(selectedVariant?.images)
     ? selectedVariant.images
     : [];
@@ -307,13 +328,8 @@ const ProductDetailPage = () => {
   const router = useRouter();
   const routeId = String(id || "").trim();
   const isDemoPreview = routeId.toLowerCase() === DEMO_PRODUCT_ID;
-  const {
-    addToCart,
-    removeFromCart,
-    isInCart,
-    cartItems,
-    isComboCartItem,
-  } = useCart();
+  const { addToCart, removeFromCart, isInCart, cartItems, isComboCartItem } =
+    useCart();
 
   const [product, setProduct] = useState(null);
   const [customerReviews, setCustomerReviews] = useState([]);
@@ -329,6 +345,7 @@ const ProductDetailPage = () => {
   const [selectedVariant, setSelectedVariant] = useState(null);
   const [activeTab, setActiveTab] = useState("description");
   const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [isImageZoomOpen, setIsImageZoomOpen] = useState(false);
   const [deliveryPincode, setDeliveryPincode] = useState("");
   const [snackbar, setSnackbar] = useState({
     open: false,
@@ -381,9 +398,7 @@ const ProductDetailPage = () => {
       averageReviewRating(customerReviews),
   );
   const displayReviews =
-    customerReviews.length > 0
-      ? customerReviews
-      : demoReviewFallback;
+    customerReviews.length > 0 ? customerReviews : demoReviewFallback;
   const displayReviewCount = Math.max(
     customerReviews.length || Number(product?.reviewCount || 0),
     demoReviewFallback.length,
@@ -464,10 +479,6 @@ const ProductDetailPage = () => {
       ? `${displayReviewCount} review${displayReviewCount === 1 ? "" : "s"}`
       : "No reviews yet";
   const heroStatusLabel = getHeroStatusLabel(product, displayReviewCount);
-  const availabilityLabel = getAvailabilityLabel(
-    availableQty,
-    product?.demandStatus,
-  );
   const deliveryReady = deliveryPincode.length === 6;
   const deliveryMessage = deliveryReady
     ? `Estimated delivery to ${deliveryPincode}: 2-4 business days.`
@@ -483,7 +494,8 @@ const ProductDetailPage = () => {
     pageConfig?.shippingSection?.show !== false;
   const showHeroStoryCard = pageConfig?.hero?.showStoryCard !== false;
   const showHeroInsightCards = pageConfig?.hero?.showInsightCards !== false;
-  const showHeroDeliveryPreview = pageConfig?.hero?.showDeliveryPreview !== false;
+  const showHeroDeliveryPreview =
+    pageConfig?.hero?.showDeliveryPreview !== false;
   const showReviewsSection = pageConfig?.reviewsSection?.show !== false;
   const showFrequentlyBoughtSection =
     !isDemoPreview && pageConfig?.frequentlyBoughtSection?.show !== false;
@@ -492,11 +504,11 @@ const ProductDetailPage = () => {
   const showRelatedProductsSection =
     !isDemoPreview && pageConfig?.relatedProductsSection?.show !== false;
   const galleryGridClassName = showHeroStoryCard
-    ? "relative mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px] lg:items-end"
+    ? "relative mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-stretch"
     : "relative mt-6";
   const imageStageClassName = showHeroStoryCard
-    ? "product-image-stage relative flex min-h-[440px] items-center justify-center overflow-hidden rounded-[30px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.92)_0%,rgba(244,236,229,0.88)_100%)] p-6"
-    : "product-image-stage relative mx-auto flex min-h-[380px] max-w-[840px] items-center justify-center overflow-hidden rounded-[30px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.92)_0%,rgba(244,236,229,0.88)_100%)] p-6 sm:p-10";
+    ? "product-image-stage relative flex min-h-[480px] items-center justify-center overflow-hidden rounded-[30px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.92)_0%,rgba(244,236,229,0.88)_100%)] p-6 lg:h-full lg:min-h-[540px]"
+    : "product-image-stage relative mx-auto flex min-h-[420px] max-w-[840px] items-center justify-center overflow-hidden rounded-[30px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.92)_0%,rgba(244,236,229,0.88)_100%)] p-6 sm:p-10";
 
   const fetchProductReviews = async (productValueId) => {
     if (!productValueId) {
@@ -588,7 +600,8 @@ const ProductDetailPage = () => {
 
         setProduct(resolvedProduct);
         setSelectedVariant(
-          resolvedProduct?.hasVariants && Array.isArray(resolvedProduct?.variants)
+          resolvedProduct?.hasVariants &&
+            Array.isArray(resolvedProduct?.variants)
             ? resolvedProduct.variants.find((variant) => variant?.isDefault) ||
                 resolvedProduct.variants[0] ||
                 null
@@ -659,6 +672,7 @@ const ProductDetailPage = () => {
   useEffect(() => {
     setActiveTab("description");
     setActiveImageIndex(0);
+    setIsImageZoomOpen(false);
     setDeliveryPincode("");
     setQuantity(1);
 
@@ -706,6 +720,41 @@ const ProductDetailPage = () => {
       setQuantity(maxQty);
     }
   }, [maxQty, quantity]);
+
+  useEffect(() => {
+    if (!isImageZoomOpen) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        setIsImageZoomOpen(false);
+        return;
+      }
+
+      if (images.length <= 1) return;
+
+      if (event.key === "ArrowLeft") {
+        setActiveImageIndex((previous) =>
+          previous === 0 ? images.length - 1 : previous - 1,
+        );
+      }
+
+      if (event.key === "ArrowRight") {
+        setActiveImageIndex((previous) =>
+          previous === images.length - 1 ? 0 : previous + 1,
+        );
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isImageZoomOpen, images.length]);
 
   const buildCartProduct = () => {
     if (!product) return null;
@@ -1019,9 +1068,11 @@ const ProductDetailPage = () => {
 
   return (
     <section
-      className="product-page-shell min-h-screen bg-[radial-gradient(circle_at_top,_#f7efe5_0%,_#fffaf5_42%,_#f4eee7_100%)] pb-20"
+      className="product-page-shell min-h-screen pb-20"
       style={{
         fontFamily: "var(--font-poppins), var(--font-inter), sans-serif",
+        background:
+          "var(--flavor-page-bg, radial-gradient(circle_at_top, #f7efe5 0%, #fffaf5 42%, #f4eee7 100%))",
       }}
     >
       <div className="mx-auto max-w-[1320px] px-4 py-6 sm:px-6 lg:px-8">
@@ -1039,7 +1090,7 @@ const ProductDetailPage = () => {
           </span>
         </div>
 
-        <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(360px,0.95fr)]">
+        <div className="mt-6 grid gap-6 xl:items-start xl:grid-cols-[minmax(0,1.05fr)_minmax(360px,0.95fr)]">
           <div className="space-y-4">
             <div className="product-hero-shell product-reveal product-reveal-delay-1 relative overflow-hidden rounded-[36px] border border-[#e1cdbf] bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.96)_0%,_rgba(250,240,231,0.95)_38%,_rgba(238,225,210,0.92)_100%)] p-4 shadow-[0_34px_90px_-55px_rgba(44,29,20,0.45)] sm:p-6">
               <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.55)_0%,rgba(255,255,255,0)_55%)]" />
@@ -1080,15 +1131,26 @@ const ProductDetailPage = () => {
               <div className={galleryGridClassName}>
                 <div className={imageStageClassName}>
                   <div className="absolute inset-x-[16%] bottom-4 h-10 rounded-full bg-[#6a4331]/12 blur-2xl" />
-                  <img
-                    src={activeImage}
-                    alt={product?.name || product?.title || "Product image"}
-                    className="relative z-10 max-h-[380px] w-full object-contain drop-shadow-[0_26px_36px_rgba(60,36,24,0.18)]"
-                  />
+                  <button
+                    type="button"
+                    onClick={() => setIsImageZoomOpen(true)}
+                    className="group relative z-10 flex h-full w-full cursor-zoom-in items-center justify-center rounded-[24px]"
+                    aria-label="Open product image zoom"
+                  >
+                    <img
+                      src={activeImage}
+                      alt={product?.name || product?.title || "Product image"}
+                      className="h-[360px] w-full object-contain drop-shadow-[0_26px_36px_rgba(60,36,24,0.18)] sm:h-[430px] lg:h-[520px]"
+                    />
+                    <span className="pointer-events-none absolute bottom-3 right-3 inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/85 px-3 py-1.5 text-xs font-semibold text-[#1d3740] opacity-0 transition group-hover:opacity-100">
+                      <FiMaximize2 className="text-sm" />
+                      Click to zoom
+                    </span>
+                  </button>
                 </div>
 
                 {showHeroStoryCard ? (
-                  <div className="product-story-card product-reveal product-reveal-delay-2 rounded-[30px] border border-[#86614f] bg-[linear-gradient(155deg,_#3d2316_0%,_#6a4331_52%,_#8c634f_100%)] p-6 text-white shadow-[0_28px_60px_-45px_rgba(61,35,22,0.92)]">
+                  <div className="product-story-card product-reveal product-reveal-delay-2 rounded-[30px] border border-[#86614f] bg-[linear-gradient(155deg,_#3d2316_0%,_#6a4331_52%,_#8c634f_100%)] p-6 text-white shadow-[0_28px_60px_-45px_rgba(61,35,22,0.92)] lg:flex lg:h-full lg:flex-col">
                     <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#f1d9c9]">
                       {mergeTextOverride(
                         pageConfig?.hero?.storyEyebrow,
@@ -1116,8 +1178,12 @@ const ProductDetailPage = () => {
                           <p className="text-[11px] uppercase tracking-[0.16em] text-[#bad8e2]">
                             {card.label}
                           </p>
-                          <p className="mt-1 text-lg font-semibold">{card.value}</p>
-                          <p className="text-xs text-[#d9edf2]">{card.helper}</p>
+                          <p className="mt-1 text-lg font-semibold">
+                            {card.value}
+                          </p>
+                          <p className="text-xs text-[#d9edf2]">
+                            {card.helper}
+                          </p>
                         </div>
                       ))}
                     </div>
@@ -1150,7 +1216,6 @@ const ProductDetailPage = () => {
                 ))}
               </div>
             ) : null}
-
           </div>
 
           <div className="xl:sticky xl:top-[calc(var(--header-height)+20px)]">
@@ -1164,7 +1229,12 @@ const ProductDetailPage = () => {
 
               <div className="mt-4 flex flex-wrap items-center gap-3">
                 <div className="inline-flex items-center gap-2 rounded-full border border-[#eaded5] bg-[#faf6f1] px-4 py-2 text-sm font-medium text-[#2f190f]">
-                  <Rating value={productRating} precision={0.5} readOnly size="small" />
+                  <Rating
+                    value={productRating}
+                    precision={0.5}
+                    readOnly
+                    size="small"
+                  />
                   <span>{reviewSummaryLabel}</span>
                 </div>
                 <div className="inline-flex items-center gap-2 rounded-full border border-[#eaded5] bg-[#f4eadf] px-4 py-2 text-sm font-medium text-[#6a4b39]">
@@ -1197,7 +1267,13 @@ const ProductDetailPage = () => {
                   </p>
                 ) : null}
                 {toNumber(activeOriginalPrice, 0) > toNumber(activePrice, 0) ? (
-                  <span className="rounded-full bg-[#13202a] px-4 py-2 text-sm font-semibold text-white">
+                  <span
+                    className="rounded-full px-4 py-2 text-sm font-semibold"
+                    style={{
+                      backgroundColor: "var(--primary)",
+                      color: "var(--flavor-text, #ffffff)",
+                    }}
+                  >
                     Save{" "}
                     {formatPrice(
                       Math.max(
@@ -1233,9 +1309,18 @@ const ProductDetailPage = () => {
                           }}
                           className={`rounded-2xl border px-5 py-3 text-left text-sm font-semibold transition ${
                             isSelected
-                              ? "border-[#121212] bg-[#121212] text-white"
+                              ? ""
                               : "border-[#d5c3b7] bg-white text-[#38231a] hover:-translate-y-0.5"
                           }`}
+                          style={
+                            isSelected
+                              ? {
+                                  borderColor: "var(--primary)",
+                                  backgroundColor: "var(--primary)",
+                                  color: "var(--flavor-text, #ffffff)",
+                                }
+                              : undefined
+                          }
                         >
                           {formatVariantLabel(variant)}
                         </button>
@@ -1245,72 +1330,75 @@ const ProductDetailPage = () => {
                 </div>
               ) : null}
 
-              {showHeroDeliveryPreview ? (
-                <div className="mt-8 rounded-[28px] border border-[#e3d4c9] bg-[#fbf7f2] p-5">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#7b6355]">
-                      Delivery Preview
-                    </p>
-                    <span className="text-xs font-medium text-[#5d4b41]">
-                      {deliveryReady ? "Ready" : "Optional"}
-                    </span>
-                  </div>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    maxLength={6}
-                    value={deliveryPincode}
-                    onChange={(event) =>
-                      setDeliveryPincode(
-                        event.target.value.replace(/\D/g, "").slice(0, 6),
-                      )
-                    }
-                    placeholder="Enter pincode"
-                    className="mt-4 h-14 w-full rounded-2xl border border-[#d8c6bb] bg-white px-4 text-base text-[#24150f] outline-none transition focus:border-[#6a4331] focus:ring-2 focus:ring-[#6a4331]/10"
-                  />
-                  <p className="mt-3 text-sm text-[#5d4b41]">{deliveryMessage}</p>
-                </div>
-              ) : null}
-
-              <div className="mt-8 flex flex-wrap items-center justify-between gap-4 rounded-[28px] border border-[#e3d4c9] bg-[#fbf7f2] p-5">
-                <div>
-                  <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#7b6355]">
-                    Quantity
-                  </p>
-                  <div className="mt-3 inline-flex items-center gap-3 rounded-2xl border border-[#d8c6bb] bg-white p-2">
-                    <button
-                      type="button"
-                      onClick={() => setQuantity((previous) => Math.max(previous - 1, 1))}
-                      className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#f5ece5] text-lg font-semibold text-[#24150f] transition hover:bg-[#eadacc]"
-                    >
-                      -
-                    </button>
-                    <span className="min-w-[40px] text-center text-lg font-semibold text-[#24150f]">
-                      {quantity}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setQuantity((previous) => Math.min(previous + 1, maxQty))
+              <div
+                className={`mt-8 grid gap-4 ${showHeroDeliveryPreview ? "xl:grid-cols-2" : ""}`}
+              >
+                {showHeroDeliveryPreview ? (
+                  <div className="h-full rounded-[28px] border border-[#e3d4c9] bg-[#fbf7f2] p-5">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#7b6355]">
+                        Delivery Preview
+                      </p>
+                      <span className="text-xs font-medium text-[#5d4b41]">
+                        {deliveryReady ? "Ready" : "Optional"}
+                      </span>
+                    </div>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={6}
+                      value={deliveryPincode}
+                      onChange={(event) =>
+                        setDeliveryPincode(
+                          event.target.value.replace(/\D/g, "").slice(0, 6),
+                        )
                       }
-                      className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#f5ece5] text-lg font-semibold text-[#24150f] transition hover:bg-[#eadacc]"
-                    >
-                      +
-                    </button>
+                      placeholder="Enter pincode"
+                      className="product-delivery-input mt-4 h-14 w-full rounded-2xl border border-[#d8c6bb] bg-white px-4 text-base text-[#24150f] outline-none transition"
+                    />
+                    <p className="mt-3 text-sm text-[#5d4b41]">
+                      {deliveryMessage}
+                    </p>
                   </div>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#7b6355]">
-                    Availability
-                  </p>
-                  <p className="mt-3 text-base font-semibold text-[#24150f]">
-                    {availabilityLabel}
-                  </p>
-                  <p className="mt-1 text-sm text-[#5d4b41]">
-                    {displaySku
-                      ? `SKU: ${displaySku}`
-                      : "Availability syncs with your selected pack"}
-                  </p>
+                ) : null}
+
+                <div className="h-full rounded-[28px] border border-[#e3d4c9] bg-[#fbf7f2] p-5">
+                  <div>
+                    <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#7b6355]">
+                      Quantity
+                    </p>
+                    <div className="mt-3 inline-flex items-center gap-3 rounded-2xl border border-[#d8c6bb] bg-white p-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setQuantity((previous) => Math.max(previous - 1, 1))
+                        }
+                        className="product-qty-action flex h-10 w-10 items-center justify-center rounded-xl text-lg font-semibold transition"
+                      >
+                        -
+                      </button>
+                      <span className="min-w-[40px] text-center text-lg font-semibold text-[#24150f]">
+                        {quantity}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setQuantity((previous) =>
+                            Math.min(previous + 1, maxQty),
+                          )
+                        }
+                        className="product-qty-action flex h-10 w-10 items-center justify-center rounded-xl text-lg font-semibold transition"
+                      >
+                        +
+                      </button>
+                    </div>
+                    <p className="mt-4 text-xs font-semibold uppercase tracking-[0.16em] text-[#7b6355]">
+                      SKU
+                    </p>
+                    <p className="mt-1 break-all text-sm font-semibold text-[#5d4b41]">
+                      {displaySku || "-"}
+                    </p>
+                  </div>
                 </div>
               </div>
 
@@ -1318,8 +1406,19 @@ const ProductDetailPage = () => {
                 <button
                   type="button"
                   onClick={handleAddToCart}
-                  disabled={actionLoading || (!currentVariantInCart && availableQty === 0)}
-                  className="flex min-h-[58px] items-center justify-center gap-3 rounded-2xl border border-[#1f1612] bg-white px-5 py-4 text-base font-semibold text-[#1f1612] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={
+                    actionLoading ||
+                    (!currentVariantInCart && availableQty === 0)
+                  }
+                  className="flex min-h-[58px] items-center justify-center gap-3 rounded-2xl border bg-white px-5 py-4 text-base font-semibold transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
+                  style={
+                    currentVariantInCart
+                      ? { borderColor: "#dc2626", color: "#dc2626" }
+                      : {
+                          borderColor: "var(--primary)",
+                          color: "var(--primary)",
+                        }
+                  }
                 >
                   <IoMdCart className="text-xl" />
                   {currentVariantInCart ? "Remove from Cart" : "Add to Cart"}
@@ -1328,7 +1427,11 @@ const ProductDetailPage = () => {
                   type="button"
                   onClick={handleBuyNow}
                   disabled={isBuyNowDisabled}
-                  className="product-cta-primary min-h-[58px] rounded-2xl bg-[#121212] px-5 py-4 text-base font-semibold text-white transition hover:-translate-y-0.5 hover:bg-[#000] disabled:cursor-not-allowed disabled:opacity-60"
+                  className="product-cta-primary min-h-[58px] rounded-2xl px-5 py-4 text-base font-semibold transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
+                  style={{
+                    backgroundColor: "var(--primary)",
+                    color: "var(--flavor-text, #ffffff)",
+                  }}
                 >
                   Buy Now
                 </button>
@@ -1337,11 +1440,13 @@ const ProductDetailPage = () => {
               <div className="mt-8 grid gap-3 sm:grid-cols-2">
                 <div className="rounded-[24px] border border-[#e7dad1] bg-[#faf6f2] p-4">
                   <div className="flex items-center gap-3">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#2f1b12] text-white">
+                    <div className="product-trust-icon flex h-11 w-11 items-center justify-center rounded-2xl">
                       <MdLocalShipping className="text-xl" />
                     </div>
                     <div>
-                      <p className="font-semibold text-[#24150f]">Free Delivery</p>
+                      <p className="font-semibold text-[#24150f]">
+                        Free Delivery
+                      </p>
                       <p className="text-sm text-[#5d4b41]">
                         Stronger utility near the CTA block.
                       </p>
@@ -1350,11 +1455,13 @@ const ProductDetailPage = () => {
                 </div>
                 <div className="rounded-[24px] border border-[#e7dad1] bg-[#faf6f2] p-4">
                   <div className="flex items-center gap-3">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#2f1b12] text-white">
+                    <div className="product-trust-icon flex h-11 w-11 items-center justify-center rounded-2xl">
                       <MdOutlineSecurity className="text-xl" />
                     </div>
                     <div>
-                      <p className="font-semibold text-[#24150f]">Secure Payment</p>
+                      <p className="font-semibold text-[#24150f]">
+                        Secure Payment
+                      </p>
                       <p className="text-sm text-[#5d4b41]">
                         Checkout trust signal stays visible.
                       </p>
@@ -1363,11 +1470,13 @@ const ProductDetailPage = () => {
                 </div>
                 <div className="rounded-[24px] border border-[#e7dad1] bg-[#faf6f2] p-4">
                   <div className="flex items-center gap-3">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#2f1b12] text-white">
+                    <div className="product-trust-icon flex h-11 w-11 items-center justify-center rounded-2xl">
                       <MdVerified className="text-xl" />
                     </div>
                     <div>
-                      <p className="font-semibold text-[#24150f]">Authentic Product</p>
+                      <p className="font-semibold text-[#24150f]">
+                        Authentic Product
+                      </p>
                       <p className="text-sm text-[#5d4b41]">
                         Premium surface with useful proof points.
                       </p>
@@ -1376,11 +1485,13 @@ const ProductDetailPage = () => {
                 </div>
                 <div className="rounded-[24px] border border-[#e7dad1] bg-[#faf6f2] p-4">
                   <div className="flex items-center gap-3">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#2f1b12] text-white">
+                    <div className="product-trust-icon flex h-11 w-11 items-center justify-center rounded-2xl">
                       <MdOutlineInventory2 className="text-xl" />
                     </div>
                     <div>
-                      <p className="font-semibold text-[#24150f]">Clear Inventory</p>
+                      <p className="font-semibold text-[#24150f]">
+                        Clear Inventory
+                      </p>
                       <p className="text-sm text-[#5d4b41]">
                         Variant-aware stock display for better decisions.
                       </p>
@@ -1458,9 +1569,17 @@ const ProductDetailPage = () => {
                   onClick={() => setActiveTab(tab.id)}
                   className={`rounded-2xl px-5 py-3 text-sm font-semibold transition ${
                     activeTab === tab.id
-                      ? "bg-[#121212] text-white"
+                      ? "product-tab-active"
                       : "border border-[#d6c5b9] bg-white text-[#38231a] hover:-translate-y-0.5"
                   }`}
+                  style={
+                    activeTab === tab.id
+                      ? {
+                          backgroundColor: "var(--primary)",
+                          color: "var(--flavor-text, #ffffff)",
+                        }
+                      : undefined
+                  }
                 >
                   {tab.label}
                 </button>
@@ -1470,7 +1589,8 @@ const ProductDetailPage = () => {
             <div className="mt-6">
               {activeTab === "description" && showDescriptionSection ? (
                 <div className="grid gap-6 xl:grid-cols-[minmax(0,0.94fr)_minmax(320px,0.78fr)]">
-                  {pageConfig?.descriptionSection?.showEditorialBanner !== false ? (
+                  {pageConfig?.descriptionSection?.showEditorialBanner !==
+                  false ? (
                     <div className="overflow-hidden rounded-[32px] bg-[linear-gradient(135deg,_#2f1b12_0%,_#6b4331_42%,_#9a6b54_100%)] p-6 text-white shadow-[0_28px_60px_-44px_rgba(47,27,18,0.88)] sm:p-8">
                       <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#f2dbc7]">
                         {mergeTextOverride(
@@ -1482,7 +1602,11 @@ const ProductDetailPage = () => {
                         <div className="rounded-[28px] bg-white/10 p-4">
                           <img
                             src={activeImage}
-                            alt={product?.name || product?.title || "Product showcase"}
+                            alt={
+                              product?.name ||
+                              product?.title ||
+                              "Product showcase"
+                            }
                             className="mx-auto max-h-[280px] w-full object-contain"
                           />
                         </div>
@@ -1495,7 +1619,8 @@ const ProductDetailPage = () => {
                           </h2>
                           <p className="mt-4 text-base leading-7 text-[#f8ebe2]">
                             {mergeTextOverride(
-                              pageConfig?.descriptionSection?.editorialDescription,
+                              pageConfig?.descriptionSection
+                                ?.editorialDescription,
                               "This section gives longer-form content a more intentional home, helping the product feel more premium while keeping the purchase path above it calm and focused.",
                             )}
                           </p>
@@ -1504,7 +1629,8 @@ const ProductDetailPage = () => {
                     </div>
                   ) : null}
 
-                  {pageConfig?.descriptionSection?.showDescriptionFlow !== false ? (
+                  {pageConfig?.descriptionSection?.showDescriptionFlow !==
+                  false ? (
                     <div className="rounded-[32px] border border-[#e7dad1] bg-[#fbf7f2] p-6 sm:p-8">
                       <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7b6355]">
                         {mergeTextOverride(
@@ -1627,89 +1753,97 @@ const ProductDetailPage = () => {
 
         {showReviewsSection ? (
           <div className="product-reveal product-reveal-delay-3 mt-10 rounded-[36px] border border-[#e1cdbf] bg-white/88 p-6 shadow-[0_34px_90px_-55px_rgba(44,29,20,0.38)] backdrop-blur sm:p-8">
-          <div className="flex flex-wrap items-end justify-between gap-4">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7b6355]">
-                {mergeTextOverride(
-                  pageConfig?.reviewsSection?.eyebrow,
-                  "Review Section",
-                )}
-              </p>
-              <h2 className="mt-2 text-3xl font-semibold text-[#24150f]">
-                {mergeTextOverride(
-                  pageConfig?.reviewsSection?.title,
-                  "Reviews below the story, closer to the buy decision",
-                )}
-              </h2>
-            </div>
-            <div className="rounded-[24px] border border-[#eaded5] bg-[#f6efe7] px-5 py-4 text-right">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#6a4b39]">
-                Average Rating
-              </p>
-              <div className="mt-2 flex items-center justify-end gap-3">
-                <span className="text-2xl font-semibold text-[#2f1b12]">
-                  {productRating > 0 ? productRating.toFixed(1) : "0.0"}
-                </span>
-                <Rating value={productRating} precision={0.5} readOnly size="small" />
+            <div className="flex flex-wrap items-end justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7b6355]">
+                  {mergeTextOverride(
+                    pageConfig?.reviewsSection?.eyebrow,
+                    "Review Section",
+                  )}
+                </p>
+                <h2 className="mt-2 text-3xl font-semibold text-[#24150f]">
+                  {mergeTextOverride(
+                    pageConfig?.reviewsSection?.title,
+                    "Reviews below the story, closer to the buy decision",
+                  )}
+                </h2>
+              </div>
+              <div className="rounded-[24px] border border-[#eaded5] bg-[#f6efe7] px-5 py-4 text-right">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#6a4b39]">
+                  Average Rating
+                </p>
+                <div className="mt-2 flex items-center justify-end gap-3">
+                  <span className="text-2xl font-semibold text-[#2f1b12]">
+                    {productRating > 0 ? productRating.toFixed(1) : "0.0"}
+                  </span>
+                  <Rating
+                    value={productRating}
+                    precision={0.5}
+                    readOnly
+                    size="small"
+                  />
+                </div>
               </div>
             </div>
-          </div>
 
-          <div className="mt-6">
-            {reviewsLoading ? (
-              <p className="text-sm text-[#6d584a]">Loading reviews...</p>
-            ) : displayReviews.length > 0 ? (
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {displayReviews.slice(0, 6).map((review, index) => (
-                  <article
-                    key={review?._id || `${review?.userName || "review"}-${index}`}
-                    className="product-review-card rounded-[28px] border border-[#e7dad1] bg-[#fbf7f2] p-6 shadow-[0_24px_50px_-42px_rgba(42,28,20,0.28)]"
-                  >
-                    <div className="flex items-center gap-4">
-                      {review?.avatar ? (
-                        <img
-                          src={getImageUrl(review.avatar)}
-                          alt={review?.userName || "Customer"}
-                          className="h-14 w-14 rounded-2xl object-cover"
-                        />
-                      ) : (
-                        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#2f1b12] text-base font-semibold text-white">
-                          {getReviewInitials(review)}
+            <div className="mt-6">
+              {reviewsLoading ? (
+                <p className="text-sm text-[#6d584a]">Loading reviews...</p>
+              ) : displayReviews.length > 0 ? (
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  {displayReviews.slice(0, 6).map((review, index) => (
+                    <article
+                      key={
+                        review?._id ||
+                        `${review?.userName || "review"}-${index}`
+                      }
+                      className="product-review-card rounded-[28px] border border-[#e7dad1] bg-[#fbf7f2] p-6 shadow-[0_24px_50px_-42px_rgba(42,28,20,0.28)]"
+                    >
+                      <div className="flex items-center gap-4">
+                        {review?.avatar ? (
+                          <img
+                            src={getImageUrl(review.avatar)}
+                            alt={review?.userName || "Customer"}
+                            className="h-14 w-14 rounded-2xl object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#2f1b12] text-base font-semibold text-white">
+                            {getReviewInitials(review)}
+                          </div>
+                        )}
+                        <div className="min-w-0">
+                          <p className="font-semibold text-[#24150f]">
+                            {review?.userName || "Customer"}
+                          </p>
+                          <p className="text-sm text-[#6d584a]">
+                            {[review?.city, formatReviewDate(review?.createdAt)]
+                              .filter(Boolean)
+                              .join("  •  ")}
+                          </p>
                         </div>
-                      )}
-                      <div className="min-w-0">
-                        <p className="font-semibold text-[#24150f]">
-                          {review?.userName || "Customer"}
-                        </p>
-                        <p className="text-sm text-[#6d584a]">
-                          {[review?.city, formatReviewDate(review?.createdAt)]
-                            .filter(Boolean)
-                            .join("  •  ")}
-                        </p>
                       </div>
-                    </div>
-                    <div className="mt-4">
-                      <Rating
-                        value={Math.max(Number(review?.rating || 0), 0)}
-                        readOnly
-                        size="small"
-                      />
-                    </div>
-                    <p className="mt-4 text-sm leading-7 text-[#4b392f]">
-                      {review?.comment || "No written comment available."}
-                    </p>
-                  </article>
-                ))}
-              </div>
-            ) : (
-              <div className="rounded-[28px] border border-dashed border-[#d9c8bc] bg-[#fbf7f2] p-8 text-center text-[#5d4b41]">
-                {mergeTextOverride(
-                  pageConfig?.reviewsSection?.emptyState,
-                  "No reviews yet. This upgraded layout is ready for real review content as soon as customer feedback is available.",
-                )}
-              </div>
-            )}
-          </div>
+                      <div className="mt-4">
+                        <Rating
+                          value={Math.max(Number(review?.rating || 0), 0)}
+                          readOnly
+                          size="small"
+                        />
+                      </div>
+                      <p className="mt-4 text-sm leading-7 text-[#4b392f]">
+                        {review?.comment || "No written comment available."}
+                      </p>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-[28px] border border-dashed border-[#d9c8bc] bg-[#fbf7f2] p-8 text-center text-[#5d4b41]">
+                  {mergeTextOverride(
+                    pageConfig?.reviewsSection?.emptyState,
+                    "No reviews yet. This upgraded layout is ready for real review content as soon as customer feedback is available.",
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         ) : null}
 
@@ -1736,7 +1870,11 @@ const ProductDetailPage = () => {
                     type="button"
                     onClick={handleAddAllToCart}
                     disabled={frequentlyBought.length === 0}
-                    className="rounded-2xl bg-[#121212] px-5 py-3 text-sm font-semibold text-white transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="rounded-2xl px-5 py-3 text-sm font-semibold transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50"
+                    style={{
+                      backgroundColor: "var(--primary)",
+                      color: "var(--flavor-text, #ffffff)",
+                    }}
                   >
                     {mergeTextOverride(
                       pageConfig?.frequentlyBoughtSection?.buttonText,
@@ -1747,7 +1885,9 @@ const ProductDetailPage = () => {
 
                 <div className="mt-6">
                   {fbtLoading ? (
-                    <p className="text-sm text-[#6d584a]">Loading suggestions...</p>
+                    <p className="text-sm text-[#6d584a]">
+                      Loading suggestions...
+                    </p>
                   ) : frequentlyBought.length > 0 ? (
                     <div className="grid gap-4 lg:grid-cols-4">
                       <div className="rounded-[28px] border border-[#e7dad1] bg-[#fbf7f2] p-5">
@@ -1766,7 +1906,10 @@ const ProductDetailPage = () => {
                             <h3 className="mt-1 text-sm font-semibold text-[#24150f]">
                               {product?.name || product?.title}
                             </h3>
-                            <p className="mt-2 text-sm font-semibold text-[#6a4331]">
+                            <p
+                              className="mt-2 text-sm font-semibold"
+                              style={{ color: "var(--primary)" }}
+                            >
                               {formatPrice(toNumber(activePrice, 0))}
                             </p>
                           </div>
@@ -1809,20 +1952,37 @@ const ProductDetailPage = () => {
                                     {recommendation.label}
                                   </p>
                                 ) : null}
-                                <p className="mt-2 text-sm font-semibold text-[#6a4331]">
-                                  {formatPrice(toNumber(recommendation.price, 0))}
+                                <p
+                                  className="mt-2 text-sm font-semibold"
+                                  style={{ color: "var(--primary)" }}
+                                >
+                                  {formatPrice(
+                                    toNumber(recommendation.price, 0),
+                                  )}
                                 </p>
                               </div>
                             </div>
                             <button
                               type="button"
-                              onClick={() => handleAddSingleRecommendation(item)}
+                              onClick={() =>
+                                handleAddSingleRecommendation(item)
+                              }
                               disabled={isAdded}
-                              className={`mt-4 w-full rounded-2xl px-4 py-3 text-sm font-semibold transition ${
-                                isAdded
-                                  ? "border border-[#6a4331] bg-white text-[#6a4331]"
-                                  : "bg-[#121212] text-white hover:-translate-y-0.5"
+                              className={`mt-4 w-full rounded-2xl border px-4 py-3 text-sm font-semibold transition ${
+                                isAdded ? "bg-white" : "hover:-translate-y-0.5"
                               }`}
+                              style={
+                                isAdded
+                                  ? {
+                                      borderColor: "var(--primary)",
+                                      color: "var(--primary)",
+                                    }
+                                  : {
+                                      borderColor: "var(--primary)",
+                                      backgroundColor: "var(--primary)",
+                                      color: "var(--flavor-text, #ffffff)",
+                                    }
+                              }
                             >
                               {isAdded ? "Added" : "Add to Cart"}
                             </button>
@@ -1861,7 +2021,8 @@ const ProductDetailPage = () => {
                   </div>
                   <Link
                     href="/combo-deals"
-                    className="text-sm font-semibold text-[#6a4331]"
+                    className="text-sm font-semibold"
+                    style={{ color: "var(--primary)" }}
                   >
                     {mergeTextOverride(
                       pageConfig?.recommendedCombosSection?.linkText,
@@ -1921,7 +2082,9 @@ const ProductDetailPage = () => {
                         originalPrice={item.originalPrice || item.regularPrice}
                         discount={item.discount || 0}
                         rating={item.rating || 4.5}
-                        image={item.image || item.images?.[0] || "/product_1.png"}
+                        image={
+                          item.image || item.images?.[0] || "/product_1.png"
+                        }
                         product={item}
                       />
                     ))}
@@ -1940,6 +2103,69 @@ const ProductDetailPage = () => {
         ) : null}
       </div>
 
+      {isImageZoomOpen ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Zoomed product image"
+          className="fixed inset-0 z-[1400] bg-black/95 p-4 sm:p-8"
+          onClick={() => setIsImageZoomOpen(false)}
+        >
+          <div className="relative mx-auto flex h-full w-full max-w-[1280px] items-center justify-center">
+            <button
+              type="button"
+              onClick={() => setIsImageZoomOpen(false)}
+              className="absolute right-0 top-0 z-20 flex h-11 w-11 items-center justify-center rounded-full bg-white/15 text-white transition hover:bg-white/25"
+              aria-label="Close image zoom"
+            >
+              <FiX className="text-xl" />
+            </button>
+
+            {images.length > 1 ? (
+              <>
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setActiveImageIndex((previous) =>
+                      previous === 0 ? images.length - 1 : previous - 1,
+                    );
+                  }}
+                  className="absolute left-0 z-20 flex h-11 w-11 items-center justify-center rounded-full bg-white/15 text-white transition hover:bg-white/25"
+                  aria-label="Previous zoomed image"
+                >
+                  <FiChevronLeft className="text-xl" />
+                </button>
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setActiveImageIndex((previous) =>
+                      previous === images.length - 1 ? 0 : previous + 1,
+                    );
+                  }}
+                  className="absolute right-0 z-20 flex h-11 w-11 items-center justify-center rounded-full bg-white/15 text-white transition hover:bg-white/25"
+                  aria-label="Next zoomed image"
+                >
+                  <FiChevronRight className="text-xl" />
+                </button>
+              </>
+            ) : null}
+
+            <div className="pointer-events-none absolute top-0 left-1/2 -translate-x-1/2 rounded-full bg-white/15 px-4 py-1.5 text-sm font-semibold text-white">
+              100%
+            </div>
+
+            <img
+              src={activeImage}
+              alt={product?.name || product?.title || "Zoomed product image"}
+              onClick={(event) => event.stopPropagation()}
+              className="max-h-[88vh] max-w-[92vw] object-contain"
+            />
+          </div>
+        </div>
+      ) : null}
+
       <style jsx global>{`
         @keyframes productFadeUp {
           from {
@@ -1953,6 +2179,9 @@ const ProductDetailPage = () => {
         }
 
         .product-page-shell {
+          --pd-accent: var(--primary, #6a4331);
+          --pd-accent-hover: var(--flavor-hover, #52382a);
+          --pd-accent-text: var(--flavor-text, #ffffff);
           position: relative;
           overflow: clip;
         }
@@ -2000,8 +2229,36 @@ const ProductDetailPage = () => {
           overflow: hidden;
         }
 
+        .product-delivery-input:focus {
+          border-color: var(--pd-accent);
+          box-shadow: 0 0 0 2px var(--flavor-glass, rgba(106, 67, 49, 0.12));
+        }
+
+        .product-qty-action {
+          background: var(--flavor-glass, #f5ece5);
+          color: var(--pd-accent-text);
+        }
+
+        .product-qty-action:hover {
+          filter: brightness(0.96);
+        }
+
+        .product-tab-active {
+          background: var(--pd-accent);
+          color: var(--pd-accent-text);
+        }
+
         .product-cta-primary {
           position: relative;
+        }
+
+        .product-cta-primary:hover {
+          background-color: var(--pd-accent-hover) !important;
+        }
+
+        .product-trust-icon {
+          background: var(--pd-accent);
+          color: var(--pd-accent-text);
         }
 
         .product-review-card {
@@ -2032,7 +2289,9 @@ const ProductDetailPage = () => {
       >
         <Alert
           severity={snackbar.severity}
-          onClose={() => setSnackbar((current) => ({ ...current, open: false }))}
+          onClose={() =>
+            setSnackbar((current) => ({ ...current, open: false }))
+          }
         >
           {snackbar.message}
         </Alert>

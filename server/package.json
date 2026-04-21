@@ -18,6 +18,7 @@
     "test:partner:full-e2e": "node scripts/partnerApi/fullProductionValidation.mjs",
     "test:partner:postman": "node scripts/partnerApi/postmanNewmanAutomation.mjs",
     "test:promo-unsubscribe": "node scripts/testPromotionalUnsubscribeFlow.mjs",
+    "analytics:monthly-pdf": "node scripts/generateMonthlyTrafficClicksPdf.mjs",
     "setup:pubsub": "node scripts/setupPubSubInfra.mjs",
     "migrate:enterprise": "node migrations/2026-02-enterprise-upgrade.mjs",
     "migrate:inventory": "node migrations/2026-02-inventory-backfill.mjs",

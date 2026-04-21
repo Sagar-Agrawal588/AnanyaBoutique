@@ -1,5 +1,80 @@
 import UserModel from "../models/user.model.js";
+import { hasManagerPermission } from "../utils/adminPermissions.js";
 import isPrivilegedAdminRole from "../utils/isPrivilegedAdminRole.js";
+
+const MANAGER_ROUTE_PERMISSION_RULES = [
+  {
+    permission: "manage_users",
+    patterns: [/^\/api\/user\/admin\/users(?:\/|$)/i],
+  },
+  {
+    permission: "view_analytics",
+    patterns: [
+      /^\/api\/admin\/analytics(?:\/|$)/i,
+      /^\/api\/statistics(?:\/|$)/i,
+      /^\/api\/orders\/admin\/(?:stats|dashboard-stats)(?:\/|$)/i,
+      /^\/api\/admin\/orders\/(?:report|export)(?:\/|$)/i,
+      /^\/api\/location-logs\/admin(?:\/|$)/i,
+    ],
+  },
+  {
+    permission: "manage_crm",
+    patterns: [
+      /^\/api\/admin\/crm(?:\/|$)/i,
+      /^\/api\/crm\/admin(?:\/|$)/i,
+      /^\/api\/support\/admin(?:\/|$)/i,
+      /^\/api\/notifications\/admin(?:\/|$)/i,
+      /^\/api\/newsletter\/(?:subscribers|campaign\/send)(?:\/|$)/i,
+      /^\/api\/email\/admin(?:\/|$)/i,
+      /^\/api\/admin\/email-templates(?:\/|$)/i,
+      /^\/api\/admin\/reviews(?:\/|$)/i,
+    ],
+  },
+  {
+    permission: "manage_shipping",
+    patterns: [
+      /^\/api\/shipping(?:\/|$)/i,
+      /^\/api\/orders\/admin\/(?:all|repair-paid|backfill-payment-ids|pending|demo-orders)(?:\/|$)/i,
+      /^\/api\/orders\/[^/]+\/status(?:\/|$)/i,
+      /^\/api\/purchase-orders\/admin(?:\/|$)/i,
+    ],
+  },
+  {
+    permission: "manage_membership",
+    patterns: [
+      /^\/api\/admin\/membership(?:\/|$)/i,
+      /^\/api\/membership\/admin(?:\/|$)/i,
+      /^\/api\/membership\/page\/admin(?:\/|$)/i,
+      /^\/api\/home-membership-content\/admin(?:\/|$)/i,
+      /^\/api\/coins\/admin\/settings(?:\/|$)/i,
+    ],
+  },
+];
+
+const normalizeRequestPath = (value) => {
+  const normalized = String(value || "")
+    .split("?")[0]
+    .trim()
+    .replace(/\/{2,}/g, "/")
+    .replace(/\/+$/, "");
+
+  return normalized || "/";
+};
+
+const resolveRequiredManagerPermission = (req) => {
+  const requestPath = normalizeRequestPath(
+    req?.originalUrl || `${req?.baseUrl || ""}${req?.path || ""}`,
+  );
+
+  for (const rule of MANAGER_ROUTE_PERMISSION_RULES) {
+    if (rule.patterns.some((pattern) => pattern.test(requestPath))) {
+      return rule.permission;
+    }
+  }
+
+  // Treat all remaining privileged routes as platform-level access.
+  return "manage_settings";
+};
 
 /**
  * Admin Middleware
@@ -50,6 +125,19 @@ const admin = async (req, res, next) => {
     // Attach full user object for controllers that need it
     req.user = user;
     req.userId = user._id;
+
+    if (String(user.role || "").trim() === "Manager") {
+      const requiredPermission = resolveRequiredManagerPermission(req);
+      if (!hasManagerPermission(user, requiredPermission)) {
+        return res.status(403).json({
+          error: true,
+          success: false,
+          message: "You do not have permission to access this module",
+        });
+      }
+
+      req.requiredAdminPermission = requiredPermission;
+    }
 
     next();
   } catch (error) {

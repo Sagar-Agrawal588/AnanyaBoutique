@@ -44,6 +44,13 @@ const PENDING_ORDER_STATUSES = new Set([
 ]);
 
 const PENDING_PAYMENT_STATUSES = new Set(["pending", "pending_payment"]);
+const SETTLED_PAYMENT_STATUSES = new Set([
+  "paid",
+  "confirmed",
+  "captured",
+  "success",
+  "successful",
+]);
 
 const normalizeOrderStatus = (status) => {
   if (!status) return "pending";
@@ -64,19 +71,105 @@ const formatStatusLabel = (status, fallback = "Pending") => {
 const isGatewayMerchantReference = (value) =>
   /^BOG_/i.test(String(value || "").trim());
 
-const resolveGatewayTransactionReference = (order = {}) => {
-  const directReference = [order?.paytmTransactionId, order?.phonepeTransactionId]
-    .map((value) => String(value || "").trim())
-    .find(Boolean);
+const getValueByPath = (source = {}, path = "") => {
+  if (!source || typeof source !== "object" || !path) return null;
+  return path
+    .split(".")
+    .reduce(
+      (current, key) =>
+        current && typeof current === "object" ? current[key] : undefined,
+      source,
+    );
+};
 
-  if (directReference) return directReference;
+const normalizePaymentFieldValue = (value) => String(value || "").trim();
 
-  const fallbackPaymentId = String(order?.paymentId || "").trim();
-  if (fallbackPaymentId && !isGatewayMerchantReference(fallbackPaymentId)) {
+const isNumericReference = (value) => /^\d+$/.test(String(value || ""));
+const isLikelyUpiRrn = (value) => /^\d{12}$/.test(String(value || ""));
+
+const resolveUpiRrn = (order = {}) => {
+  const rrnCandidatePaths = [
+    "rrn",
+    "utr",
+    "upi_ref",
+    "bank_ref",
+    "upiReferenceNo",
+    "upiReferenceNumber",
+    "bankReference",
+    "bankReferenceNo",
+    "payment.rrn",
+    "payment.utr",
+    "payment.upi_ref",
+    "payment.bank_ref",
+    "paymentDetails.rrn",
+    "paymentDetails.utr",
+    "gateway.rrn",
+    "gateway.utr",
+  ];
+
+  let numericFallback = "";
+
+  for (const path of rrnCandidatePaths) {
+    const candidate = normalizePaymentFieldValue(getValueByPath(order, path));
+    if (!candidate || !isNumericReference(candidate)) continue;
+    if (isLikelyUpiRrn(candidate)) return candidate;
+    if (!numericFallback) numericFallback = candidate;
+  }
+
+  return numericFallback;
+};
+
+const resolveTransactionId = (order = {}, rrnValue = "") => {
+  const transactionCandidatePaths = [
+    "transactionId",
+    "txnId",
+    "gatewayTxnId",
+    "phonepeTransactionId",
+    "paytmTransactionId",
+    "providerReferenceId",
+    "upiReferenceNumber",
+    "payment.transactionId",
+    "payment.txnId",
+    "paymentDetails.transactionId",
+    "paymentDetails.txnId",
+    "gateway.transactionId",
+    "gateway.txnId",
+  ];
+
+  for (const path of transactionCandidatePaths) {
+    const candidate = normalizePaymentFieldValue(getValueByPath(order, path));
+    if (!candidate) continue;
+    if (rrnValue && candidate === rrnValue) continue;
+    return candidate;
+  }
+
+  const directReference = [
+    order?.transactionId,
+    order?.txnId,
+    order?.gatewayTxnId,
+  ]
+    .map((value) => normalizePaymentFieldValue(value))
+    .find((value) => Boolean(value) && value !== rrnValue);
+
+  if (directReference) {
+    return directReference;
+  }
+
+  const fallbackPaymentId = normalizePaymentFieldValue(order?.paymentId);
+  if (
+    fallbackPaymentId &&
+    !isGatewayMerchantReference(fallbackPaymentId) &&
+    fallbackPaymentId !== rrnValue
+  ) {
     return fallbackPaymentId;
   }
 
   return "";
+};
+
+const resolveGatewayTransactionReference = (order = {}) => {
+  const rrnValue = resolveUpiRrn(order);
+  return resolveTransactionId(order, rrnValue);
 };
 
 const resolveMerchantReference = (order = {}) => {
@@ -94,6 +187,20 @@ const resolvePaymentReference = (order = {}) => {
   return resolveGatewayTransactionReference(order);
 };
 
+const hasSettledPayment = (order = {}) => {
+  const normalizedPaymentStatus = normalizeOrderStatus(
+    order?.payment_status || order?.paymentStatus,
+  );
+
+  if (SETTLED_PAYMENT_STATUSES.has(normalizedPaymentStatus)) {
+    return true;
+  }
+
+  return Boolean(
+    order?.paymentCompletedAt || order?.confirmed_at || order?.confirmedAt,
+  );
+};
+
 const resolvePaymentProviderLabel = (order = {}) => {
   const paymentMethod = String(
     order?.paymentMethod || order?.payment_method || "",
@@ -105,7 +212,9 @@ const resolvePaymentProviderLabel = (order = {}) => {
   if (paymentMethod.includes("paytm")) return "Paytm";
   if (paymentMethod) return formatStatusLabel(paymentMethod, "Gateway");
 
-  if (String(order?.phonepeMerchantOrderId || order?.phonepeOrderId || "").trim()) {
+  if (
+    String(order?.phonepeMerchantOrderId || order?.phonepeOrderId || "").trim()
+  ) {
     return "PhonePe";
   }
   if (String(order?.paytmOrderId || order?.paytmTransactionId || "").trim()) {
@@ -124,6 +233,39 @@ const isPendingQueueOrder = (order = {}) => {
     PENDING_ORDER_STATUSES.has(normalizedOrderStatus) ||
     PENDING_PAYMENT_STATUSES.has(normalizedPaymentStatus)
   );
+};
+
+const isDemoOrTestOrder = (order = {}) => {
+  const rawDemoFlag = order?.isDemoOrder;
+  const normalizedDemoFlag =
+    typeof rawDemoFlag === "string"
+      ? rawDemoFlag.trim().toLowerCase()
+      : rawDemoFlag;
+  if (
+    rawDemoFlag === true ||
+    rawDemoFlag === 1 ||
+    normalizedDemoFlag === "true" ||
+    normalizedDemoFlag === "1"
+  ) {
+    return true;
+  }
+
+  const paymentMethod = String(
+    order?.paymentMethod || order?.payment_method || "",
+  )
+    .trim()
+    .toLowerCase();
+  if (paymentMethod === "test") return true;
+
+  const paymentId = String(order?.paymentId || "")
+    .trim()
+    .toUpperCase();
+  if (paymentId.startsWith("TEST_")) return true;
+
+  const notes = String(order?.notes || "")
+    .trim()
+    .toLowerCase();
+  return notes.includes("demo test order");
 };
 
 const getPendingQueueReason = (order = {}) => {
@@ -352,12 +494,23 @@ const OrderRow = ({ order, index, token, onStatusUpdate }) => {
   const [orderReviews, setOrderReviews] = useState([]);
   const [reviewsLoading, setReviewsLoading] = useState(false);
   const trackingUrl = resolveTrackingUrl(order);
-  const paymentReference =
-    resolvePaymentReference(order) || "Pending / Not issued yet";
+  const paymentSettled = hasSettledPayment(order);
+  const upiRrn = paymentSettled ? resolveUpiRrn(order) : "";
+  const transactionId = paymentSettled
+    ? resolveTransactionId(order, upiRrn)
+    : "";
+  const paymentReference = paymentSettled
+    ? resolvePaymentReference(order) ||
+      upiRrn ||
+      transactionId ||
+      "Pending / Not issued yet"
+    : "Pending / Not issued yet";
   const paymentProviderLabel = resolvePaymentProviderLabel(order);
   const merchantReference = resolveMerchantReference(order);
   const gatewayOrderReference = String(order?.phonepeOrderId || "").trim();
-  const gatewayTransactionReference = resolveGatewayTransactionReference(order);
+  const gatewayTransactionReference = paymentSettled
+    ? resolveGatewayTransactionReference(order) || "Pending / Not issued yet"
+    : "Pending / Not issued yet";
 
   const canDownloadInvoice =
     normalizeOrderStatus(order?.payment_status) === "paid" ||
@@ -843,6 +996,47 @@ const OrderRow = ({ order, index, token, onStatusUpdate }) => {
                     {paymentReference}
                   </span>
                 </div>
+                {upiRrn ? (
+                  <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <span
+                        className="font-semibold text-gray-700"
+                        title="RRN is a bank-level reference used for tracking UPI payments"
+                      >
+                        UPI RRN:
+                      </span>{" "}
+                      <span className="text-gray-800 break-all">{upiRrn}</span>
+                    </div>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={() => copyToClipboard(upiRrn, "UPI RRN")}
+                    >
+                      Copy
+                    </Button>
+                  </div>
+                ) : null}
+                {transactionId ? (
+                  <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <span className="font-semibold text-gray-700">
+                        Transaction ID:
+                      </span>{" "}
+                      <span className="text-gray-800 break-all">
+                        {transactionId}
+                      </span>
+                    </div>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={() =>
+                        copyToClipboard(transactionId, "Transaction ID")
+                      }
+                    >
+                      Copy
+                    </Button>
+                  </div>
+                ) : null}
                 <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 flex items-center justify-between gap-2">
                   <div className="min-w-0">
                     <span className="font-semibold text-gray-700">
@@ -1050,7 +1244,6 @@ const Orders = () => {
   const [backfillingPaymentIds, setBackfillingPaymentIds] = useState(false);
   const [repairingPaidOrders, setRepairingPaidOrders] = useState(false);
   const [removingPendingOrders, setRemovingPendingOrders] = useState(false);
-  const [removingDemoOrders, setRemovingDemoOrders] = useState(false);
   const { intervalMs } = useLiveRefreshSetting();
   const refreshConfig = useMemo(
     () => ({
@@ -1108,8 +1301,11 @@ const Orders = () => {
           const nextOrders = Array.isArray(payload?.orders)
             ? payload.orders
             : [];
+          const visibleOrders = nextOrders.filter(
+            (order) => !isDemoOrTestOrder(order),
+          );
           const nextTotalPages = Number(payload?.pagination?.totalPages || 1);
-          setOrders(nextOrders);
+          setOrders(visibleOrders);
           setTotalPages(nextTotalPages > 0 ? nextTotalPages : 1);
         } else {
           // Keep existing rows if request failed; avoid false empty state flashes.
@@ -1344,62 +1540,6 @@ const Orders = () => {
     }
   };
 
-  const handleRemoveDemoOrders = async () => {
-    if (!token) {
-      toast.error("Admin session missing");
-      return;
-    }
-
-    const confirmed =
-      typeof window === "undefined"
-        ? true
-        : window.confirm(
-            "Remove all demo orders? This permanently deletes demo orders from the database.",
-          );
-    if (!confirmed) return;
-
-    setRemovingDemoOrders(true);
-    try {
-      const response = await deleteData("/api/orders/admin/demo-orders", token);
-      if (response?.success) {
-        const deletedCount = Number(response?.data?.deletedCount || 0);
-        const skippedCount = Number(response?.data?.skippedCount || 0);
-
-        if (deletedCount > 0) {
-          toast.success(
-            `Removed ${deletedCount} demo order${deletedCount === 1 ? "" : "s"}`,
-          );
-        } else {
-          toast.success("No demo orders found");
-        }
-
-        if (skippedCount > 0) {
-          toast.error(
-            `${skippedCount} demo order${skippedCount === 1 ? " was" : "s were"} skipped. Check server logs.`,
-          );
-        }
-
-        const params = new URLSearchParams(searchParams?.toString() || "");
-        params.delete("status");
-        const query = params.toString();
-
-        setStatusFilter("all");
-        setPage(1);
-        router.replace(query ? `/orders?${query}` : "/orders");
-
-        if (statusFilter === "all") {
-          fetchOrders();
-        }
-      } else {
-        toast.error(response?.message || "Failed to remove demo orders");
-      }
-    } catch {
-      toast.error("Failed to remove demo orders");
-    } finally {
-      setRemovingDemoOrders(false);
-    }
-  };
-
   if (loading || !isAuthenticated) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -1423,7 +1563,8 @@ const Orders = () => {
             </p>
             {statusFilter === "all" ? (
               <p className="mt-1 text-xs text-gray-500">
-                Pending and payment-hold rows are kept in a separate queue below.
+                Pending and payment-hold rows are kept in a separate queue
+                below.
               </p>
             ) : null}
           </div>
@@ -1435,8 +1576,7 @@ const Orders = () => {
               disabled={
                 backfillingPaymentIds ||
                 repairingPaidOrders ||
-                removingPendingOrders ||
-                removingDemoOrders
+                removingPendingOrders
               }
               sx={{
                 textTransform: "none",
@@ -1456,8 +1596,7 @@ const Orders = () => {
               disabled={
                 backfillingPaymentIds ||
                 repairingPaidOrders ||
-                removingPendingOrders ||
-                removingDemoOrders
+                removingPendingOrders
               }
               sx={{
                 textTransform: "none",
@@ -1478,8 +1617,7 @@ const Orders = () => {
               disabled={
                 removingPendingOrders ||
                 backfillingPaymentIds ||
-                repairingPaidOrders ||
-                removingDemoOrders
+                repairingPaidOrders
               }
               sx={{
                 textTransform: "none",
@@ -1491,28 +1629,6 @@ const Orders = () => {
               {removingPendingOrders
                 ? "Removing Pending Orders..."
                 : "Remove Pending Orders"}
-            </Button>
-            <Button
-              variant="outlined"
-              color="error"
-              size="small"
-              onClick={handleRemoveDemoOrders}
-              disabled={
-                removingDemoOrders ||
-                removingPendingOrders ||
-                backfillingPaymentIds ||
-                repairingPaidOrders
-              }
-              sx={{
-                textTransform: "none",
-                borderRadius: "10px",
-                px: 2,
-                py: 0.8,
-              }}
-            >
-              {removingDemoOrders
-                ? "Removing Demo Orders..."
-                : "Remove Demo Orders"}
             </Button>
             <Button
               variant="outlined"
@@ -1588,8 +1704,9 @@ const Orders = () => {
           <>
             {showEmptyPrimaryState ? (
               <div className="mt-5 rounded-xl border border-dashed border-amber-200 bg-amber-50 px-4 py-5 text-sm text-amber-800">
-                All rows on this page are still in the pending queue. Review them below so
-                payment-hold and not-yet-confirmed orders stay separate from the main order list.
+                All rows on this page are still in the pending queue. Review
+                them below so payment-hold and not-yet-confirmed orders stay
+                separate from the main order list.
               </div>
             ) : primaryOrders.length > 0 ? (
               <OrdersTable
@@ -1611,8 +1728,8 @@ const Orders = () => {
                       Pending Queue
                     </h2>
                     <p className="mt-1 text-sm text-amber-800">
-                      These rows are waiting on payment confirmation or internal processing, so
-                      they sit apart from the main order list.
+                      These rows are waiting on payment confirmation or internal
+                      processing, so they sit apart from the main order list.
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
