@@ -1,37 +1,45 @@
 {
-  "generatedAt": "2026-04-19T15:44:01.163Z",
+  "generatedAt": "2026-04-19T18:55:44.783Z",
   "scope": {
     "from": "2026-04-18T00:00:00.000Z",
-    "to": "2026-04-19T15:33:00.000Z",
+    "to": "2026-04-19T18:55:36.646Z",
     "page": "1",
-    "limit": "250",
+    "limit": "16",
     "source": "Live behavior analytics controllers"
   },
   "overview": {
-    "totalSessions": 16,
-    "activeUsers": 0,
-    "avgActiveTimeMs": 4421152.3125,
-    "avgSessionDurationSeconds": 4421.15,
-    "bounceRate": 50,
+    "totalSessions": 23,
+    "activeUsers": 1,
+    "avgActiveTimeMs": 3111019.434782609,
+    "avgSessionDurationSeconds": 3111.02,
+    "bounceRate": 34.78,
     "conversionRate": 0,
     "revenue": 0,
     "from": "2026-04-18T00:00:00.000Z",
-    "to": "2026-04-19T15:33:00.000Z"
+    "to": "2026-04-19T18:55:36.646Z"
   },
   "engagement": {
-    "avgTimePerProductMs": 955.2105263157895,
-    "avgScrollDepth": 59.12,
+    "avgTimePerProductMs": 1029.483870967742,
+    "avgScrollDepth": 56.53658536585366,
     "maxScrollDepth": 100,
     "rageClickCount": 2,
-    "sectionEngagementHeatmap": [],
+    "sectionEngagementHeatmap": [
+      {
+        "sectionName": "combo_deals_grid",
+        "pageUrl": "http://localhost:3000/combo-deals",
+        "views": 1,
+        "avgDurationMs": 94,
+        "totalDurationMs": 94
+      }
+    ],
     "attractiveButtons": [
       {
-        "target": "2.20 lb Refill Pack - 2.2 lb",
-        "score": 15.96,
+        "target": "Combo Click",
+        "score": 36.53,
         "totalInteractions": 1,
         "clickEvents": 1,
         "rageClicks": 0,
-        "avgPreClickDwellMs": 149552,
+        "avgPreClickDwellMs": 355286,
         "bannerId": null,
         "bannerName": null,
         "bannerPosition": null,
@@ -42,7 +50,39 @@
         "topProducts": []
       },
       {
-        "target": "2.2 lb",
+        "target": "Combo Click",
+        "score": 18.6,
+        "totalInteractions": 1,
+        "clickEvents": 1,
+        "rageClicks": 0,
+        "avgPreClickDwellMs": 176024,
+        "bannerId": null,
+        "bannerName": null,
+        "bannerPosition": null,
+        "bannerCampaign": null,
+        "guestInteractions": 0,
+        "loggedInInteractions": 1,
+        "topSections": [],
+        "topProducts": []
+      },
+      {
+        "target": "Shipping & Trust",
+        "score": 16.76,
+        "totalInteractions": 2,
+        "clickEvents": 2,
+        "rageClicks": 0,
+        "avgPreClickDwellMs": 147645,
+        "bannerId": null,
+        "bannerName": null,
+        "bannerPosition": null,
+        "bannerCampaign": null,
+        "guestInteractions": 0,
+        "loggedInInteractions": 2,
+        "topSections": [],
+        "topProducts": []
+      },
+      {
+        "target": "2.20 lb Refill Pack - 2.2 lb",
         "score": 15.96,
         "totalInteractions": 1,
         "clickEvents": 1,
@@ -74,6 +114,38 @@
         "topProducts": []
       },
       {
+        "target": "2.2 lb",
+        "score": 15.96,
+        "totalInteractions": 1,
+        "clickEvents": 1,
+        "rageClicks": 0,
+        "avgPreClickDwellMs": 149552,
+        "bannerId": null,
+        "bannerName": null,
+        "bannerPosition": null,
+        "bannerCampaign": null,
+        "guestInteractions": 0,
+        "loggedInInteractions": 1,
+        "topSections": [],
+        "topProducts": []
+      },
+      {
+        "target": "Product Details",
+        "score": 14.42,
+        "totalInteractions": 5,
+        "clickEvents": 5,
+        "rageClicks": 0,
+        "avgPreClickDwellMs": 94225.4,
+        "bannerId": null,
+        "bannerName": null,
+        "bannerPosition": null,
+        "bannerCampaign": null,
+        "guestInteractions": 0,
+        "loggedInInteractions": 5,
+        "topSections": [],
+        "topProducts": []
+      },
+      {
         "target": "Products",
         "score": 11.53,
         "totalInteractions": 6,
@@ -91,17 +163,17 @@
       },
       {
         "target": "Home",
-        "score": 10,
-        "totalInteractions": 2,
-        "clickEvents": 2,
+        "score": 11.31,
+        "totalInteractions": 3,
+        "clickEvents": 3,
         "rageClicks": 0,
-        "avgPreClickDwellMs": 80004.5,
+        "avgPreClickDwellMs": 83071,
         "bannerId": null,
         "bannerName": null,
         "bannerPosition": null,
         "bannerCampaign": null,
         "guestInteractions": 1,
-        "loggedInInteractions": 1,
+        "loggedInInteractions": 2,
         "topSections": [],
         "topProducts": []
       },
@@ -122,18 +194,18 @@
         "topProducts": []
       },
       {
-        "target": "Product Details",
-        "score": 9,
-        "totalInteractions": 3,
-        "clickEvents": 3,
+        "target": "Description",
+        "score": 9.13,
+        "totalInteractions": 4,
+        "clickEvents": 4,
         "rageClicks": 0,
-        "avgPreClickDwellMs": 60007,
+        "avgPreClickDwellMs": 51324,
         "bannerId": null,
         "bannerName": null,
         "bannerPosition": null,
         "bannerCampaign": null,
         "guestInteractions": 0,
-        "loggedInInteractions": 3,
+        "loggedInInteractions": 4,
         "topSections": [],
         "topProducts": []
       },
@@ -150,22 +222,6 @@
         "bannerCampaign": null,
         "guestInteractions": 0,
         "loggedInInteractions": 1,
-        "topSections": [],
-        "topProducts": []
-      },
-      {
-        "target": "Description",
-        "score": 6,
-        "totalInteractions": 3,
-        "clickEvents": 3,
-        "rageClicks": 0,
-        "avgPreClickDwellMs": 30004,
-        "bannerId": null,
-        "bannerName": null,
-        "bannerPosition": null,
-        "bannerCampaign": null,
-        "guestInteractions": 0,
-        "loggedInInteractions": 3,
         "topSections": [],
         "topProducts": []
       },
@@ -187,9 +243,9 @@
       },
       {
         "target": "Close",
-        "score": 2,
-        "totalInteractions": 2,
-        "clickEvents": 2,
+        "score": 4,
+        "totalInteractions": 4,
+        "clickEvents": 4,
         "rageClicks": 0,
         "avgPreClickDwellMs": 0,
         "bannerId": null,
@@ -197,15 +253,47 @@
         "bannerPosition": null,
         "bannerCampaign": null,
         "guestInteractions": 1,
+        "loggedInInteractions": 3,
+        "topSections": [],
+        "topProducts": []
+      },
+      {
+        "target": "Buy Now",
+        "score": 4,
+        "totalInteractions": 1,
+        "clickEvents": 1,
+        "rageClicks": 0,
+        "avgPreClickDwellMs": 30000,
+        "bannerId": null,
+        "bannerName": null,
+        "bannerPosition": null,
+        "bannerCampaign": null,
+        "guestInteractions": 0,
+        "loggedInInteractions": 1,
+        "topSections": [],
+        "topProducts": []
+      },
+      {
+        "target": "Checkout",
+        "score": 4,
+        "totalInteractions": 1,
+        "clickEvents": 1,
+        "rageClicks": 0,
+        "avgPreClickDwellMs": 30000,
+        "bannerId": null,
+        "bannerName": null,
+        "bannerPosition": null,
+        "bannerCampaign": null,
+        "guestInteractions": 0,
         "loggedInInteractions": 1,
         "topSections": [],
         "topProducts": []
       },
       {
         "target": "11% OFFBuy One GramDark Chocolate Smooth Peanut butter with Added Whey (30% Protein) - 1 Kg26% Protein & Added Vitamin A&D1 kg(5)₹899₹799",
-        "score": 2,
-        "totalInteractions": 2,
-        "clickEvents": 2,
+        "score": 3,
+        "totalInteractions": 3,
+        "clickEvents": 3,
         "rageClicks": 0,
         "avgPreClickDwellMs": 0,
         "bannerId": null,
@@ -213,12 +301,12 @@
         "bannerPosition": null,
         "bannerCampaign": null,
         "guestInteractions": 0,
-        "loggedInInteractions": 2,
+        "loggedInInteractions": 3,
         "topSections": [],
         "topProducts": []
       },
       {
-        "target": "Remove from Cart",
+        "target": "PAY NOW",
         "score": 1,
         "totalInteractions": 1,
         "clickEvents": 1,
@@ -234,7 +322,23 @@
         "topProducts": []
       },
       {
-        "target": "Shipping & Trust",
+        "target": "BEST SELLERBuy One GramCrunchy Peanut ButterCrunchy texture with real peanut chunks500g+1 more(5)₹499₹349",
+        "score": 1,
+        "totalInteractions": 1,
+        "clickEvents": 1,
+        "rageClicks": 0,
+        "avgPreClickDwellMs": 0,
+        "bannerId": null,
+        "bannerName": null,
+        "bannerPosition": null,
+        "bannerCampaign": null,
+        "guestInteractions": 0,
+        "loggedInInteractions": 1,
+        "topSections": [],
+        "topProducts": []
+      },
+      {
+        "target": "BEST SELLERBuy One GramChocolate Peanut Butter - 500gDark chocolate + creamy peanut butter500g(4.9)₹549₹399",
         "score": 1,
         "totalInteractions": 1,
         "clickEvents": 1,
@@ -265,73 +369,91 @@
         "avgPageActiveMs": 129488.59068454482
       },
       "logged_in": {
-        "sessions": 6,
-        "events": 517,
-        "addToCart": 0,
-        "checkoutStarted": 0,
+        "sessions": 13,
+        "events": 1157,
+        "addToCart": 1,
+        "checkoutStarted": 1,
         "purchases": 0,
-        "clickEvents": 26,
+        "clickEvents": 44,
         "rageClicks": 2,
-        "avgSessionActiveTimeMs": 102563.16666666667,
-        "avgPageActiveMs": 13288.37984496124
+        "avgSessionActiveTimeMs": 104265.84615384616,
+        "avgPageActiveMs": 68840.33888888889
       }
     },
     "movementByEvent": {
       "button_hover_start": {
-        "total": 187,
+        "total": 334,
         "guest": 53,
-        "loggedIn": 134,
+        "loggedIn": 281,
         "avgDurationMs": 0
       },
       "button_hover_end": {
-        "total": 38,
+        "total": 62,
         "guest": 11,
-        "loggedIn": 27,
+        "loggedIn": 51,
         "avgDurationMs": 0
       },
       "button_hover_duration": {
-        "total": 38,
+        "total": 62,
         "guest": 11,
-        "loggedIn": 27,
-        "avgDurationMs": 933.56
+        "loggedIn": 51,
+        "avgDurationMs": 1008.36
       },
       "button_focus": {
-        "total": 39,
+        "total": 64,
         "guest": 10,
-        "loggedIn": 29,
+        "loggedIn": 54,
         "avgDurationMs": 0
       },
       "button_blur": {
-        "total": 42,
+        "total": 67,
         "guest": 11,
-        "loggedIn": 31,
-        "avgDurationMs": 4457
+        "loggedIn": 56,
+        "avgDurationMs": 1555.18
       }
     },
     "movementTargets": [
       {
+        "target": "Product Details",
+        "total": 54,
+        "guest": 0,
+        "loggedIn": 54
+      },
+      {
         "target": "Products",
-        "total": 41,
+        "total": 46,
         "guest": 20,
-        "loggedIn": 21
+        "loggedIn": 26
       },
       {
         "target": "11% OFFBuy One GramDark Chocolate Smooth Peanut butter with Added Whey (30% Protein) - 1 Kg26% Protein & Added Vitamin A&D1 kg(5)₹899₹799",
-        "total": 33,
+        "total": 40,
         "guest": 4,
-        "loggedIn": 29
+        "loggedIn": 36
       },
       {
         "target": "15% OFFBuy One GramDark Chocolate Smooth Peanut butter with Added Whey (30% Protein) - 500g26% Protein & Added Vitamin A&D500g(5)₹529₹449",
-        "total": 32,
+        "total": 33,
         "guest": 24,
-        "loggedIn": 8
+        "loggedIn": 9
       },
       {
-        "target": "Product Details",
-        "total": 29,
-        "guest": 0,
-        "loggedIn": 29
+        "target": "Buy Now",
+        "total": 28,
+        "guest": 10,
+        "loggedIn": 18
+      },
+      {
+        "target": "Home",
+        "total": 26,
+        "guest": 13,
+        "loggedIn": 13
+      },
+      {
+        "target": "Shipping & Trust",
+        "total": 26,
+        "guest": 3,
+        "loggedIn": 23
       },
       {
         "target": "product_demo_live",
@@ -340,22 +462,34 @@
         "loggedIn": 17
       },
       {
-        "target": "Home",
-        "total": 20,
-        "guest": 13,
-        "loggedIn": 7
-      },
-      {
         "target": "Description",
-        "total": 17,
+        "total": 22,
         "guest": 1,
-        "loggedIn": 16
+        "loggedIn": 21
       },
       {
-        "target": "Shipping & Trust",
-        "total": 16,
-        "guest": 3,
-        "loggedIn": 13
+        "target": "Close",
+        "total": 18,
+        "guest": 4,
+        "loggedIn": 14
+      },
+      {
+        "target": "BEST SELLERBuy One GramChocolate Peanut Butter - 500gDark chocolate + creamy peanut butter500g(4.9)₹549₹399",
+        "total": 18,
+        "guest": 0,
+        "loggedIn": 18
+      },
+      {
+        "target": "39% OFFBuy One GramChocolate Peanut Butter + Classic Crunchy Peanut Butter(0)₹1048₹649",
+        "total": 18,
+        "guest": 0,
+        "loggedIn": 18
+      },
+      {
+        "target": "Cart",
+        "total": 15,
+        "guest": 0,
+        "loggedIn": 15
       },
       {
         "target": "Next image",
@@ -364,22 +498,22 @@
         "loggedIn": 15
       },
       {
-        "target": "Cart",
+        "target": "Combo Packs",
+        "total": 14,
+        "guest": 0,
+        "loggedIn": 14
+      },
+      {
+        "target": "View all combos",
         "total": 13,
         "guest": 0,
         "loggedIn": 13
       },
       {
-        "target": "Buy Now",
+        "target": "1 Kg",
         "total": 13,
-        "guest": 10,
-        "loggedIn": 3
-      },
-      {
-        "target": "Close",
-        "total": 12,
-        "guest": 4,
-        "loggedIn": 8
+        "guest": 0,
+        "loggedIn": 13
       },
       {
         "target": "0.37 lb Travel Pack - 5 Sachets",
@@ -394,40 +528,10 @@
         "loggedIn": 10
       },
       {
-        "target": "Share product",
-        "total": 7,
-        "guest": 5,
-        "loggedIn": 2
-      },
-      {
-        "target": "2.2 lb",
-        "total": 5,
+        "target": "Add to Cart",
+        "total": 10,
         "guest": 0,
-        "loggedIn": 5
-      },
-      {
-        "target": "Membership",
-        "total": 5,
-        "guest": 2,
-        "loggedIn": 3
-      },
-      {
-        "target": "1 Kg",
-        "total": 5,
-        "guest": 0,
-        "loggedIn": 5
-      },
-      {
-        "target": "Wishlist",
-        "total": 5,
-        "guest": 0,
-        "loggedIn": 5
-      },
-      {
-        "target": "2.20 lb Refill Pack - 2.2 lb",
-        "total": 5,
-        "guest": 0,
-        "loggedIn": 5
+        "loggedIn": 10
       }
     ],
     "drop_off_rate": 100,
@@ -435,109 +539,249 @@
     "dropOffRateGuest": 100,
     "dropOffRateLoggedIn": 100,
     "from": "2026-04-18T00:00:00.000Z",
-    "to": "2026-04-19T15:33:00.000Z"
+    "to": "2026-04-19T18:55:36.646Z"
   },
   "performance": {
     "eventsPerMinute": [
       {
-        "minute": "2026-04-19 15:07",
+        "minute": "2026-04-19 17:55",
         "events": 1
       },
       {
-        "minute": "2026-04-19 15:08",
+        "minute": "2026-04-19 17:56",
         "events": 1
       },
       {
-        "minute": "2026-04-19 15:09",
+        "minute": "2026-04-19 17:57",
         "events": 1
       },
       {
-        "minute": "2026-04-19 15:10",
+        "minute": "2026-04-19 17:58",
         "events": 1
       },
       {
-        "minute": "2026-04-19 15:11",
+        "minute": "2026-04-19 17:59",
         "events": 1
       },
       {
-        "minute": "2026-04-19 15:12",
+        "minute": "2026-04-19 18:00",
         "events": 1
       },
       {
-        "minute": "2026-04-19 15:13",
+        "minute": "2026-04-19 18:01",
         "events": 1
       },
       {
-        "minute": "2026-04-19 15:14",
+        "minute": "2026-04-19 18:02",
         "events": 1
       },
       {
-        "minute": "2026-04-19 15:15",
+        "minute": "2026-04-19 18:03",
         "events": 1
       },
       {
-        "minute": "2026-04-19 15:16",
-        "events": 3
-      },
-      {
-        "minute": "2026-04-19 15:17",
-        "events": 3
-      },
-      {
-        "minute": "2026-04-19 15:22",
-        "events": 4
-      },
-      {
-        "minute": "2026-04-19 15:23",
-        "events": 2
-      },
-      {
-        "minute": "2026-04-19 15:24",
-        "events": 2
-      },
-      {
-        "minute": "2026-04-19 15:25",
-        "events": 2
-      },
-      {
-        "minute": "2026-04-19 15:26",
-        "events": 2
-      },
-      {
-        "minute": "2026-04-19 15:27",
-        "events": 2
-      },
-      {
-        "minute": "2026-04-19 15:28",
-        "events": 83
-      },
-      {
-        "minute": "2026-04-19 15:29",
+        "minute": "2026-04-19 18:04",
         "events": 1
       },
       {
-        "minute": "2026-04-19 15:30",
+        "minute": "2026-04-19 18:05",
         "events": 1
       },
       {
-        "minute": "2026-04-19 15:31",
-        "events": 3
+        "minute": "2026-04-19 18:06",
+        "events": 1
       },
       {
-        "minute": "2026-04-19 15:32",
-        "events": 5
+        "minute": "2026-04-19 18:07",
+        "events": 1
       },
       {
-        "minute": "2026-04-19 15:34",
-        "events": 3
+        "minute": "2026-04-19 18:08",
+        "events": 1
       },
       {
-        "minute": "2026-04-19 15:35",
-        "events": 69
+        "minute": "2026-04-19 18:09",
+        "events": 1
       },
       {
-        "minute": "2026-04-19 15:36",
-        "events": 33
+        "minute": "2026-04-19 18:10",
+        "events": 1
+      },
+      {
+        "minute": "2026-04-19 18:11",
+        "events": 1
+      },
+      {
+        "minute": "2026-04-19 18:12",
+        "events": 1
+      },
+      {
+        "minute": "2026-04-19 18:13",
+        "events": 1
+      },
+      {
+        "minute": "2026-04-19 18:14",
+        "events": 1
+      },
+      {
+        "minute": "2026-04-19 18:15",
+        "events": 1
+      },
+      {
+        "minute": "2026-04-19 18:16",
+        "events": 1
+      },
+      {
+        "minute": "2026-04-19 18:17",
+        "events": 1
+      },
+      {
+        "minute": "2026-04-19 18:18",
+        "events": 1
+      },
+      {
+        "minute": "2026-04-19 18:19",
+        "events": 1
+      },
+      {
+        "minute": "2026-04-19 18:20",
+        "events": 1
+      },
+      {
+        "minute": "2026-04-19 18:21",
+        "events": 1
+      },
+      {
+        "minute": "2026-04-19 18:22",
+        "events": 1
+      },
+      {
+        "minute": "2026-04-19 18:23",
+        "events": 1
+      },
+      {
+        "minute": "2026-04-19 18:24",
+        "events": 1
+      },
+      {
+        "minute": "2026-04-19 18:25",
+        "events": 1
+      },
+      {
+        "minute": "2026-04-19 18:26",
+        "events": 1
+      },
+      {
+        "minute": "2026-04-19 18:27",
+        "events": 1
+      },
+      {
+        "minute": "2026-04-19 18:28",
+        "events": 1
+      },
+      {
+        "minute": "2026-04-19 18:29",
+        "events": 1
+      },
+      {
+        "minute": "2026-04-19 18:30",
+        "events": 1
+      },
+      {
+        "minute": "2026-04-19 18:31",
+        "events": 1
+      },
+      {
+        "minute": "2026-04-19 18:32",
+        "events": 1
+      },
+      {
+        "minute": "2026-04-19 18:33",
+        "events": 1
+      },
+      {
+        "minute": "2026-04-19 18:34",
+        "events": 1
+      },
+      {
+        "minute": "2026-04-19 18:35",
+        "events": 1
+      },
+      {
+        "minute": "2026-04-19 18:36",
+        "events": 1
+      },
+      {
+        "minute": "2026-04-19 18:37",
+        "events": 1
+      },
+      {
+        "minute": "2026-04-19 18:38",
+        "events": 1
+      },
+      {
+        "minute": "2026-04-19 18:39",
+        "events": 1
+      },
+      {
+        "minute": "2026-04-19 18:40",
+        "events": 1
+      },
+      {
+        "minute": "2026-04-19 18:41",
+        "events": 1
+      },
+      {
+        "minute": "2026-04-19 18:42",
+        "events": 1
+      },
+      {
+        "minute": "2026-04-19 18:43",
+        "events": 1
+      },
+      {
+        "minute": "2026-04-19 18:44",
+        "events": 1
+      },
+      {
+        "minute": "2026-04-19 18:45",
+        "events": 1
+      },
+      {
+        "minute": "2026-04-19 18:46",
+        "events": 1
+      },
+      {
+        "minute": "2026-04-19 18:47",
+        "events": 1
+      },
+      {
+        "minute": "2026-04-19 18:48",
+        "events": 1
+      },
+      {
+        "minute": "2026-04-19 18:49",
+        "events": 1
+      },
+      {
+        "minute": "2026-04-19 18:50",
+        "events": 1
+      },
+      {
+        "minute": "2026-04-19 18:52",
+        "events": 1
+      },
+      {
+        "minute": "2026-04-19 18:53",
+        "events": 25
+      },
+      {
+        "minute": "2026-04-19 18:54",
+        "events": 8
+      },
+      {
+        "minute": "2026-04-19 18:55",
+        "events": 37
       }
     ],
     "pubSubBacklog": {
@@ -746,6 +990,139 @@
   "sessions": {
     "items": [
       {
+        "sessionId": "5db20c1a-549d-46c7-8916-ff5ddefcf297",
+        "userId": "6970b0799da902b64021249f",
+        "ipAddress": "::ffff:127.0.0.1",
+        "startedAt": "2026-04-19T18:55:28.526Z",
+        "endedAt": null,
+        "lastSeenAt": "2026-04-19T18:55:36.597Z",
+        "totalActiveTime": 0,
+        "isActive": true,
+        "pageViews": 3,
+        "eventCount": 33,
+        "maxScrollDepth": 52,
+        "deviceType": "mobile",
+        "browser": "Chrome",
+        "location": {
+          "country": "unknown",
+          "city": "unknown"
+        }
+      },
+      {
+        "sessionId": "f58c83b8-a074-4966-af39-85de45b4f939",
+        "userId": "6970b0799da902b64021249f",
+        "ipAddress": "::ffff:127.0.0.1",
+        "startedAt": "2026-04-19T16:08:05.132Z",
+        "endedAt": null,
+        "lastSeenAt": "2026-04-19T18:55:08.859Z",
+        "totalActiveTime": 205699,
+        "isActive": true,
+        "pageViews": 3,
+        "eventCount": 242,
+        "maxScrollDepth": 83,
+        "deviceType": "desktop",
+        "browser": "Chrome",
+        "location": {
+          "country": "unknown",
+          "city": "unknown"
+        }
+      },
+      {
+        "sessionId": "8f0a0414-9f14-4b53-bee0-4b1b69596357",
+        "userId": "6970b0799da902b64021249f",
+        "ipAddress": "::ffff:127.0.0.1",
+        "startedAt": "2026-04-19T16:01:40.531Z",
+        "endedAt": "2026-04-19T16:07:59.939Z",
+        "lastSeenAt": "2026-04-19T16:07:59.939Z",
+        "totalActiveTime": 119193,
+        "isActive": false,
+        "pageViews": 3,
+        "eventCount": 46,
+        "maxScrollDepth": 100,
+        "deviceType": "desktop",
+        "browser": "Chrome",
+        "location": {
+          "country": "unknown",
+          "city": "unknown"
+        }
+      },
+      {
+        "sessionId": "e0bdec2e-d594-4def-b070-0547c8153f1d",
+        "userId": "6970b0799da902b64021249f",
+        "ipAddress": "::ffff:127.0.0.1",
+        "startedAt": "2026-04-19T15:50:26.724Z",
+        "endedAt": "2026-04-19T16:01:36.787Z",
+        "lastSeenAt": "2026-04-19T16:01:37.007Z",
+        "totalActiveTime": 355286,
+        "isActive": true,
+        "pageViews": 3,
+        "eventCount": 133,
+        "maxScrollDepth": 98,
+        "deviceType": "desktop",
+        "browser": "Chrome",
+        "location": {
+          "country": "unknown",
+          "city": "unknown"
+        }
+      },
+      {
+        "sessionId": "d3e8b287-e7e9-4b4f-ab5e-409ad70f5823",
+        "userId": "6970b0799da902b64021249f",
+        "ipAddress": "::ffff:127.0.0.1",
+        "startedAt": "2026-04-19T15:50:10.377Z",
+        "endedAt": "2026-04-19T15:50:23.789Z",
+        "lastSeenAt": "2026-04-19T15:50:23.789Z",
+        "totalActiveTime": 0,
+        "isActive": false,
+        "pageViews": 2,
+        "eventCount": 7,
+        "maxScrollDepth": 0,
+        "deviceType": "desktop",
+        "browser": "Chrome",
+        "location": {
+          "country": "unknown",
+          "city": "unknown"
+        }
+      },
+      {
+        "sessionId": "401dec55-e312-4b00-8ea4-95d59a92aaf3",
+        "userId": "6970b0799da902b64021249f",
+        "ipAddress": "::ffff:127.0.0.1",
+        "startedAt": "2026-04-19T15:49:13.726Z",
+        "endedAt": "2026-04-19T15:50:07.176Z",
+        "lastSeenAt": "2026-04-19T15:50:07.176Z",
+        "totalActiveTime": 0,
+        "isActive": false,
+        "pageViews": 5,
+        "eventCount": 74,
+        "maxScrollDepth": 61,
+        "deviceType": "desktop",
+        "browser": "Chrome",
+        "location": {
+          "country": "unknown",
+          "city": "unknown"
+        }
+      },
+      {
+        "sessionId": "977f254c-6019-40ee-9e3d-fbf3c28177ab",
+        "userId": "6970b0799da902b64021249f",
+        "ipAddress": "::ffff:127.0.0.1",
+        "startedAt": "2026-04-19T15:34:34.331Z",
+        "endedAt": "2026-04-19T15:36:21.627Z",
+        "lastSeenAt": "2026-04-19T15:36:21.627Z",
+        "totalActiveTime": 59899,
+        "isActive": false,
+        "pageViews": 8,
+        "eventCount": 105,
+        "maxScrollDepth": 32,
+        "deviceType": "desktop",
+        "browser": "Chrome",
+        "location": {
+          "country": "unknown",
+          "city": "unknown"
+        }
+      },
+      {
         "sessionId": "c033ae46-aff8-47b6-be87-1c518bfb8011",
         "userId": "6970b0799da902b64021249f",
         "ipAddress": "::ffff:127.0.0.1",
@@ -915,150 +1292,17 @@
           "country": "unknown",
           "city": "unknown"
         }
-      },
-      {
-        "sessionId": "17ec3a2a-69a7-4371-aa03-0c2ff9767f35",
-        "userId": "6970b0799da902b64021249f",
-        "ipAddress": "::ffff:127.0.0.1",
-        "startedAt": "2026-04-18T20:01:27.555Z",
-        "endedAt": null,
-        "lastSeenAt": "2026-04-19T15:15:50.435Z",
-        "totalActiveTime": 0,
-        "isActive": true,
-        "pageViews": 2,
-        "eventCount": 55,
-        "maxScrollDepth": 23,
-        "deviceType": "desktop",
-        "browser": "Chrome",
-        "location": {
-          "country": "unknown",
-          "city": "unknown"
-        }
-      },
-      {
-        "sessionId": "453f2b65-a772-42b3-87b3-fc29c43a43b3",
-        "userId": "6970b0799da902b64021249f",
-        "ipAddress": "::ffff:127.0.0.1",
-        "startedAt": "2026-04-18T19:59:21.019Z",
-        "endedAt": "2026-04-18T20:01:24.648Z",
-        "lastSeenAt": "2026-04-18T20:01:24.648Z",
-        "totalActiveTime": 0,
-        "isActive": false,
-        "pageViews": 2,
-        "eventCount": 16,
-        "maxScrollDepth": 9,
-        "deviceType": "desktop",
-        "browser": "Chrome",
-        "location": {
-          "country": "unknown",
-          "city": "unknown"
-        }
-      },
-      {
-        "sessionId": "19aa4b57-73cc-4f29-89f3-925fc72e589e",
-        "userId": "6970b0799da902b64021249f",
-        "ipAddress": "::ffff:127.0.0.1",
-        "startedAt": "2026-04-18T19:52:37.982Z",
-        "endedAt": "2026-04-18T19:59:17.991Z",
-        "lastSeenAt": "2026-04-18T19:59:17.991Z",
-        "totalActiveTime": 208650,
-        "isActive": false,
-        "pageViews": 3,
-        "eventCount": 120,
-        "maxScrollDepth": 94,
-        "deviceType": "desktop",
-        "browser": "Chrome",
-        "location": {
-          "country": "unknown",
-          "city": "unknown"
-        }
-      },
-      {
-        "sessionId": "a8b96158-595d-410e-8042-bcbfd10e142d",
-        "userId": null,
-        "ipAddress": "::ffff:127.0.0.1",
-        "startedAt": "2026-04-18T19:47:39.049Z",
-        "endedAt": "2026-04-18T20:34:15.444Z",
-        "lastSeenAt": "2026-04-18T20:34:15.444Z",
-        "totalActiveTime": 239457,
-        "isActive": false,
-        "pageViews": 11,
-        "eventCount": 418,
-        "maxScrollDepth": 59,
-        "deviceType": "desktop",
-        "browser": "Chrome",
-        "location": {
-          "country": "unknown",
-          "city": "unknown"
-        }
-      },
-      {
-        "sessionId": "ab73ee3c-19b4-41bd-81cf-122e36385c71",
-        "userId": "6970b0799da902b64021249f",
-        "ipAddress": "::ffff:127.0.0.1",
-        "startedAt": "2026-04-18T19:47:20.619Z",
-        "endedAt": "2026-04-18T19:52:33.579Z",
-        "lastSeenAt": "2026-04-18T19:52:33.579Z",
-        "totalActiveTime": 269456,
-        "isActive": false,
-        "pageViews": 7,
-        "eventCount": 177,
-        "maxScrollDepth": 100,
-        "deviceType": "desktop",
-        "browser": "Chrome",
-        "location": {
-          "country": "unknown",
-          "city": "unknown"
-        }
-      },
-      {
-        "sessionId": "226bfcd7-45e7-4875-84b3-14fb541a6972",
-        "userId": null,
-        "ipAddress": "::ffff:127.0.0.1",
-        "startedAt": "2026-04-18T19:46:32.263Z",
-        "endedAt": "2026-04-18T19:47:36.530Z",
-        "lastSeenAt": "2026-04-18T19:47:36.530Z",
-        "totalActiveTime": 40006,
-        "isActive": false,
-        "pageViews": 1,
-        "eventCount": 27,
-        "maxScrollDepth": 33,
-        "deviceType": "desktop",
-        "browser": "Chrome",
-        "location": {
-          "country": "unknown",
-          "city": "unknown"
-        }
-      },
-      {
-        "sessionId": "92f6d111-e485-47d8-a988-6bf37b1e55bd",
-        "userId": "6970b0799da902b64021249f",
-        "ipAddress": "::ffff:127.0.0.1",
-        "startedAt": "2026-04-18T19:43:27.271Z",
-        "endedAt": "2026-04-18T19:47:16.830Z",
-        "lastSeenAt": "2026-04-18T19:47:16.830Z",
-        "totalActiveTime": 48205,
-        "isActive": false,
-        "pageViews": 2,
-        "eventCount": 36,
-        "maxScrollDepth": 0,
-        "deviceType": "desktop",
-        "browser": "Chrome",
-        "location": {
-          "country": "unknown",
-          "city": "unknown"
-        }
       }
     ],
     "filter": {
       "type": "all",
       "q": "",
       "from": "2026-04-18T00:00:00.000Z",
-      "to": "2026-04-19T15:33:00.000Z"
+      "to": "2026-04-19T18:55:36.646Z"
     },
     "pagination": {
       "page": 1,
-      "limit": 250,
+      "limit": 16,
       "total": 0,
       "totalPages": 1,
       "hasPrev": false,

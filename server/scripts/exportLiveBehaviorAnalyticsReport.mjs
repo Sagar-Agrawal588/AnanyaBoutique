@@ -1,12 +1,12 @@
+import dotenv from "dotenv";
 import fs from "fs";
 import fsPromises from "fs/promises";
 import path from "path";
 import PDFDocument from "pdfkit";
-import dotenv from "dotenv";
 import { fileURLToPath } from "url";
 import {
-  getBehaviorAnalyticsOverview,
   getBehaviorAnalyticsEngagement,
+  getBehaviorAnalyticsOverview,
   getBehaviorAnalyticsPerformance,
   getBehaviorSessions,
 } from "../controllers/adminAnalytics.controller.js";
@@ -22,7 +22,10 @@ const toNumber = (value, fallback = 0) => {
 };
 
 const formatDuration = (milliseconds) => {
-  const totalSeconds = Math.max(0, Math.floor(toNumber(milliseconds, 0) / 1000));
+  const totalSeconds = Math.max(
+    0,
+    Math.floor(toNumber(milliseconds, 0) / 1000),
+  );
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
@@ -30,6 +33,105 @@ const formatDuration = (milliseconds) => {
   if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
   if (minutes > 0) return `${minutes}m ${seconds}s`;
   return `${seconds}s`;
+};
+
+const formatPercent = (value, digits = 2) =>
+  `${toNumber(value).toFixed(digits)}%`;
+const formatCurrency = (value) =>
+  `INR ${formatCount(Math.round(toNumber(value, 0)))}`;
+
+const humanizeLabel = (value, fallback = "-") => {
+  const text = String(value || "").trim();
+  if (!text) return fallback;
+
+  return text
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+};
+
+const shortSessionId = (value) => {
+  const text = String(value || "").trim();
+  if (!text) return "-";
+  if (text.length <= 12) return text;
+  return `${text.slice(0, 12)}...`;
+};
+
+const buildBeginnerInsights = (report = {}) => {
+  const insights = [];
+
+  const totalSessions = toNumber(report?.overview?.totalSessions);
+  const activeUsers = toNumber(report?.overview?.activeUsers);
+  const bounceRate = toNumber(report?.overview?.bounceRate);
+  const conversionRate = toNumber(report?.overview?.conversionRate);
+  const revenue = toNumber(report?.overview?.revenue);
+  const guestSessions = toNumber(report?.sessions?.totals?.guest);
+  const loggedInSessions = toNumber(report?.sessions?.totals?.loggedIn);
+  const rageClicks = toNumber(report?.engagement?.rageClickCount);
+  const topButton = report?.engagement?.movementTargets?.[0];
+  const topAttractiveButton = report?.engagement?.attractiveButtons?.[0];
+
+  if (totalSessions > 0) {
+    insights.push(
+      `This report covers ${formatCount(totalSessions)} total visit sessions in the selected time range.`,
+    );
+  }
+
+  if (guestSessions >= loggedInSessions) {
+    insights.push(
+      `Most visits were from guests (not signed in): ${formatCount(guestSessions)} guest sessions vs ${formatCount(loggedInSessions)} logged-in sessions.`,
+    );
+  } else {
+    insights.push(
+      `Most visits were from logged-in users: ${formatCount(loggedInSessions)} logged-in sessions vs ${formatCount(guestSessions)} guest sessions.`,
+    );
+  }
+
+  if (bounceRate >= 60) {
+    insights.push(
+      `Bounce rate is ${formatPercent(bounceRate)}, which means many visitors are leaving quickly after a short interaction.`,
+    );
+  } else if (bounceRate > 0) {
+    insights.push(
+      `Bounce rate is ${formatPercent(bounceRate)}, showing that a fair portion of visitors continue beyond their first interaction.`,
+    );
+  }
+
+  if (conversionRate > 0) {
+    insights.push(
+      `Conversion rate is ${formatPercent(conversionRate)}. This is the share of sessions that ended in a purchase action.`,
+    );
+  }
+
+  if (activeUsers > 0) {
+    insights.push(
+      `At report time, ${formatCount(activeUsers)} users were active.`,
+    );
+  }
+
+  insights.push(
+    `Estimated revenue attributed in this window: ${formatCurrency(revenue)}.`,
+  );
+
+  if (topButton?.target) {
+    insights.push(
+      `Most interacted button/element: "${topButton.target}" with ${formatCount(topButton.total)} interactions.`,
+    );
+  }
+
+  if (topAttractiveButton?.target) {
+    insights.push(
+      `Most attention-grabbing button: "${topAttractiveButton.target}" with attention score ${toNumber(topAttractiveButton.score).toFixed(2)}.`,
+    );
+  }
+
+  if (rageClicks > 0) {
+    insights.push(
+      `Rage clicks detected: ${formatCount(rageClicks)}. Rage clicks are repeated rapid clicks, often indicating user frustration.`,
+    );
+  }
+
+  return insights;
 };
 
 const parseCliArgs = (argv = []) => {
@@ -103,7 +205,9 @@ const resolveDateRange = (fromArg, toArg) => {
   const to = toArg ? new Date(toArg) : now;
 
   if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
-    throw new Error("Invalid --from or --to date. Use ISO format, e.g. 2026-04-18T00:00:00.000Z");
+    throw new Error(
+      "Invalid --from or --to date. Use ISO format, e.g. 2026-04-18T00:00:00.000Z",
+    );
   }
 
   if (from > to) {
@@ -168,7 +272,10 @@ const writeList = (doc, rows = []) => {
 
   if (!normalizedRows.length) {
     ensureSpace(doc, 22);
-    doc.fontSize(11).fillColor("#475569").text("No data available.");
+    doc
+      .fontSize(11)
+      .fillColor("#475569")
+      .text("No data found for this time range.");
     return;
   }
 
@@ -193,7 +300,9 @@ const writePdf = async ({ report, outputPath }) => {
     doc
       .fontSize(22)
       .fillColor("#0f172a")
-      .text("Live Behavior Analytics Report", { align: "left" });
+      .text("Live Behavior Analytics Report (Beginner Friendly)", {
+        align: "left",
+      });
 
     doc.moveDown(0.4);
     doc
@@ -203,77 +312,96 @@ const writePdf = async ({ report, outputPath }) => {
       .text(`To: ${report.scope.to}`)
       .text(`Generated At: ${report.generatedAt}`);
 
-    writeSection(doc, "Overview");
+    writeSection(doc, "How To Read This Report");
     writeList(doc, [
-      `Total Sessions: ${formatCount(report.overview.totalSessions)}`,
-      `Active Users: ${formatCount(report.overview.activeUsers)}`,
-      `Average Active Time: ${formatDuration(report.overview.avgActiveTimeMs)}`,
-      `Bounce Rate: ${toNumber(report.overview.bounceRate).toFixed(2)}%`,
-      `Conversion Rate: ${toNumber(report.overview.conversionRate).toFixed(2)}%`,
-      `Revenue: INR ${formatCount(report.overview.revenue)}`,
+      "A session means one visitor journey (from entry to exit).",
+      "Guest means not signed in. Logged-in means signed in.",
+      "Bounce rate means visitors who leave quickly after minimal interaction.",
+      "Conversion rate means sessions that completed a purchase action.",
+      "Rage clicks means repeated fast clicks and may indicate confusion/frustration.",
+      "Use this report to understand what visitors did and where they struggled.",
     ]);
 
-    writeSection(doc, "Session Totals");
+    writeSection(doc, "Plain-English Highlights");
+    writeList(doc, buildBeginnerInsights(report));
+
+    writeSection(doc, "Quick Summary (What happened in this time range?)");
     writeList(doc, [
-      `All Sessions: ${formatCount(report.sessions?.totals?.all)}`,
-      `Guest Sessions: ${formatCount(report.sessions?.totals?.guest)}`,
-      `Logged-in Sessions: ${formatCount(report.sessions?.totals?.loggedIn)}`,
-      `Page: ${formatCount(report.sessions?.pagination?.page)} / ${formatCount(report.sessions?.pagination?.totalPages)}`,
+      `Total visit sessions: ${formatCount(report.overview.totalSessions)}`,
+      `Users active right now: ${formatCount(report.overview.activeUsers)}`,
+      `Average active time per session: ${formatDuration(report.overview.avgActiveTimeMs)}`,
+      `Bounce rate: ${formatPercent(report.overview.bounceRate)}`,
+      `Conversion rate: ${formatPercent(report.overview.conversionRate)}`,
+      `Revenue estimate: ${formatCurrency(report.overview.revenue)}`,
     ]);
 
-    writeSection(doc, "Session Explorer Rows");
+    writeSection(doc, "Who visited?");
+    writeList(doc, [
+      `All sessions: ${formatCount(report.sessions?.totals?.all)}`,
+      `Guest sessions (not signed in): ${formatCount(report.sessions?.totals?.guest)}`,
+      `Logged-in sessions: ${formatCount(report.sessions?.totals?.loggedIn)}`,
+      `Report page in dataset: ${formatCount(report.sessions?.pagination?.page)} of ${formatCount(report.sessions?.pagination?.totalPages)}`,
+    ]);
+
+    writeSection(doc, "Recent Visit Snapshots (simple view)");
     writeList(
       doc,
       (report.sessions?.items || []).map((item) => {
-        const type = item?.userId ? "Logged In" : "Guest";
-        return `${item.sessionId} | ${type} | user: ${item.userId || "-"} | ip: ${item.ipAddress || "-"} | events: ${formatCount(item.eventCount)} | views: ${formatCount(item.pageViews)} | active: ${formatDuration(item.totalActiveTime)} | started: ${item.startedAt || "-"}`;
+        const visitorType = item?.userId
+          ? "Logged-in visitor"
+          : "Guest visitor";
+        return `Session ${shortSessionId(item.sessionId)} | ${visitorType} | pages viewed: ${formatCount(item.pageViews)} | actions: ${formatCount(item.eventCount)} | active time: ${formatDuration(item.totalActiveTime)} | started: ${item.startedAt || "-"}`;
       }),
     );
 
-    writeSection(doc, "User Type Matrix");
+    writeSection(doc, "Guest vs Logged-in Activity");
     writeList(doc, [
-      `Guest: sessions ${formatCount(report.engagement?.userTypeMatrix?.guest?.sessions)} | events ${formatCount(report.engagement?.userTypeMatrix?.guest?.events)} | click ${formatCount(report.engagement?.userTypeMatrix?.guest?.clickEvents)} | rage ${formatCount(report.engagement?.userTypeMatrix?.guest?.rageClicks)}`,
-      `Logged In: sessions ${formatCount(report.engagement?.userTypeMatrix?.logged_in?.sessions)} | events ${formatCount(report.engagement?.userTypeMatrix?.logged_in?.events)} | click ${formatCount(report.engagement?.userTypeMatrix?.logged_in?.clickEvents)} | rage ${formatCount(report.engagement?.userTypeMatrix?.logged_in?.rageClicks)}`,
+      `Guest visitors: ${formatCount(report.engagement?.userTypeMatrix?.guest?.sessions)} sessions | ${formatCount(report.engagement?.userTypeMatrix?.guest?.events)} actions | ${formatCount(report.engagement?.userTypeMatrix?.guest?.clickEvents)} clicks | ${formatCount(report.engagement?.userTypeMatrix?.guest?.rageClicks)} rage clicks`,
+      `Logged-in visitors: ${formatCount(report.engagement?.userTypeMatrix?.logged_in?.sessions)} sessions | ${formatCount(report.engagement?.userTypeMatrix?.logged_in?.events)} actions | ${formatCount(report.engagement?.userTypeMatrix?.logged_in?.clickEvents)} clicks | ${formatCount(report.engagement?.userTypeMatrix?.logged_in?.rageClicks)} rage clicks`,
     ]);
 
-    writeSection(doc, "Movement By Event");
+    writeSection(doc, "What Actions People Performed Most");
     writeList(
       doc,
       Object.entries(report.engagement?.movementByEvent || {}).map(
         ([eventName, value]) =>
-          `${eventName} | total ${formatCount(value?.total)} | guest ${formatCount(value?.guest)} | logged-in ${formatCount(value?.loggedIn)} | avg duration ${formatDuration(value?.avgDurationMs)}`,
+          `${humanizeLabel(eventName)} | total: ${formatCount(value?.total)} | guest: ${formatCount(value?.guest)} | logged-in: ${formatCount(value?.loggedIn)} | avg active time: ${formatDuration(value?.avgDurationMs)}`,
       ),
     );
 
-    writeSection(doc, "Most Interacted Buttons");
+    writeSection(doc, "Most Clicked Buttons/Elements");
     writeList(
       doc,
       (report.engagement?.movementTargets || []).map(
-        (row) => `${row.target} | total ${formatCount(row.total)} | guest ${formatCount(row.guest)} | logged-in ${formatCount(row.loggedIn)}`,
+        (row) =>
+          `${row.target} | total interactions: ${formatCount(row.total)} | guest: ${formatCount(row.guest)} | logged-in: ${formatCount(row.loggedIn)}`,
       ),
     );
 
-    writeSection(doc, "Most Attractive Buttons");
+    writeSection(doc, "Buttons That Attracted Attention");
     writeList(
       doc,
       (report.engagement?.attractiveButtons || []).map(
-        (row) => `${row.target} | score ${toNumber(row.score).toFixed(2)} | interactions ${formatCount(row.totalInteractions)} | pre-click dwell ${formatDuration(row.avgPreClickDwellMs)} | rage ${formatCount(row.rageClicks)} | guest ${formatCount(row.guestEvents)} | logged-in ${formatCount(row.loggedInEvents)}`,
+        (row) =>
+          `${row.target} | attention score: ${toNumber(row.score).toFixed(2)} | interactions: ${formatCount(row.totalInteractions)} | avg wait before click: ${formatDuration(row.avgPreClickDwellMs)} | rage clicks: ${formatCount(row.rageClicks)} | guest: ${formatCount(row.guestEvents)} | logged-in: ${formatCount(row.loggedInEvents)}`,
       ),
     );
 
-    writeSection(doc, "Top Converting Buttons By Product");
+    writeSection(doc, "Buttons That Led To Purchases");
     writeList(
       doc,
       (report.engagement?.topConvertingButtonsByProduct || []).map(
-        (row) => `${row.target} | product ${row.productId} | clicked sessions ${formatCount(row.sessionsClicked)} | purchase sessions ${formatCount(row.sessionsWithPurchase)} | click->purchase ${toNumber(row.clickToPurchaseRate).toFixed(2)}%`,
+        (row) =>
+          `${row.target} | product: ${row.productId} | sessions with click: ${formatCount(row.sessionsClicked)} | sessions with purchase: ${formatCount(row.sessionsWithPurchase)} | click-to-purchase: ${formatPercent(row.clickToPurchaseRate)}`,
       ),
     );
 
-    writeSection(doc, "Section Engagement (Top)");
+    writeSection(doc, "Sections Where Visitors Spent Time");
     writeList(
       doc,
       (report.engagement?.sectionEngagementHeatmap || []).map(
-        (row) => `${row.sectionName} on ${row.pageUrl || "-"} | views ${formatCount(row.views)} | avg duration ${formatDuration(row.avgDurationMs)}`,
+        (row) =>
+          `${row.sectionName} on ${row.pageUrl || "-"} | views: ${formatCount(row.views)} | avg time spent: ${formatDuration(row.avgDurationMs)}`,
       ),
     );
 
@@ -281,23 +409,24 @@ const writePdf = async ({ report, outputPath }) => {
     writeList(
       doc,
       (report.engagement?.bannerPerformance || []).map(
-        (row) => `${row.target || row.bannerName || row.bannerId || "banner"} | interactions ${formatCount(row.totalInteractions)} | clicks ${formatCount(row.clicks)} | guest ${formatCount(row.guestClicks)} | logged-in ${formatCount(row.loggedInClicks)}`,
+        (row) =>
+          `${row.target || row.bannerName || row.bannerId || "banner"} | interactions: ${formatCount(row.totalInteractions)} | clicks: ${formatCount(row.clicks)} | guest clicks: ${formatCount(row.guestClicks)} | logged-in clicks: ${formatCount(row.loggedInClicks)}`,
       ),
     );
 
-    writeSection(doc, "Performance");
+    writeSection(doc, "System Health Snapshot");
     writeList(doc, [
-      `Worker total: ${formatCount(report.performance?.workerHealth?.totalWorkers)}`,
-      `Worker healthy: ${formatCount(report.performance?.workerHealth?.healthyWorkers)}`,
-      `Worker unhealthy: ${formatCount(report.performance?.workerHealth?.unhealthyWorkers)}`,
-      `Estimated backlog: ${formatCount(report.performance?.pubSubBacklog?.estimatedMessages)}`,
+      `Total background workers: ${formatCount(report.performance?.workerHealth?.totalWorkers)}`,
+      `Healthy workers: ${formatCount(report.performance?.workerHealth?.healthyWorkers)}`,
+      `Unhealthy workers: ${formatCount(report.performance?.workerHealth?.unhealthyWorkers)}`,
+      `Estimated event backlog: ${formatCount(report.performance?.pubSubBacklog?.estimatedMessages)}`,
     ]);
 
-    writeSection(doc, "Events Per Minute (Last 60 Minutes)");
+    writeSection(doc, "Activity Trend By Minute (Last 60 Minutes)");
     writeList(
       doc,
       (report.performance?.eventsPerMinute || []).map(
-        (row) => `${row.minute}: ${formatCount(row.events)} events`,
+        (row) => `${row.minute}: ${formatCount(row.events)} tracked actions`,
       ),
     );
 
@@ -355,7 +484,8 @@ const main = async () => {
 
   if (failed) {
     throw new Error(
-      failed?.payload?.message || "Failed to fetch one or more behavior analytics datasets",
+      failed?.payload?.message ||
+        "Failed to fetch one or more behavior analytics datasets",
     );
   }
 

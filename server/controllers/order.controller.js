@@ -100,6 +100,7 @@ import {
   generateInvoicePdf,
   getAbsolutePathFromStoredInvoicePath,
 } from "../utils/generateInvoicePdf.js";
+import isPrivilegedAdminRole from "../utils/isPrivilegedAdminRole.js";
 import {
   syncOrderStatus,
   syncOrderToFirestore,
@@ -120,7 +121,6 @@ import {
   updateInfluencerStats,
 } from "./influencer.controller.js";
 import { sendOrderUpdateNotification } from "./notification.controller.js";
-import isPrivilegedAdminRole from "../utils/isPrivilegedAdminRole.js";
 
 // ==================== PAYMENT PROVIDER CONFIGURATION ====================
 
@@ -4106,6 +4106,14 @@ export const getAllOrders = asyncHandler(async (req, res) => {
         { paymentId: { $regex: normalizedSearch, $options: "i" } },
         { paytmTransactionId: { $regex: normalizedSearch, $options: "i" } },
         { paytmOrderId: { $regex: normalizedSearch, $options: "i" } },
+        { phonepeTransactionId: { $regex: normalizedSearch, $options: "i" } },
+        {
+          phonepeMerchantOrderId: {
+            $regex: normalizedSearch,
+            $options: "i",
+          },
+        },
+        { phonepeOrderId: { $regex: normalizedSearch, $options: "i" } },
         { orderNumber: { $regex: normalizedSearch, $options: "i" } },
         { displayOrderId: { $regex: normalizedSearch, $options: "i" } },
         { "billingDetails.email": { $regex: normalizedSearch, $options: "i" } },

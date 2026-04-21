@@ -44,6 +44,13 @@ const PENDING_ORDER_STATUSES = new Set([
 ]);
 
 const PENDING_PAYMENT_STATUSES = new Set(["pending", "pending_payment"]);
+const SETTLED_PAYMENT_STATUSES = new Set([
+  "paid",
+  "confirmed",
+  "captured",
+  "success",
+  "successful",
+]);
 
 const normalizeOrderStatus = (status) => {
   if (!status) return "pending";
@@ -64,22 +71,105 @@ const formatStatusLabel = (status, fallback = "Pending") => {
 const isGatewayMerchantReference = (value) =>
   /^BOG_/i.test(String(value || "").trim());
 
-const resolveGatewayTransactionReference = (order = {}) => {
+const getValueByPath = (source = {}, path = "") => {
+  if (!source || typeof source !== "object" || !path) return null;
+  return path
+    .split(".")
+    .reduce(
+      (current, key) =>
+        current && typeof current === "object" ? current[key] : undefined,
+      source,
+    );
+};
+
+const normalizePaymentFieldValue = (value) => String(value || "").trim();
+
+const isNumericReference = (value) => /^\d+$/.test(String(value || ""));
+const isLikelyUpiRrn = (value) => /^\d{12}$/.test(String(value || ""));
+
+const resolveUpiRrn = (order = {}) => {
+  const rrnCandidatePaths = [
+    "rrn",
+    "utr",
+    "upi_ref",
+    "bank_ref",
+    "upiReferenceNo",
+    "upiReferenceNumber",
+    "bankReference",
+    "bankReferenceNo",
+    "payment.rrn",
+    "payment.utr",
+    "payment.upi_ref",
+    "payment.bank_ref",
+    "paymentDetails.rrn",
+    "paymentDetails.utr",
+    "gateway.rrn",
+    "gateway.utr",
+  ];
+
+  let numericFallback = "";
+
+  for (const path of rrnCandidatePaths) {
+    const candidate = normalizePaymentFieldValue(getValueByPath(order, path));
+    if (!candidate || !isNumericReference(candidate)) continue;
+    if (isLikelyUpiRrn(candidate)) return candidate;
+    if (!numericFallback) numericFallback = candidate;
+  }
+
+  return numericFallback;
+};
+
+const resolveTransactionId = (order = {}, rrnValue = "") => {
+  const transactionCandidatePaths = [
+    "transactionId",
+    "txnId",
+    "gatewayTxnId",
+    "phonepeTransactionId",
+    "paytmTransactionId",
+    "providerReferenceId",
+    "upiReferenceNumber",
+    "payment.transactionId",
+    "payment.txnId",
+    "paymentDetails.transactionId",
+    "paymentDetails.txnId",
+    "gateway.transactionId",
+    "gateway.txnId",
+  ];
+
+  for (const path of transactionCandidatePaths) {
+    const candidate = normalizePaymentFieldValue(getValueByPath(order, path));
+    if (!candidate) continue;
+    if (rrnValue && candidate === rrnValue) continue;
+    return candidate;
+  }
+
   const directReference = [
-    order?.paytmTransactionId,
-    order?.phonepeTransactionId,
+    order?.transactionId,
+    order?.txnId,
+    order?.gatewayTxnId,
   ]
-    .map((value) => String(value || "").trim())
-    .find(Boolean);
+    .map((value) => normalizePaymentFieldValue(value))
+    .find((value) => Boolean(value) && value !== rrnValue);
 
-  if (directReference) return directReference;
+  if (directReference) {
+    return directReference;
+  }
 
-  const fallbackPaymentId = String(order?.paymentId || "").trim();
-  if (fallbackPaymentId && !isGatewayMerchantReference(fallbackPaymentId)) {
+  const fallbackPaymentId = normalizePaymentFieldValue(order?.paymentId);
+  if (
+    fallbackPaymentId &&
+    !isGatewayMerchantReference(fallbackPaymentId) &&
+    fallbackPaymentId !== rrnValue
+  ) {
     return fallbackPaymentId;
   }
 
   return "";
+};
+
+const resolveGatewayTransactionReference = (order = {}) => {
+  const rrnValue = resolveUpiRrn(order);
+  return resolveTransactionId(order, rrnValue);
 };
 
 const resolveMerchantReference = (order = {}) => {
@@ -95,6 +185,20 @@ const resolveMerchantReference = (order = {}) => {
 
 const resolvePaymentReference = (order = {}) => {
   return resolveGatewayTransactionReference(order);
+};
+
+const hasSettledPayment = (order = {}) => {
+  const normalizedPaymentStatus = normalizeOrderStatus(
+    order?.payment_status || order?.paymentStatus,
+  );
+
+  if (SETTLED_PAYMENT_STATUSES.has(normalizedPaymentStatus)) {
+    return true;
+  }
+
+  return Boolean(
+    order?.paymentCompletedAt || order?.confirmed_at || order?.confirmedAt,
+  );
 };
 
 const resolvePaymentProviderLabel = (order = {}) => {
@@ -390,12 +494,23 @@ const OrderRow = ({ order, index, token, onStatusUpdate }) => {
   const [orderReviews, setOrderReviews] = useState([]);
   const [reviewsLoading, setReviewsLoading] = useState(false);
   const trackingUrl = resolveTrackingUrl(order);
-  const paymentReference =
-    resolvePaymentReference(order) || "Pending / Not issued yet";
+  const paymentSettled = hasSettledPayment(order);
+  const upiRrn = paymentSettled ? resolveUpiRrn(order) : "";
+  const transactionId = paymentSettled
+    ? resolveTransactionId(order, upiRrn)
+    : "";
+  const paymentReference = paymentSettled
+    ? resolvePaymentReference(order) ||
+      upiRrn ||
+      transactionId ||
+      "Pending / Not issued yet"
+    : "Pending / Not issued yet";
   const paymentProviderLabel = resolvePaymentProviderLabel(order);
   const merchantReference = resolveMerchantReference(order);
   const gatewayOrderReference = String(order?.phonepeOrderId || "").trim();
-  const gatewayTransactionReference = resolveGatewayTransactionReference(order);
+  const gatewayTransactionReference = paymentSettled
+    ? resolveGatewayTransactionReference(order) || "Pending / Not issued yet"
+    : "Pending / Not issued yet";
 
   const canDownloadInvoice =
     normalizeOrderStatus(order?.payment_status) === "paid" ||
@@ -881,6 +996,47 @@ const OrderRow = ({ order, index, token, onStatusUpdate }) => {
                     {paymentReference}
                   </span>
                 </div>
+                {upiRrn ? (
+                  <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <span
+                        className="font-semibold text-gray-700"
+                        title="RRN is a bank-level reference used for tracking UPI payments"
+                      >
+                        UPI RRN:
+                      </span>{" "}
+                      <span className="text-gray-800 break-all">{upiRrn}</span>
+                    </div>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={() => copyToClipboard(upiRrn, "UPI RRN")}
+                    >
+                      Copy
+                    </Button>
+                  </div>
+                ) : null}
+                {transactionId ? (
+                  <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <span className="font-semibold text-gray-700">
+                        Transaction ID:
+                      </span>{" "}
+                      <span className="text-gray-800 break-all">
+                        {transactionId}
+                      </span>
+                    </div>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={() =>
+                        copyToClipboard(transactionId, "Transaction ID")
+                      }
+                    >
+                      Copy
+                    </Button>
+                  </div>
+                ) : null}
                 <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 flex items-center justify-between gap-2">
                   <div className="min-w-0">
                     <span className="font-semibold text-gray-700">

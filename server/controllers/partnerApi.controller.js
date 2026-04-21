@@ -1332,12 +1332,10 @@ const buildPartnerCredentialPdfBuffer = ({
     doc
       .fillColor("#334155")
       .text("Website: ", startX, doc.y, { continued: true });
-    doc
-      .fillColor("#1d4ed8")
-      .text(websiteUrl || SITE_URL, {
-        link: websiteUrl || SITE_URL,
-        underline: true,
-      });
+    doc.fillColor("#1d4ed8").text(websiteUrl || SITE_URL, {
+      link: websiteUrl || SITE_URL,
+      underline: true,
+    });
     doc.fillColor("#334155");
 
     doc.moveDown(0.8);

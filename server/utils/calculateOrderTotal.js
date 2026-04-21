@@ -1,10 +1,32 @@
-import {
-  resolveOrderAwb,
-  resolveOrderTrackingUrl,
-} from "./orderTracking.js";
+import { resolveOrderAwb, resolveOrderTrackingUrl } from "./orderTracking.js";
 
 const round2 = (value) =>
   Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
+
+const isGatewayMerchantReference = (value) =>
+  /^BOG_/i.test(String(value || "").trim());
+
+const resolveUpiReferenceNumber = (order = {}) => {
+  const directReference = [
+    order?.upiReferenceNumber,
+    order?.phonepeTransactionId,
+    order?.paytmTransactionId,
+    order?.upiReferenceNo,
+    order?.utr,
+    order?.rrn,
+  ]
+    .map((value) => String(value || "").trim())
+    .find(Boolean);
+
+  if (directReference) return directReference;
+
+  const fallbackPaymentId = String(order?.paymentId || "").trim();
+  if (fallbackPaymentId && !isGatewayMerchantReference(fallbackPaymentId)) {
+    return fallbackPaymentId;
+  }
+
+  return null;
+};
 
 const toSafeNumber = (value) => {
   const parsed = Number(value);
@@ -169,6 +191,7 @@ export const normalizeOrderForResponse = (order) => {
     ...base,
     pricing,
     displayOrderId: resolveOrderDisplayId(base),
+    upiReferenceNumber: resolveUpiReferenceNumber(base),
     // Keep legacy consumers stable while normalizing values.
     subtotal: pricing.subtotal,
     tax: pricing.tax,
