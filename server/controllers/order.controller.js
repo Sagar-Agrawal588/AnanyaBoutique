@@ -121,6 +121,7 @@ import {
   updateInfluencerStats,
 } from "./influencer.controller.js";
 import { sendOrderUpdateNotification } from "./notification.controller.js";
+import isPrivilegedAdminRole from "../utils/isPrivilegedAdminRole.js";
 
 // ==================== PAYMENT PROVIDER CONFIGURATION ====================
 

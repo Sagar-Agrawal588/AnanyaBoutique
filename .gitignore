@@ -98,6 +98,10 @@ github-deployer-key.json
 server/invoices/
 test-artifacts/
 tmp/order-report-preview-*.xlsx
+output/last-*.pdf
+output/live-behavior-analytics-*.json
+output/live-behavior-analytics-*.pdf
+output/monthly-traffic-click-report-*.pdf
 
 # =====================================
 # Generated API test artifacts

@@ -23,6 +23,7 @@ const toBoolean = (value, fallback = false) => {
 };
 
 export const resolveRateLimitIp = (req) => {
+  const expressResolvedIp = String(req?.ip || "").trim();
   const forwardedFor = req?.headers?.["x-forwarded-for"];
   const realIp = req?.headers?.["x-real-ip"];
 
@@ -31,9 +32,10 @@ export const resolveRateLimitIp = (req) => {
   const normalizedRealIp = typeof realIp === "string" ? realIp.trim() : "";
 
   return (
+    expressResolvedIp ||
     firstForwardedIp ||
     normalizedRealIp ||
-    String(req?.ip || req?.socket?.remoteAddress || "").trim() ||
+    String(req?.socket?.remoteAddress || "").trim() ||
     "127.0.0.1"
   );
 };
