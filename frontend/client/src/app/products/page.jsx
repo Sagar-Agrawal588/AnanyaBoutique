@@ -1,10 +1,25 @@
 "use client";
 
 import ProductItem from "@/components/ProductItem";
+import {
+    subscribeToStockConnection,
+    subscribeToStockUpdates,
+} from "@/realtime/stockSocket";
 import { fetchDataFromApi } from "@/utils/api";
+import { applyStockUpdateToProductCollection } from "@/utils/stockRealtime";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import {
+    Suspense,
+    startTransition,
+    useCallback,
+    useEffect,
+    useRef,
+    useState,
+} from "react";
 import { FiSearch } from "react-icons/fi";
+
+const PRODUCTS_PER_PAGE = 24;
+const FALLBACK_POLL_INTERVAL_MS = 45000;
 
 const ProductsGridSkeleton = () => (
     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
@@ -24,6 +39,7 @@ function ProductsPageContent() {
     const searchParams = useSearchParams();
     const router = useRouter();
     const loaderRef = useRef(null);
+    const fallbackPollRef = useRef(null);
 
     // Get search term from URL
     const urlSearchTerm = searchParams.get("search") || searchParams.get("q") || "";
@@ -99,7 +115,10 @@ function ProductsPageContent() {
         return () => clearTimeout(timeoutId);
     }, [searchTerm, searchParams, router, urlSearchTerm]);
 
-    const queryString = useMemo(() => {
+    const buildQueryString = useCallback((
+        targetPage = 1,
+        limitOverride = PRODUCTS_PER_PAGE,
+    ) => {
         const queryParams = new URLSearchParams();
         if (urlSearchTerm) queryParams.set("search", urlSearchTerm);
         if (urlCategory) queryParams.set("category", urlCategory);
@@ -109,11 +128,10 @@ function ProductsPageContent() {
         if (urlMinDiscount) queryParams.set("minDiscount", urlMinDiscount);
         queryParams.set("separateVariants", "true");
         queryParams.set("includeCombos", "true");
-        queryParams.set("limit", "24");
-        queryParams.set("page", String(page));
+        queryParams.set("limit", String(limitOverride));
+        queryParams.set("page", String(targetPage));
         return queryParams.toString();
     }, [
-        page,
         urlSearchTerm,
         urlCategory,
         urlBestSeller,
@@ -122,52 +140,131 @@ function ProductsPageContent() {
         urlMinDiscount,
     ]);
 
-    useEffect(() => {
-        const loadProducts = async () => {
-            if (page === 1) setLoading(true);
-            setFetchError("");
-            try {
-                const query = queryString ? `?${queryString}` : "";
-                const res = await fetchDataFromApi(`/api/products${query}`);
-                if (res?.error) {
-                    throw new Error(res?.message || "Failed to load products");
-                }
-
-                // Handle various API response structures (arrays, nested products, nested data)
-                const productsData = Array.isArray(res) ? res : (res?.products || res?.data || res?.items || []);
-                // Safety guard: even if API payload changes, keep exclusive items out of public products page.
-                const normalized = productsData.filter((product) => product?.isExclusive !== true);
-
-                setProducts((prev) => {
-                    const merged = page === 1 ? normalized : [...prev, ...normalized];
-                    const seen = new Set();
-                    return merged.filter((product) => {
-                        const id = String(product?._id || product?.id || product?.slug || "").trim();
-                        if (!id || seen.has(id)) return false;
-                        seen.add(id);
-                        return true;
-                    });
-                });
-
-                setTotalProducts(Number(res?.totalProducts || normalized.length));
-                setPages(Math.max(Number(res?.totalPages || 1), 1));
-            } catch (error) {
-                console.warn("Error loading products:", error?.message || error);
-                if (page === 1) {
-                    setProducts([]);
-                    setPages(1);
-                    setTotalProducts(0);
-                }
-                setFetchError(
-                    error?.message ||
-                        "Unable to load products right now. Please check API server connectivity.",
-                );
-            } finally {
-                if (page === 1) setLoading(false);
+    const loadProducts = useCallback(async ({
+        targetPage = 1,
+        replace = true,
+        limitOverride = PRODUCTS_PER_PAGE,
+        showLoader = targetPage === 1,
+        preserveCurrent = false,
+    } = {}) => {
+        if (showLoader && targetPage === 1) setLoading(true);
+        setFetchError("");
+        try {
+            const queryString = buildQueryString(targetPage, limitOverride);
+            const query = queryString ? `?${queryString}` : "";
+            const res = await fetchDataFromApi(`/api/products${query}`, {
+                skipCache: true,
+            });
+            if (res?.error) {
+                throw new Error(res?.message || "Failed to load products");
             }
+
+            const productsData = Array.isArray(res) ? res : (res?.products || res?.data || res?.items || []);
+            const normalized = productsData.filter((product) => product?.isExclusive !== true);
+
+            setProducts((prev) => {
+                const merged = replace ? normalized : [...prev, ...normalized];
+                const seen = new Set();
+                return merged.filter((product) => {
+                    const id = String(product?._id || product?.id || product?.slug || "").trim();
+                    if (!id || seen.has(id)) return false;
+                    seen.add(id);
+                    return true;
+                });
+            });
+
+            const resolvedTotalProducts = Number(
+                res?.totalProducts || normalized.length,
+            );
+            setTotalProducts(resolvedTotalProducts);
+            setPages(
+                Math.max(
+                    Math.ceil(resolvedTotalProducts / PRODUCTS_PER_PAGE) || 1,
+                    1,
+                ),
+            );
+        } catch (error) {
+            console.warn("Error loading products:", error?.message || error);
+            if (targetPage === 1 && !preserveCurrent) {
+                setProducts([]);
+                setPages(1);
+                setTotalProducts(0);
+            }
+            setFetchError(
+                error?.message ||
+                    "Unable to load products right now. Please check API server connectivity.",
+            );
+        } finally {
+            if (showLoader && targetPage === 1) setLoading(false);
+        }
+    }, [buildQueryString]);
+
+    const syncLoadedProducts = useCallback(() => {
+        const loadedItemLimit = Math.max(page, 1) * PRODUCTS_PER_PAGE;
+        return loadProducts({
+            targetPage: 1,
+            replace: true,
+            limitOverride: loadedItemLimit,
+            showLoader: false,
+            preserveCurrent: true,
+        });
+    }, [loadProducts, page]);
+
+    const stopFallbackPolling = useCallback(() => {
+        if (fallbackPollRef.current && typeof window !== "undefined") {
+            window.clearInterval(fallbackPollRef.current);
+        }
+        fallbackPollRef.current = null;
+    }, []);
+
+    const startFallbackPolling = useCallback(() => {
+        if (typeof window === "undefined" || fallbackPollRef.current) {
+            return;
+        }
+
+        fallbackPollRef.current = window.setInterval(() => {
+            void syncLoadedProducts();
+        }, FALLBACK_POLL_INTERVAL_MS);
+    }, [syncLoadedProducts]);
+
+    useEffect(() => {
+        void loadProducts({ targetPage: page, replace: page === 1 });
+    }, [loadProducts, page]);
+
+    useEffect(() => () => {
+        stopFallbackPolling();
+    }, [stopFallbackPolling]);
+
+    useEffect(() => {
+        const unsubscribeStock = subscribeToStockUpdates((payload) => {
+            startTransition(() => {
+                setProducts((prev) =>
+                    applyStockUpdateToProductCollection(prev, payload),
+                );
+            });
+        });
+
+        const unsubscribeConnection = subscribeToStockConnection((event) => {
+            if (event?.type === "fallback_active") {
+                startFallbackPolling();
+                return;
+            }
+
+            if (event?.type !== "connected" && event?.type !== "reconnected") {
+                return;
+            }
+
+            stopFallbackPolling();
+            if (event?.type === "reconnected") {
+                void syncLoadedProducts();
+            }
+        });
+
+        return () => {
+            unsubscribeStock();
+            unsubscribeConnection();
         };
-        loadProducts();
-    }, [page, queryString]);
+    }, [startFallbackPolling, stopFallbackPolling, syncLoadedProducts]);
 
     useEffect(() => {
         setPage(1);
@@ -249,7 +346,11 @@ function ProductsPageContent() {
                         </p>
                         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 md:gap-8">
                             {products.map((product) => (
-                                <ProductItem key={product._id} product={product} />
+                                <ProductItem
+                                    key={product._id}
+                                    product={product}
+                                    realtimeManagedExternally
+                                />
                             ))}
                         </div>
                         <div ref={loaderRef} />

@@ -10,6 +10,8 @@ import UserModel from "../models/user.model.js";
 import { emitLiveOfferNotification } from "../realtime/offerEvents.js";
 import { getIO } from "../realtime/socket.js";
 import { captureCrmTouchpointSafely } from "../services/crm/crmTracking.service.js";
+import { createStockNotificationSubscription } from "../services/stockNotification.service.js";
+import { AppError } from "../utils/errorHandler.js";
 
 const isProduction = process.env.NODE_ENV === "production";
 // Debug-only logging to keep production output clean
@@ -456,6 +458,72 @@ export const unregisterToken = async (req, res) => {
       error: true,
       success: false,
       message: "Failed to unregister token",
+    });
+  }
+};
+
+export const createStockNotification = async (req, res) => {
+  try {
+    const productId = String(req.body?.productId || "").trim();
+    const variantId = String(req.body?.variantId || "").trim();
+    const userId = String(req.user || "").trim();
+    let email = String(req.body?.email || "").trim();
+
+    if (!productId) {
+      throw new AppError("MISSING_FIELD", {
+        fieldName: "productId",
+        message: "Product is required",
+      });
+    }
+
+    if (userId) {
+      const user = await UserModel.findById(userId).select("email").lean();
+      email = String(user?.email || "").trim();
+    }
+
+    const result = await createStockNotificationSubscription({
+      productId,
+      variantId: variantId || null,
+      userId: userId || null,
+      email,
+    });
+
+    if (result.status === "available") {
+      return res.status(200).json({
+        error: false,
+        success: true,
+        message: result.message,
+        data: {
+          requested: false,
+          available: true,
+        },
+      });
+    }
+
+    return res.status(result.status === "created" ? 201 : 200).json({
+      error: false,
+      success: true,
+      message: result.message,
+      data: {
+        requested: true,
+        alreadyRegistered: result.status === "already_registered",
+        notificationId: result.notification?._id || null,
+        cooldownRemainingMs: Number(result?.cooldownRemainingMs || 0),
+      },
+    });
+  } catch (error) {
+    const statusCode =
+      error instanceof AppError ? Number(error.status || 400) : 500;
+    const message =
+      error instanceof AppError
+        ? error.message
+        : error?.message || "Failed to create stock notification";
+
+    return res.status(statusCode).json({
+      error: true,
+      success: false,
+      code: error instanceof AppError ? error.code : "INTERNAL_ERROR",
+      message,
     });
   }
 };

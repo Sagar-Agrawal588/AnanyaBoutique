@@ -8,6 +8,12 @@ import {
   getCartUpsellProductSuggestion,
   getFrequentlyBoughtTogether,
 } from "../services/combos/comboRecommendation.service.js";
+import {
+  emitStockUpdatesForProductSnapshotChange,
+  getLatestStockSyncVersion,
+} from "../realtime/stockEvents.js";
+import { triggerBackInStockNotificationsIfRecovered } from "../services/inventory.service.js";
+import { getPendingStockNotificationKeySet } from "../services/stockNotification.service.js";
 import { normalizeProductPageConfig } from "../utils/productPageConfig.js";
 
 const isProduction = process.env.NODE_ENV === "production";
@@ -55,6 +61,166 @@ const normalizeStockValue = (value, fallback = 0) => {
     return Math.max(Number(fallback || 0), 0);
   }
   return parsed;
+};
+
+const toPlainObject = (value) =>
+  value && typeof value.toObject === "function" ? value.toObject() : value;
+
+const isInventoryTracked = (value) => {
+  if (value?.track_inventory === false || value?.trackInventory === false) {
+    return false;
+  }
+  return true;
+};
+
+const attachAvailabilityToVariant = (
+  variant,
+  { trackInventory = true, productId = null } = {},
+) => {
+  const plainVariant = toPlainObject(variant) || {};
+  const resolvedProductId = String(productId || "").trim();
+  const resolvedVariantId = String(plainVariant?._id || plainVariant?.id || "").trim();
+  const stockQuantity = normalizeStockValue(
+    plainVariant?.stock_quantity ?? plainVariant?.stock,
+    0,
+  );
+  const reservedQuantity = normalizeStockValue(
+    plainVariant?.reserved_quantity,
+    0,
+  );
+  const availableQuantity = trackInventory
+    ? Math.max(stockQuantity - reservedQuantity, 0)
+    : Number.MAX_SAFE_INTEGER;
+
+  return {
+    ...plainVariant,
+    stock: stockQuantity,
+    stock_quantity: stockQuantity,
+    reserved_quantity: reservedQuantity,
+    available_quantity: availableQuantity,
+    available_stock: availableQuantity,
+    availableStock: availableQuantity,
+    inStock: !trackInventory || availableQuantity > 0,
+    stock_sync_version: getLatestStockSyncVersion({
+      productId: resolvedProductId,
+      variantId: resolvedVariantId || null,
+    }),
+  };
+};
+
+const attachAvailabilityToProduct = (product) => {
+  const plainProduct = toPlainObject(product) || {};
+  const resolvedProductId = String(
+    plainProduct?.parentProductId || plainProduct?._id || plainProduct?.id || "",
+  ).trim();
+  const resolvedVariantId = String(plainProduct?.variantId || "").trim();
+  const trackInventory = isInventoryTracked(plainProduct);
+  const variants = Array.isArray(plainProduct?.variants)
+    ? plainProduct.variants.map((variant) =>
+        attachAvailabilityToVariant(variant, {
+          trackInventory,
+          productId: resolvedProductId,
+        }),
+      )
+    : [];
+  const productStockSyncVersion = getLatestStockSyncVersion({
+    productId: resolvedProductId,
+  });
+  const scopedStockSyncVersion = resolvedVariantId
+    ? getLatestStockSyncVersion({
+        productId: resolvedProductId,
+        variantId: resolvedVariantId,
+      })
+    : productStockSyncVersion;
+
+  const productStockQuantity = variants.length
+    ? variants.reduce(
+        (sum, variant) =>
+          sum + normalizeStockValue(variant?.stock_quantity ?? variant?.stock, 0),
+        0,
+      )
+    : normalizeStockValue(
+        plainProduct?.stock_quantity ?? plainProduct?.stock,
+        0,
+      );
+  const reservedQuantity = variants.length
+    ? variants.reduce(
+        (sum, variant) =>
+          sum + normalizeStockValue(variant?.reserved_quantity, 0),
+        0,
+      )
+    : normalizeStockValue(plainProduct?.reserved_quantity, 0);
+  const availableQuantity = trackInventory
+    ? variants.length
+      ? variants.reduce(
+          (sum, variant) =>
+            sum + normalizeStockValue(variant?.available_quantity, 0),
+          0,
+        )
+      : Math.max(productStockQuantity - reservedQuantity, 0)
+    : Number.MAX_SAFE_INTEGER;
+
+  return {
+    ...plainProduct,
+    stock: productStockQuantity,
+    stock_quantity: productStockQuantity,
+    reserved_quantity: reservedQuantity,
+    variants,
+    available_quantity: availableQuantity,
+    available_stock: availableQuantity,
+    availableStock: availableQuantity,
+    inStock: !trackInventory || availableQuantity > 0,
+    stock_sync_version: scopedStockSyncVersion,
+    product_stock_sync_version: productStockSyncVersion,
+  };
+};
+
+const markNotificationPreferenceOnProduct = (product, notificationKeySet) => {
+  if (!notificationKeySet?.size) {
+    return product;
+  }
+
+  const plainProduct = toPlainObject(product) || {};
+  const productId = String(
+    plainProduct?.parentProductId || plainProduct?._id || "",
+  ).trim();
+  const variantId = String(plainProduct?.variantId || "").trim();
+  const directRequested = notificationKeySet.has(
+    `${productId}::${variantId || ""}`,
+  );
+
+  const variants = Array.isArray(plainProduct?.variants)
+    ? plainProduct.variants.map((variant) => ({
+        ...variant,
+        stockNotificationRequested: notificationKeySet.has(
+          `${productId}::${String(variant?._id || "").trim()}`,
+        ),
+      }))
+    : [];
+
+  return {
+    ...plainProduct,
+    variants,
+    stockNotificationRequested: directRequested,
+  };
+};
+
+const attachNotificationPreferenceToProducts = async (products, userId) => {
+  if (!Array.isArray(products) || !products.length || !userId) {
+    return products;
+  }
+
+  const notificationKeySet = await getPendingStockNotificationKeySet({
+    userId,
+  });
+
+  if (!notificationKeySet.size) {
+    return products;
+  }
+
+  return products.map((product) =>
+    markNotificationPreferenceOnProduct(product, notificationKeySet),
+  );
 };
 
 const buildVariantInventoryTotals = (variants = []) => ({
@@ -329,13 +495,21 @@ export const getProducts = async (req, res) => {
         ],
       };
       const productAvailableExpr = {
-        $ifNull: ["$stock_quantity", "$stock"],
+        $subtract: [
+          { $ifNull: ["$stock_quantity", "$stock"] },
+          { $ifNull: ["$reserved_quantity", 0] },
+        ],
       };
       const variantStockExpr = {
         $map: {
           input: { $ifNull: ["$variants", []] },
           as: "v",
-          in: { $ifNull: ["$$v.stock_quantity", "$$v.stock"] },
+          in: {
+            $subtract: [
+              { $ifNull: ["$$v.stock_quantity", "$$v.stock"] },
+              { $ifNull: ["$$v.reserved_quantity", 0] },
+            ],
+          },
         },
       };
       const hasVariantEntriesExpr = {
@@ -402,48 +576,58 @@ export const getProducts = async (req, res) => {
             const variantLabel =
               String(variant?.name || "").trim() ||
               formatVariantWeightLabel(variant);
-            expandedProducts.push({
-              ...product,
-              _id: `${String(product?._id || "")}-${String(variant?._id || index)}`,
-              parentProductId: product?._id || null,
-              variantId: variant?._id || null,
-              variantName: variantLabel,
-              name: variantLabel
-                ? `${String(product?.name || "Product").trim()} - ${variantLabel}`
-                : String(product?.name || "Product"),
-              price: Number(variant?.price ?? product?.price ?? 0),
-              originalPrice: Number(
-                variant?.originalPrice ??
-                  product?.originalPrice ??
-                  product?.oldPrice ??
-                  0,
-              ),
-              discount: Number(
-                variant?.discountPercent ?? product?.discount ?? 0,
-              ),
-              weight: Number(variant?.weight ?? product?.weight ?? 0),
-              unit: String(variant?.unit || product?.unit || "g"),
-              sku: String(variant?.sku || product?.sku || ""),
-              stock: Number(
-                variant?.stock_quantity ??
-                  variant?.stock ??
-                  product?.stock ??
-                  0,
-              ),
-              stock_quantity: Number(
-                variant?.stock_quantity ??
-                  variant?.stock ??
-                  product?.stock_quantity ??
-                  0,
-              ),
-              hasVariants: false,
-              variants: [],
-            });
+            expandedProducts.push(
+              attachAvailabilityToProduct({
+                ...product,
+                _id: `${String(product?._id || "")}-${String(variant?._id || index)}`,
+                parentProductId: product?._id || null,
+                variantId: variant?._id || null,
+                variantName: variantLabel,
+                name: variantLabel
+                  ? `${String(product?.name || "Product").trim()} - ${variantLabel}`
+                  : String(product?.name || "Product"),
+                price: Number(variant?.price ?? product?.price ?? 0),
+                originalPrice: Number(
+                  variant?.originalPrice ??
+                    product?.originalPrice ??
+                    product?.oldPrice ??
+                    0,
+                ),
+                discount: Number(
+                  variant?.discountPercent ?? product?.discount ?? 0,
+                ),
+                weight: Number(variant?.weight ?? product?.weight ?? 0),
+                unit: String(variant?.unit || product?.unit || "g"),
+                sku: String(variant?.sku || product?.sku || ""),
+                stock: Number(
+                  variant?.stock_quantity ??
+                    variant?.stock ??
+                    product?.stock ??
+                    0,
+                ),
+                stock_quantity: Number(
+                  variant?.stock_quantity ??
+                    variant?.stock ??
+                    product?.stock_quantity ??
+                    0,
+                ),
+                reserved_quantity: Number(variant?.reserved_quantity ?? 0),
+                track_inventory:
+                  product?.track_inventory ?? product?.trackInventory ?? true,
+                trackInventory:
+                  product?.trackInventory ?? product?.track_inventory ?? true,
+                hasVariants: false,
+                variants: [],
+              }),
+            );
           });
         } else {
-          expandedProducts.push(product);
+          expandedProducts.push(attachAvailabilityToProduct(product));
         }
       }
+
+      const productsWithNotificationState =
+        await attachNotificationPreferenceToProducts(expandedProducts, req?.user);
 
       let comboCards = [];
       if (shouldIncludeCombos) {
@@ -529,7 +713,7 @@ export const getProducts = async (req, res) => {
         });
       }
 
-      const combined = [...expandedProducts, ...comboCards];
+      const combined = [...productsWithNotificationState, ...comboCards];
       const startIndex = (safePage - 1) * safeLimit;
       const paginated = combined.slice(startIndex, startIndex + safeLimit);
       const totalProducts = combined.length;
@@ -569,10 +753,13 @@ export const getProducts = async (req, res) => {
 
     const totalPages = Math.ceil(totalProducts / Number(limit));
 
+    const productsWithNotificationState =
+      await attachNotificationPreferenceToProducts(products, req?.user);
+
     res.status(200).json({
       error: false,
       success: true,
-      data: products,
+      data: productsWithNotificationState.map(attachAvailabilityToProduct),
       totalProducts,
       totalPages,
       currentPage: Number(page),
@@ -630,10 +817,15 @@ export const getProductById = async (req, res) => {
       { $inc: { viewCount: 1 } },
     );
 
+    const [productWithNotificationState] = await attachNotificationPreferenceToProducts(
+      [attachAvailabilityToProduct(product)],
+      req?.user,
+    );
+
     res.status(200).json({
       error: false,
       success: true,
-      data: product,
+      data: productWithNotificationState,
     });
   } catch (error) {
     console.error("Error fetching product:", error);
@@ -668,10 +860,13 @@ export const getFeaturedProducts = async (req, res) => {
       .limit(Number(limit))
       .lean();
 
+    const productsWithNotificationState =
+      await attachNotificationPreferenceToProducts(products, req?.user);
+
     res.status(200).json({
       error: false,
       success: true,
-      data: products,
+      data: productsWithNotificationState.map(attachAvailabilityToProduct),
     });
   } catch (error) {
     res.status(500).json({
@@ -732,10 +927,13 @@ export const getExclusiveProducts = async (req, res) => {
 
     const totalPages = Math.ceil(totalProducts / safeLimit) || 1;
 
+    const productsWithNotificationState =
+      await attachNotificationPreferenceToProducts(products, req?.user);
+
     res.status(200).json({
       error: false,
       success: true,
-      data: products,
+      data: productsWithNotificationState.map(attachAvailabilityToProduct),
       totalProducts,
       totalPages,
       currentPage: safePage,
@@ -784,10 +982,13 @@ export const getRelatedProducts = async (req, res) => {
       .limit(Number(limit))
       .lean();
 
+    const productsWithNotificationState =
+      await attachNotificationPreferenceToProducts(relatedProducts, req?.user);
+
     res.status(200).json({
       error: false,
       success: true,
-      data: relatedProducts,
+      data: productsWithNotificationState.map(attachAvailabilityToProduct),
     });
   } catch (error) {
     res.status(500).json({
@@ -1295,11 +1496,46 @@ export const updateProduct = async (req, res) => {
       });
     }
 
+    const productBefore = product.toObject ? product.toObject() : product;
+
     const updatedProduct = await ProductModel.findByIdAndUpdate(
       id,
       { $set: updateData },
       { new: true, runValidators: true },
     ).populate("category", "name slug");
+
+    const updatedProductForNotifications = await ProductModel.findById(id)
+      .select(
+        "track_inventory trackInventory stock stock_quantity reserved_quantity variants",
+      )
+      .lean();
+
+    const variantIdsToCheck = Array.isArray(updatedProductForNotifications?.variants)
+      ? updatedProductForNotifications.variants.map((variant) => variant?._id)
+      : [];
+
+    if (variantIdsToCheck.length > 0) {
+      for (const variantId of variantIdsToCheck) {
+        await triggerBackInStockNotificationsIfRecovered({
+          productBefore,
+          productAfter: updatedProductForNotifications,
+          variantId,
+          source: "ADMIN_PRODUCT_UPDATE",
+        });
+      }
+    } else {
+      await triggerBackInStockNotificationsIfRecovered({
+        productBefore,
+        productAfter: updatedProductForNotifications,
+        source: "ADMIN_PRODUCT_UPDATE",
+      });
+    }
+
+    emitStockUpdatesForProductSnapshotChange({
+      productBefore,
+      productAfter: updatedProductForNotifications,
+      source: "ADMIN_PRODUCT_UPDATE",
+    });
 
     res.status(200).json({
       error: false,
@@ -1396,10 +1632,53 @@ export const bulkUpdateProducts = async (req, res) => {
       updateData.adminStarRating = updateData.rating;
     }
 
+    const stockSensitiveUpdate = [
+      "stock",
+      "stock_quantity",
+      "reserved_quantity",
+      "variants",
+    ].some((field) => field in updateData);
+
+    const productsBefore = stockSensitiveUpdate
+      ? await ProductModel.find({ _id: { $in: ids } })
+          .select(
+            "_id track_inventory trackInventory stock stock_quantity reserved_quantity variants",
+          )
+          .lean()
+      : [];
+
     const result = await ProductModel.updateMany(
       { _id: { $in: ids } },
       { $set: updateData },
     );
+
+    if (stockSensitiveUpdate && productsBefore.length > 0) {
+      const productsAfter = await ProductModel.find({ _id: { $in: ids } })
+        .select(
+          "_id track_inventory trackInventory stock stock_quantity reserved_quantity variants",
+        )
+        .lean();
+      const productsAfterMap = new Map(
+        productsAfter.map((product) => [String(product?._id || ""), product]),
+      );
+
+      for (const productBefore of productsBefore) {
+        const productAfter = productsAfterMap.get(String(productBefore?._id || ""));
+        if (!productAfter) continue;
+
+        await triggerBackInStockNotificationsIfRecovered({
+          productBefore,
+          productAfter,
+          source: "ADMIN_PRODUCT_BULK_UPDATE",
+        });
+
+        emitStockUpdatesForProductSnapshotChange({
+          productBefore,
+          productAfter,
+          source: "ADMIN_PRODUCT_BULK_UPDATE",
+        });
+      }
+    }
 
     res.status(200).json({
       error: false,
@@ -1435,6 +1714,8 @@ export const updateStock = async (req, res) => {
       });
     }
 
+    const productBefore = product.toObject ? product.toObject() : product;
+
     if (variantId) {
       // Update variant stock
       const variant = product.variants.id(variantId);
@@ -1451,11 +1732,30 @@ export const updateStock = async (req, res) => {
 
     await product.save();
 
+    const updatedProductForNotifications = await ProductModel.findById(id)
+      .select(
+        "track_inventory trackInventory stock stock_quantity reserved_quantity variants",
+      )
+      .lean();
+
+    await triggerBackInStockNotificationsIfRecovered({
+      productBefore,
+      productAfter: updatedProductForNotifications,
+      variantId: variantId || null,
+      source: "ADMIN_STOCK_UPDATE",
+    });
+
+    emitStockUpdatesForProductSnapshotChange({
+      productBefore,
+      productAfter: updatedProductForNotifications,
+      source: "ADMIN_STOCK_UPDATE",
+    });
+
     res.status(200).json({
       error: false,
       success: true,
       message: "Stock updated successfully",
-      data: product,
+      data: updatedProductForNotifications,
     });
   } catch (error) {
     res.status(500).json({

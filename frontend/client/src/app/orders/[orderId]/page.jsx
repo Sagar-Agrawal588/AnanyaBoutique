@@ -1,12 +1,19 @@
 "use client";
 import { API_BASE_URL } from "@/utils/api";
 
+import OrderDetailsOverview from "@/components/orders/OrderDetailsOverview";
 import { useShippingDisplayCharge } from "@/hooks/useShippingDisplayCharge";
 import {
   buildSavedOrderCalculationInput,
   calculateOrderTotals,
 } from "@/utils/calculateOrderTotals.mjs";
 import { getImageUrl } from "@/utils/imageUtils";
+import {
+  buildOrderComplaintHref,
+  buildOrderProductDescriptor,
+  resolveOrderPaymentMethodLabel,
+  resolveOrderTransactionReference,
+} from "@/utils/orderComplaint";
 import {
   Button,
   Dialog,
@@ -183,6 +190,11 @@ const normalizeStatus = (status) => {
   return value;
 };
 
+const normalizePaymentStateValue = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase();
+
 const toMoneyNumber = (value, fallback = 0) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -352,6 +364,9 @@ const OrderDetailsPage = () => {
   )
     .trim()
     .toUpperCase();
+  const paymentStateParam = normalizePaymentStateValue(
+    searchParams?.get("paymentState") || "",
+  );
 
   // State
   const [order, setOrder] = useState(null);
@@ -1111,6 +1126,47 @@ const OrderDetailsPage = () => {
     resolvedAddressPhone ||
     resolvedAddressEmail,
   );
+  const paymentMethodLabel = resolveOrderPaymentMethodLabel(order?.paymentMethod);
+  const paymentStatusLabel = getPaymentStatusInfo(order?.payment_status).label;
+  const orderStatusLabel = getOrderStatusInfo(order?.order_status).label;
+  const purchaseTimestamp =
+    order?.paymentCompletedAt ||
+    order?.confirmedAt ||
+    order?.confirmed_at ||
+    order?.createdAt ||
+    null;
+  const purchaseTimestampLabel =
+    normalizeStatus(order?.payment_status) === "paid"
+      ? "Purchase date and time"
+      : "Order date and time";
+  const purchaseTimestampValue = formatDate(purchaseTimestamp);
+  const transactionReference = resolveOrderTransactionReference(order);
+  const transactionDisplayValue =
+    transactionReference ||
+    (normalizeStatus(order?.payment_status) === "paid"
+      ? "Not available"
+      : "Available after payment confirmation");
+  const invoiceNumber = String(order?.invoiceNumber || "").trim();
+  const invoiceDisplayValue =
+    invoiceNumber ||
+    (canDownloadInvoice
+      ? "Available from invoice download"
+      : "Generated after payment confirmation");
+  const overviewProductNames = [
+    ...orderCombos.map((combo) => buildOrderProductDescriptor(combo)),
+    ...displayedProducts.map((item) => buildOrderProductDescriptor(item)),
+  ].filter(Boolean);
+  const complaintHref = buildOrderComplaintHref({
+    routeOrderId: canonicalOrderId || orderId || "",
+    displayOrderId,
+    productNames: overviewProductNames,
+    paymentMethodLabel,
+    paymentStatusLabel,
+    transactionReference,
+  });
+  const showPaymentConfirmationBanner =
+    paymentStateParam === "paid" &&
+    normalizeStatus(order?.payment_status) === "paid";
   const isReviewEligibleOrder = (() => {
     return isDeliveredLikeOrder;
   })();
@@ -1345,6 +1401,45 @@ const OrderDetailsPage = () => {
               </div>
             </div>
           </div>
+
+          {showPaymentConfirmationBanner && (
+            <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 p-5">
+              <div className="flex items-start gap-4">
+                <div className="rounded-full bg-emerald-100 p-3">
+                  <MdCheckCircle className="text-2xl text-emerald-600" />
+                </div>
+                <div className="flex-1">
+                  <h2 className="text-lg font-bold text-emerald-900">
+                    Payment Confirmed
+                  </h2>
+                  <p className="mt-1 text-sm text-emerald-800">
+                    Your payment for{" "}
+                    <span className="font-semibold">{displayOrderId}</span> was
+                    confirmed successfully. We have taken you to the full order
+                    details page so you can review everything in one place.
+                  </p>
+                  <p className="mt-2 text-xs text-emerald-700">
+                    Method: {paymentMethodLabel} | UTR / Transaction No.:{" "}
+                    {transactionDisplayValue}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <OrderDetailsOverview
+            productNames={overviewProductNames}
+            orderIdLabel={displayOrderId}
+            purchaseTimestampLabel={purchaseTimestampLabel}
+            purchaseTimestampValue={purchaseTimestampValue}
+            paymentMethodLabel={paymentMethodLabel}
+            paymentStatusLabel={paymentStatusLabel}
+            orderStatusLabel={orderStatusLabel}
+            transactionReference={transactionDisplayValue}
+            invoiceNumber={invoiceDisplayValue}
+            customerEmail={resolvedAddressEmail}
+            complaintHref={complaintHref}
+          />
 
           {/* Order Tracker */}
           <div className="bg-white rounded-xl shadow-sm p-5 md:p-6 mb-6">

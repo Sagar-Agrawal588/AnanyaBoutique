@@ -12,6 +12,7 @@ import { ProductProvider } from "../context/ProductContext";
 import { ReferralProvider } from "../context/ReferralContext";
 import { SettingsProvider, useSettings } from "../context/SettingsContext";
 import { WishlistProvider } from "../context/WishlistContext";
+import { startStockSocket } from "../realtime/stockSocket";
 import { API_BASE_URL } from "../utils/api";
 
 const AnalyticsTracker = dynamic(
@@ -370,6 +371,11 @@ export default function ClientLayout({ children }) {
   const pathname = usePathname();
   const isAffiliateRoute = pathname?.startsWith("/affiliate");
   const [enhancementsReady, setEnhancementsReady] = useState(false);
+
+  useEffect(() => {
+    if (isAffiliateRoute) return;
+    startStockSocket();
+  }, [isAffiliateRoute]);
 
   useEffect(() => {
     let disposed = false;

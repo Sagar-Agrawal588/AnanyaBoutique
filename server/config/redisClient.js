@@ -8,25 +8,27 @@ const toInt = (value, fallback) => {
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
-const readRedisConfig = () => {
+const readRedisConfig = (optionOverrides = {}) => {
   const redisUrl = String(process.env.REDIS_URL || "").trim();
   const host = String(process.env.REDIS_HOST || "127.0.0.1").trim();
   const port = toInt(process.env.REDIS_PORT, 6379);
   const password = String(process.env.REDIS_PASSWORD || "").trim() || undefined;
   const db = toInt(process.env.REDIS_DB, 0);
   const keyPrefix = String(process.env.REDIS_KEY_PREFIX || "").trim();
+  const sharedOptions = {
+    maxRetriesPerRequest: 1,
+    enableReadyCheck: true,
+    lazyConnect: true,
+    connectTimeout: 1000,
+    ...(keyPrefix ? { keyPrefix } : {}),
+    ...optionOverrides,
+  };
 
   if (redisUrl) {
     return {
       mode: "url",
       redisUrl,
-      options: {
-        maxRetriesPerRequest: 1,
-        enableReadyCheck: true,
-        lazyConnect: true,
-        connectTimeout: 1000,
-        ...(keyPrefix ? { keyPrefix } : {}),
-      },
+      options: sharedOptions,
     };
   }
 
@@ -37,17 +39,36 @@ const readRedisConfig = () => {
     options: {
       password,
       db,
-      maxRetriesPerRequest: 1,
-      enableReadyCheck: true,
-      lazyConnect: true,
-      connectTimeout: 1000,
-      ...(keyPrefix ? { keyPrefix } : {}),
+      ...sharedOptions,
     },
   };
 };
 
 export const isRedisConfigured = () =>
   Boolean(String(process.env.REDIS_URL || "").trim() || String(process.env.REDIS_HOST || "").trim());
+
+export const createRedisConnection = (optionOverrides = {}) => {
+  if (!isRedisConfigured()) {
+    return null;
+  }
+
+  const config = readRedisConfig(optionOverrides);
+  return config.mode === "url"
+    ? new Redis(config.redisUrl, config.options)
+    : new Redis({ host: config.host, port: config.port, ...config.options });
+};
+
+export const createBullMQQueueConnection = () =>
+  createRedisConnection({
+    maxRetriesPerRequest: 1,
+    enableReadyCheck: false,
+  });
+
+export const createBullMQWorkerConnection = () =>
+  createRedisConnection({
+    maxRetriesPerRequest: null,
+    enableReadyCheck: false,
+  });
 
 export const getRedisClient = () => {
   if (!isRedisConfigured()) {
@@ -65,10 +86,7 @@ export const getRedisClient = () => {
   redisInitAttempted = true;
 
   try {
-    const config = readRedisConfig();
-    redisClient = config.mode === "url"
-      ? new Redis(config.redisUrl, config.options)
-      : new Redis({ host: config.host, port: config.port, ...config.options });
+    redisClient = createRedisConnection();
 
     redisClient.on("error", (error) => {
       console.warn("Redis client error:", error?.message || error);

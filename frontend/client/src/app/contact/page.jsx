@@ -7,6 +7,7 @@ import {
   TextField,
 } from "@mui/material";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "react-hot-toast";
 import { FiClock, FiMail, FiMapPin, FiPhone, FiSend, FiX } from "react-icons/fi";
@@ -75,6 +76,7 @@ const normalizeWhatsappHref = (value) => {
 
 const Contact = () => {
   const { storeInfo: liveStoreInfo } = useSettings();
+  const searchParams = useSearchParams();
   const [formData, setFormData] = useState(defaultFormState);
   const [fieldErrors, setFieldErrors] = useState({});
   const [uploadErrors, setUploadErrors] = useState({ images: "", videos: "" });
@@ -87,6 +89,7 @@ const Contact = () => {
   const [success, setSuccess] = useState(false);
 
   const previewUrlsRef = useRef(new Set());
+  const appliedPrefillSignatureRef = useRef("");
   const submitInProgressRef = useRef(false);
   const lastSubmitRef = useRef({ signature: "", submittedAt: 0 });
   const storeInfo = {
@@ -96,6 +99,7 @@ const Contact = () => {
   const supportLink = normalizeStoreLink(storeInfo.email);
   const supportPhoneHref = normalizePhoneHref(storeInfo.phone);
   const whatsappHref = normalizeWhatsappHref(storeInfo.phone);
+  const prefilledOrderLabel = String(searchParams?.get("orderLabel") || "").trim();
 
   useEffect(() => {
     let isActive = true;
@@ -124,6 +128,38 @@ const Contact = () => {
       isActive = false;
     };
   }, []);
+
+  useEffect(() => {
+    const nextPrefill = {
+      orderId: String(searchParams?.get("orderId") || "").trim(),
+      subject: String(searchParams?.get("subject") || "").trim(),
+      message: String(searchParams?.get("message") || "").trim(),
+    };
+    const hasPrefill = Object.values(nextPrefill).some(Boolean);
+    if (!hasPrefill) {
+      return;
+    }
+
+    const signature = JSON.stringify(nextPrefill);
+    if (appliedPrefillSignatureRef.current === signature) {
+      return;
+    }
+
+    setFormData((prev) => ({
+      ...prev,
+      orderId: nextPrefill.orderId || prev.orderId,
+      subject: nextPrefill.subject || prev.subject,
+      message: nextPrefill.message || prev.message,
+    }));
+    setFieldErrors((prev) => ({
+      ...prev,
+      orderId: "",
+      subject: "",
+      message: "",
+    }));
+    setFormError("");
+    appliedPrefillSignatureRef.current = signature;
+  }, [searchParams]);
 
   useEffect(
     () => () => {
@@ -303,6 +339,13 @@ const Contact = () => {
     setFormError("");
     clearUploads();
   };
+
+  const hasPrefilledOrderOption =
+    Boolean(String(formData.orderId || "").trim()) &&
+    !orders.some(
+      (order) =>
+        String(order?.id || "").trim() === String(formData.orderId || "").trim(),
+    );
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -500,7 +543,7 @@ const Contact = () => {
 
           {/* Contact Form */}
           <div className="lg:col-span-2">
-            <div className="bg-white rounded-xl p-8 shadow-md">
+            <div id="support-form" className="bg-white rounded-xl p-8 shadow-md">
               <h2 className="text-2xl font-bold text-gray-800 mb-2">
                 Send us a Message
               </h2>
@@ -591,6 +634,11 @@ const Contact = () => {
                   }
                 >
                   <MenuItem value="">No order selected</MenuItem>
+                  {hasPrefilledOrderOption && (
+                    <MenuItem value={formData.orderId}>
+                      {prefilledOrderLabel || formData.orderId}
+                    </MenuItem>
+                  )}
                   {orders.map((order) => (
                     <MenuItem key={order.id} value={order.id}>
                       #{String(order.displayId || order.id || "")

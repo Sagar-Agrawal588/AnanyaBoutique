@@ -32,6 +32,8 @@ export const resolveRateLimitIp = (req) => {
   const normalizedRealIp = typeof realIp === "string" ? realIp.trim() : "";
 
   return (
+    // Prefer Express's resolved client IP so the limiter follows the app's
+    // configured trust proxy policy instead of trusting raw headers directly.
     expressResolvedIp ||
     firstForwardedIp ||
     normalizedRealIp ||
