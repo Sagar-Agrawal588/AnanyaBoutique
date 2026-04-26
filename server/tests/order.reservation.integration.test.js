@@ -1,21 +1,16 @@
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
-import { createRequire } from "node:module";
 import test from "node:test";
 import cookieParser from "cookie-parser";
 import express from "express";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 import { MongoMemoryServer } from "mongodb-memory-server";
+import { io as createSocketClient } from "socket.io-client";
 import OrderModel from "../models/order.model.js";
 import ProductModel from "../models/product.model.js";
 import StockNotificationModel from "../models/stockNotification.model.js";
 import UserModel from "../models/user.model.js";
-
-const requireFromClient = createRequire(
-  new URL("../../frontend/client/package.json", import.meta.url),
-);
-const { io: createSocketClient } = requireFromClient("socket.io-client");
 
 let mongoServer;
 let apiServer;
