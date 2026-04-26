@@ -27,6 +27,7 @@ const MANAGER_ROUTE_PERMISSION_RULES = [
       /^\/api\/newsletter\/(?:subscribers|campaign\/send)(?:\/|$)/i,
       /^\/api\/email\/admin(?:\/|$)/i,
       /^\/api\/admin\/email-templates(?:\/|$)/i,
+      /^\/api\/admin\/product-demand(?:\/|$)/i,
       /^\/api\/admin\/reviews(?:\/|$)/i,
     ],
   },

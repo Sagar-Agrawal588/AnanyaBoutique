@@ -962,6 +962,12 @@ const orderSchema = new mongoose.Schema(
 // Index for common queries
 orderSchema.index({ user: 1, createdAt: -1 });
 orderSchema.index({ payment_status: 1, order_status: 1 });
+orderSchema.index({
+  inventoryStatus: 1,
+  reservationExpiresAt: 1,
+  payment_status: 1,
+  order_status: 1,
+});
 orderSchema.index({ paymentId: 1 });
 orderSchema.index({ orderNumber: 1 }, { sparse: true });
 orderSchema.index({ displayOrderId: 1 }, { sparse: true });

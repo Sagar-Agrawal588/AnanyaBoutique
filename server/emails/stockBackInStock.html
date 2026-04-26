@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{product_name}} is back in stock</title>
+  </head>
+  <body style="margin:0;background:#f7f4ef;font-family:Arial,sans-serif;color:#1f2937;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f7f4ef;padding:32px 16px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:620px;background:#ffffff;border-radius:24px;overflow:hidden;border:1px solid #eadfd3;">
+            <tr>
+              <td style="padding:36px 32px;background:linear-gradient(135deg,#fff8f0 0%,#f8eee3 100%);">
+                <div style="display:inline-block;padding:8px 14px;border-radius:999px;background:#fef2f2;color:#b91c1c;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;">
+                  Back in stock
+                </div>
+                <h1 style="margin:18px 0 10px;font-size:30px;line-height:1.2;color:#221510;">
+                  {{product_name}}{{variant_name}}
+                </h1>
+                <p style="margin:0;font-size:16px;line-height:1.7;color:#5b4639;">
+                  Hi {{customer_name}}, the item you asked about is available again. We have {{available_quantity}} ready to order right now.
+                </p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:32px;">
+                <div style="margin:0 0 20px;">
+                  <img src="{{preview_image}}" alt="{{product_name}}" style="display:block;max-width:100%;width:180px;height:auto;border-radius:18px;border:1px solid #efe5da;background:#fbf7f2;" />
+                </div>
+                <p style="margin:0 0 8px;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:#8b6d5c;font-weight:700;">
+                  {{brand}}
+                </p>
+                <p style="margin:0 0 22px;font-size:18px;font-weight:700;color:#24150f;">
+                  {{product_name}} {{variant_name}}
+                </p>
+                <a href="{{product_url}}" style="display:inline-block;padding:14px 22px;border-radius:16px;background:#23150f;color:#ffffff;text-decoration:none;font-weight:700;">
+                  Shop now
+                </a>
+                <p style="margin:22px 0 0;font-size:14px;line-height:1.7;color:#6b7280;">
+                  Inventory can move quickly on limited packs, so it is best to check out soon if you still want this item.
+                </p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:0 32px 28px;font-size:12px;color:#8b8b8b;">
+                Healthy One Gram • {{year}}
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

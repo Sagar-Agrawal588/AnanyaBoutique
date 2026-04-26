@@ -1,12 +1,17 @@
 "use client";
 import AccountSidebar from "@/components/AccountSiderbar";
-import { MyContext } from "@/context/ThemeProvider";
 import { useShippingDisplayCharge } from "@/hooks/useShippingDisplayCharge";
 import { API_BASE_URL } from "@/utils/api";
 import {
   buildSavedOrderCalculationInput,
   calculateOrderTotals,
 } from "@/utils/calculateOrderTotals.mjs";
+import {
+  buildOrderComplaintHref,
+  buildOrderProductDescriptor,
+  resolveOrderPaymentMethodLabel,
+  resolveOrderTransactionReference,
+} from "@/utils/orderComplaint";
 import { getDisplayShippingCharge } from "@/utils/shippingDisplay";
 import {
   Button,
@@ -20,7 +25,7 @@ import {
 import { AlertCircle, Loader } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useContext, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "react-hot-toast";
 
 const API_URL = API_BASE_URL.endsWith("/api")
@@ -231,10 +236,17 @@ const buildOrderDisplayTotals = (order = {}, orderTotals = {}) => {
   };
 };
 
+const ORDER_FILTER_OPTIONS = [
+  { id: "all", label: "Total Orders" },
+  { id: "delivered", label: "Delivered" },
+  { id: "rto", label: "RTO Orders" },
+  { id: "failed", label: "Failed Orders" },
+];
+
 const Orders = () => {
   const router = useRouter();
-  const context = useContext(MyContext);
   const [orders, setOrders] = useState([]);
+  const [activeFilter, setActiveFilter] = useState("all");
   const [reviewedItemMap, setReviewedItemMap] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -461,6 +473,7 @@ const Orders = () => {
     const normalized = normalizeStatus(status);
     switch (normalized) {
       case "delivered":
+      case "completed":
         return "bg-[var(--flavor-glass)] text-primary";
       case "out_for_delivery":
         return "bg-teal-100 text-teal-800";
@@ -476,13 +489,17 @@ const Orders = () => {
         return "bg-orange-100 text-orange-800";
       case "cancelled":
         return "bg-red-100 text-red-800";
+      case "rto":
+        return "bg-rose-100 text-rose-800";
+      case "rto_completed":
+        return "bg-stone-200 text-stone-800";
       default:
         return "bg-gray-100 text-gray-800";
     }
   };
 
   const getPaymentStatusColor = (status) => {
-    switch (status) {
+    switch (normalizeStatus(status)) {
       case "paid":
         return "bg-[var(--flavor-glass)] text-primary";
       case "pending":
@@ -504,6 +521,64 @@ const Orders = () => {
       .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
       .join(" ");
   };
+
+  const canRaiseComplaint = (order) => {
+    const normalizedOrderStatus = normalizeStatus(order?.order_status);
+    return [
+      "shipped",
+      "out_for_delivery",
+      "delivered",
+      "completed",
+      "rto",
+      "rto_completed",
+    ].includes(normalizedOrderStatus);
+  };
+
+  const matchesOrderFilter = (order, filterId) => {
+    const normalizedOrderStatus = normalizeStatus(order?.order_status);
+    const normalizedPaymentStatus = normalizeStatus(order?.payment_status);
+
+    if (filterId === "delivered") {
+      return ["delivered", "completed"].includes(normalizedOrderStatus);
+    }
+
+    if (filterId === "rto") {
+      return ["rto", "rto_completed"].includes(normalizedOrderStatus);
+    }
+
+    if (filterId === "failed") {
+      return normalizedPaymentStatus === "failed";
+    }
+
+    return true;
+  };
+
+  const filterCounts = orders.reduce(
+    (counts, order) => {
+      if (matchesOrderFilter(order, "delivered")) {
+        counts.delivered += 1;
+      }
+      if (matchesOrderFilter(order, "rto")) {
+        counts.rto += 1;
+      }
+      if (matchesOrderFilter(order, "failed")) {
+        counts.failed += 1;
+      }
+      return counts;
+    },
+    {
+      delivered: 0,
+      rto: 0,
+      failed: 0,
+    },
+  );
+
+  const filteredOrders = orders.filter((order) =>
+    matchesOrderFilter(order, activeFilter),
+  );
+  const activeFilterLabel =
+    ORDER_FILTER_OPTIONS.find((filter) => filter.id === activeFilter)?.label ||
+    "orders";
 
   const openReviewDialog = (order, item) => {
     const productId = item?.productId;
@@ -643,17 +718,67 @@ const Orders = () => {
           </div>
 
           <div className="wrapper w-full lg:w-[75%]">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">My Orders</h1>
-              <p className="text-gray-600 mt-2">
-                Track and manage your purchases
-              </p>
+            <div className="flex flex-col gap-5 rounded-2xl bg-white p-5 shadow-sm md:flex-row md:items-end md:justify-between">
+              <div>
+                <h1 className="text-3xl font-bold text-gray-900">My Orders</h1>
+                <p className="mt-2 text-gray-600">
+                  Track, manage, and quickly sort your purchases.
+                </p>
+              </div>
+              <div className="text-left md:text-right">
+                <p className="text-sm text-gray-600">Showing</p>
+                <p className="text-3xl font-bold text-orange-600">
+                  {filteredOrders.length}
+                </p>
+                <p className="text-xs text-gray-500">
+                  of {orders.length} total orders
+                </p>
+              </div>
             </div>
-            <div className="text-right">
-              <p className="text-sm text-gray-600">Total Orders</p>
-              <p className="text-3xl font-bold text-orange-600">
-                {orders.length}
-              </p>
+
+            <div className="mt-5 rounded-2xl bg-white p-4 shadow-sm">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">
+                    Filter Orders
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    Narrow your order list by delivery and payment outcome.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {ORDER_FILTER_OPTIONS.map((filter) => {
+                    const count =
+                      filter.id === "all"
+                        ? orders.length
+                        : filterCounts[filter.id] || 0;
+                    const isActive = activeFilter === filter.id;
+                    return (
+                      <button
+                        key={filter.id}
+                        type="button"
+                        onClick={() => setActiveFilter(filter.id)}
+                        className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition-colors ${
+                          isActive
+                            ? "border-orange-600 bg-orange-600 text-white shadow-sm"
+                            : "border-gray-200 bg-gray-50 text-gray-700 hover:border-orange-200 hover:bg-orange-50 hover:text-orange-700"
+                        }`}
+                      >
+                        <span>{filter.label}</span>
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-xs ${
+                            isActive
+                              ? "bg-white/20 text-white"
+                              : "bg-white text-gray-600"
+                          }`}
+                        >
+                          {count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
 
             {/* Loading State */}
@@ -690,9 +815,18 @@ const Orders = () => {
                   Start Shopping
                 </Link>
               </div>
+            ) : filteredOrders.length === 0 ? (
+              <div className="mt-6 rounded-2xl bg-white p-12 text-center shadow-sm">
+                <p className="text-lg font-semibold text-gray-900">
+                  No {activeFilterLabel.toLowerCase()} found
+                </p>
+                <p className="mt-2 text-sm text-gray-500">
+                  Try another filter to browse the rest of your orders.
+                </p>
+              </div>
             ) : (
-              <div className="space-y-6">
-                {orders.map((order) => {
+              <div className="mt-6 space-y-6">
+                {filteredOrders.map((order) => {
                   const orderTotals = calculateOrderTotals(
                     buildSavedOrderCalculationInput(order, {
                       payableShipping: 0,
@@ -702,7 +836,33 @@ const Orders = () => {
                     order,
                     orderTotals,
                   );
+                  const routeOrderId = resolveOrderRouteId(order);
+                  const displayOrderId = resolveDisplayOrderId(order);
                   const trackingUrl = resolveTrackingUrl(order);
+                  const paymentMethodLabel = resolveOrderPaymentMethodLabel(
+                    order?.paymentMethod,
+                  );
+                  const paymentStatusLabel =
+                    formatStatus(order?.payment_status) || "Pending";
+                  const transactionReference =
+                    resolveOrderTransactionReference(order);
+                  const complaintProductNames = [
+                    ...(Array.isArray(order?.combos) ? order.combos : []).map(
+                      (combo) => buildOrderProductDescriptor(combo),
+                    ),
+                    ...(Array.isArray(order?.products) ? order.products : []).map(
+                      (item) => buildOrderProductDescriptor(item),
+                    ),
+                  ].filter(Boolean);
+                  const complaintHref = buildOrderComplaintHref({
+                    routeOrderId,
+                    displayOrderId,
+                    productNames: complaintProductNames,
+                    paymentMethodLabel,
+                    paymentStatusLabel,
+                    transactionReference,
+                  });
+                  const showComplaintAction = canRaiseComplaint(order);
 
                   return (
                     <div
@@ -715,7 +875,7 @@ const Orders = () => {
                           <div>
                             <p className="text-sm text-gray-600">Order ID</p>
                             <p className="text-lg font-semibold text-gray-900">
-                              {resolveDisplayOrderId(order)}
+                              {displayOrderId}
                             </p>
                           </div>
                           <div>
@@ -977,16 +1137,22 @@ const Orders = () => {
                       </div>
 
                       {/* Payment Details */}
-                      {order.paymentId && (
+                      {(order.paymentId || order.paymentMethod) && (
                         <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
                           <p className="text-sm font-semibold text-gray-900 mb-2">
                             Payment Details
                           </p>
                           <div className="text-xs text-gray-600 space-y-1">
                             <p>
+                              Method:{" "}
+                              <span className="font-semibold text-gray-800">
+                                {paymentMethodLabel}
+                              </span>
+                            </p>
+                            <p>
                               Transaction ID:{" "}
                               <span className="font-mono">
-                                {order.paymentId || "N/A"}
+                                {transactionReference || "N/A"}
                               </span>
                             </p>
                           </div>
@@ -995,46 +1161,47 @@ const Orders = () => {
 
                       {/* View Order Details Link */}
                       <div className="px-6 py-4 bg-white border-t border-gray-200 flex flex-wrap justify-end gap-3">
-                        {(() => {
-                          const routeOrderId = resolveOrderRouteId(order);
-                          return (
-                            <>
-                              {trackingUrl ? (
-                                <a
-                                  href={trackingUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="inline-flex items-center px-4 py-2 border border-orange-200 bg-orange-50 text-orange-700 text-sm font-medium rounded-lg hover:bg-orange-100 transition-colors"
-                                >
-                                  Track Shipment
-                                </a>
-                              ) : null}
-                              <Link
-                                href={
-                                  routeOrderId
-                                    ? `/orders/${routeOrderId}`
-                                    : "/my-orders"
-                                }
-                                className="inline-flex items-center px-4 py-2 bg-orange-600 text-white text-sm font-medium rounded-lg hover:bg-orange-700 transition-colors"
-                              >
-                                View Order Details
-                                <svg
-                                  className="ml-2 w-4 h-4"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  viewBox="0 0 24 24"
-                                >
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M9 5l7 7-7 7"
-                                  />
-                                </svg>
-                              </Link>
-                            </>
-                          );
-                        })()}
+                        {trackingUrl ? (
+                          <a
+                            href={trackingUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center px-4 py-2 border border-orange-200 bg-orange-50 text-orange-700 text-sm font-medium rounded-lg hover:bg-orange-100 transition-colors"
+                          >
+                            Track Shipment
+                          </a>
+                        ) : null}
+                        {showComplaintAction ? (
+                          <Link
+                            href={complaintHref}
+                            className="inline-flex items-center px-4 py-2 border border-red-200 bg-red-50 text-red-700 text-sm font-medium rounded-lg hover:bg-red-100 transition-colors"
+                          >
+                            Raise a Complaint
+                          </Link>
+                        ) : null}
+                        <Link
+                          href={
+                            routeOrderId
+                              ? `/orders/${routeOrderId}`
+                              : "/my-orders"
+                          }
+                          className="inline-flex items-center px-4 py-2 bg-orange-600 text-white text-sm font-medium rounded-lg hover:bg-orange-700 transition-colors"
+                        >
+                          View Order Details
+                          <svg
+                            className="ml-2 w-4 h-4"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M9 5l7 7-7 7"
+                            />
+                          </svg>
+                        </Link>
                       </div>
                     </div>
                   );

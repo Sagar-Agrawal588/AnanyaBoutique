@@ -73,6 +73,10 @@ const apiImagePattern = [
 ];
 
 const nextConfig = {
+  outputFileTracingRoot: __dirname,
+  turbopack: {
+    root: __dirname,
+  },
   images: {
     deviceSizes: [360, 480, 640, 750, 828, 1080, 1200, 1600, 1920],
     imageSizes: [32, 48, 64, 96, 128, 160, 240, 320, 420, 640],

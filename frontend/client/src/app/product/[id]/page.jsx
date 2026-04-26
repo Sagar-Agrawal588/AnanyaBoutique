@@ -5,6 +5,7 @@
 import ComboCard from "@/components/ComboCard";
 import ProductItem from "@/components/ProductItem";
 import ShareButton from "@/components/ShareButton";
+import StockNotificationButton from "@/components/StockNotificationButton";
 import {
   DEMO_PRODUCT_ID,
   buildDemoProduct,
@@ -18,14 +19,29 @@ import {
 } from "@/components/productDetail/pageConfig";
 import { formatPrice } from "@/config/siteConfig";
 import { useCart } from "@/context/CartContext";
+import {
+  subscribeToStockConnection,
+  subscribeToStockUpdates,
+} from "@/realtime/stockSocket";
 import { trackEvent } from "@/utils/analyticsTracker";
 import { fetchDataFromApi } from "@/utils/api";
 import { getImageUrl } from "@/utils/imageUtils";
 import { sanitizeHTML } from "@/utils/sanitize";
+import {
+  applyStockUpdateToProduct,
+  applyStockUpdateToProductCollection,
+  getResolvedAvailableStock,
+} from "@/utils/stockRealtime";
 import { Alert, CircularProgress, Rating, Snackbar } from "@mui/material";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import {
+  startTransition,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   FiChevronLeft,
   FiChevronRight,
@@ -45,6 +61,7 @@ const DEFAULT_TABS = [
   { id: "details", label: "Product Details" },
   { id: "shipping", label: "Shipping & Trust" },
 ];
+const FALLBACK_POLL_INTERVAL_MS = 30000;
 
 const isExclusiveProduct = (value) => {
   const product = value?.product || value;
@@ -352,6 +369,7 @@ const ProductDetailPage = () => {
     message: "",
     severity: "success",
   });
+  const fallbackPollRef = useRef(null);
 
   const defaultVariant =
     product?.hasVariants && Array.isArray(product?.variants)
@@ -359,19 +377,28 @@ const ProductDetailPage = () => {
         product.variants[0] ||
         null
       : null;
+  const selectedVariantId = selectedVariant?._id || selectedVariant?.id || null;
+  const resolvedSelectedVariant =
+    product?.hasVariants &&
+    Array.isArray(product?.variants) &&
+    selectedVariantId
+      ? product.variants.find(
+          (variant) =>
+            String(variant?._id || variant?.id || "") ===
+            String(selectedVariantId),
+        ) || selectedVariant
+      : selectedVariant;
 
-  const activePrice = selectedVariant ? selectedVariant.price : product?.price;
-  const activeOriginalPrice = selectedVariant
-    ? selectedVariant.originalPrice
+  const activePrice = resolvedSelectedVariant
+    ? resolvedSelectedVariant.price
+    : product?.price;
+  const activeOriginalPrice = resolvedSelectedVariant
+    ? resolvedSelectedVariant.originalPrice
     : product?.originalPrice;
   const demoReviewFallback = isDemoPreview ? buildDemoReviews() : [];
   const pageConfig = normalizeProductPageConfig(product?.productPage);
-  const activeStock = selectedVariant
-    ? Math.max(
-        Number(selectedVariant.stock_quantity ?? selectedVariant.stock ?? 0) -
-          Number(selectedVariant.reserved_quantity ?? 0),
-        0,
-      )
+  const activeStock = resolvedSelectedVariant
+    ? getResolvedAvailableStock(resolvedSelectedVariant)
     : null;
   const availableQty =
     activeStock !== null
@@ -387,9 +414,8 @@ const ProductDetailPage = () => {
         : 0;
   const maxQty = availableQty > 0 ? availableQty : 1;
   const displaySku =
-    selectedVariant?.sku || defaultVariant?.sku || product?.sku || "";
+    resolvedSelectedVariant?.sku || defaultVariant?.sku || product?.sku || "";
   const productId = getResolvedProductId(product);
-  const selectedVariantId = selectedVariant?._id || selectedVariant?.id || null;
   const currentVariantInCart =
     productId && isInCart(productId, selectedVariantId);
   const productRating = Number(
@@ -586,10 +612,17 @@ const ProductDetailPage = () => {
     }
   };
 
-  const fetchProduct = async () => {
+  const fetchProduct = useCallback(async ({
+    showLoader = true,
+    preserveCurrent = false,
+  } = {}) => {
     try {
-      setLoading(true);
-      const response = await fetchDataFromApi(`/api/products/${routeId}`);
+      if (showLoader) {
+        setLoading(true);
+      }
+      const response = await fetchDataFromApi(`/api/products/${routeId}`, {
+        skipCache: true,
+      });
 
       if (response?.error !== true && response?.data) {
         const resolvedProduct = response.data;
@@ -599,14 +632,33 @@ const ProductDetailPage = () => {
         );
 
         setProduct(resolvedProduct);
-        setSelectedVariant(
-          resolvedProduct?.hasVariants &&
-            Array.isArray(resolvedProduct?.variants)
-            ? resolvedProduct.variants.find((variant) => variant?.isDefault) ||
-                resolvedProduct.variants[0] ||
-                null
-            : null,
-        );
+        setSelectedVariant((previous) => {
+          if (
+            !resolvedProduct?.hasVariants ||
+            !Array.isArray(resolvedProduct?.variants)
+          ) {
+            return null;
+          }
+
+          const previousVariantId = previous?._id || previous?.id;
+          if (previousVariantId) {
+            const matchedVariant =
+              resolvedProduct.variants.find(
+                (variant) =>
+                  String(variant?._id || variant?.id || "") ===
+                  String(previousVariantId),
+              ) || null;
+            if (matchedVariant) {
+              return matchedVariant;
+            }
+          }
+
+          return (
+            resolvedProduct.variants.find((variant) => variant?.isDefault) ||
+            resolvedProduct.variants[0] ||
+            null
+          );
+        });
 
         trackEvent("product_view", {
           productId: String(resolvedProductId || ""),
@@ -655,19 +707,42 @@ const ProductDetailPage = () => {
           setRelatedProducts([]);
         }
       } else {
-        setProduct(null);
+        if (!preserveCurrent) {
+          setProduct(null);
+        }
       }
     } catch (error) {
       console.error("Error fetching product:", error);
-      setProduct(null);
-      setCustomerReviews([]);
-      setFrequentlyBought([]);
-      setRecommendedCombos([]);
-      setRelatedProducts([]);
+      if (!preserveCurrent) {
+        setProduct(null);
+        setCustomerReviews([]);
+        setFrequentlyBought([]);
+        setRecommendedCombos([]);
+        setRelatedProducts([]);
+      }
     } finally {
-      setLoading(false);
+      if (showLoader) {
+        setLoading(false);
+      }
     }
-  };
+  }, [routeId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const stopFallbackPolling = useCallback(() => {
+    if (fallbackPollRef.current && typeof window !== "undefined") {
+      window.clearInterval(fallbackPollRef.current);
+    }
+    fallbackPollRef.current = null;
+  }, []);
+
+  const startFallbackPolling = useCallback(() => {
+    if (typeof window === "undefined" || fallbackPollRef.current || isDemoPreview) {
+      return;
+    }
+
+    fallbackPollRef.current = window.setInterval(() => {
+      void fetchProduct({ showLoader: false, preserveCurrent: true });
+    }, FALLBACK_POLL_INTERVAL_MS);
+  }, [fetchProduct, isDemoPreview]);
 
   useEffect(() => {
     setActiveTab("description");
@@ -696,9 +771,68 @@ const ProductDetailPage = () => {
       return;
     }
 
-    fetchProduct();
+    void fetchProduct();
     window.scrollTo({ top: 0, behavior: "smooth" });
-  }, [routeId, isDemoPreview]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [fetchProduct, routeId, isDemoPreview]);
+
+  useEffect(() => {
+    if (!product?.hasVariants || !Array.isArray(product?.variants)) return;
+
+    setSelectedVariant((previous) => {
+      const currentVariantId = previous?._id || previous?.id;
+      if (!currentVariantId) return previous;
+
+      const nextVariant =
+        product.variants.find(
+          (variant) =>
+            String(variant?._id || variant?.id || "") ===
+            String(currentVariantId),
+        ) || null;
+
+      return nextVariant || previous;
+    });
+  }, [product]);
+
+  useEffect(() => {
+    if (!routeId || isDemoPreview) return undefined;
+
+    const unsubscribeStock = subscribeToStockUpdates((payload) => {
+      startTransition(() => {
+        setProduct((previous) => applyStockUpdateToProduct(previous, payload));
+        setRelatedProducts((previous) =>
+          applyStockUpdateToProductCollection(previous, payload),
+        );
+      });
+    });
+
+    const unsubscribeConnection = subscribeToStockConnection((event) => {
+      if (event?.type === "fallback_active") {
+        startFallbackPolling();
+        return;
+      }
+
+      if (event?.type !== "connected" && event?.type !== "reconnected") {
+        return;
+      }
+
+      stopFallbackPolling();
+      if (event?.type === "reconnected") {
+        void fetchProduct({ showLoader: false, preserveCurrent: true });
+      }
+    });
+
+    return () => {
+      stopFallbackPolling();
+      unsubscribeStock();
+      unsubscribeConnection();
+    };
+  }, [
+    fetchProduct,
+    isDemoPreview,
+    routeId,
+    startFallbackPolling,
+    stopFallbackPolling,
+  ]);
 
   useEffect(() => {
     if (activeImageIndex >= images.length) {
@@ -1038,6 +1172,16 @@ const ProductDetailPage = () => {
 
   const isBuyNowDisabled =
     actionLoading || (!currentVariantInCart && availableQty === 0);
+  const isOutOfStock = availableQty === 0;
+  const notifyVariantId = selectedVariantId || defaultVariant?._id || null;
+  const notifyVariantName =
+    (resolvedSelectedVariant ? formatVariantLabel(resolvedSelectedVariant) : "") ||
+    (defaultVariant ? formatVariantLabel(defaultVariant) : "");
+  const notifyRequested = Boolean(
+    resolvedSelectedVariant?.stockNotificationRequested ||
+      defaultVariant?.stockNotificationRequested ||
+      product?.stockNotificationRequested,
+  );
 
   if (loading) {
     return (
@@ -1373,7 +1517,8 @@ const ProductDetailPage = () => {
                         onClick={() =>
                           setQuantity((previous) => Math.max(previous - 1, 1))
                         }
-                        className="product-qty-action flex h-10 w-10 items-center justify-center rounded-xl text-lg font-semibold transition"
+                        disabled={isOutOfStock}
+                        className="product-qty-action flex h-10 w-10 items-center justify-center rounded-xl text-lg font-semibold transition disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         -
                       </button>
@@ -1387,7 +1532,8 @@ const ProductDetailPage = () => {
                             Math.min(previous + 1, maxQty),
                           )
                         }
-                        className="product-qty-action flex h-10 w-10 items-center justify-center rounded-xl text-lg font-semibold transition"
+                        disabled={isOutOfStock}
+                        className="product-qty-action flex h-10 w-10 items-center justify-center rounded-xl text-lg font-semibold transition disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         +
                       </button>
@@ -1402,40 +1548,68 @@ const ProductDetailPage = () => {
                 </div>
               </div>
 
-              <div className="mt-8 grid gap-3 sm:grid-cols-2">
-                <button
-                  type="button"
-                  onClick={handleAddToCart}
-                  disabled={
-                    actionLoading ||
-                    (!currentVariantInCart && availableQty === 0)
-                  }
-                  className="flex min-h-[58px] items-center justify-center gap-3 rounded-2xl border bg-white px-5 py-4 text-base font-semibold transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
-                  style={
-                    currentVariantInCart
-                      ? { borderColor: "#dc2626", color: "#dc2626" }
-                      : {
-                          borderColor: "var(--primary)",
-                          color: "var(--primary)",
-                        }
-                  }
-                >
-                  <IoMdCart className="text-xl" />
-                  {currentVariantInCart ? "Remove from Cart" : "Add to Cart"}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleBuyNow}
-                  disabled={isBuyNowDisabled}
-                  className="product-cta-primary min-h-[58px] rounded-2xl px-5 py-4 text-base font-semibold transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
-                  style={{
-                    backgroundColor: "var(--primary)",
-                    color: "var(--flavor-text, #ffffff)",
-                  }}
-                >
-                  Buy Now
-                </button>
-              </div>
+              {isOutOfStock ? (
+                <div className="mt-8 rounded-[28px] border border-[#f3d2c9] bg-[linear-gradient(135deg,#fff8f5_0%,#fffdf9_100%)] p-5 shadow-[0_24px_60px_-46px_rgba(77,33,20,0.42)]">
+                  <div className="inline-flex rounded-full bg-[#fef2f2] px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-[#cb1f1f]">
+                    Out of stock
+                  </div>
+                  <p className="mt-3 text-lg font-semibold text-[#24150f]">
+                    We&apos;re restocking soon
+                  </p>
+                  <p className="mt-1 text-sm leading-6 text-[#6b5144]">
+                    This pack is currently unavailable, but we can alert you the
+                    moment it is ready to order again.
+                  </p>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-[180px_minmax(0,1fr)]">
+                    <button
+                      type="button"
+                      disabled
+                      className="min-h-[56px] rounded-[18px] border border-[#ead7cb] bg-[#f7efe8] px-5 py-4 text-base font-semibold text-[#b34d39] opacity-80"
+                    >
+                      Out of stock
+                    </button>
+                    <StockNotificationButton
+                      productId={productId}
+                      productName={product?.name || product?.title || "Product"}
+                      variantId={notifyVariantId}
+                      variantName={notifyVariantName}
+                      initialRequested={notifyRequested}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-8 grid gap-3 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={handleAddToCart}
+                    disabled={actionLoading}
+                    className="flex min-h-[58px] items-center justify-center gap-3 rounded-2xl border bg-white px-5 py-4 text-base font-semibold transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
+                    style={
+                      currentVariantInCart
+                        ? { borderColor: "#dc2626", color: "#dc2626" }
+                        : {
+                            borderColor: "var(--primary)",
+                            color: "var(--primary)",
+                          }
+                    }
+                  >
+                    <IoMdCart className="text-xl" />
+                    {currentVariantInCart ? "Remove from Cart" : "Add to Cart"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleBuyNow}
+                    disabled={isBuyNowDisabled}
+                    className="product-cta-primary min-h-[58px] rounded-2xl px-5 py-4 text-base font-semibold transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
+                    style={{
+                      backgroundColor: "var(--primary)",
+                      color: "var(--flavor-text, #ffffff)",
+                    }}
+                  >
+                    Buy Now
+                  </button>
+                </div>
+              )}
 
               <div className="mt-8 grid gap-3 sm:grid-cols-2">
                 <div className="rounded-[24px] border border-[#e7dad1] bg-[#faf6f2] p-4">
@@ -2086,6 +2260,7 @@ const ProductDetailPage = () => {
                           item.image || item.images?.[0] || "/product_1.png"
                         }
                         product={item}
+                        realtimeManagedExternally
                       />
                     ))}
                   </div>

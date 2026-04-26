@@ -1882,7 +1882,6 @@ const Checkout = () => {
         return;
       }
 
-      const token = authToken;
       const currentAffiliate = getStoredAffiliateData();
 
       // Get selected address - selectedAddress is now the _id directly
@@ -1918,16 +1917,7 @@ const Checkout = () => {
         notes: orderNote,
       };
 
-      const response = await fetch(`${API_URL}/api/orders/save-for-later`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token && { Authorization: `Bearer ${token}` }),
-        },
-        body: JSON.stringify(orderData),
-      });
-
-      const data = await response.json();
+      const data = await postData("/api/orders/save-for-later", orderData);
 
       if (data.success) {
         persistTestInvoice({

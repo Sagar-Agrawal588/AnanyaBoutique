@@ -542,7 +542,9 @@ const PaytmReturn = () => {
 
               if (!disposed) {
                 const resolvedOrderId = String(order?._id || orderId).trim();
-                setMessage("Payment confirmed. Redirecting to your order...");
+                setMessage(
+                  "Payment confirmed. Redirecting to your order details...",
+                );
                 if (
                   resolvedOrderId &&
                   params.flow === "order" &&
@@ -552,7 +554,7 @@ const PaytmReturn = () => {
                   setTimeout(() => {
                     window.location.href = `/orders/${encodeURIComponent(
                       resolvedOrderId,
-                    )}`;
+                    )}?paymentProvider=PAYTM&paymentState=paid`;
                   }, 900);
                 }
               }

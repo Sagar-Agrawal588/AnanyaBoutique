@@ -52,10 +52,16 @@ import { captureCrmTouchpointSafely } from "../services/crm/crmTracking.service.
 import { createEmailLog } from "../services/emailAutomation.service.js";
 import {
   confirmInventory,
+  getReservationExpiryDate,
   releaseInventory,
   reserveInventory,
   restoreInventory,
 } from "../services/inventory.service.js";
+import {
+  expireOrderReservation,
+  releaseExpiredReservations,
+} from "../services/inventoryReservationExpiry.service.js";
+import { trackRestockConversionsForOrder } from "../services/productAvailabilityAnalytics.service.js";
 import {
   createPaytmPayment,
   getPaytmStatus,
@@ -1648,6 +1654,167 @@ const clearOrderPaymentReminderState = (order) => {
   order.paymentReminderEmailSentAt = null;
   order.paymentReminderEmailFailureKind = "";
   order.paymentReminderEmailProvider = "";
+};
+
+const PAYMENT_PENDING_ORDER_STATUSES = new Set([
+  ORDER_STATUS.PENDING,
+  ORDER_STATUS.PAYMENT_PENDING,
+]);
+
+const resolveReservationSecondsRemaining = (
+  reservationExpiresAt,
+  now = new Date(),
+) => {
+  if (!reservationExpiresAt) return 0;
+  const expiry = new Date(reservationExpiresAt);
+  if (Number.isNaN(expiry.getTime())) return 0;
+
+  const remainingMs = expiry.getTime() - now.getTime();
+  if (remainingMs <= 0) return 0;
+  return Math.ceil(remainingMs / 1000);
+};
+
+const flushExpiredReservationsSafely = async (
+  context = "reservationCleanup",
+) => {
+  try {
+    await releaseExpiredReservations();
+  } catch (error) {
+    logger.warn(context, "Failed to flush expired reservations", {
+      error: error?.message || String(error),
+    });
+  }
+};
+
+const ensureOrderHasActiveReservationForPayment = async (
+  order,
+  { source = "PAYMENT_PAGE", refreshExpiry = true, throwOnUnavailable = true } = {},
+) => {
+  if (!order) {
+    throw new AppError("ORDER_NOT_FOUND");
+  }
+
+  const now = new Date();
+  const normalizedPaymentStatus = String(order.payment_status || "")
+    .trim()
+    .toLowerCase();
+
+  if (normalizedPaymentStatus === "paid") {
+    return {
+      status: "paid",
+      expiresAt: null,
+      secondsRemaining: 0,
+    };
+  }
+
+  const normalizedOrderStatus = normalizeOrderStatus(order.order_status);
+  if (!PAYMENT_PENDING_ORDER_STATUSES.has(normalizedOrderStatus)) {
+    return {
+      status: "noop",
+      reason: "invalid_order_status",
+      expiresAt: order.reservationExpiresAt || null,
+      secondsRemaining: resolveReservationSecondsRemaining(
+        order.reservationExpiresAt,
+        now,
+      ),
+    };
+  }
+
+  const inventoryStatus = String(order.inventoryStatus || "")
+    .trim()
+    .toLowerCase();
+  if (inventoryStatus === "reserved") {
+    const expiryResult = await expireOrderReservation(order, {
+      now,
+      source: `${source}_EXPIRED`,
+    });
+
+    if (expiryResult.status === "released") {
+      logger.info(
+        "orderReservation",
+        "Expired reservation released before payment action",
+        {
+          orderId: order._id,
+          source,
+        },
+      );
+    }
+  }
+
+  let reservationStatus = String(order.inventoryStatus || "")
+    .trim()
+    .toLowerCase();
+
+  if (reservationStatus !== "reserved") {
+    await reserveComboStock(order, `${source}_RESERVE`);
+    try {
+      await reserveInventory(order, `${source}_RESERVE`);
+      reservationStatus = String(order.inventoryStatus || "")
+        .trim()
+        .toLowerCase();
+    } catch (reservationError) {
+      try {
+        await releaseComboStock(order, `${source}_RESERVE_FAIL`);
+      } catch (rollbackError) {
+        logger.error(
+          "orderReservation",
+          "Failed to rollback combo reservation",
+          {
+            orderId: order?._id,
+            source,
+            error: rollbackError?.message || String(rollbackError),
+          },
+        );
+      }
+
+      if (
+        !throwOnUnavailable &&
+        reservationError instanceof AppError &&
+        reservationError.code === "INSUFFICIENT_STOCK"
+      ) {
+        return {
+          status: "unavailable",
+          reason: "insufficient_stock",
+          expiresAt: null,
+          secondsRemaining: 0,
+        };
+      }
+
+      throw reservationError;
+    }
+  }
+
+  if (reservationStatus !== "reserved") {
+    if (throwOnUnavailable) {
+      throw new AppError("CONFLICT", {
+        field: "inventoryStatus",
+        message: "Unable to reserve inventory for payment",
+      });
+    }
+
+    return {
+      status: "unavailable",
+      reason: "reservation_unavailable",
+      expiresAt: null,
+      secondsRemaining: 0,
+    };
+  }
+
+  if (refreshExpiry || !order.reservationExpiresAt) {
+    order.reservationExpiresAt = getReservationExpiryDate(now);
+  }
+
+  order.updatedAt = new Date();
+  await order.save();
+
+  return {
+    status: "reserved",
+    expiresAt: order.reservationExpiresAt || null,
+    secondsRemaining: resolveReservationSecondsRemaining(
+      order.reservationExpiresAt,
+      now,
+    ),
+  };
 };
 
 const resolvePaymentProviderLabel = (provider) =>
@@ -5458,6 +5625,8 @@ export const createOrder = asyncHandler(async (req, res) => {
       purchaseOrder: checkoutPurchaseOrder?._id || null,
     });
 
+    await flushExpiredReservationsSafely("createOrder");
+
     try {
       await reserveComboStock(order, "ORDER_CREATE");
       await reserveInventory(order, "ORDER_CREATE");
@@ -6179,6 +6348,8 @@ export const saveOrderForLater = asyncHandler(async (req, res) => {
       notes: notes || "Order saved - awaiting payment gateway activation",
     });
 
+    await flushExpiredReservationsSafely("saveOrderForLater");
+
     try {
       await reserveComboStock(savedOrder, "ORDER_SAVE");
       await reserveInventory(savedOrder, "ORDER_SAVE");
@@ -6489,7 +6660,7 @@ export const getPayOrderDetails = asyncHandler(async (req, res) => {
     const orderIdentifier = req.params.orderId || req.params.id;
     const token = String(req.query?.key || req.body?.key || "").trim();
 
-    const order = await findOrderByIdentifier(orderIdentifier, { lean: true });
+    const order = await findOrderByIdentifier(orderIdentifier);
     if (!order) {
       throw new AppError("ORDER_NOT_FOUND");
     }
@@ -6512,9 +6683,28 @@ export const getPayOrderDetails = asyncHandler(async (req, res) => {
       ORDER_STATUS.PENDING,
       ORDER_STATUS.PAYMENT_PENDING,
     ]);
+    let reservationState = null;
+    if (
+      normalizedPaymentStatus !== "paid" &&
+      pendingStatuses.has(normalizedOrderStatus)
+    ) {
+      await flushExpiredReservationsSafely("getPayOrderDetails");
+      reservationState = await ensureOrderHasActiveReservationForPayment(order, {
+        source: "PAY_ORDER_DETAILS",
+        refreshExpiry: true,
+        throwOnUnavailable: false,
+      });
+    }
+
     const isPayable =
       normalizedPaymentStatus !== "paid" &&
-      pendingStatuses.has(normalizedOrderStatus);
+      pendingStatuses.has(normalizedOrderStatus) &&
+      reservationState?.status !== "unavailable";
+    const reservationExpiresAt =
+      reservationState?.expiresAt || order.reservationExpiresAt || null;
+    const reservationSecondsRemaining = resolveReservationSecondsRemaining(
+      reservationExpiresAt,
+    );
 
     const displayOrderId = resolveDisplayOrderNumber(order);
     const items = Array.isArray(order.products)
@@ -6535,6 +6725,13 @@ export const getPayOrderDetails = asyncHandler(async (req, res) => {
       paymentStatus: normalizedPaymentStatus || "pending",
       orderStatus: normalizedOrderStatus || "pending",
       payable: isPayable,
+      reservationStatus: reservationState?.status || null,
+      reservationExpiresAt,
+      reservationSecondsRemaining,
+      reservationUnavailableReason:
+        reservationState?.status === "unavailable"
+          ? reservationState.reason || "insufficient_stock"
+          : null,
       couponCode: String(order.couponCode || "").trim(),
       couponDiscount: round2(Number(order.discountAmount || 0)),
       totals: {
@@ -6617,6 +6814,13 @@ export const initiatePayOrderPayment = asyncHandler(async (req, res) => {
         message: "Order is not eligible for payment",
       });
     }
+
+    await flushExpiredReservationsSafely("initiatePayOrderPayment");
+    await ensureOrderHasActiveReservationForPayment(order, {
+      source: "PAY_ORDER_INITIATE",
+      refreshExpiry: true,
+      throwOnUnavailable: true,
+    });
 
     const requestedPaymentProvider = String(
       req.body?.paymentProvider || order.paymentMethod || "",
@@ -6864,6 +7068,21 @@ export const retryOrderPayment = asyncHandler(async (req, res) => {
         message: "Order is not eligible for payment retry",
       });
     }
+
+    if (!PAYMENT_PENDING_ORDER_STATUSES.has(normalizedOrderStatus)) {
+      throw new AppError("INVALID_STATUS", {
+        field: "order_status",
+        status: normalizedOrderStatus,
+        message: "Order is not eligible for payment retry",
+      });
+    }
+
+    await flushExpiredReservationsSafely("retryOrderPayment");
+    await ensureOrderHasActiveReservationForPayment(order, {
+      source: "RETRY_PAYMENT",
+      refreshExpiry: true,
+      throwOnUnavailable: true,
+    });
 
     const requestedPaymentProvider = String(
       req.body?.paymentProvider || order.paymentMethod || "",
@@ -7433,6 +7652,9 @@ const applyResolvedPaymentStatus = async ({
       });
       await confirmComboStock(order, successSource);
       await confirmInventory(order, successSource);
+      await trackRestockConversionsForOrder(order, {
+        source: successSource,
+      });
       orderMutated = true;
     }
     if (hasPaymentReminder) {

@@ -251,6 +251,7 @@ import partnerApiRouter from "./routes/partnerApi.route.js";
 import policyRouter from "./routes/policy.route.js";
 import popupRouter from "./routes/popup.route.js";
 import productRouter from "./routes/product.route.js";
+import productDemandRouter from "./routes/productDemand.route.js";
 import purchaseOrderRouter from "./routes/purchaseOrder.route.js";
 import refundRouter from "./routes/refund.route.js";
 import reviewRouter from "./routes/review.route.js";
@@ -272,6 +273,7 @@ import { startExpressbeesPolling } from "./services/expressbeesPolling.service.j
 import { startInventoryReservationExpiryJob } from "./services/inventoryReservationExpiry.service.js";
 import { startMembershipExpiryJob } from "./services/membershipExpiry.service.js";
 import { startPartnerDynamicScalingEngine } from "./services/partnerApiDynamicScaling.service.js";
+import { startStockNotificationQueueWorker } from "./services/stockNotificationQueue.service.js";
 import { startLocationLogRetentionJob } from "./services/userLocationLog.service.js";
 
 const app = express();
@@ -690,6 +692,7 @@ app.use("/api/admin/analytics", adminLimiter, adminAnalyticsRouter);
 app.use("/api/admin/crm", adminLimiter, adminCrmRouter);
 app.use("/api/admin/email-templates", adminLimiter, adminEmailTemplatesRouter);
 app.use("/api/admin", adminLimiter, adminMembershipRouter);
+app.use("/api/admin", adminLimiter, productDemandRouter);
 app.use("/api/cart", generalLimiter, cartRouter);
 app.use("/api/combos", generalLimiter, comboRouter);
 app.use("/api/wishlist", generalLimiter, wishlistRouter);
@@ -896,6 +899,7 @@ connectDb()
     startFrequentlyBoughtTogetherJob();
     startComboAnalysisJob();
     startPartnerDynamicScalingEngine();
+    startStockNotificationQueueWorker();
   })
   .catch((error) => {
     console.error("Server startup failed:", error?.message || error);

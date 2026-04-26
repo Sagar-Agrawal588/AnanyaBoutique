@@ -52,7 +52,9 @@ const ViewProduct = () => {
   const productId = params.id;
 
   const [product, setProduct] = useState(null);
+  const [productDemand, setProductDemand] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isDemandLoading, setIsDemandLoading] = useState(true);
   const [selectedImage, setSelectedImage] = useState(0);
 
   const fetchProduct = useCallback(async () => {
@@ -71,6 +73,25 @@ const ViewProduct = () => {
     setIsLoading(false);
   }, [productId, token, router]);
 
+  const fetchProductDemand = useCallback(async () => {
+    if (!productId || !token) return;
+
+    setIsDemandLoading(true);
+    try {
+      const response = await getData(`/api/admin/product-demand/${productId}`, token);
+      if (response?.success && response?.data) {
+        setProductDemand(response.data);
+      } else {
+        setProductDemand(null);
+      }
+    } catch (error) {
+      console.error("Failed to fetch product demand:", error);
+      setProductDemand(null);
+    } finally {
+      setIsDemandLoading(false);
+    }
+  }, [productId, token]);
+
   useEffect(() => {
     if (!loading && !isAuthenticated) {
       router.push("/login");
@@ -80,8 +101,9 @@ const ViewProduct = () => {
   useEffect(() => {
     if (isAuthenticated && token && productId) {
       fetchProduct();
+      fetchProductDemand();
     }
-  }, [isAuthenticated, token, productId, fetchProduct]);
+  }, [isAuthenticated, token, productId, fetchProduct, fetchProductDemand]);
 
   if (loading || !isAuthenticated || isLoading) {
     return (
@@ -298,6 +320,14 @@ const ViewProduct = () => {
                   {product.viewCount || 0}
                 </p>
               </div>
+              <div className="bg-gray-50 p-3 rounded-lg">
+                <p className="text-sm text-gray-500">Users Waiting</p>
+                <p className="font-medium text-gray-800">
+                  {isDemandLoading
+                    ? "Loading..."
+                    : Number(productDemand?.waiting_users_count || 0)}
+                </p>
+              </div>
             </div>
 
             {product.shortDescription && (
@@ -338,6 +368,98 @@ const ViewProduct = () => {
             </p>
           </div>
         )}
+
+        <div className="mt-8 border-t pt-6">
+          <div className="flex items-start justify-between gap-4 mb-4">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-700">
+                Stock Notification Demand
+              </h3>
+              <p className="text-sm text-gray-500">
+                Waiting users and recent back-in-stock request history for this product.
+              </p>
+            </div>
+            <div className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-right">
+              <p className="text-xs uppercase tracking-wide text-orange-700">
+                Users waiting for this product
+              </p>
+              <p className="text-lg font-semibold text-orange-900">
+                {isDemandLoading
+                  ? "..."
+                  : Number(productDemand?.waiting_users_count || 0)}
+              </p>
+            </div>
+          </div>
+
+          {isDemandLoading ? (
+            <p className="text-sm text-gray-500">Loading demand details...</p>
+          ) : !productDemand?.requests?.length ? (
+            <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-sm text-gray-500">
+              No stock notification requests have been recorded for this product yet.
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-lg border border-gray-200">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-600">
+                      User
+                    </th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-600">
+                      Email
+                    </th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-600">
+                      Pack
+                    </th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-600">
+                      Requested
+                    </th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-600">
+                      Status
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {productDemand.requests.map((request) => {
+                    const status = String(request?.notification_status || "pending");
+                    const statusClasses =
+                      status === "sent"
+                        ? "bg-green-100 text-green-700"
+                        : status === "failed"
+                          ? "bg-red-100 text-red-700"
+                          : "bg-amber-100 text-amber-700";
+
+                    return (
+                      <tr key={request.id} className="border-t border-gray-100">
+                        <td className="px-4 py-3 text-gray-800">
+                          {request.user_name || "Guest"}
+                        </td>
+                        <td className="px-4 py-3 text-gray-600">
+                          {request.email || "-"}
+                        </td>
+                        <td className="px-4 py-3 text-gray-600">
+                          {request.variant_label || "-"}
+                        </td>
+                        <td className="px-4 py-3 text-gray-600">
+                          {request.requested_at
+                            ? new Date(request.requested_at).toLocaleString()
+                            : "-"}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium capitalize ${statusClasses}`}
+                          >
+                            {status}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
     </section>
   );

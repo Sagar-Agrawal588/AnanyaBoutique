@@ -4,6 +4,7 @@ import AddressModel from "../models/address.model.js";
 import OrderModel from "../models/order.model.js";
 import ProductModel from "../models/product.model.js";
 import PurchaseOrderModel from "../models/purchaseOrder.model.js";
+import { emitStockUpdateIfChanged } from "../realtime/stockEvents.js";
 import {
   applyPurchaseOrderInventory,
   logInventoryAudit,
@@ -11,6 +12,7 @@ import {
   releaseInventory,
   reserveInventory,
   syncParentStockFromVariants,
+  triggerBackInStockNotificationsIfRecovered,
 } from "../services/inventory.service.js";
 import UserModel from "../models/user.model.js";
 import { validateIndianPincode } from "../services/shippingRate.service.js";
@@ -1024,6 +1026,7 @@ export const updatePurchaseOrderReceipt = async (req, res) => {
   try {
     const { id } = req.params;
     const { items = [], invoiceNumber, vehicleNumber, notes } = req.body || {};
+    const pendingStockUpdates = [];
     const normalizedPo = await runWithMongoTransaction(async (session) => {
       const appliedAdjustments = [];
       try {
@@ -1316,6 +1319,20 @@ export const updatePurchaseOrderReceipt = async (req, res) => {
             newStock: Number(auditAfter?.stock_quantity ?? auditAfter?.stock ?? 0),
             session,
           });
+
+          await triggerBackInStockNotificationsIfRecovered({
+            productBefore: product,
+            productAfter,
+            variantId: resolvedVariantId || null,
+            source: "PO_RECEIVE",
+          });
+
+          pendingStockUpdates.push({
+            productBefore: product,
+            productAfter,
+            variantId: resolvedVariantId || null,
+            source: "PO_RECEIVE",
+          });
         }
 
         if (appliedAdjustments.length > 0) {
@@ -1363,6 +1380,10 @@ export const updatePurchaseOrderReceipt = async (req, res) => {
         }
         throw error;
       }
+    });
+
+    pendingStockUpdates.forEach((update) => {
+      emitStockUpdateIfChanged(update);
     });
 
     return res.status(200).json({

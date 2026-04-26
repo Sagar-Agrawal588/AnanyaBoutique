@@ -15,6 +15,7 @@ import {
   reserveInventory,
   restoreInventory,
 } from "../services/inventory.service.js";
+import { releaseExpiredReservations } from "../services/inventoryReservationExpiry.service.js";
 
 let mongoServer;
 
@@ -53,6 +54,7 @@ test.after(async () => {
 
 test.afterEach(async () => {
   await ProductModel.deleteMany({});
+  await OrderModel.deleteMany({});
   await PurchaseOrderModel.deleteMany({});
   await InventoryAuditModel.deleteMany({});
   await StockMovementModel.deleteMany({});
@@ -690,4 +692,186 @@ test("concurrent order deductions never drive stock below zero", async () => {
   const updated = await ProductModel.findById(product._id).lean();
   assert.ok(updated.stock_quantity >= 0);
   assert.equal(updated.stock_quantity, 1);
+});
+
+test("concurrent reservations allow only one buyer for the last unit", async () => {
+  const product = await ProductModel.create({
+    name: "Last Unit Reservation",
+    slug: "last-unit-reservation",
+    price: 299,
+    category: new mongoose.Types.ObjectId(),
+    stock: 1,
+    stock_quantity: 1,
+  });
+
+  const order1 = new OrderModel({
+    products: [
+      {
+        productId: product._id.toString(),
+        productTitle: "Last Unit Reservation",
+        quantity: 1,
+        price: 299,
+        subTotal: 299,
+      },
+    ],
+    totalAmt: 299,
+  });
+
+  const order2 = new OrderModel({
+    products: [
+      {
+        productId: product._id.toString(),
+        productTitle: "Last Unit Reservation",
+        quantity: 1,
+        price: 299,
+        subTotal: 299,
+      },
+    ],
+    totalAmt: 299,
+  });
+
+  const results = await Promise.allSettled([
+    reserveInventory(order1, "TEST_RESERVE_1"),
+    reserveInventory(order2, "TEST_RESERVE_2"),
+  ]);
+
+  const successCount = results.filter((result) => result.status === "fulfilled")
+    .length;
+  const failedCount = results.filter((result) => result.status === "rejected")
+    .length;
+
+  assert.equal(successCount, 1);
+  assert.equal(failedCount, 1);
+
+  const updated = await ProductModel.findById(product._id).lean();
+  assert.equal(Number(updated.stock_quantity || 0), 1);
+  assert.equal(Number(updated.reserved_quantity || 0), 1);
+  assert.equal(
+    Number(updated.stock_quantity || 0) - Number(updated.reserved_quantity || 0),
+    0,
+  );
+});
+
+test("expired reservation is released by cleanup", async () => {
+  const previousEnabled = process.env.INVENTORY_RESERVATION_ENABLED;
+  const previousSeconds = process.env.INVENTORY_RESERVATION_SECONDS;
+
+  try {
+    process.env.INVENTORY_RESERVATION_ENABLED = "true";
+    process.env.INVENTORY_RESERVATION_SECONDS = "1";
+
+    const product = await ProductModel.create({
+      name: "Expiry Product",
+      slug: "expiry-product",
+      price: 149,
+      category: new mongoose.Types.ObjectId(),
+      stock: 2,
+      stock_quantity: 2,
+    });
+
+    const order = new OrderModel({
+      products: [
+        {
+          productId: product._id.toString(),
+          productTitle: "Expiry Product",
+          quantity: 1,
+          price: 149,
+          subTotal: 149,
+        },
+      ],
+      totalAmt: 149,
+      payment_status: "pending",
+      order_status: "pending",
+    });
+
+    await reserveInventory(order, "TEST_EXPIRY");
+    await order.save();
+
+    await new Promise((resolve) => {
+      setTimeout(resolve, 1200);
+    });
+
+    await releaseExpiredReservations();
+
+    const updatedProduct = await ProductModel.findById(product._id).lean();
+    assert.equal(Number(updatedProduct.reserved_quantity || 0), 0);
+
+    const updatedOrder = await OrderModel.findById(order._id).lean();
+    assert.equal(String(updatedOrder.inventoryStatus || ""), "released");
+    assert.equal(updatedOrder.reservationExpiresAt, null);
+  } finally {
+    if (previousEnabled === undefined) {
+      delete process.env.INVENTORY_RESERVATION_ENABLED;
+    } else {
+      process.env.INVENTORY_RESERVATION_ENABLED = previousEnabled;
+    }
+
+    if (previousSeconds === undefined) {
+      delete process.env.INVENTORY_RESERVATION_SECONDS;
+    } else {
+      process.env.INVENTORY_RESERVATION_SECONDS = previousSeconds;
+    }
+  }
+});
+
+test("successful confirmation within reservation window keeps stock deducted", async () => {
+  const previousEnabled = process.env.INVENTORY_RESERVATION_ENABLED;
+  const previousSeconds = process.env.INVENTORY_RESERVATION_SECONDS;
+
+  try {
+    process.env.INVENTORY_RESERVATION_ENABLED = "true";
+    process.env.INVENTORY_RESERVATION_SECONDS = "5";
+
+    const product = await ProductModel.create({
+      name: "In-window Confirmation Product",
+      slug: "in-window-confirmation-product",
+      price: 199,
+      category: new mongoose.Types.ObjectId(),
+      stock: 1,
+      stock_quantity: 1,
+    });
+
+    const order = new OrderModel({
+      products: [
+        {
+          productId: product._id.toString(),
+          productTitle: "In-window Confirmation Product",
+          quantity: 1,
+          price: 199,
+          subTotal: 199,
+        },
+      ],
+      totalAmt: 199,
+      payment_status: "pending",
+      order_status: "pending",
+    });
+
+    await reserveInventory(order, "TEST_CONFIRM_SUCCESS");
+    await confirmInventory(order, "TEST_CONFIRM_SUCCESS");
+    order.payment_status = "paid";
+    await order.save();
+
+    await releaseExpiredReservations();
+
+    const updatedProduct = await ProductModel.findById(product._id).lean();
+    assert.equal(Number(updatedProduct.stock_quantity || 0), 0);
+    assert.equal(Number(updatedProduct.reserved_quantity || 0), 0);
+
+    const updatedOrder = await OrderModel.findById(order._id).lean();
+    assert.equal(String(updatedOrder.inventoryStatus || ""), "deducted");
+    assert.equal(String(updatedOrder.payment_status || ""), "paid");
+    assert.equal(updatedOrder.reservationExpiresAt, null);
+  } finally {
+    if (previousEnabled === undefined) {
+      delete process.env.INVENTORY_RESERVATION_ENABLED;
+    } else {
+      process.env.INVENTORY_RESERVATION_ENABLED = previousEnabled;
+    }
+
+    if (previousSeconds === undefined) {
+      delete process.env.INVENTORY_RESERVATION_SECONDS;
+    } else {
+      process.env.INVENTORY_RESERVATION_SECONDS = previousSeconds;
+    }
+  }
 });

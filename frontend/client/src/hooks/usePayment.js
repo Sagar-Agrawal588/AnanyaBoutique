@@ -1,5 +1,5 @@
 import { MyContext } from "@/context/ThemeProvider";
-import { API_BASE_URL } from "@/utils/api";
+import { API_BASE_URL, invalidatePublicGetCache } from "@/utils/api";
 import cookies from "js-cookie";
 import { useRouter } from "next/navigation";
 import { useContext, useState } from "react";
@@ -85,6 +85,8 @@ export const usePayment = () => {
 
       const orderResponse = await createOrderResponse.json();
       const { orderId, paymentUrl } = orderResponse.data || {};
+
+      invalidatePublicGetCache();
 
       if (!paymentUrl) {
         throw new Error("Paytm payment URL not received.");

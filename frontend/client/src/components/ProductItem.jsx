@@ -2,14 +2,16 @@
 
 import ProductCardBadges from "@/components/productCard/ProductCardBadges";
 import ProductCardPriceBlock from "@/components/productCard/ProductCardPriceBlock";
+import { subscribeToStockUpdates } from "@/realtime/stockSocket";
 import ShareButton from "@/components/ShareButton";
+import StockNotificationButton from "@/components/StockNotificationButton";
 import { useCart } from "@/context/CartContext";
-import { FLAVORS, MyContext } from "@/context/ThemeContext";
+import { applyStockUpdateToProduct } from "@/utils/stockRealtime";
 import { useWishlist } from "@/context/WishlistContext";
 import { getProductCardImageUrl } from "@/utils/imageUtils";
 import Image from "next/image";
 import Link from "next/link";
-import { useContext, useState } from "react";
+import { startTransition, useEffect, useState } from "react";
 import {
   IoIosStar,
   IoIosStarHalf,
@@ -18,6 +20,45 @@ import {
   IoMdHeartEmpty,
 } from "react-icons/io";
 import { MdDeleteOutline } from "react-icons/md";
+
+const toNumber = (value, fallback = 0) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const isInventoryTracked = (entry, fallbackEntry = null) => {
+  const source = entry || fallbackEntry || {};
+  if (source?.track_inventory === false || source?.trackInventory === false) {
+    return false;
+  }
+  return true;
+};
+
+const resolveAvailability = (entry, fallbackEntry = null) => {
+  const source = entry || fallbackEntry || {};
+  const tracked = isInventoryTracked(entry, fallbackEntry);
+  const explicitAvailable = [
+    source?.available_quantity,
+    source?.available_stock,
+    source?.availableStock,
+  ]
+    .map((value) => Number(value))
+    .find((value) => Number.isFinite(value));
+  const stock = toNumber(source?.stock_quantity ?? source?.stock, 0);
+  const reserved = toNumber(source?.reserved_quantity, 0);
+  const available = tracked
+    ? Number.isFinite(explicitAvailable)
+      ? Math.max(explicitAvailable, 0)
+      : Math.max(stock - reserved, 0)
+    : Number.MAX_SAFE_INTEGER;
+
+  return {
+    tracked,
+    stock,
+    reserved,
+    available,
+  };
+};
 
 const ProductItem = (props) => {
   const {
@@ -32,9 +73,11 @@ const ProductItem = (props) => {
     image,
     product,
     itemType,
+    realtimeManagedExternally = false,
   } = props;
 
   const [isAddingToCart, setIsAddingToCart] = useState(false);
+  const [liveProduct, setLiveProduct] = useState(product || null);
   const {
     addToCart,
     removeFromCart,
@@ -44,22 +87,39 @@ const ProductItem = (props) => {
     isComboInCart,
   } = useCart();
   const { toggleWishlist, isInWishlist } = useWishlist();
-  const context = useContext(MyContext);
-  const flavor = context?.flavor || FLAVORS.creamy;
+
+  useEffect(() => {
+    setLiveProduct(product || null);
+  }, [product]);
+
+  useEffect(() => {
+    if (!product) return undefined;
+    if (realtimeManagedExternally) return undefined;
+
+    return subscribeToStockUpdates((payload) => {
+      startTransition(() => {
+        setLiveProduct((previous) => applyStockUpdateToProduct(previous, payload));
+      });
+    });
+  }, [product, realtimeManagedExternally]);
 
   const resolvedItemType = String(
-    itemType || product?.itemType || "product",
+    itemType || liveProduct?.itemType || product?.itemType || "product",
   ).toLowerCase();
   const isComboItem = resolvedItemType === "combo";
   const productCardId = isComboItem
-    ? id || _id || product?.comboId || product?._id || product?.id
-    : product?.parentProductId || id || _id || product?._id || product?.id;
-  const productVariantId = product?.variantId || null;
+    ? id || _id || liveProduct?.comboId || liveProduct?._id || liveProduct?.id
+    : liveProduct?.parentProductId ||
+      id ||
+      _id ||
+      liveProduct?._id ||
+      liveProduct?.id;
+  const productVariantId = liveProduct?.variantId || null;
   const alreadyInCart = isComboItem
     ? isComboInCart(productCardId)
     : isInCart(productCardId, productVariantId);
 
-  const productData = product || {
+  const productData = liveProduct || product || {
     _id: id || _id || product?.id || 1,
     name: name || "Classic Peanut Butter",
     brand: brand || "Buy One Gram",
@@ -69,15 +129,19 @@ const ProductItem = (props) => {
     rating: rating || 4.5,
     discount: discount || 30,
   };
-  const isOutOfStock = isComboItem
-    ? Number(productData.availableStock ?? productData.stock ?? 0) <= 0
-    : productData.stock === 0;
 
   // Derive display values from default variant when hasVariants
   const defaultVariant =
     productData.hasVariants && productData.variants?.length > 0
       ? productData.variants.find((v) => v.isDefault) || productData.variants[0]
       : null;
+  const isVariantCard = Boolean(productVariantId || productData?.variantId);
+  const availability = isComboItem
+    ? resolveAvailability(productData)
+    : isVariantCard
+      ? resolveAvailability(defaultVariant, productData)
+      : resolveAvailability(productData);
+  const availableQuantity = availability.available;
 
   const displayPrice = defaultVariant
     ? defaultVariant.price
@@ -117,6 +181,25 @@ const ProductItem = (props) => {
     productVariantId || wishlistVariantId,
     wishlistItemType,
   );
+  const isOutOfStock = availability.tracked && availableQuantity <= 0;
+  const showNotifyAction = !isComboItem && isOutOfStock;
+  const notifyVariantId = productVariantId || defaultVariant?._id || null;
+  const notifyVariantName = defaultVariant?.name || "";
+  const notifyRequested = Boolean(
+    productData?.stockNotificationRequested ||
+      defaultVariant?.stockNotificationRequested,
+  );
+  const actionLabel = alreadyInCart
+    ? isComboItem
+      ? "Remove combo"
+      : "Remove from cart"
+    : showNotifyAction
+      ? "Notify me when back in stock"
+      : isOutOfStock
+        ? "Currently unavailable"
+        : isComboItem
+          ? "Add combo to cart"
+          : "Add to cart";
 
   const handleWishlistClick = async (e) => {
     e.preventDefault();
@@ -201,7 +284,11 @@ const ProductItem = (props) => {
   return (
     <Link
       href={isComboItem ? `/combo/${productCardId}` : `/product/${productCardId}`}
-      className="group relative flex h-full w-full min-w-0 flex-col rounded-3xl border border-gray-100 bg-white p-2.5 sm:p-3 transition-all hover:-translate-y-1 hover:shadow-xl"
+      className={`group relative flex h-full w-full min-w-0 flex-col rounded-3xl border bg-white p-2.5 transition-all sm:p-3 ${
+        isOutOfStock
+          ? "border-gray-100 shadow-[0_20px_48px_-40px_rgba(36,21,15,0.28)]"
+          : "border-gray-100 hover:-translate-y-1 hover:shadow-xl"
+      }`}
     >
       {/* Image Container */}
       <div className="relative mb-3 flex h-32 w-full items-center justify-center overflow-hidden rounded-2xl bg-gray-50 sm:h-40">
@@ -243,8 +330,25 @@ const ProductItem = (props) => {
           alt={productData.name}
           fill
           sizes="(max-width: 640px) 45vw, (max-width: 1024px) 25vw, 220px"
-          className="object-contain p-3 sm:p-4 transition-transform duration-500 group-hover:scale-110 mix-blend-multiply"
+          className={`object-contain p-3 mix-blend-multiply transition-all duration-300 sm:p-4 ${
+            isOutOfStock
+              ? "grayscale-[0.45] saturate-50 opacity-70"
+              : "group-hover:scale-110"
+          }`}
         />
+        {isOutOfStock ? (
+          <>
+            <div className="absolute inset-0 bg-black/18" />
+            <div className="absolute inset-x-3 bottom-3 rounded-2xl border border-white/15 bg-black/55 px-3 py-2 text-white shadow-[0_18px_35px_-24px_rgba(0,0,0,0.6)] backdrop-blur-sm">
+              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-white">
+                Out of stock
+              </p>
+              <p className="mt-1 text-[11px] font-medium text-white/80">
+                We&apos;re restocking soon
+              </p>
+            </div>
+          </>
+        ) : null}
       </div>
 
       {/* Content */}
@@ -286,31 +390,57 @@ const ProductItem = (props) => {
         </div>
 
         {/* Price & Cart */}
-        <div className="mt-auto flex items-end justify-between gap-2 pt-3">
-          <ProductCardPriceBlock
-            originalPrice={displayOriginalPrice}
-            finalPrice={displayPrice}
-          />
+        <div className="mt-auto border-t border-[#f3ece6] pt-3">
+          <div className="min-h-[42px] flex items-end">
+            <div>
+              <ProductCardPriceBlock
+                originalPrice={displayOriginalPrice}
+                finalPrice={displayPrice}
+              />
+            </div>
+          </div>
 
-          <button
-            onClick={handleAddToCart}
-            disabled={isAddingToCart || (!alreadyInCart && isOutOfStock)}
-            className={`shrink-0 flex h-10 w-10 items-center justify-center rounded-full shadow-md transition-all active:scale-90 hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-70 ${
-              alreadyInCart
-                ? "bg-linear-to-r from-red-500 to-pink-500 text-white"
-                : isOutOfStock
-                  ? "bg-gray-200 text-gray-400"
-                  : "bg-primary/20 text-primary border border-primary/30"
-            }`}
-          >
-            {isAddingToCart ? (
-              <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-            ) : alreadyInCart ? (
-              <MdDeleteOutline size={18} />
+          <div className="mt-3 min-h-[44px]">
+            {showNotifyAction ? (
+              <StockNotificationButton
+                productId={productCardId}
+                productName={productData.name}
+                variantId={notifyVariantId}
+                variantName={notifyVariantName}
+                initialRequested={notifyRequested}
+                compact
+                preventNavigation
+              />
             ) : (
-              <IoMdCart size={18} />
+              <button
+                onClick={handleAddToCart}
+                aria-label={
+                  alreadyInCart
+                    ? `Remove ${productData.name} from cart`
+                    : isOutOfStock
+                      ? `${productData.name} is unavailable`
+                      : `Add ${productData.name} to cart`
+                }
+                disabled={isAddingToCart || (!alreadyInCart && isOutOfStock)}
+                className={`inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-70 ${
+                  alreadyInCart
+                    ? "border border-red-200 bg-red-50 text-red-600 hover:bg-red-100"
+                    : isOutOfStock
+                      ? "border border-[#e4d6ca] bg-[#f4ede7] text-[#a08979]"
+                      : "bg-[#24150f] text-white shadow-[0_18px_35px_-26px_rgba(36,21,15,0.55)] hover:-translate-y-0.5 hover:bg-[#3a2418]"
+                }`}
+              >
+                {isAddingToCart ? (
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                ) : alreadyInCart ? (
+                  <MdDeleteOutline size={18} />
+                ) : (
+                  <IoMdCart size={18} />
+                )}
+                <span>{actionLabel}</span>
+              </button>
             )}
-          </button>
+          </div>
         </div>
       </div>
     </Link>
