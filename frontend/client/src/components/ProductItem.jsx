@@ -200,6 +200,13 @@ const ProductItem = (props) => {
         : isComboItem
           ? "Add combo to cart"
           : "Add to cart";
+  const primaryCartButtonStyle = {
+    background:
+      "linear-gradient(135deg, var(--flavor-color, #24150f) 0%, var(--flavor-hover, #3a2418) 100%)",
+    color: "var(--flavor-text, #ffffff)",
+    boxShadow:
+      "0 18px 35px -26px color-mix(in srgb, var(--flavor-color, #24150f) 58%, transparent)",
+  };
 
   const handleWishlistClick = async (e) => {
     e.preventDefault();
@@ -427,8 +434,13 @@ const ProductItem = (props) => {
                     ? "border border-red-200 bg-red-50 text-red-600 hover:bg-red-100"
                     : isOutOfStock
                       ? "border border-[#e4d6ca] bg-[#f4ede7] text-[#a08979]"
-                      : "bg-[#24150f] text-white shadow-[0_18px_35px_-26px_rgba(36,21,15,0.55)] hover:-translate-y-0.5 hover:bg-[#3a2418]"
+                      : "hover:-translate-y-0.5 hover:brightness-[1.03] active:brightness-95"
                 }`}
+                style={
+                  !alreadyInCart && !isOutOfStock
+                    ? primaryCartButtonStyle
+                    : undefined
+                }
               >
                 {isAddingToCart ? (
                   <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
