@@ -23,9 +23,9 @@ const toBoolean = (value, fallback = false) => {
 };
 
 export const resolveRateLimitIp = (req) => {
+  const expressResolvedIp = String(req?.ip || "").trim();
   const forwardedFor = req?.headers?.["x-forwarded-for"];
   const realIp = req?.headers?.["x-real-ip"];
-  const resolvedIp = String(req?.ip || "").trim();
 
   const firstForwardedIp =
     typeof forwardedFor === "string" ? forwardedFor.split(",")[0].trim() : "";
@@ -34,7 +34,7 @@ export const resolveRateLimitIp = (req) => {
   return (
     // Prefer Express's resolved client IP so the limiter follows the app's
     // configured trust proxy policy instead of trusting raw headers directly.
-    resolvedIp ||
+    expressResolvedIp ||
     firstForwardedIp ||
     normalizedRealIp ||
     String(req?.socket?.remoteAddress || "").trim() ||
