@@ -393,6 +393,35 @@ const orderSchema = new mongoose.Schema(
       index: true,
     },
 
+    // Canonical UPI bank reference (RRN/UTR) when available.
+    upiRef: {
+      type: String,
+      default: null,
+      index: true,
+    },
+
+    // Backward-compatible aliases used by legacy consumers.
+    upiReferenceNumber: {
+      type: String,
+      default: null,
+      index: true,
+    },
+
+    upiReferenceNo: {
+      type: String,
+      default: null,
+    },
+
+    rrn: {
+      type: String,
+      default: null,
+    },
+
+    utr: {
+      type: String,
+      default: null,
+    },
+
     // Status Tracking
     payment_status: {
       type: String,

@@ -2960,6 +2960,15 @@ const normalizePhonePeState = (value) =>
     .trim()
     .toUpperCase();
 
+const UPI_REFERENCE_REGEX = /^\d{12,16}$/;
+const extractNumericUpiReference = (value) => {
+  const normalized = String(value || "").trim();
+  if (!normalized) return "";
+  if (UPI_REFERENCE_REGEX.test(normalized)) return normalized;
+  const embedded = normalized.match(/(?:^|[^\d])(\d{12,16})(?:[^\d]|$)/);
+  return embedded?.[1] || "";
+};
+
 const verifyPhonePeWebhookState = async (merchantOrderId) => {
   try {
     const statusResponse = await getPhonePeOrderStatus({ merchantOrderId });
@@ -2968,6 +2977,17 @@ const verifyPhonePeWebhookState = async (merchantOrderId) => {
       ? statusResponse.paymentDetails
       : [];
     const firstPayment = paymentDetails[0] || {};
+    const upiReferenceCandidate =
+      firstPayment?.providerReferenceId ||
+      firstPayment?.utr ||
+      firstPayment?.rrn ||
+      firstPayment?.bankTransactionId ||
+      statusResponse?.providerReferenceId ||
+      statusResponse?.utr ||
+      statusResponse?.rrn ||
+      statusResponse?.bankTransactionId ||
+      "";
+    const upiReference = extractNumericUpiReference(upiReferenceCandidate);
 
     return {
       state,
@@ -2978,6 +2998,7 @@ const verifyPhonePeWebhookState = async (merchantOrderId) => {
         firstPayment?.providerReferenceId ||
         firstPayment?.utr ||
         null,
+      upiReference: upiReference || null,
       raw: statusResponse,
     };
   } catch (error) {
@@ -4371,6 +4392,17 @@ export const getAllOrders = asyncHandler(async (req, res) => {
  */
 export const removeAllPendingOrders = asyncHandler(async (req, res) => {
   try {
+    const requesterRole = String(req?.user?.role || "").trim();
+    const normalizedRequesterRole = requesterRole.toLowerCase();
+    if (
+      !isPrivilegedAdminRole(requesterRole) ||
+      normalizedRequesterRole !== "admin"
+    ) {
+      throw new AppError("FORBIDDEN", {
+        message: "Only admin can remove pending orders",
+      });
+    }
+
     const pendingStatuses = [
       ORDER_STATUS.PENDING,
       ORDER_STATUS.PAYMENT_PENDING,
@@ -4889,6 +4921,17 @@ export const getOrderById = asyncHandler(async (req, res) => {
  */
 export const updateOrderStatus = asyncHandler(async (req, res) => {
   try {
+    const requesterRole = String(req?.user?.role || "").trim();
+    const normalizedRequesterRole = requesterRole.toLowerCase();
+    if (
+      !isPrivilegedAdminRole(requesterRole) ||
+      normalizedRequesterRole !== "admin"
+    ) {
+      throw new AppError("FORBIDDEN", {
+        message: "Only admin can change order status",
+      });
+    }
+
     const { id, order_status, notes } = req.validatedData;
 
     logger.debug("updateOrderStatus", "Updating order status", {
@@ -7920,6 +7963,13 @@ const reconcileOrderPaymentStatus = async ({
       extraUpdates: {
         phonepeOrderId:
           verifiedStatus?.phonepeOrderId || order.phonepeOrderId || null,
+        upiRef: verifiedStatus?.upiReference || order.upiRef || null,
+        upiReferenceNumber:
+          verifiedStatus?.upiReference || order.upiReferenceNumber || null,
+        upiReferenceNo:
+          verifiedStatus?.upiReference || order.upiReferenceNo || null,
+        rrn: verifiedStatus?.upiReference || order.rrn || null,
+        utr: verifiedStatus?.upiReference || order.utr || null,
       },
       successSource,
       shipmentSource,
@@ -8274,6 +8324,17 @@ export const handlePaytmWebhook = asyncHandler(async (req, res) => {
  */
 export const repairPaidOrders = asyncHandler(async (req, res) => {
   try {
+    const requesterRole = String(req?.user?.role || "").trim();
+    const normalizedRequesterRole = requesterRole.toLowerCase();
+    if (
+      !isPrivilegedAdminRole(requesterRole) ||
+      normalizedRequesterRole !== "admin"
+    ) {
+      throw new AppError("FORBIDDEN", {
+        message: "Only admin can repair paid orders",
+      });
+    }
+
     const limitRaw = req.body?.limit ?? req.query?.limit ?? 10;
     const limit = Math.min(Math.max(Number(limitRaw) || 10, 1), 50);
 
@@ -8339,6 +8400,9 @@ export const repairPaidOrders = asyncHandler(async (req, res) => {
       "Paid order repair completed",
     );
   } catch (error) {
+    if (error instanceof AppError) {
+      return sendError(res, error);
+    }
     const dbError = handleDatabaseError(error, "repairPaidOrders");
     return sendError(res, dbError);
   }
@@ -8352,6 +8416,17 @@ export const repairPaidOrders = asyncHandler(async (req, res) => {
 export const backfillSuccessfulOrderPaymentIds = asyncHandler(
   async (req, res) => {
     try {
+      const requesterRole = String(req?.user?.role || "").trim();
+      const normalizedRequesterRole = requesterRole.toLowerCase();
+      if (
+        !isPrivilegedAdminRole(requesterRole) ||
+        normalizedRequesterRole !== "admin"
+      ) {
+        throw new AppError("FORBIDDEN", {
+          message: "Only admin can backfill successful payment IDs",
+        });
+      }
+
       const limitRaw = req.body?.limit ?? req.query?.limit ?? 250;
       const limit = Math.min(Math.max(Number(limitRaw) || 250, 1), 1000);
 
@@ -8460,6 +8535,9 @@ export const backfillSuccessfulOrderPaymentIds = asyncHandler(
         "Successful-order payment ID backfill completed",
       );
     } catch (error) {
+      if (error instanceof AppError) {
+        return sendError(res, error);
+      }
       const dbError = handleDatabaseError(
         error,
         "backfillSuccessfulOrderPaymentIds",
@@ -8598,6 +8676,13 @@ export const handlePhonePeWebhook = asyncHandler(async (req, res) => {
       extraUpdates: {
         phonepeOrderId:
           verifiedStatus.phonepeOrderId || order.phonepeOrderId || null,
+        upiRef: verifiedStatus?.upiReference || order.upiRef || null,
+        upiReferenceNumber:
+          verifiedStatus?.upiReference || order.upiReferenceNumber || null,
+        upiReferenceNo:
+          verifiedStatus?.upiReference || order.upiReferenceNo || null,
+        rrn: verifiedStatus?.upiReference || order.rrn || null,
+        utr: verifiedStatus?.upiReference || order.utr || null,
       },
       successSource: "PHONEPE_WEBHOOK",
       shipmentSource: "PHONEPE_WEBHOOK_AUTO_SHIPMENT",

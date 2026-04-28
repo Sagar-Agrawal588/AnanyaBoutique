@@ -86,6 +86,13 @@ const normalizePaymentFieldValue = (value) => String(value || "").trim();
 
 const isNumericReference = (value) => /^\d+$/.test(String(value || ""));
 const isLikelyUpiRrn = (value) => /^\d{12}$/.test(String(value || ""));
+const extractUpiRrn = (value) => {
+  const normalized = String(value || "").trim();
+  if (!normalized) return "";
+  if (isLikelyUpiRrn(normalized)) return normalized;
+  const embedded = normalized.match(/(?:^|[^\d])(\d{12})(?:[^\d]|$)/);
+  return embedded?.[1] || "";
+};
 
 const resolveUpiRrn = (order = {}) => {
   const rrnCandidatePaths = [
@@ -111,9 +118,10 @@ const resolveUpiRrn = (order = {}) => {
 
   for (const path of rrnCandidatePaths) {
     const candidate = normalizePaymentFieldValue(getValueByPath(order, path));
-    if (!candidate || !isNumericReference(candidate)) continue;
-    if (isLikelyUpiRrn(candidate)) return candidate;
-    if (!numericFallback) numericFallback = candidate;
+    const rrn = extractUpiRrn(candidate);
+    if (!rrn) continue;
+    if (isLikelyUpiRrn(rrn)) return rrn;
+    if (!numericFallback && isNumericReference(rrn)) numericFallback = rrn;
   }
 
   return numericFallback;
@@ -484,7 +492,7 @@ const resolveTrackingUrl = (order = {}) => {
   }
 };
 
-const OrderRow = ({ order, index, token, onStatusUpdate }) => {
+const OrderRow = ({ order, index, token, onStatusUpdate, canManageStatus }) => {
   const [expandIndex, setExpandIndex] = useState(false);
   const [orderStatus, setOrderStatus] = useState(
     normalizeOrderStatus(order?.order_status) || "pending",
@@ -500,11 +508,33 @@ const OrderRow = ({ order, index, token, onStatusUpdate }) => {
     ? resolveTransactionId(order, upiRrn)
     : "";
   const paymentReference = paymentSettled
-    ? resolvePaymentReference(order) ||
-      upiRrn ||
+    ? upiRrn ||
+      resolvePaymentReference(order) ||
       transactionId ||
       "Pending / Not issued yet"
     : "Pending / Not issued yet";
+  const normalizedOrderStatus = normalizeOrderStatus(orderStatus);
+  const successfulOrderStatuses = new Set(["completed", "delivered", "successful"]);
+  const statusSelectSx = {
+    "& .MuiSelect-select": {
+      py: "9px",
+      pr: "28px",
+      fontSize: "14px",
+      fontWeight: 500,
+      color: successfulOrderStatuses.has(normalizedOrderStatus)
+        ? "#047857"
+        : "#111827",
+    },
+    borderRadius: "10px",
+    backgroundColor: successfulOrderStatuses.has(normalizedOrderStatus)
+      ? "#ecfdf5"
+      : "#ffffff",
+    "& fieldset": {
+      borderColor: successfulOrderStatuses.has(normalizedOrderStatus)
+        ? "rgba(16, 185, 129, 0.55)"
+        : "rgba(148, 163, 184, 0.6)",
+    },
+  };
   const paymentProviderLabel = resolvePaymentProviderLabel(order);
   const merchantReference = resolveMerchantReference(order);
   const gatewayOrderReference = String(order?.phonepeOrderId || "").trim();
@@ -846,39 +876,41 @@ const OrderRow = ({ order, index, token, onStatusUpdate }) => {
           {order?.user?._id?.slice(-6) || "------"}
         </td>
         <td className="text-[14px] text-gray-600 font-[500] px-4 py-2">
-          <Select
-            value={orderStatus}
-            onChange={handleChange}
-            displayEmpty
-            inputProps={{ "aria-label": "Without label" }}
-            size="small"
-            disabled={updating}
-            fullWidth
-            sx={{
-              "& .MuiSelect-select": {
-                py: "9px",
-                pr: "28px",
-                fontSize: "14px",
-                fontWeight: 500,
-              },
-              borderRadius: "10px",
-              backgroundColor: "#ffffff",
-              "& fieldset": {
-                borderColor: "rgba(148, 163, 184, 0.6)",
-              },
-            }}
-          >
-            <MenuItem value="pending">Pending</MenuItem>
-            <MenuItem value="pending_payment">Pending Payment</MenuItem>
-            <MenuItem value="accepted">Accepted</MenuItem>
-            <MenuItem value="in_warehouse">In Warehouse</MenuItem>
-            <MenuItem value="shipped">Shipped</MenuItem>
-            <MenuItem value="out_for_delivery">Out for Delivery</MenuItem>
-            <MenuItem value="delivered">Delivered</MenuItem>
-            <MenuItem value="completed">Completed</MenuItem>
-            <MenuItem value="cancelled">Cancelled</MenuItem>
-            <MenuItem value="confirmed">Confirmed (Legacy)</MenuItem>
-          </Select>
+          {canManageStatus ? (
+            <Select
+              value={orderStatus}
+              onChange={handleChange}
+              displayEmpty
+              inputProps={{ "aria-label": "Without label" }}
+              size="small"
+              disabled={updating}
+              fullWidth
+              sx={statusSelectSx}
+            >
+              <MenuItem value="pending">Pending</MenuItem>
+              <MenuItem value="pending_payment">Pending Payment</MenuItem>
+              <MenuItem value="accepted">Accepted</MenuItem>
+              <MenuItem value="in_warehouse">In Warehouse</MenuItem>
+              <MenuItem value="shipped">Shipped</MenuItem>
+              <MenuItem value="out_for_delivery">Out for Delivery</MenuItem>
+              <MenuItem value="delivered">Delivered</MenuItem>
+              <MenuItem value="completed">Completed</MenuItem>
+              <MenuItem value="successful">Successful (Legacy)</MenuItem>
+              <MenuItem value="cancelled">Cancelled</MenuItem>
+              <MenuItem value="confirmed">Confirmed (Legacy)</MenuItem>
+            </Select>
+          ) : (
+            <div
+              className={`rounded-lg border px-3 py-2 text-[13px] font-semibold ${
+                successfulOrderStatuses.has(normalizedOrderStatus)
+                  ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                  : "border-gray-300 bg-gray-50 text-gray-700"
+              }`}
+              title="Manager can view order status but cannot change it."
+            >
+              {formatStatusLabel(orderStatus, "Pending")}
+            </div>
+          )}
         </td>
         <td className="text-[14px] text-gray-600 font-[500] px-4 py-2">
           <div className="inline-flex items-center gap-1 text-[14px] whitespace-nowrap">
@@ -990,32 +1022,33 @@ const OrderRow = ({ order, index, token, onStatusUpdate }) => {
                 </div>
                 <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
                   <span className="font-semibold text-gray-700">
-                    Payment App Txn ID:
+                    UPI Ref / Txn ID:
                   </span>{" "}
                   <span className="text-gray-800 break-all">
                     {paymentReference}
                   </span>
                 </div>
-                {upiRrn ? (
-                  <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 flex items-center justify-between gap-2">
-                    <div className="min-w-0">
-                      <span
-                        className="font-semibold text-gray-700"
-                        title="RRN is a bank-level reference used for tracking UPI payments"
-                      >
-                        UPI RRN:
-                      </span>{" "}
-                      <span className="text-gray-800 break-all">{upiRrn}</span>
-                    </div>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      onClick={() => copyToClipboard(upiRrn, "UPI RRN")}
+                <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <span
+                      className="font-semibold text-gray-700"
+                      title="RRN is a bank-level reference used for tracking UPI payments"
                     >
-                      Copy
-                    </Button>
+                      UPI Ref No.:
+                    </span>{" "}
+                    <span className="text-gray-800 break-all">
+                      {upiRrn || "Not Available"}
+                    </span>
                   </div>
-                ) : null}
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    disabled={!upiRrn}
+                    onClick={() => copyToClipboard(upiRrn, "UPI Ref No.")}
+                  >
+                    Copy
+                  </Button>
+                </div>
                 {transactionId ? (
                   <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 flex items-center justify-between gap-2">
                     <div className="min-w-0">
@@ -1171,7 +1204,7 @@ const OrderRow = ({ order, index, token, onStatusUpdate }) => {
   );
 };
 
-const OrdersTable = ({ orders, token, onStatusUpdate }) => (
+const OrdersTable = ({ orders, token, onStatusUpdate, canManageStatus }) => (
   <div className="w-full mt-5 border border-gray-200 rounded-xl overflow-x-auto">
     <table className="min-w-[980px] w-full table-fixed">
       <colgroup>
@@ -1189,7 +1222,7 @@ const OrdersTable = ({ orders, token, onStatusUpdate }) => (
             Customer
           </th>
           <th className="text-[13px] text-gray-700 font-[700] px-4 py-3 text-left uppercase tracking-wide">
-            Payment App Txn ID
+            UPI Ref / Txn ID
           </th>
           <th className="text-[13px] text-gray-700 font-[700] px-4 py-3 text-left uppercase tracking-wide">
             Phone Number
@@ -1222,6 +1255,7 @@ const OrdersTable = ({ orders, token, onStatusUpdate }) => (
             index={index}
             token={token}
             onStatusUpdate={onStatusUpdate}
+            canManageStatus={canManageStatus}
           />
         ))}
       </tbody>
@@ -1230,7 +1264,7 @@ const OrdersTable = ({ orders, token, onStatusUpdate }) => (
 );
 
 const Orders = () => {
-  const { token, isAuthenticated, loading } = useAdmin();
+  const { token, isAuthenticated, loading, admin } = useAdmin();
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -1244,6 +1278,11 @@ const Orders = () => {
   const [backfillingPaymentIds, setBackfillingPaymentIds] = useState(false);
   const [repairingPaidOrders, setRepairingPaidOrders] = useState(false);
   const [removingPendingOrders, setRemovingPendingOrders] = useState(false);
+  const canManageStatus =
+    String(admin?.role || "")
+      .trim()
+      .toLowerCase() === "admin";
+  const canRunOrderMaintenanceActions = canManageStatus;
   const { intervalMs } = useLiveRefreshSetting();
   const refreshConfig = useMemo(
     () => ({
@@ -1407,6 +1446,10 @@ const Orders = () => {
   };
 
   const handleRepairPaidOrders = async () => {
+    if (!canRunOrderMaintenanceActions) {
+      toast.error("Only admin can repair paid orders");
+      return;
+    }
     if (!token) {
       toast.error("Admin session missing");
       return;
@@ -1443,6 +1486,10 @@ const Orders = () => {
   };
 
   const handleBackfillSuccessfulPaymentIds = async () => {
+    if (!canRunOrderMaintenanceActions) {
+      toast.error("Only admin can run payment ID backfill");
+      return;
+    }
     if (!token) {
       toast.error("Admin session missing");
       return;
@@ -1485,6 +1532,10 @@ const Orders = () => {
   };
 
   const handleRemovePendingOrders = async () => {
+    if (!canRunOrderMaintenanceActions) {
+      toast.error("Only admin can remove pending orders");
+      return;
+    }
     if (!token) {
       toast.error("Admin session missing");
       return;
@@ -1569,67 +1620,71 @@ const Orders = () => {
             ) : null}
           </div>
           <div className="flex items-center gap-3 flex-wrap">
-            <Button
-              variant="outlined"
-              size="small"
-              onClick={handleBackfillSuccessfulPaymentIds}
-              disabled={
-                backfillingPaymentIds ||
-                repairingPaidOrders ||
-                removingPendingOrders
-              }
-              sx={{
-                textTransform: "none",
-                borderRadius: "10px",
-                px: 2,
-                py: 0.8,
-              }}
-            >
-              {backfillingPaymentIds
-                ? "Backfilling Txn IDs..."
-                : "Backfill Successful Txn IDs"}
-            </Button>
-            <Button
-              variant="outlined"
-              size="small"
-              onClick={handleRepairPaidOrders}
-              disabled={
-                backfillingPaymentIds ||
-                repairingPaidOrders ||
-                removingPendingOrders
-              }
-              sx={{
-                textTransform: "none",
-                borderRadius: "10px",
-                px: 2,
-                py: 0.8,
-              }}
-            >
-              {repairingPaidOrders
-                ? "Repairing Paid Orders..."
-                : "Repair Paid Orders"}
-            </Button>
-            <Button
-              variant="contained"
-              color="error"
-              size="small"
-              onClick={handleRemovePendingOrders}
-              disabled={
-                removingPendingOrders ||
-                backfillingPaymentIds ||
-                repairingPaidOrders
-              }
-              sx={{
-                textTransform: "none",
-                borderRadius: "10px",
-                px: 2,
-                py: 0.8,
-              }}
-            >
-              {removingPendingOrders
-                ? "Removing Pending Orders..."
-                : "Remove Pending Orders"}
-            </Button>
+            {canRunOrderMaintenanceActions ? (
+              <>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={handleBackfillSuccessfulPaymentIds}
+                  disabled={
+                    backfillingPaymentIds ||
+                    repairingPaidOrders ||
+                    removingPendingOrders
+                  }
+                  sx={{
+                    textTransform: "none",
+                    borderRadius: "10px",
+                    px: 2,
+                    py: 0.8,
+                  }}
+                >
+                  {backfillingPaymentIds
+                    ? "Backfilling Txn IDs..."
+                    : "Backfill Successful Txn IDs"}
+                </Button>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={handleRepairPaidOrders}
+                  disabled={
+                    backfillingPaymentIds ||
+                    repairingPaidOrders ||
+                    removingPendingOrders
+                  }
+                  sx={{
+                    textTransform: "none",
+                    borderRadius: "10px",
+                    px: 2,
+                    py: 0.8,
+                  }}
+                >
+                  {repairingPaidOrders
+                    ? "Repairing Paid Orders..."
+                    : "Repair Paid Orders"}
+                </Button>
+                <Button
+                  variant="contained"
+                  color="error"
+                  size="small"
+                  onClick={handleRemovePendingOrders}
+                  disabled={
+                    removingPendingOrders ||
+                    backfillingPaymentIds ||
+                    repairingPaidOrders
+                  }
+                  sx={{
+                    textTransform: "none",
+                    borderRadius: "10px",
+                    px: 2,
+                    py: 0.8,
+                  }}
+                >
+                  {removingPendingOrders
+                    ? "Removing Pending Orders..."
+                    : "Remove Pending Orders"}
+                </Button>
+              </>
+            ) : null}
             <Button
               variant="outlined"
               size="small"
@@ -1713,6 +1768,7 @@ const Orders = () => {
                 orders={primaryOrders}
                 token={token}
                 onStatusUpdate={fetchOrders}
+                canManageStatus={canManageStatus}
               />
             ) : (
               <div className="mt-5 rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-8 text-center text-sm text-gray-500">
@@ -1751,6 +1807,7 @@ const Orders = () => {
                   orders={pendingOrders}
                   token={token}
                   onStatusUpdate={fetchOrders}
+                  canManageStatus={canManageStatus}
                 />
               </div>
             ) : null}

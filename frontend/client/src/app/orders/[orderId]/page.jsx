@@ -9,7 +9,6 @@ import {
 } from "@/utils/calculateOrderTotals.mjs";
 import { getImageUrl } from "@/utils/imageUtils";
 import {
-  buildOrderComplaintHref,
   buildOrderProductDescriptor,
   resolveOrderPaymentMethodLabel,
   resolveOrderTransactionReference,
@@ -46,7 +45,14 @@ import { io } from "socket.io-client";
 const API_URL = API_BASE_URL.endsWith("/api")
   ? API_BASE_URL
   : `${API_BASE_URL}/api`;
-const LOCAL_API_FALLBACKS = ["http://localhost:8000", "http://localhost:8001"];
+const LOCAL_API_FALLBACKS = [
+  "http://localhost:8000",
+  "http://localhost:8001",
+  "http://localhost:8002",
+  "http://127.0.0.1:8000",
+  "http://127.0.0.1:8001",
+  "http://127.0.0.1:8002",
+];
 const SOCKET_URL = API_BASE_URL.endsWith("/api")
   ? API_BASE_URL.slice(0, -4)
   : API_BASE_URL;
@@ -133,6 +139,7 @@ const STATUS_STEPS = [
 ];
 
 const ORDER_ID_REGEX = /^[a-f\d]{24}$/i;
+const SUPPORT_ORDER_STORAGE_KEY = "supportOrderData";
 const getAuthToken = () => {
   if (typeof window === "undefined") return cookies.get("accessToken") || "";
   return (
@@ -726,10 +733,22 @@ const OrderDetailsPage = () => {
         label: "Out for Delivery",
       },
       delivered: {
-        color: "text-primary",
-        bg: "bg-[var(--flavor-glass)] text-primary",
+        color: "text-emerald-700",
+        bg: "bg-emerald-50",
         icon: MdCheckCircle,
         label: "Delivered",
+      },
+      completed: {
+        color: "text-emerald-700",
+        bg: "bg-emerald-50",
+        icon: MdCheckCircle,
+        label: "Successful",
+      },
+      successful: {
+        color: "text-emerald-700",
+        bg: "bg-emerald-50",
+        icon: MdCheckCircle,
+        label: "Successful",
       },
       cancelled: {
         color: "text-red-600",
@@ -763,10 +782,16 @@ const OrderDetailsPage = () => {
         label: "Pending",
       },
       paid: {
-        color: "text-primary",
-        bg: "bg-[var(--flavor-glass)] text-primary",
+        color: "text-emerald-700",
+        bg: "bg-emerald-50",
         icon: MdCheckCircle,
         label: "Paid",
+      },
+      successful: {
+        color: "text-emerald-700",
+        bg: "bg-emerald-50",
+        icon: MdCheckCircle,
+        label: "Successful",
       },
       failed: {
         color: "text-red-600",
@@ -793,6 +818,27 @@ const OrderDetailsPage = () => {
   // Handle retry payment click (stub - shows modal only)
   const handleRetryPayment = () => {
     setShowPaymentModal(true);
+  };
+
+  const handleGetSupport = () => {
+    if (typeof window === "undefined") return;
+
+    const supportData = {
+      name: resolvedAddressName || "",
+      email: resolvedAddressEmail || "",
+      phone: resolvedAddressPhone || "",
+      address: [resolvedAddressLine1, resolvedAddressLine2]
+        .filter(Boolean)
+        .join(", "),
+      orderId: canonicalOrderId || "",
+    };
+
+    window.sessionStorage.setItem(
+      SUPPORT_ORDER_STORAGE_KEY,
+      JSON.stringify(supportData),
+    );
+
+    router.push("/contact");
   };
 
   const downloadFile = async (path, filename, key) => {
@@ -1156,14 +1202,6 @@ const OrderDetailsPage = () => {
     ...orderCombos.map((combo) => buildOrderProductDescriptor(combo)),
     ...displayedProducts.map((item) => buildOrderProductDescriptor(item)),
   ].filter(Boolean);
-  const complaintHref = buildOrderComplaintHref({
-    routeOrderId: canonicalOrderId || orderId || "",
-    displayOrderId,
-    productNames: overviewProductNames,
-    paymentMethodLabel,
-    paymentStatusLabel,
-    transactionReference,
-  });
   const showPaymentConfirmationBanner =
     paymentStateParam === "paid" &&
     normalizeStatus(order?.payment_status) === "paid";
@@ -1438,7 +1476,6 @@ const OrderDetailsPage = () => {
             transactionReference={transactionDisplayValue}
             invoiceNumber={invoiceDisplayValue}
             customerEmail={resolvedAddressEmail}
-            complaintHref={complaintHref}
           />
 
           {/* Order Tracker */}
@@ -1880,6 +1917,20 @@ const OrderDetailsPage = () => {
                 Continue Shopping
               </Button>
             </Link>
+            <Button
+              onClick={handleGetSupport}
+              sx={{
+                backgroundColor: "#ea580c",
+                color: "white",
+                padding: "12px 24px",
+                borderRadius: "12px",
+                fontWeight: 600,
+                textTransform: "none",
+                "&:hover": { backgroundColor: "#c2410c" },
+              }}
+            >
+              Get Order Support
+            </Button>
           </div>
         </div>
       </section>

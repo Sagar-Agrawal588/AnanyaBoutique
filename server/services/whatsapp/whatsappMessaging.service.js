@@ -2,33 +2,77 @@ import { randomUUID } from "node:crypto";
 import CrmContact from "../../models/crmContact.model.js";
 import CrmInteraction from "../../models/crmInteraction.model.js";
 import { logger } from "../../utils/errorHandler.js";
-import { captureCrmTouchpointSafely } from "../crm/crmTracking.service.js";
 import {
   buildCrmValidationError,
   normalizeObjectId,
   normalizePhone,
   sanitizeText,
 } from "../crm/channelResolver.service.js";
+import { captureCrmTouchpointSafely } from "../crm/crmTracking.service.js";
 
 const DEFAULT_GRAPH_API_VERSION = "v22.0";
 const DEFAULT_TIMEOUT_MS = 15000;
 const WHATSAPP_PROVIDER = "meta_cloud_api";
 const WHATSAPP_SOURCE = "whatsapp_admin_api";
+const DEFAULT_WHATSAPP_COUNTRY_CODE = "91";
+const SUPPORTED_MEDIA_TYPES = new Set(["image", "video", "document"]);
+const MEDIA_TYPE_ALIASES = new Map([
+  ["img", "image"],
+  ["photo", "image"],
+  ["gif", "video"],
+  ["doc", "document"],
+]);
 
 const normalizeStringList = (value) => {
   if (Array.isArray(value)) {
     return value
-      .map((entry) => sanitizeText(entry, { maxLength: 500, allowNewLines: true }))
+      .map((entry) =>
+        sanitizeText(entry, { maxLength: 500, allowNewLines: true }),
+      )
       .filter(Boolean);
   }
 
   return String(value || "")
     .split(/[\n,]+/)
-    .map((entry) => sanitizeText(entry, { maxLength: 500, allowNewLines: true }))
+    .map((entry) =>
+      sanitizeText(entry, { maxLength: 500, allowNewLines: true }),
+    )
     .filter(Boolean);
 };
 
-const buildWhatsAppServiceError = (message, statusCode = 500, details = null) => {
+const normalizeWhatsappMediaType = (value) => {
+  const normalized = sanitizeText(value || "", { maxLength: 20 }).toLowerCase();
+  if (!normalized) return "";
+
+  const resolved = MEDIA_TYPE_ALIASES.get(normalized) || normalized;
+  return SUPPORTED_MEDIA_TYPES.has(resolved) ? resolved : "";
+};
+
+const sanitizeHttpUrl = (value, fieldLabel = "URL") => {
+  const normalized = sanitizeText(value || "", { maxLength: 2048 });
+  if (!normalized) return "";
+
+  let parsed;
+  try {
+    parsed = new URL(normalized);
+  } catch {
+    throw buildCrmValidationError(`${fieldLabel} must be a valid http(s) URL.`);
+  }
+
+  if (!["http:", "https:"].includes(parsed.protocol)) {
+    throw buildCrmValidationError(
+      `${fieldLabel} must use http:// or https://.`,
+    );
+  }
+
+  return parsed.toString();
+};
+
+const buildWhatsAppServiceError = (
+  message,
+  statusCode = 500,
+  details = null,
+) => {
   const error = new Error(message);
   error.statusCode = statusCode;
   if (details) {
@@ -37,13 +81,45 @@ const buildWhatsAppServiceError = (message, statusCode = 500, details = null) =>
   return error;
 };
 
+const resolveWhatsappDefaultCountryCode = () => {
+  const digits = String(process.env.WHATSAPP_DEFAULT_COUNTRY_CODE || "")
+    .replace(/\D/g, "")
+    .trim();
+  return digits || DEFAULT_WHATSAPP_COUNTRY_CODE;
+};
+
+const normalizeWhatsappRecipientPhone = (value) => {
+  const normalized = normalizePhone(value);
+  if (!normalized) return "";
+
+  const digits = normalized.replace(/\D/g, "");
+  if (!digits) return "";
+
+  if (normalized.startsWith("+")) {
+    return `+${digits}`;
+  }
+
+  // CRM data often stores Indian mobile numbers as 10 digits. Meta expects
+  // international format, so promote them to +<country_code><number>.
+  if (digits.length === 10) {
+    return `+${resolveWhatsappDefaultCountryCode()}${digits}`;
+  }
+
+  return `+${digits}`;
+};
+
 const resolveWhatsappConfig = () => {
   const accessToken = String(process.env.WHATSAPP_ACCESS_TOKEN || "").trim();
-  const phoneNumberId = String(process.env.WHATSAPP_PHONE_NUMBER_ID || "").trim();
-  const businessAccountId = String(process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || "").trim();
+  const phoneNumberId = String(
+    process.env.WHATSAPP_PHONE_NUMBER_ID || "",
+  ).trim();
+  const businessAccountId = String(
+    process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || "",
+  ).trim();
   const graphApiVersion =
-    sanitizeText(process.env.WHATSAPP_GRAPH_API_VERSION || "", { maxLength: 16 }) ||
-    DEFAULT_GRAPH_API_VERSION;
+    sanitizeText(process.env.WHATSAPP_GRAPH_API_VERSION || "", {
+      maxLength: 16,
+    }) || DEFAULT_GRAPH_API_VERSION;
 
   return {
     accessToken,
@@ -72,7 +148,10 @@ const ensureWhatsappMessagingConfig = () => {
 };
 
 const buildFetchSignal = (timeoutMs = DEFAULT_TIMEOUT_MS) => {
-  if (typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function") {
+  if (
+    typeof AbortSignal !== "undefined" &&
+    typeof AbortSignal.timeout === "function"
+  ) {
     return AbortSignal.timeout(timeoutMs);
   }
 
@@ -87,7 +166,12 @@ const safeParseJson = async (response) => {
   }
 };
 
-const buildTextPayload = ({ to, body, previewUrl = false, replyToMessageId = "" }) => ({
+const buildTextPayload = ({
+  to,
+  body,
+  previewUrl = false,
+  replyToMessageId = "",
+}) => ({
   messaging_product: "whatsapp",
   recipient_type: "individual",
   to,
@@ -99,13 +183,55 @@ const buildTextPayload = ({ to, body, previewUrl = false, replyToMessageId = "" 
   },
 });
 
+const buildMediaPayload = ({
+  to,
+  mediaType,
+  mediaUrl,
+  caption = "",
+  fileName = "",
+}) => {
+  const mediaBody = {
+    link: mediaUrl,
+  };
+
+  if (caption && mediaType !== "document") {
+    mediaBody.caption = caption;
+  }
+
+  if (fileName && mediaType === "document") {
+    mediaBody.filename = fileName;
+  }
+
+  return {
+    messaging_product: "whatsapp",
+    recipient_type: "individual",
+    to,
+    type: mediaType,
+    [mediaType]: mediaBody,
+  };
+};
+
 const buildTemplateComponents = ({
   bodyVariables = [],
   headerVariables = [],
+  headerMediaType = "",
+  headerMediaUrl = "",
 } = {}) => {
   const components = [];
 
-  if (headerVariables.length > 0) {
+  if (headerMediaType && headerMediaUrl) {
+    components.push({
+      type: "header",
+      parameters: [
+        {
+          type: headerMediaType,
+          [headerMediaType]: {
+            link: headerMediaUrl,
+          },
+        },
+      ],
+    });
+  } else if (headerVariables.length > 0) {
     components.push({
       type: "header",
       parameters: headerVariables.map((value) => ({
@@ -134,10 +260,14 @@ const buildTemplatePayload = ({
   languageCode = "en",
   bodyVariables = [],
   headerVariables = [],
+  headerMediaType = "",
+  headerMediaUrl = "",
 }) => {
   const components = buildTemplateComponents({
     bodyVariables,
     headerVariables,
+    headerMediaType,
+    headerMediaUrl,
   });
 
   return {
@@ -170,7 +300,10 @@ const executeWhatsappRequest = async ({
   requirePhoneNumberId = true,
 }) => {
   if (typeof fetchImpl !== "function") {
-    throw buildWhatsAppServiceError("Fetch implementation is not available.", 500);
+    throw buildWhatsAppServiceError(
+      "Fetch implementation is not available.",
+      500,
+    );
   }
 
   const config = resolveWhatsappConfig();
@@ -204,12 +337,15 @@ const executeWhatsappRequest = async ({
 
   if (!response.ok) {
     const providerMessage = sanitizeText(
-      data?.error?.message || response.statusText || "WhatsApp API request failed.",
+      data?.error?.message ||
+        response.statusText ||
+        "WhatsApp API request failed.",
       { maxLength: 400 },
     );
     throw buildWhatsAppServiceError(providerMessage, response.status, {
       providerCode: data?.error?.code ?? null,
-      providerType: sanitizeText(data?.error?.type || "", { maxLength: 80 }) || null,
+      providerType:
+        sanitizeText(data?.error?.type || "", { maxLength: 80 }) || null,
       providerSubcode: data?.error?.error_subcode ?? null,
       raw: data,
     });
@@ -224,7 +360,9 @@ const countTemplatePlaceholders = (text = "") => {
 };
 
 const toPlainWhatsappTemplate = (template = {}) => {
-  const components = Array.isArray(template?.components) ? template.components : [];
+  const components = Array.isArray(template?.components)
+    ? template.components
+    : [];
   const bodyComponent = components.find(
     (entry) => String(entry?.type || "").toUpperCase() === "BODY",
   );
@@ -232,9 +370,15 @@ const toPlainWhatsappTemplate = (template = {}) => {
   return {
     id: String(template?.id || ""),
     name: sanitizeText(template?.name || "", { maxLength: 120 }),
-    status: sanitizeText(template?.status || "", { maxLength: 40 }).toLowerCase(),
-    category: sanitizeText(template?.category || "", { maxLength: 40 }).toLowerCase(),
-    language: sanitizeText(template?.language || "", { maxLength: 40 }).toLowerCase(),
+    status: sanitizeText(template?.status || "", {
+      maxLength: 40,
+    }).toLowerCase(),
+    category: sanitizeText(template?.category || "", {
+      maxLength: 40,
+    }).toLowerCase(),
+    language: sanitizeText(template?.language || "", {
+      maxLength: 40,
+    }).toLowerCase(),
     bodyVariableCount: countTemplatePlaceholders(bodyComponent?.text || ""),
     bodyPreview: sanitizeText(bodyComponent?.text || "", {
       maxLength: 220,
@@ -261,16 +405,24 @@ const recordFailedWhatsappAttempt = async ({
   contact,
   phone,
   useTemplate,
+  useMedia,
+  mediaType,
+  mediaUrl,
+  caption,
   templateName,
   languageCode,
   body,
   bodyVariables,
   headerVariables,
+  headerMediaType,
+  headerMediaUrl,
   campaignName,
   segment,
   adminUserId,
   error,
 }) => {
+  const effectiveMode = useTemplate ? "template" : useMedia ? "media" : "text";
+
   await captureCrmTouchpointSafely({
     userId: contact?.user || null,
     email: contact?.email || "",
@@ -282,7 +434,7 @@ const recordFailedWhatsappAttempt = async ({
     source: WHATSAPP_SOURCE,
     eventName: "whatsapp_send_failed",
     message: sanitizeText(
-      `Failed to send WhatsApp ${useTemplate ? "template" : "text"} message: ${
+      `Failed to send WhatsApp ${effectiveMode} message: ${
         error?.message || "Unknown provider error"
       }`,
       { maxLength: 4000, allowNewLines: true },
@@ -293,7 +445,7 @@ const recordFailedWhatsappAttempt = async ({
       ? {
           campaign: {
             source: WHATSAPP_SOURCE,
-            medium: useTemplate ? "template" : "text",
+            medium: effectiveMode,
             campaign: campaignName,
             content: segment || "",
           },
@@ -303,14 +455,24 @@ const recordFailedWhatsappAttempt = async ({
       source: WHATSAPP_SOURCE,
       provider: WHATSAPP_PROVIDER,
       status: "failed",
-      messageType: useTemplate ? "template" : "text",
+      messageType: effectiveMode,
+      mediaType: useMedia ? mediaType || null : null,
+      mediaUrl: useMedia ? mediaUrl || null : null,
+      caption: useMedia ? caption || null : null,
       templateName: templateName || null,
       languageCode: languageCode || null,
       bodyPreview: useTemplate
         ? buildTemplateSummary(templateName, bodyVariables)
-        : sanitizeText(body || "", { maxLength: 220, allowNewLines: true }),
+        : useMedia
+          ? sanitizeText(caption || mediaUrl || "", {
+              maxLength: 220,
+              allowNewLines: true,
+            })
+          : sanitizeText(body || "", { maxLength: 220, allowNewLines: true }),
       bodyVariables,
       headerVariables,
+      headerMediaType: headerMediaType || null,
+      headerMediaUrl: headerMediaUrl || null,
       segment: segment || null,
       sentByAdminId: adminUserId ? String(adminUserId) : null,
     },
@@ -363,37 +525,121 @@ export const sendWhatsappMessage = async ({
   to = "",
   body = "",
   previewUrl = false,
+  mediaType = "",
+  mediaUrl = "",
+  caption = "",
+  fileName = "",
   templateName = "",
   languageCode = "en",
   bodyVariables = [],
   headerVariables = [],
+  headerMediaType = "",
+  headerMediaUrl = "",
   campaignName = "",
   segment = "",
   adminUserId = "",
   fetchImpl = globalThis.fetch,
 } = {}) => {
-  const normalizedTemplateName = sanitizeText(templateName || "", { maxLength: 120 });
+  const normalizedTemplateName = sanitizeText(templateName || "", {
+    maxLength: 120,
+  });
   const normalizedBody = sanitizeText(body || "", {
     maxLength: 4000,
     allowNewLines: true,
   });
+  const normalizedCaption = sanitizeText(caption || "", {
+    maxLength: 1024,
+    allowNewLines: true,
+  });
+  const normalizedFileName = sanitizeText(fileName || "", { maxLength: 120 });
   const normalizedLanguageCode =
     sanitizeText(languageCode || "", { maxLength: 20 }).toLowerCase() || "en";
   const normalizedBodyVariables = normalizeStringList(bodyVariables);
   const normalizedHeaderVariables = normalizeStringList(headerVariables);
+  const rawMediaType = sanitizeText(mediaType || "", {
+    maxLength: 20,
+  }).toLowerCase();
+  const normalizedMediaType = normalizeWhatsappMediaType(rawMediaType);
+  const normalizedMediaUrl = sanitizeHttpUrl(mediaUrl, "Media URL");
+  const rawHeaderMediaType = sanitizeText(headerMediaType || "", {
+    maxLength: 20,
+  }).toLowerCase();
+  const normalizedHeaderMediaType =
+    normalizeWhatsappMediaType(rawHeaderMediaType);
+  const normalizedHeaderMediaUrl = sanitizeHttpUrl(
+    headerMediaUrl,
+    "Template header media URL",
+  );
+
+  if (rawMediaType && !normalizedMediaType) {
+    throw buildCrmValidationError(
+      "Unsupported mediaType. Use image, video, document, or gif.",
+    );
+  }
+
+  if (normalizedMediaType && !normalizedMediaUrl) {
+    throw buildCrmValidationError(
+      "mediaUrl is required when mediaType is provided.",
+    );
+  }
+
+  if (!rawMediaType && normalizedMediaUrl) {
+    throw buildCrmValidationError(
+      "mediaType is required when mediaUrl is provided.",
+    );
+  }
+
+  if (rawHeaderMediaType && !normalizedHeaderMediaType) {
+    throw buildCrmValidationError(
+      "Unsupported headerMediaType. Use image, video, document, or gif.",
+    );
+  }
+
+  if (normalizedHeaderMediaType && !normalizedHeaderMediaUrl) {
+    throw buildCrmValidationError(
+      "headerMediaUrl is required when headerMediaType is provided.",
+    );
+  }
+
+  if (!rawHeaderMediaType && normalizedHeaderMediaUrl) {
+    throw buildCrmValidationError(
+      "headerMediaType is required when headerMediaUrl is provided.",
+    );
+  }
+
+  if (normalizedHeaderMediaType && normalizedHeaderVariables.length > 0) {
+    throw buildCrmValidationError(
+      "Use either headerVariables or headerMediaType/headerMediaUrl, not both.",
+    );
+  }
+
   const useTemplate = Boolean(normalizedTemplateName);
+  const useMedia = Boolean(normalizedMediaType && normalizedMediaUrl);
+
+  if (!useTemplate && (normalizedHeaderMediaType || normalizedHeaderMediaUrl)) {
+    throw buildCrmValidationError(
+      "Template header media fields can only be used with template messages.",
+    );
+  }
+
   const contact = await findWhatsappContact({
     contactId,
     phone: to,
   });
-  const recipientPhone = normalizePhone(to || contact?.phone || "");
+  const recipientPhone = normalizeWhatsappRecipientPhone(
+    to || contact?.phone || "",
+  );
 
   if (!recipientPhone) {
-    throw buildCrmValidationError("A valid customer WhatsApp phone number is required.");
+    throw buildCrmValidationError(
+      "A valid customer WhatsApp phone number is required.",
+    );
   }
 
-  if (!useTemplate && !normalizedBody) {
-    throw buildCrmValidationError("Message text is required for personal WhatsApp sends.");
+  if (!useTemplate && !normalizedBody && !useMedia) {
+    throw buildCrmValidationError(
+      "Provide message text or media details for personal WhatsApp sends.",
+    );
   }
 
   if (contact?.consent?.whatsapp === false) {
@@ -413,7 +659,7 @@ export const sendWhatsappMessage = async ({
 
     if (!hasInboundConversation && contact?.consent?.whatsapp !== true) {
       throw buildCrmValidationError(
-        "Text WhatsApp replies are safest for active conversations. Use a template for first outreach or promotional messaging.",
+        "Free-form WhatsApp replies (text/media) are safest for active conversations. Use a template for first outreach or promotional messaging.",
       );
     }
   }
@@ -426,12 +672,22 @@ export const sendWhatsappMessage = async ({
         languageCode: normalizedLanguageCode,
         bodyVariables: normalizedBodyVariables,
         headerVariables: normalizedHeaderVariables,
+        headerMediaType: normalizedHeaderMediaType,
+        headerMediaUrl: normalizedHeaderMediaUrl,
       })
-    : buildTextPayload({
-        to: recipientForApi,
-        body: normalizedBody,
-        previewUrl,
-      });
+    : useMedia
+      ? buildMediaPayload({
+          to: recipientForApi,
+          mediaType: normalizedMediaType,
+          mediaUrl: normalizedMediaUrl,
+          caption: normalizedCaption || normalizedBody,
+          fileName: normalizedFileName,
+        })
+      : buildTextPayload({
+          to: recipientForApi,
+          body: normalizedBody,
+          previewUrl,
+        });
 
   try {
     const config = ensureWhatsappMessagingConfig();
@@ -442,10 +698,23 @@ export const sendWhatsappMessage = async ({
       fetchImpl,
     });
 
-    const messageId = sanitizeText(data?.messages?.[0]?.id || "", { maxLength: 220 });
+    const messageId = sanitizeText(data?.messages?.[0]?.id || "", {
+      maxLength: 220,
+    });
+    const outboundMode = useTemplate ? "template" : useMedia ? "media" : "text";
     const summary = useTemplate
       ? buildTemplateSummary(normalizedTemplateName, normalizedBodyVariables)
-      : normalizedBody;
+      : useMedia
+        ? sanitizeText(
+            `${normalizedMediaType.toUpperCase()} media | ${
+              normalizedCaption || normalizedMediaUrl
+            }`,
+            {
+              maxLength: 4000,
+              allowNewLines: true,
+            },
+          )
+        : normalizedBody;
 
     await captureCrmTouchpointSafely({
       userId: contact?.user || null,
@@ -456,7 +725,11 @@ export const sendWhatsappMessage = async ({
       eventType: "chat_message",
       direction: "outbound",
       source: WHATSAPP_SOURCE,
-      eventName: useTemplate ? "whatsapp_template" : "whatsapp_text",
+      eventName: useTemplate
+        ? "whatsapp_template"
+        : useMedia
+          ? `whatsapp_${normalizedMediaType}`
+          : "whatsapp_text",
       message: summary,
       happenedAt: new Date(),
       idempotencyKey: messageId
@@ -466,7 +739,7 @@ export const sendWhatsappMessage = async ({
         ? {
             campaign: {
               source: WHATSAPP_SOURCE,
-              medium: useTemplate ? "template" : "text",
+              medium: outboundMode,
               campaign: campaignName,
               content: segment || "",
             },
@@ -477,12 +750,17 @@ export const sendWhatsappMessage = async ({
         provider: WHATSAPP_PROVIDER,
         phoneNumberId: config.phoneNumberId,
         messageId: messageId || null,
-        messageType: useTemplate ? "template" : "text",
+        messageType: outboundMode,
+        mediaType: useMedia ? normalizedMediaType : null,
+        mediaUrl: useMedia ? normalizedMediaUrl : null,
+        caption: useMedia ? normalizedCaption || normalizedBody || null : null,
         templateName: useTemplate ? normalizedTemplateName : null,
         languageCode: useTemplate ? normalizedLanguageCode : null,
         bodyVariables: normalizedBodyVariables,
         headerVariables: normalizedHeaderVariables,
-        previewUrl: Boolean(previewUrl),
+        headerMediaType: normalizedHeaderMediaType || null,
+        headerMediaUrl: normalizedHeaderMediaUrl || null,
+        previewUrl: !useTemplate && !useMedia ? Boolean(previewUrl) : false,
         segment: segment || null,
         sentByAdminId: adminUserId ? String(adminUserId) : null,
         responseContactWaId: sanitizeText(data?.contacts?.[0]?.wa_id || "", {
@@ -496,10 +774,12 @@ export const sendWhatsappMessage = async ({
 
     return {
       accepted: true,
-      mode: useTemplate ? "template" : "text",
+      mode: useTemplate ? "template" : useMedia ? normalizedMediaType : "text",
       to: recipientPhone,
       messageId: messageId || "",
       templateName: normalizedTemplateName || "",
+      mediaType: useMedia ? normalizedMediaType : "",
+      mediaUrl: useMedia ? normalizedMediaUrl : "",
       languageCode: useTemplate ? normalizedLanguageCode : "",
       contact: contact
         ? {
@@ -515,11 +795,17 @@ export const sendWhatsappMessage = async ({
       contact,
       phone: recipientPhone,
       useTemplate,
+      useMedia,
+      mediaType: normalizedMediaType,
+      mediaUrl: normalizedMediaUrl,
+      caption: normalizedCaption || normalizedBody,
       templateName: normalizedTemplateName,
       languageCode: normalizedLanguageCode,
       body: normalizedBody,
       bodyVariables: normalizedBodyVariables,
       headerVariables: normalizedHeaderVariables,
+      headerMediaType: normalizedHeaderMediaType,
+      headerMediaUrl: normalizedHeaderMediaUrl,
       campaignName,
       segment,
       adminUserId,
@@ -529,7 +815,7 @@ export const sendWhatsappMessage = async ({
     logger.error("whatsapp.send", "Failed to send WhatsApp message", {
       contactId: contact?._id ? String(contact._id) : null,
       phone: recipientPhone,
-      mode: useTemplate ? "template" : "text",
+      mode: useTemplate ? "template" : useMedia ? normalizedMediaType : "text",
       templateName: normalizedTemplateName || null,
       error: error?.message || String(error),
     });

@@ -24,6 +24,24 @@ const statusBadgeClass = (status) => {
   return "bg-gray-100 text-gray-700";
 };
 
+const formatIstDateTime = (value) => {
+  if (!value) return "N/A";
+  const parsedDate = new Date(value);
+  if (Number.isNaN(parsedDate.getTime())) return String(value || "N/A");
+
+  const formatted = new Intl.DateTimeFormat("en-IN", {
+    timeZone: "Asia/Kolkata",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  }).format(parsedDate);
+
+  return formatted.replace(/\s(AM|PM)$/i, (meridiem) => meridiem.toLowerCase());
+};
+
 const CustomerCareDetailPage = () => {
   const { token, isAuthenticated, loading } = useAdmin();
   const router = useRouter();
@@ -198,7 +216,7 @@ const CustomerCareDetailPage = () => {
                 </p>
                 <p>
                   <span className="font-semibold">Order Date:</span>{" "}
-                  {normalizedOrder.createdAt || "N/A"}
+                  {formatIstDateTime(normalizedOrder.createdAt)}
                 </p>
               </div>
             ) : (
@@ -297,6 +315,29 @@ const CustomerCareDetailPage = () => {
                   preload="metadata"
                   className="w-full rounded-md border border-gray-200 bg-black"
                 />
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="border border-gray-100 rounded-lg p-4">
+          <h2 className="text-[16px] font-semibold text-gray-800 mb-3">
+            Linked Attachments
+          </h2>
+          {!ticket.attachments?.length ? (
+            <p className="text-sm text-gray-500">No linked attachments.</p>
+          ) : (
+            <div className="space-y-2">
+              {ticket.attachments.map((attachmentUrl) => (
+                <a
+                  key={attachmentUrl}
+                  href={attachmentUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="block text-sm font-medium text-blue-600 hover:underline break-all"
+                >
+                  {attachmentUrl}
+                </a>
               ))}
             </div>
           )}

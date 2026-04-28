@@ -2,9 +2,9 @@
 
 import {
   API_BASE_URL,
-  axiosClient,
   fetchDataFromApi,
   getStoredAccessToken,
+  postData,
 } from "@/utils/api";
 
 const BASE_HAS_API_SUFFIX = /\/api$/i.test(String(API_BASE_URL || ""));
@@ -56,12 +56,39 @@ export const fetchSupportOrderOptions = async () => {
     .filter((order) => Boolean(String(order.id || "").trim()));
 };
 
+export const fetchSupportOrderContext = async (orderId) => {
+  const normalizedOrderId = String(orderId || "").trim();
+  if (!normalizedOrderId) {
+    return { success: false, message: "Order ID is required.", data: null };
+  }
+
+  const response = await fetchDataFromApi(
+    `/api/orders/${encodeURIComponent(normalizedOrderId)}`,
+    {
+      skipCache: true,
+    },
+  );
+
+  if (!response?.success || !response?.data) {
+    return {
+      success: false,
+      message: response?.message || "Failed to fetch order support context.",
+      data: null,
+    };
+  }
+
+  return {
+    success: true,
+    message: "Order support context fetched successfully.",
+    data: response.data,
+  };
+};
+
 export const createSupportTicket = async (formData) => {
   try {
-    const response = await axiosClient.post(normalizeApiPath("/api/support/create"), formData, {
+    return await postData(normalizeApiPath("/api/support/create-ticket"), formData, {
       headers: { "Content-Type": "multipart/form-data" },
     });
-    return response.data;
   } catch (error) {
     return toErrorPayload(error, "Failed to create support ticket.");
   }

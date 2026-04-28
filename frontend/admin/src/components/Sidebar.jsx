@@ -145,12 +145,6 @@ const Sidebar = ({ isOpen = false, onClose }) => {
       requiredPermission: "manage_crm",
     },
     {
-      name: "CRM",
-      icon: <MdOutlineHub size={22} />,
-      href: "/crm",
-      requiredPermission: "manage_crm",
-    },
-    {
       name: "Coupons",
       icon: <RiCoupon2Line size={22} />,
       href: "/coupons",
@@ -340,7 +334,7 @@ const Sidebar = ({ isOpen = false, onClose }) => {
           const tabActive = isActive(tab.href) || childActive;
 
           return (
-            <div key={tab.name}>
+            <div key={tab.href || tab.name}>
               <Link
                 href={tab.href}
                 onClick={handleNavClick}

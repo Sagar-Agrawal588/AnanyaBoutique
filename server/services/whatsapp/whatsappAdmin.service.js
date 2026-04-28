@@ -20,7 +20,9 @@ const normalizePositiveInteger = (value, fallback, max) => {
 };
 
 const normalizeWhatsappSegment = (value) => {
-  const normalized = sanitizeText(value || "all", { maxLength: 40 }).toLowerCase();
+  const normalized = sanitizeText(value || "all", {
+    maxLength: 40,
+  }).toLowerCase();
   if (!normalized) return "all";
 
   const allowed = new Set([
@@ -48,10 +50,14 @@ const buildPhonePresentFilter = () => ({
   },
 });
 
-const buildWhatsappAudienceFilter = ({ segment = "all", inactiveDays = 45 } = {}) => {
+const buildWhatsappAudienceFilter = ({
+  segment = "all",
+  inactiveDays = 45,
+} = {}) => {
   const normalizedSegment = normalizeWhatsappSegment(segment);
   const cutoff = new Date(
-    Date.now() - normalizePositiveInteger(inactiveDays, 45, 365) * 24 * 60 * 60 * 1000,
+    Date.now() -
+      normalizePositiveInteger(inactiveDays, 45, 365) * 24 * 60 * 60 * 1000,
   );
 
   const filter = {
@@ -211,7 +217,9 @@ export const getWhatsappAdminOverview = async () => {
     })),
   ]);
 
-  const templates = Array.isArray(templateResult?.templates) ? templateResult.templates : [];
+  const templates = Array.isArray(templateResult?.templates)
+    ? templateResult.templates
+    : [];
 
   return {
     configuration: config,
@@ -222,17 +230,21 @@ export const getWhatsappAdminOverview = async () => {
       outboundLast30Days,
     },
     statusBreakdown: statusBreakdown.map((entry) => ({
-      status: sanitizeText(entry?._id || "unknown", { maxLength: 40 }).toLowerCase(),
+      status: sanitizeText(entry?._id || "unknown", {
+        maxLength: 40,
+      }).toLowerCase(),
       count: Number(entry?.count || 0),
     })),
     templates: {
       configured: Boolean(templateResult?.configured),
       total: templates.length,
       approved: templates.filter((item) => item.status === "approved").length,
-      marketing: templates.filter((item) => item.category === "marketing").length,
-      utility: templates.filter((item) => item.category === "utility").length,
-      authentication: templates.filter((item) => item.category === "authentication")
+      marketing: templates.filter((item) => item.category === "marketing")
         .length,
+      utility: templates.filter((item) => item.category === "utility").length,
+      authentication: templates.filter(
+        (item) => item.category === "authentication",
+      ).length,
     },
     recentEvents: recentWhatsappEvents.map(toPlainWhatsappEvent),
   };
@@ -246,27 +258,41 @@ export const getWhatsappTemplateCatalog = async () => {
   };
 };
 
-export const sendWhatsappMessageToContact = async (contactId, payload = {}, adminUserId = "") => {
+export const sendWhatsappMessageToContact = async (
+  contactId,
+  payload = {},
+  adminUserId = "",
+) => {
   const normalizedContactId = normalizeObjectId(contactId);
   if (!normalizedContactId) {
-    throw buildCrmValidationError("Valid CRM contactId is required for WhatsApp send.");
+    throw buildCrmValidationError(
+      "Valid CRM contactId is required for WhatsApp send.",
+    );
   }
 
   return sendWhatsappMessage({
     contactId: normalizedContactId,
     body: payload?.body,
     previewUrl: payload?.previewUrl,
+    mediaType: payload?.mediaType,
+    mediaUrl: payload?.mediaUrl,
+    caption: payload?.caption,
+    fileName: payload?.fileName,
     templateName: payload?.templateName,
     languageCode: payload?.languageCode,
     bodyVariables: payload?.bodyVariables,
     headerVariables: payload?.headerVariables,
+    headerMediaType: payload?.headerMediaType,
+    headerMediaUrl: payload?.headerMediaUrl,
     campaignName: payload?.campaignName,
     adminUserId,
   });
 };
 
 export const sendWhatsappCampaign = async (payload = {}, adminUserId = "") => {
-  const templateName = sanitizeText(payload?.templateName || "", { maxLength: 120 });
+  const templateName = sanitizeText(payload?.templateName || "", {
+    maxLength: 120,
+  });
   if (!templateName) {
     throw buildCrmValidationError(
       "WhatsApp campaign send requires an approved templateName.",
@@ -310,6 +336,8 @@ export const sendWhatsappCampaign = async (payload = {}, adminUserId = "") => {
         languageCode: payload?.languageCode,
         bodyVariables: payload?.bodyVariables,
         headerVariables: payload?.headerVariables,
+        headerMediaType: payload?.headerMediaType,
+        headerMediaUrl: payload?.headerMediaUrl,
         campaignName,
         segment,
         adminUserId,

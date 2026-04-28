@@ -1,82 +1,10 @@
 "use client";
 
 import LoadingSpinner from "@/app/components/LoadingSpinner";
-import { API_BASE_URL, getData } from "@/utils/api";
+import { getBlobData, getData } from "@/utils/api";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import OrdersTable from "./OrdersTable";
 import SalesChart from "./SalesChart";
-
-const buildApiUrl = (path) => {
-  const base = String(API_BASE_URL || "").replace(/\/+$/, "");
-  const normalized = path?.startsWith("/") ? path : `/${path || ""}`;
-  if (/\/api$/i.test(base) && /^\/api(\/|$)/i.test(normalized)) {
-    return base.replace(/\/api$/i, "") + normalized;
-  }
-  return base + normalized;
-};
-
-const parseJsonSafe = async (response) => {
-  try {
-    return await response.json();
-  } catch {
-    return null;
-  }
-};
-
-const buildFallbackUrls = (path) => {
-  const primary = buildApiUrl(path);
-  const urls = [primary];
-
-  // Local dev frequently switches between 8000/8001; try both before failing.
-  if (/^https?:\/\/localhost:8001/i.test(primary)) {
-    urls.push(primary.replace(/localhost:8001/i, "localhost:8000"));
-  }
-  if (/^https?:\/\/localhost:8000/i.test(primary)) {
-    urls.push(primary.replace(/localhost:8000/i, "localhost:8001"));
-  }
-
-  return [...new Set(urls.filter(Boolean))];
-};
-
-const fetchReportWithFallback = async (path, token) => {
-  const primary = await getData(path, token);
-  const isNetworkFailure =
-    !primary?.success &&
-    /network\s*error/i.test(String(primary?.message || ""));
-
-  if (!isNetworkFailure) {
-    return primary;
-  }
-
-  let lastErrorMessage = primary?.message || "Failed to fetch report";
-  const fallbackUrls = buildFallbackUrls(path);
-
-  for (const fallbackUrl of fallbackUrls) {
-    try {
-      const response = await fetch(fallbackUrl, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      const payload = await parseJsonSafe(response);
-      if (!response.ok) {
-        lastErrorMessage = payload?.message || "Failed to fetch report";
-        continue;
-      }
-
-      return payload || { success: true, data: {} };
-    } catch (error) {
-      lastErrorMessage = error?.message || lastErrorMessage;
-    }
-  }
-
-  return {
-    success: false,
-    message: lastErrorMessage,
-  };
-};
 
 const formatDateInput = (value) => {
   if (!value) return "";
@@ -170,7 +98,7 @@ export default function AdminSalesAnalytics({ token }) {
     setError("");
     try {
       const path = `/api/admin/orders/report?${queryString}`;
-      const response = await fetchReportWithFallback(path, token);
+      const response = await getData(path, token);
       const payload = response?.data || response;
 
       if (!response?.success && !response?.data) {
@@ -214,38 +142,13 @@ export default function AdminSalesAnalytics({ token }) {
       if (search) params.set("search", search);
       if (includeRto) params.set("includeRto", "true");
       const path = `/api/admin/orders/export?${params.toString()}`;
-      const fallbackUrls = buildFallbackUrls(path);
-      let response = null;
-      let exportErrorMessage = "Export failed";
-
-      for (const url of fallbackUrls) {
-        try {
-          const candidate = await fetch(url, {
-            method: "GET",
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          });
-
-          if (!candidate.ok) {
-            const payload = await parseJsonSafe(candidate);
-            exportErrorMessage = payload?.message || "Export failed";
-            continue;
-          }
-
-          response = candidate;
-          break;
-        } catch (error) {
-          exportErrorMessage = error?.message || exportErrorMessage;
-        }
+      const response = await getBlobData(path, token);
+      if (!response?.success || !response?.blob) {
+        throw new Error(response?.message || "Export failed");
       }
 
-      if (!response) {
-        throw new Error(exportErrorMessage);
-      }
-
-      const blob = await response.blob();
-      const disposition = response.headers.get("content-disposition") || "";
+      const blob = response.blob;
+      const disposition = response?.headers?.["content-disposition"] || "";
       const match = disposition.match(/filename="([^"]+)"/i);
       const filename =
         match?.[1] || `order-report-${startDate}_to_${endDate}.xlsx`;

@@ -344,12 +344,17 @@ const requestWithRetry = async (config, fallbackMessage) => {
   return handleApiError(lastError, fallbackMessage);
 };
 
-export const postData = async (url, formData) => {
+export const postData = async (url, formData, requestOptions = {}) => {
+  const { headers = {}, ...restOptions } =
+    requestOptions && typeof requestOptions === "object" ? requestOptions : {};
+
   const result = await requestWithRetry(
     {
       method: "post",
       url: normalizePath(url),
       data: formData,
+      headers,
+      ...restOptions,
     },
     "Failed to submit request",
   );

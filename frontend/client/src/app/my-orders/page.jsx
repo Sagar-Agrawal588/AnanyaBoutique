@@ -31,7 +31,14 @@ import { toast } from "react-hot-toast";
 const API_URL = API_BASE_URL.endsWith("/api")
   ? API_BASE_URL
   : `${API_BASE_URL}/api`;
-const LOCAL_API_FALLBACKS = ["http://localhost:8000", "http://localhost:8001"];
+const LOCAL_API_FALLBACKS = [
+  "http://localhost:8000",
+  "http://localhost:8001",
+  "http://localhost:8002",
+  "http://127.0.0.1:8000",
+  "http://127.0.0.1:8001",
+  "http://127.0.0.1:8002",
+];
 
 const sanitizeBaseUrl = (value) =>
   String(value || "")
@@ -126,6 +133,19 @@ const fetchWithApiFallback = async (path, options = {}) => {
       },
     },
   );
+};
+
+const parseErrorMessage = async (response) => {
+  try {
+    const payload = await response.clone().json();
+    return (
+      String(payload?.message || "").trim() ||
+      String(payload?.code || "").trim() ||
+      ""
+    );
+  } catch {
+    return "";
+  }
 };
 
 const getCookieToken = () => {
@@ -288,6 +308,23 @@ const Orders = () => {
           credentials: "include",
         });
 
+        if (!response.ok && (response.status >= 500 || response.status === 404)) {
+          const fallbackResponse = await fetchWithApiFallback(
+            "/orders/user/my-orders",
+            {
+              method: "GET",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              credentials: "include",
+            },
+          );
+          if (fallbackResponse.ok || fallbackResponse.status === 401) {
+            response = fallbackResponse;
+          }
+        }
+
         if (response.status === 401) {
           // Attempt refresh token flow (cookie-based) before failing
           try {
@@ -322,7 +359,11 @@ const Orders = () => {
             setTimeout(() => router.push("/login?redirect=/my-orders"), 2000);
             return;
           }
-          throw new Error(`Failed to fetch orders: ${response.statusText}`);
+          const serverMessage = await parseErrorMessage(response);
+          throw new Error(
+            serverMessage ||
+              `Failed to fetch orders (HTTP ${response.status || 500})`,
+          );
         }
 
         const data = await response.json();
@@ -361,7 +402,7 @@ const Orders = () => {
           setReviewedItemMap({});
         }
       } catch (err) {
-        console.error("Error fetching orders:", err);
+        console.warn("Error fetching orders:", err);
         setError(err.message || "Failed to load orders. Please try again.");
         setReviewedItemMap({});
       } finally {

@@ -106,7 +106,8 @@ const directionBadgeClass = (value) => {
 
 const whatsappStatusClass = (value) => {
   if (value === "read") return "bg-emerald-100 text-emerald-700";
-  if (value === "delivered" || value === "sent") return "bg-sky-100 text-sky-700";
+  if (value === "delivered" || value === "sent")
+    return "bg-sky-100 text-sky-700";
   if (value === "failed") return "bg-rose-100 text-rose-700";
   return "bg-slate-100 text-slate-700";
 };
@@ -119,7 +120,8 @@ const consentBadgeClass = (value) => {
 
 const resolveTimelineSummary = (item = {}) => {
   if (item.message) return item.message;
-  if (item?.metadata?.status) return `Status: ${prettifyValue(item.metadata.status)}`;
+  if (item?.metadata?.status)
+    return `Status: ${prettifyValue(item.metadata.status)}`;
   if (item.pageUrl) return item.pageUrl;
   if (item.referrer) return item.referrer;
   return "No extra details.";
@@ -166,9 +168,7 @@ const parseVariableInput = (value = "") =>
     .filter(Boolean);
 
 const getConfigTone = (ready) =>
-  ready
-    ? "bg-emerald-100 text-emerald-700"
-    : "bg-amber-100 text-amber-700";
+  ready ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700";
 
 const CrmPage = () => {
   const { token, isAuthenticated, loading } = useAdmin();
@@ -209,10 +209,15 @@ const CrmPage = () => {
   const [personalWhatsappForm, setPersonalWhatsappForm] = useState({
     mode: "text",
     body: "",
+    previewUrl: false,
+    mediaUrl: "",
+    mediaCaption: "",
     templateName: "",
     languageCode: "en",
     bodyVariables: "",
     headerVariables: "",
+    headerMediaType: "image",
+    headerMediaUrl: "",
     campaignName: "",
   });
   const [campaignForm, setCampaignForm] = useState({
@@ -222,6 +227,8 @@ const CrmPage = () => {
     languageCode: "en",
     bodyVariables: "",
     headerVariables: "",
+    headerMediaType: "image",
+    headerMediaUrl: "",
     campaignName: "WhatsApp promotional campaign",
   });
 
@@ -266,7 +273,9 @@ const CrmPage = () => {
         : [];
 
       setContacts(nextContacts);
-      setTotalPages(Math.max(Number(response.data?.pagination?.totalPages || 1), 1));
+      setTotalPages(
+        Math.max(Number(response.data?.pagination?.totalPages || 1), 1),
+      );
 
       if (nextContacts.length === 0) {
         applySelectedContact(null);
@@ -384,7 +393,9 @@ const CrmPage = () => {
     );
 
     if (!response?.success) {
-      throw new Error(response?.message || "Failed to preview WhatsApp audience.");
+      throw new Error(
+        response?.message || "Failed to preview WhatsApp audience.",
+      );
     }
 
     setAudiencePreview(response.data || { count: 0, sample: [] });
@@ -399,12 +410,20 @@ const CrmPage = () => {
   useEffect(() => {
     if (!isAuthenticated || !token) return;
 
-    Promise.all([loadOverview(), loadContacts(), loadWhatsappWorkspace()]).catch(
-      (error) => {
-        toast.error(error?.message || "Failed to load CRM dashboard.");
-      },
-    );
-  }, [isAuthenticated, token, loadContacts, loadOverview, loadWhatsappWorkspace]);
+    Promise.all([
+      loadOverview(),
+      loadContacts(),
+      loadWhatsappWorkspace(),
+    ]).catch((error) => {
+      toast.error(error?.message || "Failed to load CRM dashboard.");
+    });
+  }, [
+    isAuthenticated,
+    token,
+    loadContacts,
+    loadOverview,
+    loadWhatsappWorkspace,
+  ]);
 
   useEffect(() => {
     if (!isAuthenticated || !token) return;
@@ -481,16 +500,30 @@ const CrmPage = () => {
   const handleSendPersonalWhatsapp = async () => {
     if (!selectedContactId || !token) return;
 
-    const bodyVariables = parseVariableInput(personalWhatsappForm.bodyVariables);
-    const headerVariables = parseVariableInput(personalWhatsappForm.headerVariables);
+    const bodyVariables = parseVariableInput(
+      personalWhatsappForm.bodyVariables,
+    );
+    const headerVariables = parseVariableInput(
+      personalWhatsappForm.headerVariables,
+    );
+    const personalMode = String(personalWhatsappForm.mode || "text");
+    const isMediaMode = personalMode === "image" || personalMode === "gif";
+    const hasTemplateHeaderMediaUrl = Boolean(
+      String(personalWhatsappForm.headerMediaUrl || "").trim(),
+    );
 
-    if (personalWhatsappForm.mode === "text" && !String(personalWhatsappForm.body).trim()) {
+    if (personalMode === "text" && !String(personalWhatsappForm.body).trim()) {
       toast.error("Write a message before sending a personal WhatsApp reply.");
       return;
     }
 
+    if (isMediaMode && !String(personalWhatsappForm.mediaUrl).trim()) {
+      toast.error("Add a public media URL before sending image/GIF outreach.");
+      return;
+    }
+
     if (
-      personalWhatsappForm.mode === "template" &&
+      personalMode === "template" &&
       !String(personalWhatsappForm.templateName).trim()
     ) {
       toast.error("Choose an approved WhatsApp template first.");
@@ -502,32 +535,47 @@ const CrmPage = () => {
       const response = await sendCrmWhatsappMessage(
         selectedContactId,
         {
-          body:
-            personalWhatsappForm.mode === "text"
-              ? personalWhatsappForm.body
-              : "",
+          body: personalMode === "text" ? personalWhatsappForm.body : "",
+          previewUrl:
+            personalMode === "text" ? personalWhatsappForm.previewUrl : false,
+          mediaType: isMediaMode ? personalMode : "",
+          mediaUrl: isMediaMode ? personalWhatsappForm.mediaUrl : "",
+          caption: isMediaMode ? personalWhatsappForm.mediaCaption : "",
           templateName:
-            personalWhatsappForm.mode === "template"
+            personalMode === "template"
               ? personalWhatsappForm.templateName
               : "",
           languageCode: personalWhatsappForm.languageCode,
           bodyVariables,
           headerVariables,
+          headerMediaType:
+            personalMode === "template" && hasTemplateHeaderMediaUrl
+              ? personalWhatsappForm.headerMediaType
+              : "",
+          headerMediaUrl:
+            personalMode === "template"
+              ? personalWhatsappForm.headerMediaUrl
+              : "",
           campaignName: personalWhatsappForm.campaignName,
         },
         token,
       );
 
       if (!response?.success) {
-        throw new Error(response?.message || "Failed to send WhatsApp message.");
+        throw new Error(
+          response?.message || "Failed to send WhatsApp message.",
+        );
       }
 
       toast.success("WhatsApp message queued through the business API.");
       setPersonalWhatsappForm((prev) => ({
         ...prev,
         body: "",
+        mediaUrl: "",
+        mediaCaption: "",
         bodyVariables: "",
         headerVariables: "",
+        headerMediaUrl: "",
       }));
       await refreshAdminCrmData();
     } catch (error) {
@@ -545,12 +593,20 @@ const CrmPage = () => {
       return;
     }
 
-    if (!confirm("Send this WhatsApp template campaign to the previewed audience?")) {
+    if (
+      !confirm(
+        "Send this WhatsApp template campaign to the previewed audience?",
+      )
+    ) {
       return;
     }
 
     setSendingCampaignWhatsapp(true);
     try {
+      const hasCampaignHeaderMediaUrl = Boolean(
+        String(campaignForm.headerMediaUrl || "").trim(),
+      );
+
       const response = await sendCrmWhatsappCampaign(
         {
           segment: campaignForm.segment,
@@ -559,13 +615,19 @@ const CrmPage = () => {
           languageCode: campaignForm.languageCode,
           bodyVariables: parseVariableInput(campaignForm.bodyVariables),
           headerVariables: parseVariableInput(campaignForm.headerVariables),
+          headerMediaType: hasCampaignHeaderMediaUrl
+            ? campaignForm.headerMediaType
+            : "",
+          headerMediaUrl: campaignForm.headerMediaUrl,
           campaignName: campaignForm.campaignName,
         },
         token,
       );
 
       if (!response?.success) {
-        throw new Error(response?.message || "Failed to send WhatsApp campaign.");
+        throw new Error(
+          response?.message || "Failed to send WhatsApp campaign.",
+        );
       }
 
       const campaignResult = response.data || {};
@@ -641,12 +703,14 @@ const CrmPage = () => {
               CRM + WhatsApp Workspace
             </p>
             <h1 className="mt-2 text-3xl font-semibold">
-              See customer conversations and send personal or mass WhatsApp outreach.
+              See customer conversations and send personal or mass WhatsApp
+              outreach.
             </h1>
             <p className="mt-3 max-w-3xl text-sm leading-6 text-white/80">
-              The admin page now uses CRM contacts as the source of truth: timeline
-              messages, consent, stage, revenue, and WhatsApp delivery/status events all
-              stay attached to the same customer record.
+              The admin page now uses CRM contacts as the source of truth:
+              timeline messages, consent, stage, revenue, and WhatsApp
+              delivery/status events all stay attached to the same customer
+              record.
             </p>
           </div>
           <div className="grid min-w-[260px] grid-cols-2 gap-3">
@@ -655,7 +719,10 @@ const CrmPage = () => {
                 WhatsApp Reachable
               </p>
               <p className="mt-2 text-2xl font-semibold">
-                {Number(whatsappOverview?.summary?.totalWhatsappReachableContacts || 0)}
+                {Number(
+                  whatsappOverview?.summary?.totalWhatsappReachableContacts ||
+                    0,
+                )}
               </p>
             </div>
             <div className="rounded-2xl bg-white/10 p-4 backdrop-blur">
@@ -663,7 +730,10 @@ const CrmPage = () => {
                 Consented
               </p>
               <p className="mt-2 text-2xl font-semibold">
-                {Number(whatsappOverview?.summary?.totalConsentedWhatsappContacts || 0)}
+                {Number(
+                  whatsappOverview?.summary?.totalConsentedWhatsappContacts ||
+                    0,
+                )}
               </p>
             </div>
           </div>
@@ -674,10 +744,12 @@ const CrmPage = () => {
         <div className="bg-white rounded-2xl shadow-md p-5">
           <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
             <div>
-              <h2 className="text-[24px] font-[600] text-gray-900">CRM Contacts</h2>
+              <h2 className="text-[24px] font-[600] text-gray-900">
+                CRM Contacts
+              </h2>
               <p className="text-sm text-gray-500">
-                Search, filter, and pick the contact whose full timeline and messaging
-                controls you want to inspect.
+                Search, filter, and pick the contact whose full timeline and
+                messaging controls you want to inspect.
               </p>
             </div>
             <Button
@@ -796,7 +868,10 @@ const CrmPage = () => {
                             {contact.name || "Unnamed contact"}
                           </div>
                           <div className="text-sm text-slate-500">
-                            {contact.email || contact.phone || contact.sessionId || "-"}
+                            {contact.email ||
+                              contact.phone ||
+                              contact.sessionId ||
+                              "-"}
                           </div>
                         </td>
                         <td className="px-4 py-3 text-sm text-slate-700">
@@ -895,7 +970,9 @@ const CrmPage = () => {
 
                 <div className="grid grid-cols-2 gap-3 text-xs">
                   <div className="rounded-xl border border-slate-200 p-3">
-                    <p className="font-semibold text-slate-700">Consent Flags</p>
+                    <p className="font-semibold text-slate-700">
+                      Consent Flags
+                    </p>
                     <div className="mt-3 flex flex-wrap gap-2">
                       <span
                         className={`inline-flex rounded-full px-2.5 py-1 font-semibold ${consentBadgeClass(
@@ -903,21 +980,31 @@ const CrmPage = () => {
                         )}`}
                       >
                         WhatsApp:{" "}
-                        {prettifyValue(String(selectedContact?.consent?.whatsapp ?? "unknown"))}
+                        {prettifyValue(
+                          String(
+                            selectedContact?.consent?.whatsapp ?? "unknown",
+                          ),
+                        )}
                       </span>
                       <span
                         className={`inline-flex rounded-full px-2.5 py-1 font-semibold ${consentBadgeClass(
                           selectedContact?.consent?.email,
                         )}`}
                       >
-                        Email: {prettifyValue(String(selectedContact?.consent?.email ?? "unknown"))}
+                        Email:{" "}
+                        {prettifyValue(
+                          String(selectedContact?.consent?.email ?? "unknown"),
+                        )}
                       </span>
                       <span
                         className={`inline-flex rounded-full px-2.5 py-1 font-semibold ${consentBadgeClass(
                           selectedContact?.consent?.push,
                         )}`}
                       >
-                        Push: {prettifyValue(String(selectedContact?.consent?.push ?? "unknown"))}
+                        Push:{" "}
+                        {prettifyValue(
+                          String(selectedContact?.consent?.push ?? "unknown"),
+                        )}
                       </span>
                     </div>
                   </div>
@@ -925,8 +1012,13 @@ const CrmPage = () => {
                     <p className="font-semibold text-slate-700">Identity</p>
                     <div className="mt-3 space-y-1 text-slate-600">
                       <p>Phone: {selectedContact.phone || "Not available"}</p>
-                      <p>Last seen: {formatDateTime(selectedContact.lastSeenAt)}</p>
-                      <p>First seen: {formatDateTime(selectedContact.firstSeenAt)}</p>
+                      <p>
+                        Last seen: {formatDateTime(selectedContact.lastSeenAt)}
+                      </p>
+                      <p>
+                        First seen:{" "}
+                        {formatDateTime(selectedContact.firstSeenAt)}
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -944,11 +1036,13 @@ const CrmPage = () => {
                       }))
                     }
                   >
-                    {LIFECYCLE_OPTIONS.filter((option) => option.value).map((option) => (
-                      <MenuItem key={option.value} value={option.value}>
-                        {option.label}
-                      </MenuItem>
-                    ))}
+                    {LIFECYCLE_OPTIONS.filter((option) => option.value).map(
+                      (option) => (
+                        <MenuItem key={option.value} value={option.value}>
+                          {option.label}
+                        </MenuItem>
+                      ),
+                    )}
                   </TextField>
 
                   <TextField
@@ -963,11 +1057,13 @@ const CrmPage = () => {
                       }))
                     }
                   >
-                    {STATUS_OPTIONS.filter((option) => option.value).map((option) => (
-                      <MenuItem key={option.value} value={option.value}>
-                        {option.label}
-                      </MenuItem>
-                    ))}
+                    {STATUS_OPTIONS.filter((option) => option.value).map(
+                      (option) => (
+                        <MenuItem key={option.value} value={option.value}>
+                          {option.label}
+                        </MenuItem>
+                      ),
+                    )}
                   </TextField>
 
                   <TextField
@@ -982,11 +1078,13 @@ const CrmPage = () => {
                       }))
                     }
                   >
-                    {CHANNEL_OPTIONS.filter((option) => option.value).map((option) => (
-                      <MenuItem key={option.value} value={option.value}>
-                        {option.label}
-                      </MenuItem>
-                    ))}
+                    {CHANNEL_OPTIONS.filter((option) => option.value).map(
+                      (option) => (
+                        <MenuItem key={option.value} value={option.value}>
+                          {option.label}
+                        </MenuItem>
+                      ),
+                    )}
                   </TextField>
 
                   <TextField
@@ -1013,7 +1111,8 @@ const CrmPage = () => {
                     {isSaving ? "Saving..." : "Save Contact"}
                   </Button>
                   <span className="text-xs text-slate-500">
-                    Last interaction {formatDateTime(selectedContact.lastInteractionAt)}
+                    Last interaction{" "}
+                    {formatDateTime(selectedContact.lastInteractionAt)}
                   </span>
                 </div>
               </div>
@@ -1023,10 +1122,12 @@ const CrmPage = () => {
           <div className="bg-white rounded-2xl shadow-md p-5">
             <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
               <div>
-                <h3 className="text-lg font-semibold text-slate-900">WhatsApp Message Center</h3>
+                <h3 className="text-lg font-semibold text-slate-900">
+                  WhatsApp Message Center
+                </h3>
                 <p className="text-sm text-slate-500">
-                  Personal replies for one contact, using text for active chats or templates
-                  for first outreach.
+                  Personal replies for one contact, using text for active chats
+                  or templates for first outreach.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -1085,26 +1186,45 @@ const CrmPage = () => {
                   }
                 >
                   <MenuItem value="text">Personal Text Reply</MenuItem>
+                  <MenuItem value="image">Image Message</MenuItem>
+                  <MenuItem value="gif">GIF Message</MenuItem>
                   <MenuItem value="template">Template Message</MenuItem>
                 </TextField>
 
                 {personalWhatsappForm.mode === "text" ? (
-                  <TextField
-                    size="small"
-                    label="Message"
-                    value={personalWhatsappForm.body}
-                    onChange={(event) =>
-                      setPersonalWhatsappForm((prev) => ({
-                        ...prev,
-                        body: event.target.value,
-                      }))
-                    }
-                    multiline
-                    minRows={4}
-                    fullWidth
-                    placeholder="Write a direct reply for the customer..."
-                  />
-                ) : (
+                  <div className="space-y-3">
+                    <TextField
+                      size="small"
+                      label="Message"
+                      value={personalWhatsappForm.body}
+                      onChange={(event) =>
+                        setPersonalWhatsappForm((prev) => ({
+                          ...prev,
+                          body: event.target.value,
+                        }))
+                      }
+                      multiline
+                      minRows={4}
+                      fullWidth
+                      placeholder="Write a direct reply for the customer..."
+                    />
+                    <TextField
+                      select
+                      size="small"
+                      label="Link Preview"
+                      value={personalWhatsappForm.previewUrl ? "yes" : "no"}
+                      onChange={(event) =>
+                        setPersonalWhatsappForm((prev) => ({
+                          ...prev,
+                          previewUrl: event.target.value === "yes",
+                        }))
+                      }
+                    >
+                      <MenuItem value="no">Disabled</MenuItem>
+                      <MenuItem value="yes">Enabled</MenuItem>
+                    </TextField>
+                  </div>
+                ) : personalWhatsappForm.mode === "template" ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {whatsappTemplates.length > 0 ? (
                       <TextField
@@ -1175,6 +1295,68 @@ const CrmPage = () => {
                       }
                       placeholder="Customer name, offer text"
                     />
+                    <TextField
+                      select
+                      size="small"
+                      label="Header Media Type (optional)"
+                      value={personalWhatsappForm.headerMediaType}
+                      onChange={(event) =>
+                        setPersonalWhatsappForm((prev) => ({
+                          ...prev,
+                          headerMediaType: event.target.value,
+                        }))
+                      }
+                    >
+                      <MenuItem value="image">Image</MenuItem>
+                      <MenuItem value="video">Video / GIF</MenuItem>
+                      <MenuItem value="document">Document</MenuItem>
+                      <MenuItem value="gif">GIF (alias)</MenuItem>
+                    </TextField>
+                    <TextField
+                      size="small"
+                      label="Header Media URL (optional)"
+                      value={personalWhatsappForm.headerMediaUrl}
+                      onChange={(event) =>
+                        setPersonalWhatsappForm((prev) => ({
+                          ...prev,
+                          headerMediaUrl: event.target.value,
+                        }))
+                      }
+                      placeholder="https://cdn.example.com/banner.gif"
+                    />
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <TextField
+                      size="small"
+                      label={
+                        personalWhatsappForm.mode === "gif"
+                          ? "GIF URL"
+                          : "Image URL"
+                      }
+                      value={personalWhatsappForm.mediaUrl}
+                      onChange={(event) =>
+                        setPersonalWhatsappForm((prev) => ({
+                          ...prev,
+                          mediaUrl: event.target.value,
+                        }))
+                      }
+                      placeholder="https://cdn.example.com/creative.gif"
+                    />
+                    <TextField
+                      size="small"
+                      label="Caption (optional)"
+                      value={personalWhatsappForm.mediaCaption}
+                      onChange={(event) =>
+                        setPersonalWhatsappForm((prev) => ({
+                          ...prev,
+                          mediaCaption: event.target.value,
+                        }))
+                      }
+                      placeholder="Short retention message with CTA"
+                      multiline
+                      minRows={2}
+                    />
                   </div>
                 )}
 
@@ -1192,9 +1374,10 @@ const CrmPage = () => {
                 />
 
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-                  Text mode is best for active customer conversations already visible in the
-                  timeline. Template mode is the safer path for first outreach, reactivation,
-                  or promotional sends through the official WhatsApp business API.
+                  Text and media modes are best for active customer
+                  conversations already visible in the timeline. Template mode
+                  is the safer path for first outreach, reactivation, or
+                  promotional sends through the official WhatsApp business API.
                 </div>
 
                 <div className="flex items-center justify-between gap-3">
@@ -1208,10 +1391,13 @@ const CrmPage = () => {
                     }
                     onClick={handleSendPersonalWhatsapp}
                   >
-                    {sendingPersonalWhatsapp ? "Sending..." : "Send WhatsApp Message"}
+                    {sendingPersonalWhatsapp
+                      ? "Sending..."
+                      : "Send WhatsApp Message"}
                   </Button>
                   <span className="text-xs text-slate-500">
-                    Delivery and read states come back into the same timeline via Meta webhook.
+                    Delivery and read states come back into the same timeline
+                    via Meta webhook.
                   </span>
                 </div>
               </div>
@@ -1225,23 +1411,27 @@ const CrmPage = () => {
           <div className="bg-white rounded-2xl shadow-md p-5">
             <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
               <div>
-                <h3 className="text-lg font-semibold text-slate-900">WhatsApp Campaigns</h3>
+                <h3 className="text-lg font-semibold text-slate-900">
+                  WhatsApp Campaigns
+                </h3>
                 <p className="text-sm text-slate-500">
-                  Broadcast approved templates to consented CRM segments, not just raw phone
-                  lists.
+                  Broadcast approved templates to consented CRM segments, not
+                  just raw phone lists.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
-                {(whatsappOverview?.statusBreakdown || []).slice(0, 3).map((item) => (
-                  <span
-                    key={item.status}
-                    className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${whatsappStatusClass(
-                      item.status,
-                    )}`}
-                  >
-                    {prettifyValue(item.status)}: {item.count}
-                  </span>
-                ))}
+                {(whatsappOverview?.statusBreakdown || [])
+                  .slice(0, 3)
+                  .map((item) => (
+                    <span
+                      key={item.status}
+                      className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${whatsappStatusClass(
+                        item.status,
+                      )}`}
+                    >
+                      {prettifyValue(item.status)}: {item.count}
+                    </span>
+                  ))}
               </div>
             </div>
 
@@ -1350,6 +1540,37 @@ const CrmPage = () => {
               />
 
               <TextField
+                select
+                size="small"
+                label="Header Media Type (optional)"
+                value={campaignForm.headerMediaType}
+                onChange={(event) =>
+                  setCampaignForm((prev) => ({
+                    ...prev,
+                    headerMediaType: event.target.value,
+                  }))
+                }
+              >
+                <MenuItem value="image">Image</MenuItem>
+                <MenuItem value="video">Video / GIF</MenuItem>
+                <MenuItem value="document">Document</MenuItem>
+                <MenuItem value="gif">GIF (alias)</MenuItem>
+              </TextField>
+
+              <TextField
+                size="small"
+                label="Header Media URL (optional)"
+                value={campaignForm.headerMediaUrl}
+                onChange={(event) =>
+                  setCampaignForm((prev) => ({
+                    ...prev,
+                    headerMediaUrl: event.target.value,
+                  }))
+                }
+                placeholder="https://cdn.example.com/campaign-banner.gif"
+              />
+
+              <TextField
                 size="small"
                 label="Body Variables"
                 value={campaignForm.bodyVariables}
@@ -1366,15 +1587,22 @@ const CrmPage = () => {
               />
             </div>
 
+            <p className="mt-3 text-xs text-slate-500">
+              Use either header variables or header media for a template header.
+              Sending both together will be rejected to match WhatsApp template
+              rules.
+            </p>
+
             <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold text-slate-900">
-                    Audience preview: {Number(audiencePreview?.count || 0)} consented contacts
+                    Audience preview: {Number(audiencePreview?.count || 0)}{" "}
+                    consented contacts
                   </p>
                   <p className="text-xs text-slate-500 mt-1">
-                    Only CRM contacts with phone numbers and WhatsApp consent are included in
-                    campaign send.
+                    Only CRM contacts with phone numbers and WhatsApp consent
+                    are included in campaign send.
                   </p>
                 </div>
                 <Button
@@ -1384,7 +1612,8 @@ const CrmPage = () => {
                   onClick={() => {
                     loadAudiencePreview().catch((error) => {
                       toast.error(
-                        error?.message || "Failed to refresh WhatsApp audience preview.",
+                        error?.message ||
+                          "Failed to refresh WhatsApp audience preview.",
                       );
                     });
                   }}
@@ -1428,10 +1657,13 @@ const CrmPage = () => {
                 }
                 onClick={handleSendWhatsappCampaign}
               >
-                {sendingCampaignWhatsapp ? "Sending..." : "Send WhatsApp Campaign"}
+                {sendingCampaignWhatsapp
+                  ? "Sending..."
+                  : "Send WhatsApp Campaign"}
               </Button>
               <span className="text-xs text-slate-500">
-                Broadcasts use approved templates so delivery states can flow back into CRM.
+                Broadcasts use approved templates so delivery states can flow
+                back into CRM.
               </span>
             </div>
           </div>
@@ -1439,14 +1671,19 @@ const CrmPage = () => {
           <div className="bg-white rounded-2xl shadow-md p-5">
             <div className="flex items-center justify-between gap-3 mb-4">
               <div>
-                <h3 className="text-lg font-semibold text-slate-900">Recent Orders</h3>
+                <h3 className="text-lg font-semibold text-slate-900">
+                  Recent Orders
+                </h3>
                 <p className="text-sm text-slate-500">
                   Direct shipment access for the selected CRM contact.
                 </p>
               </div>
               {selectedContact ? (
                 <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-                  {Number(selectedContact.totalOrders || recentOrders.length || 0)} orders
+                  {Number(
+                    selectedContact.totalOrders || recentOrders.length || 0,
+                  )}{" "}
+                  orders
                 </span>
               ) : null}
             </div>
@@ -1504,9 +1741,13 @@ const CrmPage = () => {
 
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
                       <div className="text-sm text-slate-600">
-                        <span className="font-semibold text-slate-900">AWB:</span>{" "}
+                        <span className="font-semibold text-slate-900">
+                          AWB:
+                        </span>{" "}
                         {order.awbNumber || "N/A"}
-                        <span className="ml-3 font-semibold text-slate-900">Courier:</span>{" "}
+                        <span className="ml-3 font-semibold text-slate-900">
+                          Courier:
+                        </span>{" "}
                         {order.courierName || "Xpressbees"}
                       </div>
 
@@ -1534,10 +1775,12 @@ const CrmPage = () => {
           <div className="bg-white rounded-2xl shadow-md p-5">
             <div className="flex items-center justify-between gap-3 mb-4">
               <div>
-                <h3 className="text-lg font-semibold text-slate-900">Timeline</h3>
+                <h3 className="text-lg font-semibold text-slate-900">
+                  Timeline
+                </h3>
                 <p className="text-sm text-slate-500">
-                  Messages, statuses, orders, and support touchpoints stay attached to the
-                  same customer record.
+                  Messages, statuses, orders, and support touchpoints stay
+                  attached to the same customer record.
                 </p>
               </div>
             </div>
@@ -1602,14 +1845,19 @@ const CrmPage = () => {
           <div className="bg-white rounded-2xl shadow-md p-5">
             <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
               <div>
-                <h3 className="text-lg font-semibold text-slate-900">WhatsApp Ops Snapshot</h3>
+                <h3 className="text-lg font-semibold text-slate-900">
+                  WhatsApp Ops Snapshot
+                </h3>
                 <p className="text-sm text-slate-500">
-                  Recent WhatsApp events across the CRM, not just the selected contact.
+                  Recent WhatsApp events across the CRM, not just the selected
+                  contact.
                 </p>
               </div>
               <div className="text-xs text-slate-500">
-                Inbound 30d: {Number(whatsappOverview?.summary?.inboundLast30Days || 0)} •
-                Outbound 30d: {Number(whatsappOverview?.summary?.outboundLast30Days || 0)}
+                Inbound 30d:{" "}
+                {Number(whatsappOverview?.summary?.inboundLast30Days || 0)} •
+                Outbound 30d:{" "}
+                {Number(whatsappOverview?.summary?.outboundLast30Days || 0)}
               </div>
             </div>
 
@@ -1626,7 +1874,9 @@ const CrmPage = () => {
                   >
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-sm font-semibold text-slate-900">
-                        {item.contact?.name || item.contact?.phone || "Unknown contact"}
+                        {item.contact?.name ||
+                          item.contact?.phone ||
+                          "Unknown contact"}
                       </span>
                       <span
                         className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${directionBadgeClass(
@@ -1649,7 +1899,9 @@ const CrmPage = () => {
                       </span>
                     </div>
                     <p className="mt-2 text-sm text-slate-600">
-                      {item.message || item.eventName || prettifyValue(item.eventType)}
+                      {item.message ||
+                        item.eventName ||
+                        prettifyValue(item.eventType)}
                     </p>
                   </div>
                 ))}

@@ -6,6 +6,14 @@ const HEALTHY_ONE_GRAM_HOSTS = new Set([
 ]);
 
 const LOCAL_API_FALLBACK = "http://localhost:8000";
+const LOCAL_API_FALLBACKS = [
+  "http://localhost:8000",
+  "http://localhost:8001",
+  "http://localhost:8002",
+  "http://127.0.0.1:8000",
+  "http://127.0.0.1:8001",
+  "http://127.0.0.1:8002",
+];
 
 const sanitizeBaseUrl = (value) =>
   String(value || "")
@@ -27,22 +35,15 @@ const isNetworkLevelError = (error) => {
   );
 };
 
-const resolveAlternateLocalhostBaseUrl = (value) => {
+const resolveAlternateLocalhostBaseUrls = (value) => {
   try {
     const parsed = new URL(String(value || ""));
     const host = String(parsed.hostname || "").toLowerCase();
-    if (host !== "localhost" && host !== "127.0.0.1") return "";
-    if (parsed.port === "8000") {
-      parsed.port = "8001";
-      return parsed.toString().replace(/\/+$/, "");
-    }
-    if (parsed.port === "8001") {
-      parsed.port = "8000";
-      return parsed.toString().replace(/\/+$/, "");
-    }
-    return "";
+    if (host !== "localhost" && host !== "127.0.0.1") return [];
+    const current = parsed.toString().replace(/\/+$/, "");
+    return LOCAL_API_FALLBACKS.filter((candidate) => candidate !== current);
   } catch {
-    return "";
+    return [];
   }
 };
 
@@ -214,17 +215,20 @@ const requestWithRetry = async ({
   };
 
   const retryOnAlternateLocalhost = async () => {
-    const alternateBaseUrl = resolveAlternateLocalhostBaseUrl(API_BASE_URL);
-    if (!alternateBaseUrl) return null;
-    try {
-      const response = await axiosClient.request({
-        ...requestConfig,
-        baseURL: alternateBaseUrl,
-      });
-      return response.data;
-    } catch {
-      return null;
+    const alternateBaseUrls = resolveAlternateLocalhostBaseUrls(API_BASE_URL);
+    if (!alternateBaseUrls.length) return null;
+    for (const baseURL of alternateBaseUrls) {
+      try {
+        const response = await axiosClient.request({
+          ...requestConfig,
+          baseURL,
+        });
+        return response.data;
+      } catch {
+        // Try the next local port candidate.
+      }
     }
+    return null;
   };
 
   try {
@@ -293,6 +297,28 @@ export const getBlobData = async (url, token = null) => {
     responseType: "blob",
   };
 
+  const retryOnAlternateLocalhost = async () => {
+    const alternateBaseUrls = resolveAlternateLocalhostBaseUrls(API_BASE_URL);
+    if (!alternateBaseUrls.length) return null;
+    for (const baseURL of alternateBaseUrls) {
+      try {
+        const response = await axiosClient.request({
+          ...requestConfig,
+          baseURL,
+        });
+        return {
+          success: true,
+          error: false,
+          blob: response.data,
+          headers: response.headers || {},
+        };
+      } catch {
+        // Try the next local port candidate.
+      }
+    }
+    return null;
+  };
+
   try {
     const response = await axiosClient.request(requestConfig);
     return {
@@ -302,6 +328,11 @@ export const getBlobData = async (url, token = null) => {
       headers: response.headers || {},
     };
   } catch (error) {
+    if (isNetworkLevelError(error)) {
+      const fallbackResponse = await retryOnAlternateLocalhost();
+      if (fallbackResponse) return fallbackResponse;
+    }
+
     if (error?.response?.status === 401 && !requestConfig._retry) {
       requestConfig._retry = true;
       const newToken = await refreshAdminToken();
@@ -316,6 +347,10 @@ export const getBlobData = async (url, token = null) => {
             headers: retryResponse.headers || {},
           };
         } catch (retryError) {
+          if (isNetworkLevelError(retryError)) {
+            const fallbackResponse = await retryOnAlternateLocalhost();
+            if (fallbackResponse) return fallbackResponse;
+          }
           return toErrorPayload(retryError, "Failed to download file");
         }
       }

@@ -1,7 +1,7 @@
 "use client";
 import { useAdmin } from "@/context/AdminContext";
 import dynamic from "next/dynamic";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 const MANAGER_ROUTE_PERMISSION_RULES = [
@@ -66,18 +66,35 @@ const publicPages = [
   "/verify",
 ];
 
+const stripAdminBasePath = (pathname) => {
+  const normalized = String(pathname || "").trim();
+  if (!normalized) return "/";
+  if (normalized === "/admin") return "/";
+  if (normalized.startsWith("/admin/")) {
+    return normalized.slice("/admin".length) || "/";
+  }
+  return normalized;
+};
+
 export default function AdminLayout({ children }) {
   const pathname = usePathname();
+  const router = useRouter();
   const { admin, loading, isAuthenticated, hasPermission } = useAdmin();
-  const isPublicPage = publicPages.some((p) => pathname.startsWith(p));
+  const normalizedPathname = useMemo(
+    () => stripAdminBasePath(pathname),
+    [pathname],
+  );
+  const isPublicPage = publicPages.some((p) =>
+    normalizedPathname.startsWith(p),
+  );
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const isManager =
     String(admin?.role || "")
       .trim()
       .toLowerCase() === "manager";
   const requiredPermission = useMemo(
-    () => resolveRequiredManagerPermission(pathname),
-    [pathname],
+    () => resolveRequiredManagerPermission(normalizedPathname),
+    [normalizedPathname],
   );
   const hasRoutePermission =
     !isManager || !requiredPermission || hasPermission(requiredPermission);
@@ -131,6 +148,12 @@ export default function AdminLayout({ children }) {
     setSidebarOpen(false);
   }, [pathname]);
 
+  useEffect(() => {
+    if (!loading && !isAuthenticated && !isPublicPage) {
+      router.replace("/login");
+    }
+  }, [isAuthenticated, isPublicPage, loading, router]);
+
   if (isPublicPage) {
     return <>{children}</>;
   }
@@ -144,7 +167,11 @@ export default function AdminLayout({ children }) {
   }
 
   if (!isAuthenticated) {
-    return <div className="min-h-screen bg-gray-50" aria-hidden="true" />;
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="h-11 w-11 animate-spin rounded-full border-4 border-gray-200 border-t-[#5a3a2e]" />
+      </div>
+    );
   }
 
   if (!hasRoutePermission) {

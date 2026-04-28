@@ -29,6 +29,16 @@ router.post(
   createSupportTicket,
 );
 
+router.post(
+  "/create-ticket",
+  supportLimiter,
+  optionalAuth,
+  supportUploadFields,
+  handleSupportUploadError,
+  validateSupportUploadedFileSizes,
+  createSupportTicket,
+);
+
 router.get("/my-tickets", auth, getMySupportTickets);
 
 router.get("/admin/all", auth, admin, getAllSupportTicketsAdmin);

@@ -85,6 +85,7 @@ const ProductsListContent = () => {
   const [totalProducts, setTotalProducts] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [lowStockOnly, setLowStockOnly] = useState(false);
+  const [fetchError, setFetchError] = useState("");
 
   const fetchCategories = useCallback(async () => {
     try {
@@ -99,6 +100,7 @@ const ProductsListContent = () => {
 
   const fetchProducts = useCallback(async () => {
     setIsLoading(true);
+    setFetchError("");
     try {
       let url = `/api/products?page=${page + 1}&limit=${rowsPerPage}`;
       if (category) url += `&category=${category}`;
@@ -110,13 +112,15 @@ const ProductsListContent = () => {
         setProducts(response.data || []);
         setTotalProducts(response.totalProducts || 0);
       } else {
-        setProducts([]);
-        setTotalProducts(0);
+        const message = response?.message || "Failed to fetch products";
+        setFetchError(message);
+        toast.error(message);
       }
     } catch (error) {
       console.error("Failed to fetch products:", error);
-      setProducts([]);
-      setTotalProducts(0);
+      const message = error?.message || "Failed to fetch products";
+      setFetchError(message);
+      toast.error(message);
     }
     setIsLoading(false);
   }, [page, rowsPerPage, category, search, lowStockOnly, token]);
@@ -287,6 +291,10 @@ const ProductsListContent = () => {
         {isLoading ? (
           <div className="flex justify-center py-8">
             <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-600"></div>
+          </div>
+        ) : fetchError ? (
+          <div className="text-center py-8 text-red-600">
+            <p>{fetchError}</p>
           </div>
         ) : products.length === 0 ? (
           <div className="text-center py-8 text-gray-500">

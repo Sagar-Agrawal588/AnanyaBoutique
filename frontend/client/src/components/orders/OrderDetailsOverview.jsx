@@ -1,6 +1,3 @@
-import { Button } from "@mui/material";
-import Link from "next/link";
-
 const buildProductNames = (products = []) =>
   Array.from(
     new Set(
@@ -41,7 +38,6 @@ const OrderDetailsOverview = ({
   transactionReference = "",
   invoiceNumber = "",
   customerEmail = "",
-  complaintHref = "/contact",
 }) => {
   const visibleProductNames = buildProductNames(productNames);
   const detailCards = [
@@ -126,31 +122,6 @@ const OrderDetailsOverview = ({
         ))}
       </div>
 
-      <div className="mt-6 border-t border-gray-100 pt-5">
-        <Button
-          component={Link}
-          href={complaintHref}
-          variant="contained"
-          sx={{
-            backgroundColor: "var(--primary)",
-            color: "white",
-            padding: "12px 24px",
-            borderRadius: "12px",
-            fontWeight: 700,
-            textTransform: "none",
-            width: { xs: "100%", md: "auto" },
-            "&:hover": {
-              backgroundColor: "#a04a17",
-            },
-          }}
-        >
-          Raise a Complaint
-        </Button>
-        <p className="mt-3 text-xs text-gray-500">
-          This takes you to Contact Us with the order context prefilled when it
-          is available.
-        </p>
-      </div>
     </div>
   );
 };
