@@ -107,6 +107,10 @@ const resolveApiBaseUrl = () => {
   const localDevBaseUrl = sanitizeBaseUrl(
     process.env.NEXT_PUBLIC_LOCAL_API_URL,
   );
+  const preferredLocalFallback =
+    normalizeLocalFallbacks().find((candidate) => candidate.endsWith(":8001")) ||
+    normalizeLocalFallbacks()[0] ||
+    "";
   const envCandidates = [
     localDevBaseUrl,
     process.env.NEXT_PUBLIC_APP_API_URL,
@@ -126,7 +130,10 @@ const resolveApiBaseUrl = () => {
       // When the client is running on localhost, honor an explicit API URL
       // from env first. Falling back to the Next.js origin only works when
       // dev rewrites are intentionally configured for that backend.
-      return envBaseUrl || origin || normalizeLocalFallbacks()[0] || "";
+      if (envBaseUrl && envBaseUrl.includes(":8000")) {
+        return preferredLocalFallback || origin || envBaseUrl;
+      }
+      return envBaseUrl || origin || preferredLocalFallback || "";
     }
 
     if (HEALTHY_ONE_GRAM_HOSTS.has(hostname)) {
@@ -148,7 +155,7 @@ const resolveApiBaseUrl = () => {
     return "https://healthyonegram.com";
   }
 
-  return normalizeLocalFallbacks()[0] || "http://localhost:8001";
+  return preferredLocalFallback || "http://localhost:8001";
 };
 
 export const API_BASE_URL = resolveApiBaseUrl();

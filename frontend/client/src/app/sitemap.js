@@ -61,27 +61,38 @@ export default async function sitemap() {
     },
   ];
 
-  // Dynamic product pages (fetch from API in production)
-  // For now, return static pages only
-  // In production, you can fetch products and generate URLs dynamically:
-  /*
+  // Try to include admin-managed SEO pages from settings (seoSettings.pages)
   try {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/products?limit=1000`);
-    const data = await response.json();
-    
-    const productPages = data.data?.products?.map((product) => ({
-      url: `${BASE_URL}/product/${product._id}`,
-      lastModified: new Date(product.updatedAt || product.createdAt),
-      changeFrequency: "weekly",
-      priority: 0.8,
-    })) || [];
-    
-    return [...staticPages, ...productPages];
+    const apiBase = process.env.NEXT_PUBLIC_API_URL || BASE_URL;
+    const resp = await fetch(`${apiBase}/api/settings/public`, {
+      // Ensure server-side fetch uses same origin where applicable
+      headers: { "content-type": "application/json" },
+      cache: "no-store",
+    });
+
+    if (resp.ok) {
+      const json = await resp.json();
+      const seo = json?.data?.seoSettings;
+      if (seo && Array.isArray(seo.pages)) {
+        const seoPages = seo.pages
+          .filter((p) => p && p.indexable !== false)
+          .map((p) => ({
+            url: `${BASE_URL}${p.path}`,
+            lastModified: new Date(),
+            changeFrequency: "weekly",
+            priority: 0.7,
+          }));
+
+        // Merge and dedupe by URL (seo pages can override static defaults)
+        const map = new Map();
+        [...staticPages, ...seoPages].forEach((entry) => map.set(entry.url, entry));
+        return Array.from(map.values());
+      }
+    }
   } catch (error) {
-    console.error("Error generating sitemap:", error);
-    return staticPages;
+    // Fail gracefully to static pages only
+    console.error("Error fetching seoSettings for sitemap:", error);
   }
-  */
 
   return staticPages;
 }

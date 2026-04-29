@@ -11,6 +11,7 @@ import { useWishlist } from "@/context/WishlistContext";
 import { getProductCardImageUrl } from "@/utils/imageUtils";
 import Image from "next/image";
 import Link from "next/link";
+import useSeoAlt from "@/hooks/useSeoAlt";
 import { startTransition, useEffect, useState } from "react";
 import {
   IoIosStar,
@@ -219,6 +220,8 @@ const ProductItem = (props) => {
     });
   };
 
+  const imgAlt = useSeoAlt(productData.images?.[0] || productData.name, productData.name);
+
   const handleAddToCart = async (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -334,7 +337,7 @@ const ProductItem = (props) => {
 
         <Image
           src={getProductCardImageUrl(productData.images?.[0])}
-          alt={productData.name}
+          alt={imgAlt}
           fill
           sizes="(max-width: 640px) 45vw, (max-width: 1024px) 25vw, 220px"
           className={`object-contain p-3 mix-blend-multiply transition-all duration-300 sm:p-4 ${
@@ -363,7 +366,7 @@ const ProductItem = (props) => {
         <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">
           {productData.brand}
         </p>
-        <h3 className="min-h-[2.75rem] line-clamp-2 text-sm font-bold text-gray-900 transition-colors group-hover:text-primary sm:min-h-10">
+        <h3 className="min-h-11 line-clamp-2 text-sm font-bold text-gray-900 transition-colors group-hover:text-primary sm:min-h-10">
           {productData.name}
         </h3>
         <div className="mt-1 min-h-7 sm:min-h-8">
@@ -398,7 +401,7 @@ const ProductItem = (props) => {
 
         {/* Price & Cart */}
         <div className="mt-auto border-t border-[#f3ece6] pt-3">
-          <div className="min-h-[42px] flex items-end">
+          <div className="min-h-10.5 flex items-end">
             <div>
               <ProductCardPriceBlock
                 originalPrice={displayOriginalPrice}
@@ -407,7 +410,7 @@ const ProductItem = (props) => {
             </div>
           </div>
 
-          <div className="mt-3 min-h-[44px]">
+          <div className="mt-3 min-h-11">
             {showNotifyAction ? (
               <StockNotificationButton
                 productId={productCardId}
@@ -429,7 +432,7 @@ const ProductItem = (props) => {
                       : `Add ${productData.name} to cart`
                 }
                 disabled={isAddingToCart || (!alreadyInCart && isOutOfStock)}
-                className={`inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-70 ${
+                className={`inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-70 ${
                   alreadyInCart
                     ? "border border-red-200 bg-red-50 text-red-600 hover:bg-red-100"
                     : isOutOfStock

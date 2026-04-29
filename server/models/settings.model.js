@@ -292,6 +292,128 @@ settingsSchema.statics.defaultSettings = [
     description: "Store contact and business information",
     category: "general",
   },
+  {
+    key: "seoSettings",
+    value: {
+      pages: [
+        {
+          label: "Home",
+          path: "/",
+          metaTitle: "Buy OneGram - Premium Health Products",
+          metaDescription:
+            "Shop premium quality peanut butter and healthy food products at Buy OneGram.",
+          keywords:
+            "peanut butter, healthy food, organic, natural, protein",
+          indexable: true,
+          notes: "Main homepage SEO entry.",
+        },
+        {
+          label: "Products",
+          path: "/products",
+          metaTitle: "Healthy Products | Buy OneGram",
+          metaDescription:
+            "Browse healthy pantry essentials, protein-rich snacks, and wellness products from Buy OneGram.",
+          keywords:
+            "healthy products, peanut butter, snacks, protein, wellness",
+          indexable: true,
+          notes: "Catalog landing page.",
+        },
+        {
+          label: "Blogs",
+          path: "/blogs",
+          metaTitle: "Wellness Blog | Buy OneGram",
+          metaDescription:
+            "Read nutrition tips, healthy eating guides, and product advice from Buy OneGram.",
+          keywords: "health blog, nutrition tips, wellness, healthy eating",
+          indexable: true,
+          notes: "Content hub for search traffic.",
+        },
+        {
+          label: "About",
+          path: "/about",
+          metaTitle: "About Buy OneGram",
+          metaDescription:
+            "Learn more about Buy OneGram, our story, and the healthy products we build for everyday use.",
+          keywords: "about buy onegram, healthy brand, peanut butter store",
+          indexable: true,
+          notes: "Brand story page.",
+        },
+        {
+          label: "Membership",
+          path: "/membership",
+          metaTitle: "Membership Benefits | Buy OneGram",
+          metaDescription:
+            "Unlock premium membership benefits, savings, and rewards with Buy OneGram.",
+          keywords:
+            "membership benefits, rewards, savings, healthy products",
+          indexable: true,
+          notes: "Membership landing page.",
+        },
+        {
+          label: "Healthy Peanut Butter Guide",
+          path: "/healthy-peanut-butter-guide",
+          metaTitle: "Healthy Peanut Butter Guide | Buy OneGram",
+          metaDescription:
+            "Explore how to choose healthy peanut butter, simple snack ideas, and ingredient tips from Buy OneGram.",
+          keywords:
+            "healthy peanut butter, snack ideas, ingredient tips, wellness guide",
+          indexable: true,
+          notes: "SEO guide page.",
+        },
+        {
+          label: "Login",
+          path: "/login",
+          metaTitle: "Login | Buy OneGram",
+          metaDescription: "Sign in to your Buy OneGram account.",
+          keywords: "login, account sign in",
+          indexable: false,
+          notes: "Usually noindex.",
+        },
+        {
+          label: "Register",
+          path: "/register",
+          metaTitle: "Register | Buy OneGram",
+          metaDescription: "Create your Buy OneGram account.",
+          keywords: "register, create account",
+          indexable: false,
+          notes: "Usually noindex.",
+        },
+      ],
+      imageAltTexts: [
+        {
+          label: "Logo",
+          target: "/logo.png",
+          altText: "Buy OneGram logo",
+          titleText: "Buy OneGram",
+          notes: "Keep the brand logo alt text short.",
+        },
+        {
+          label: "Homepage banners",
+          target: "Homepage hero and promotional sliders",
+          altText: "Buy OneGram premium health products banner",
+          titleText: "Homepage banner",
+          notes: "Use for hero banners and promotional creatives.",
+        },
+        {
+          label: "Product images",
+          target: "/product/[id]",
+          altText: "Product image",
+          titleText: "Product image",
+          notes:
+            "Prefer descriptive product names in the storefront component.",
+        },
+        {
+          label: "Blog covers",
+          target: "/blogs/[slug]",
+          altText: "Blog cover image",
+          titleText: "Blog image",
+          notes: "Pair the blog title with the topic when used dynamically.",
+        },
+      ],
+    },
+    description: "SEO page metadata and image alt-text rules",
+    category: "general",
+  },
 ];
 
 // Initialize default settings if they don't exist

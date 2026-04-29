@@ -24,9 +24,7 @@ const siteUrl = String(
   .trim()
   .replace(/^["']|["']$/g, "")
   .replace(/\/+$/, "");
-
-
-export const metadata = {
+const defaultMetadata = {
   metadataBase: new URL(siteUrl),
   title: "Healthy One Gram - Premium Peanut Butter Store",
   description:
@@ -71,6 +69,41 @@ export const metadata = {
     follow: true,
   },
 };
+
+export async function generateMetadata({ request }) {
+  try {
+    const pathname = request?.nextUrl?.pathname || "/";
+    const apiBase = process.env.NEXT_PUBLIC_API_URL || siteUrl;
+    const resp = await fetch(`${apiBase}/api/settings/public`, { cache: "no-store" });
+    if (!resp.ok) return defaultMetadata;
+    const json = await resp.json();
+    const seo = json?.data?.seoSettings;
+    if (seo && Array.isArray(seo.pages)) {
+      // Try exact match first, then startsWith
+      let page = seo.pages.find((p) => String(p.path || "") === pathname);
+      if (!page) {
+        page = seo.pages.find((p) => pathname.startsWith(String(p.path || "")) && p.path !== "/");
+      }
+      if (page) {
+        return {
+          title: page.metaTitle || defaultMetadata.title,
+          description: page.metaDescription || defaultMetadata.description,
+          keywords: page.keywords || defaultMetadata.keywords,
+          openGraph: {
+            ...defaultMetadata.openGraph,
+            title: page.metaTitle || defaultMetadata.openGraph.title,
+            description: page.metaDescription || defaultMetadata.openGraph.description,
+          },
+          robots: { index: Boolean(page.indexable !== false), follow: true },
+        };
+      }
+    }
+  } catch (e) {
+    // ignore and return defaults
+  }
+
+  return defaultMetadata;
+}
 
 export default function RootLayout({ children }) {
   return (

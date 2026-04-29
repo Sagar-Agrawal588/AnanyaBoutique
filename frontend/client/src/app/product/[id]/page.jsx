@@ -1173,6 +1173,16 @@ const ProductDetailPage = () => {
   const isBuyNowDisabled =
     actionLoading || (!currentVariantInCart && availableQty === 0);
   const isOutOfStock = availableQty === 0;
+  const selectedVariantStockQuantity = Math.max(
+    Number(resolvedSelectedVariant?.stock_quantity ?? resolvedSelectedVariant?.stock ?? 0),
+    0,
+  );
+  const selectedVariantReservedQuantity = Math.max(
+    Number(resolvedSelectedVariant?.reserved_quantity ?? 0),
+    0,
+  );
+  const isReservedForCheckout =
+    isOutOfStock && selectedVariantReservedQuantity > 0;
   const notifyVariantId = selectedVariantId || defaultVariant?._id || null;
   const notifyVariantName =
     (resolvedSelectedVariant ? formatVariantLabel(resolvedSelectedVariant) : "") ||
@@ -1551,22 +1561,51 @@ const ProductDetailPage = () => {
               {isOutOfStock ? (
                 <div className="mt-8 rounded-[28px] border border-[#f3d2c9] bg-[linear-gradient(135deg,#fff8f5_0%,#fffdf9_100%)] p-5 shadow-[0_24px_60px_-46px_rgba(77,33,20,0.42)]">
                   <div className="inline-flex rounded-full bg-[#fef2f2] px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-[#cb1f1f]">
-                    Out of stock
+                    {isReservedForCheckout ? "Reserved for checkout" : "Out of stock"}
                   </div>
                   <p className="mt-3 text-lg font-semibold text-[#24150f]">
-                    We&apos;re restocking soon
+                    {isReservedForCheckout
+                      ? "This pack is temporarily reserved"
+                      : "We&apos;re restocking soon"}
                   </p>
                   <p className="mt-1 text-sm leading-6 text-[#6b5144]">
-                    This pack is currently unavailable, but we can alert you the
-                    moment it is ready to order again.
+                    {isReservedForCheckout
+                      ? "Another customer has this pack in checkout right now. If payment is not completed, the reservation will expire and the pack will return automatically."
+                      : "This pack is currently unavailable, but we can alert you the moment it is ready to order again."}
                   </p>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                    <div className="rounded-2xl border border-[#ead7cb] bg-white px-4 py-3">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8b6b5b]">
+                        Selected stock
+                      </p>
+                      <p className="mt-1 text-sm font-semibold text-[#24150f]">
+                        {selectedVariantStockQuantity}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border border-[#ead7cb] bg-white px-4 py-3">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8b6b5b]">
+                        Reserved
+                      </p>
+                      <p className="mt-1 text-sm font-semibold text-[#24150f]">
+                        {selectedVariantReservedQuantity}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border border-[#ead7cb] bg-white px-4 py-3">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8b6b5b]">
+                        Status
+                      </p>
+                      <p className="mt-1 text-sm font-semibold text-[#24150f]">
+                        {isReservedForCheckout ? "Temporarily locked" : "Unavailable"}
+                      </p>
+                    </div>
+                  </div>
                   <div className="mt-4 grid gap-3 sm:grid-cols-[180px_minmax(0,1fr)]">
                     <button
                       type="button"
                       disabled
                       className="min-h-[56px] rounded-[18px] border border-[#ead7cb] bg-[#f7efe8] px-5 py-4 text-base font-semibold text-[#b34d39] opacity-80"
                     >
-                      Out of stock
+                      {isReservedForCheckout ? "Reserved" : "Out of stock"}
                     </button>
                     <StockNotificationButton
                       productId={productId}
