@@ -5,8 +5,14 @@ import test from "node:test";
 import CrmContact from "../models/crmContact.model.js";
 import CrmInteraction from "../models/crmInteraction.model.js";
 import { recordCrmTouchpoint } from "../services/crm/crmTracking.service.js";
-import { getWhatsappAudiencePreview } from "../services/whatsapp/whatsappAdmin.service.js";
-import { sendWhatsappMessage } from "../services/whatsapp/whatsappMessaging.service.js";
+import {
+  getWhatsappAudiencePreview,
+  sendWhatsappCampaign,
+} from "../services/whatsapp/whatsappAdmin.service.js";
+import {
+  getWhatsappMessagingHealth,
+  sendWhatsappMessage,
+} from "../services/whatsapp/whatsappMessaging.service.js";
 
 let mongoServer;
 
@@ -95,6 +101,115 @@ test("getWhatsappAudiencePreview only returns consented contacts with phone", as
   assert.equal(preview.sample.length, 1);
   assert.equal(preview.sample[0].name, "Customer Contact");
   assert.equal(preview.sample[0].consent.whatsapp, true);
+});
+
+test("getWhatsappMessagingHealth reports not_configured when required env keys are missing", async () => {
+  delete process.env.WHATSAPP_ACCESS_TOKEN;
+  delete process.env.WHATSAPP_PHONE_NUMBER_ID;
+
+  const health = await getWhatsappMessagingHealth();
+
+  assert.equal(health.ok, false);
+  assert.equal(health.state, "not_configured");
+  assert.ok(Array.isArray(health.missing));
+  assert.ok(health.missing.includes("WHATSAPP_ACCESS_TOKEN"));
+  assert.ok(health.missing.includes("WHATSAPP_PHONE_NUMBER_ID"));
+});
+
+test("getWhatsappMessagingHealth reports token_expired for Meta OAuthException 190/463", async () => {
+  process.env.WHATSAPP_ACCESS_TOKEN = "test-token";
+  process.env.WHATSAPP_PHONE_NUMBER_ID = "123456789";
+  process.env.WHATSAPP_GRAPH_API_VERSION = "v22.0";
+
+  const health = await getWhatsappMessagingHealth({
+    fetchImpl: async () => ({
+      ok: false,
+      status: 401,
+      statusText: "Unauthorized",
+      async json() {
+        return {
+          error: {
+            message: "Error validating access token: Session has expired.",
+            type: "OAuthException",
+            code: 190,
+            error_subcode: 463,
+          },
+        };
+      },
+    }),
+  });
+
+  assert.equal(health.ok, false);
+  assert.equal(health.state, "token_expired");
+  assert.equal(health.httpStatus, 401);
+  assert.equal(health.providerCode, 190);
+  assert.equal(health.providerSubcode, 463);
+});
+
+test("getWhatsappMessagingHealth reports ready when provider auth probe succeeds", async () => {
+  process.env.WHATSAPP_ACCESS_TOKEN = "test-token";
+  process.env.WHATSAPP_PHONE_NUMBER_ID = "123456789";
+  process.env.WHATSAPP_GRAPH_API_VERSION = "v22.0";
+
+  const health = await getWhatsappMessagingHealth({
+    fetchImpl: async () => ({
+      ok: true,
+      async json() {
+        return {
+          id: "123456789",
+          display_phone_number: "+91 87690 27048",
+          verified_name: "Healthy One Gram",
+          quality_rating: "GREEN",
+          code_verification_status: "VERIFIED",
+          name_status: "APPROVED",
+          status: "CONNECTED",
+          platform_type: "CLOUD_API",
+          throughput: { level: "STANDARD" },
+        };
+      },
+    }),
+  });
+
+  assert.equal(health.ok, true);
+  assert.equal(health.state, "ready");
+  assert.equal(health.deliveryReady, true);
+  assert.equal(health.phoneNumberId, "123456789");
+  assert.equal(health.displayPhoneNumber, "+91 87690 27048");
+  assert.equal(health.qualityRating, "green");
+  assert.equal(health.codeVerificationStatus, "verified");
+  assert.equal(health.nameStatus, "approved");
+});
+
+test("getWhatsappMessagingHealth reports sender_warning when sender setup can block delivery", async () => {
+  process.env.WHATSAPP_ACCESS_TOKEN = "test-token";
+  process.env.WHATSAPP_PHONE_NUMBER_ID = "123456789";
+  process.env.WHATSAPP_GRAPH_API_VERSION = "v22.0";
+
+  const health = await getWhatsappMessagingHealth({
+    fetchImpl: async () => ({
+      ok: true,
+      async json() {
+        return {
+          id: "123456789",
+          display_phone_number: "+91 87690 27048",
+          verified_name: "Healthy One Gram",
+          quality_rating: "GREEN",
+          code_verification_status: "EXPIRED",
+          name_status: "DECLINED",
+          status: "CONNECTED",
+          platform_type: "CLOUD_API",
+          throughput: { level: "STANDARD" },
+        };
+      },
+    }),
+  });
+
+  assert.equal(health.ok, true);
+  assert.equal(health.state, "sender_warning");
+  assert.equal(health.deliveryReady, false);
+  assert.equal(health.codeVerificationStatus, "expired");
+  assert.equal(health.nameStatus, "declined");
+  assert.match(health.message, /block reliable delivery/i);
 });
 
 test("sendWhatsappMessage sends text message for active conversation and stores outbound CRM event", async () => {
@@ -204,7 +319,7 @@ test("sendWhatsappMessage builds template payload with variables for promotional
   const result = await sendWhatsappMessage({
     contactId: String(contact.contact._id),
     templateName: "spring_offer_template",
-    languageCode: "en",
+    languageCode: "en_US",
     bodyVariables: ["Utkarsh", "15% OFF"],
     headerVariables: ["HealthyOneGram"],
     campaignName: "Spring Offer",
@@ -217,7 +332,7 @@ test("sendWhatsappMessage builds template payload with variables for promotional
   assert.equal(result.templateName, "spring_offer_template");
   assert.equal(requestPayload.type, "template");
   assert.equal(requestPayload.template.name, "spring_offer_template");
-  assert.equal(requestPayload.template.language.code, "en");
+  assert.equal(requestPayload.template.language.code, "en_US");
   assert.equal(requestPayload.template.components.length, 2);
   assert.equal(requestPayload.template.components[0].type, "header");
   assert.equal(requestPayload.template.components[1].type, "body");
@@ -234,7 +349,7 @@ test("sendWhatsappMessage builds template payload with variables for promotional
   assert.equal(outbound.campaign?.campaign, "Spring Offer");
 });
 
-test("sendWhatsappMessage sends direct image media payload and records CRM metadata", async () => {
+test("sendWhatsappMessage sends image mode payload and records media metadata", async () => {
   process.env.WHATSAPP_ACCESS_TOKEN = "test-token";
   process.env.WHATSAPP_PHONE_NUMBER_ID = "123456789";
   process.env.WHATSAPP_GRAPH_API_VERSION = "v22.0";
@@ -244,8 +359,8 @@ test("sendWhatsappMessage sends direct image media payload and records CRM metad
     eventType: "chat_message",
     direction: "inbound",
     phone: "919876540030",
-    name: "Media User",
-    idempotencyKey: "wa-send-media-inbound",
+    name: "Image User",
+    idempotencyKey: "wa-send-image-inbound",
   });
 
   let requestPayload = null;
@@ -264,24 +379,20 @@ test("sendWhatsappMessage sends direct image media payload and records CRM metad
 
   const result = await sendWhatsappMessage({
     contactId: String(inbound.contact._id),
-    mediaType: "image",
-    mediaUrl: "https://cdn.example.com/winback.jpg",
-    caption: "Your custom whey plan is waiting.",
-    adminUserId: "admin-media-1",
+    mode: "image",
+    mediaUrl: "https://cdn.example.com/media/promo-banner.png",
+    mediaCaption: "Today only: extra 10% off",
+    adminUserId: "admin-image",
     fetchImpl: mockFetch,
   });
 
-  assert.equal(result.accepted, true);
   assert.equal(result.mode, "image");
   assert.equal(requestPayload.type, "image");
   assert.equal(
     requestPayload.image.link,
-    "https://cdn.example.com/winback.jpg",
+    "https://cdn.example.com/media/promo-banner.png",
   );
-  assert.equal(
-    requestPayload.image.caption,
-    "Your custom whey plan is waiting.",
-  );
+  assert.equal(requestPayload.image.caption, "Today only: extra 10% off");
 
   const outbound = await CrmInteraction.findOne({
     contact: inbound.contact._id,
@@ -290,11 +401,15 @@ test("sendWhatsappMessage sends direct image media payload and records CRM metad
   }).lean();
 
   assert.ok(outbound);
-  assert.equal(outbound.metadata?.messageId, "wamid.image.123");
-  assert.equal(outbound.metadata?.mediaType, "image");
+  assert.equal(outbound.metadata?.messageType, "image");
+  assert.equal(outbound.metadata?.providerPayloadType, "image");
+  assert.equal(
+    outbound.metadata?.mediaUrl,
+    "https://cdn.example.com/media/promo-banner.png",
+  );
 });
 
-test("sendWhatsappMessage supports GIF alias for template header media", async () => {
+test("sendWhatsappMessage sends gif mode as video when using Cloudinary gif URL", async () => {
   process.env.WHATSAPP_ACCESS_TOKEN = "test-token";
   process.env.WHATSAPP_PHONE_NUMBER_ID = "123456789";
   process.env.WHATSAPP_GRAPH_API_VERSION = "v22.0";
@@ -304,8 +419,8 @@ test("sendWhatsappMessage supports GIF alias for template header media", async (
     eventType: "chat_message",
     direction: "inbound",
     phone: "919876540040",
-    name: "Template GIF User",
-    idempotencyKey: "wa-send-template-gif-inbound",
+    name: "Gif User",
+    idempotencyKey: "wa-send-gif-inbound",
   });
 
   let requestPayload = null;
@@ -316,7 +431,7 @@ test("sendWhatsappMessage supports GIF alias for template header media", async (
       async json() {
         return {
           contacts: [{ input: "919876540040", wa_id: "919876540040" }],
-          messages: [{ id: "wamid.template.gif.123" }],
+          messages: [{ id: "wamid.gif.123" }],
         };
       },
     };
@@ -324,56 +439,46 @@ test("sendWhatsappMessage supports GIF alias for template header media", async (
 
   const result = await sendWhatsappMessage({
     contactId: String(inbound.contact._id),
-    templateName: "retention_template",
-    languageCode: "en",
-    bodyVariables: ["Piyush", "10% OFF"],
-    headerMediaType: "gif",
-    headerMediaUrl: "https://cdn.example.com/header-creative.gif",
-    campaignName: "Retention GIF Campaign",
+    mode: "gif",
+    mediaUrl:
+      "https://res.cloudinary.com/demo/image/upload/v1/buyonegram/whatsapp/offer.gif",
+    mediaCaption: "Festive offer",
+    mediaFilename: "offer.gif",
+    adminUserId: "admin-gif",
     fetchImpl: mockFetch,
   });
 
-  assert.equal(result.mode, "template");
-  assert.equal(requestPayload.type, "template");
-  assert.equal(requestPayload.template.components.length, 2);
-  assert.equal(requestPayload.template.components[0].type, "header");
-  assert.equal(
-    requestPayload.template.components[0].parameters[0].type,
-    "video",
+  assert.equal(result.mode, "gif");
+  assert.equal(requestPayload.type, "video");
+  assert.ok(
+    String(requestPayload.video.link || "").includes("/video/upload/f_mp4/"),
   );
-  assert.equal(
-    requestPayload.template.components[0].parameters[0].video.link,
-    "https://cdn.example.com/header-creative.gif",
-  );
+  assert.ok(String(requestPayload.video.link || "").endsWith("offer.mp4"));
 
   const outbound = await CrmInteraction.findOne({
     contact: inbound.contact._id,
     direction: "outbound",
-    eventName: "whatsapp_template",
+    eventName: "whatsapp_gif",
   }).lean();
 
   assert.ok(outbound);
-  assert.equal(outbound.metadata?.headerMediaType, "video");
-  assert.equal(
-    outbound.metadata?.headerMediaUrl,
-    "https://cdn.example.com/header-creative.gif",
-  );
+  assert.equal(outbound.metadata?.messageType, "gif");
+  assert.equal(outbound.metadata?.providerPayloadType, "video");
+  assert.ok(String(outbound.metadata?.mediaUrl || "").endsWith("offer.mp4"));
 });
 
-test("sendWhatsappMessage upgrades 10-digit local CRM numbers to WhatsApp E.164 format", async () => {
+test("sendWhatsappMessage sends template with image header media parameter", async () => {
   process.env.WHATSAPP_ACCESS_TOKEN = "test-token";
   process.env.WHATSAPP_PHONE_NUMBER_ID = "123456789";
   process.env.WHATSAPP_GRAPH_API_VERSION = "v22.0";
-  delete process.env.WHATSAPP_DEFAULT_COUNTRY_CODE;
 
-  const contact = await CrmContact.create({
-    name: "Local Number User",
-    phone: "8769027048",
-    consent: {
-      whatsapp: true,
-    },
-    lifecycleStage: "prospect",
-    status: "contacted",
+  const inbound = await recordCrmTouchpoint({
+    channel: "whatsapp",
+    eventType: "chat_message",
+    direction: "inbound",
+    phone: "919876540045",
+    name: "Template Header Media User",
+    idempotencyKey: "wa-send-template-header-media-inbound",
   });
 
   let requestPayload = null;
@@ -383,22 +488,137 @@ test("sendWhatsappMessage upgrades 10-digit local CRM numbers to WhatsApp E.164 
       ok: true,
       async json() {
         return {
-          contacts: [{ input: "918769027048", wa_id: "918769027048" }],
-          messages: [{ id: "wamid.local.123" }],
+          contacts: [{ input: "919876540045", wa_id: "919876540045" }],
+          messages: [{ id: "wamid.template.media.123" }],
         };
       },
     };
   };
 
   const result = await sendWhatsappMessage({
-    contactId: String(contact._id),
-    templateName: "followup_template",
-    languageCode: "en",
+    contactId: String(inbound.contact._id),
+    templateName: "spring_offer_template",
+    languageCode: "en_US",
+    bodyVariables: ["Protein Peanut Butter", "399"],
+    templateHeaderMediaType: "image",
+    templateHeaderMediaUrl: "https://cdn.example.com/media/product-offer.png",
+    campaignName: "Product Retrieval Ad",
+    segment: "customers",
+    adminUserId: "admin-template-media",
     fetchImpl: mockFetch,
   });
 
-  assert.equal(result.accepted, true);
-  assert.equal(result.to, "+918769027048");
-  assert.equal(requestPayload.to, "918769027048");
+  assert.equal(result.mode, "template");
   assert.equal(requestPayload.type, "template");
+  assert.equal(requestPayload.template.components.length, 2);
+  assert.equal(requestPayload.template.components[0].type, "header");
+  assert.equal(
+    requestPayload.template.components[0].parameters[0].type,
+    "image",
+  );
+  assert.equal(
+    requestPayload.template.components[0].parameters[0].image.link,
+    "https://cdn.example.com/media/product-offer.png",
+  );
+
+  const outbound = await CrmInteraction.findOne({
+    contact: inbound.contact._id,
+    direction: "outbound",
+    eventName: "whatsapp_template",
+  }).sort({ createdAt: -1 });
+
+  assert.ok(outbound);
+  assert.equal(outbound.metadata?.templateHeaderMediaType, "image");
+  assert.equal(
+    outbound.metadata?.templateHeaderMediaUrl,
+    "https://cdn.example.com/media/product-offer.png",
+  );
+});
+
+test("sendWhatsappCampaign sends approved template messages to a consented audience", async () => {
+  process.env.WHATSAPP_ACCESS_TOKEN = "test-token";
+  process.env.WHATSAPP_PHONE_NUMBER_ID = "123456789";
+  process.env.WHATSAPP_GRAPH_API_VERSION = "v22.0";
+
+  await Promise.all([
+    CrmContact.create({
+      name: "Campaign Customer One",
+      phone: "919876540050",
+      lifecycleStage: "customer",
+      status: "converted",
+      consent: { whatsapp: true },
+    }),
+    CrmContact.create({
+      name: "Campaign Customer Two",
+      phone: "919876540051",
+      lifecycleStage: "repeat_customer",
+      status: "converted",
+      consent: { whatsapp: true },
+    }),
+    CrmContact.create({
+      name: "Blocked Contact",
+      phone: "919876540052",
+      lifecycleStage: "customer",
+      status: "open",
+      consent: { whatsapp: false },
+    }),
+  ]);
+
+  const originalFetch = globalThis.fetch;
+  let requestCount = 0;
+
+  globalThis.fetch = async () => {
+    requestCount += 1;
+    return {
+      ok: true,
+      async json() {
+        return {
+          contacts: [
+            {
+              input: `9198765400${49 + requestCount}`,
+              wa_id: `9198765400${49 + requestCount}`,
+            },
+          ],
+          messages: [{ id: `wamid.campaign.${requestCount}` }],
+        };
+      },
+    };
+  };
+
+  try {
+    const result = await sendWhatsappCampaign(
+      {
+        templateName: "spring_offer_template",
+        campaignName: "Spring Offer Blast",
+        segment: "customers",
+        limit: 10,
+        languageCode: "en_US",
+        bodyVariables: ["Utkarsh", "15% OFF"],
+        headerVariables: ["HealthyOneGram"],
+      },
+      "admin-campaign",
+    );
+
+    assert.equal(result.attempted, 2);
+    assert.equal(result.sent, 2);
+    assert.equal(result.failed, 0);
+    assert.equal(result.recipients.length, 2);
+    assert.equal(requestCount, 2);
+    assert.equal(result.campaignName, "Spring Offer Blast");
+
+    const campaignEvents = await CrmInteraction.find({
+      direction: "outbound",
+      eventName: "whatsapp_template",
+      "campaign.campaign": "Spring Offer Blast",
+    }).lean();
+
+    assert.equal(campaignEvents.length, 2);
+    assert.ok(
+      campaignEvents.every(
+        (event) => event.metadata?.templateName === "spring_offer_template",
+      ),
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });

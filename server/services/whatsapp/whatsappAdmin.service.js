@@ -7,6 +7,7 @@ import {
 } from "../crm/channelResolver.service.js";
 import {
   getWhatsappMessagingConfigSummary,
+  getWhatsappMessagingHealth,
   listApprovedWhatsappTemplates,
   sendWhatsappMessage,
 } from "./whatsappMessaging.service.js";
@@ -172,6 +173,7 @@ export const getWhatsappAdminOverview = async () => {
     statusBreakdown,
     recentWhatsappEvents,
     templateResult,
+    messagingHealth,
   ] = await Promise.all([
     CrmContact.countDocuments(buildPhonePresentFilter()),
     CrmContact.countDocuments({
@@ -215,6 +217,11 @@ export const getWhatsappAdminOverview = async () => {
       configured: false,
       templates: [],
     })),
+    getWhatsappMessagingHealth().catch(() => ({
+      ok: false,
+      state: "health_check_failed",
+      message: "Unable to validate WhatsApp API credentials right now.",
+    })),
   ]);
 
   const templates = Array.isArray(templateResult?.templates)
@@ -222,7 +229,10 @@ export const getWhatsappAdminOverview = async () => {
     : [];
 
   return {
-    configuration: config,
+    configuration: {
+      ...config,
+      health: messagingHealth,
+    },
     summary: {
       totalWhatsappReachableContacts,
       totalConsentedWhatsappContacts,
@@ -251,9 +261,20 @@ export const getWhatsappAdminOverview = async () => {
 };
 
 export const getWhatsappTemplateCatalog = async () => {
-  const result = await listApprovedWhatsappTemplates();
+  const [result, messagingHealth] = await Promise.all([
+    listApprovedWhatsappTemplates(),
+    getWhatsappMessagingHealth().catch(() => ({
+      ok: false,
+      state: "health_check_failed",
+      message: "Unable to validate WhatsApp API credentials right now.",
+    })),
+  ]);
+
   return {
-    configuration: getWhatsappMessagingConfigSummary(),
+    configuration: {
+      ...getWhatsappMessagingConfigSummary(),
+      health: messagingHealth,
+    },
     templates: Array.isArray(result?.templates) ? result.templates : [],
   };
 };
@@ -272,18 +293,20 @@ export const sendWhatsappMessageToContact = async (
 
   return sendWhatsappMessage({
     contactId: normalizedContactId,
+    mode: payload?.mode,
     body: payload?.body,
     previewUrl: payload?.previewUrl,
-    mediaType: payload?.mediaType,
-    mediaUrl: payload?.mediaUrl,
-    caption: payload?.caption,
-    fileName: payload?.fileName,
     templateName: payload?.templateName,
     languageCode: payload?.languageCode,
     bodyVariables: payload?.bodyVariables,
     headerVariables: payload?.headerVariables,
-    headerMediaType: payload?.headerMediaType,
-    headerMediaUrl: payload?.headerMediaUrl,
+    templateHeaderMediaType: payload?.templateHeaderMediaType,
+    templateHeaderMediaUrl: payload?.templateHeaderMediaUrl,
+    templateHeaderMediaFilename: payload?.templateHeaderMediaFilename,
+    mediaType: payload?.mediaType,
+    mediaUrl: payload?.mediaUrl,
+    mediaCaption: payload?.mediaCaption,
+    mediaFilename: payload?.mediaFilename,
     campaignName: payload?.campaignName,
     adminUserId,
   });
@@ -336,8 +359,9 @@ export const sendWhatsappCampaign = async (payload = {}, adminUserId = "") => {
         languageCode: payload?.languageCode,
         bodyVariables: payload?.bodyVariables,
         headerVariables: payload?.headerVariables,
-        headerMediaType: payload?.headerMediaType,
-        headerMediaUrl: payload?.headerMediaUrl,
+        templateHeaderMediaType: payload?.templateHeaderMediaType,
+        templateHeaderMediaUrl: payload?.templateHeaderMediaUrl,
+        templateHeaderMediaFilename: payload?.templateHeaderMediaFilename,
         campaignName,
         segment,
         adminUserId,

@@ -22,7 +22,11 @@ const label = { slotProps: { input: { "aria-label": "Checkbox demo" } } };
 const GOOGLE_REDIRECT_ATTEMPT_KEY = "googleAuthRedirectAttemptedAdmin";
 const PRIVILEGED_ADMIN_ROLES = new Set(["admin", "manager"]);
 const isPrivilegedAdminRole = (role) =>
-  PRIVILEGED_ADMIN_ROLES.has(String(role || "").trim().toLowerCase());
+  PRIVILEGED_ADMIN_ROLES.has(
+    String(role || "")
+      .trim()
+      .toLowerCase(),
+  );
 
 const Login = () => {
   const [email, setEmail] = useState("");

@@ -60,6 +60,19 @@ export const ORDER_REPORT_COLUMNS = [
   { header: "Customer", key: "customer", width: 24 },
   { header: "Order Date", key: "orderDate", width: 18 },
   { header: "Delivery Status", key: "deliveryStatus", width: 18 },
+  { header: "Coupons Applied", key: "couponApplied", width: 20 },
+  { header: "GST Rate (%)", key: "gstRate", width: 14 },
+  { header: "GST Amount (Rs)", key: "gstAmount", width: 18 },
+  { header: "Taxable Amount (Rs)", key: "taxableAmount", width: 20 },
+  { header: "Order Total Amount (Rs)", key: "orderTotalAmount", width: 22 },
+  { header: "State Of Supply", key: "stateOfSupply", width: 18 },
+  { header: "Customer Email", key: "customerEmail", width: 28 },
+  { header: "Customer Phone", key: "customerPhone", width: 18 },
+  { header: "Customer Address", key: "customerAddress", width: 42 },
+  { header: "Customer City", key: "customerCity", width: 18 },
+  { header: "Customer State", key: "customerState", width: 18 },
+  { header: "Customer Pincode", key: "customerPincode", width: 16 },
+  { header: "Customer GST Number", key: "customerGstNumber", width: 22 },
 ];
 
 export const PRICING_ENGINE_COLUMNS = [

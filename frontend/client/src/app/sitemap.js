@@ -42,6 +42,12 @@ export default async function sitemap() {
       priority: 0.6,
     },
     {
+      url: `${BASE_URL}/healthy-peanut-butter-guide`,
+      lastModified: new Date(),
+      changeFrequency: "weekly",
+      priority: 0.65,
+    },
+    {
       url: `${BASE_URL}/login`,
       lastModified: new Date(),
       changeFrequency: "yearly",

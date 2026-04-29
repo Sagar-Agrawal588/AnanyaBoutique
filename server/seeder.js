@@ -5,18 +5,18 @@ dotenv.config();
 import bcrypt from "bcryptjs";
 import BannerModel from "./models/banner.model.js";
 import CategoryModel from "./models/category.model.js";
-import ComboItemModel from "./models/comboItem.model.js";
 import ComboModel from "./models/combo.model.js";
+import ComboItemModel from "./models/comboItem.model.js";
 import HomeSlideModel from "./models/homeSlide.model.js";
 import ProductModel from "./models/product.model.js";
 import UserModel from "./models/user.model.js";
-import { normalizeManagerPermissions } from "./utils/adminPermissions.js";
 import {
   buildComboItemsSnapshot,
   buildComboPricing,
   buildComboSkuFromItems,
   upsertComboItems,
 } from "./services/combos/combo.service.js";
+import { normalizeManagerPermissions } from "./utils/adminPermissions.js";
 
 /**
  * Database Seeder
@@ -54,8 +54,7 @@ const RAW_SEED_MANAGER_DEFAULT_PERMISSIONS = String(
 const HAS_SEED_MANAGER_DEFAULT_PERMISSIONS =
   RAW_SEED_MANAGER_DEFAULT_PERMISSIONS.length > 0;
 const SEED_MANAGER_DEFAULT_PERMISSIONS = normalizeManagerPermissions(
-  RAW_SEED_MANAGER_DEFAULT_PERMISSIONS
-    .split(",")
+  RAW_SEED_MANAGER_DEFAULT_PERMISSIONS.split(",")
     .map((permission) => permission.trim())
     .filter(Boolean),
 );
@@ -69,8 +68,12 @@ const MANAGER_SEED_EMAIL = String(
 )
   .trim()
   .toLowerCase();
-const ADMIN_SEED_PASSWORD = String(process.env.ADMIN_PRIMARY_PASSWORD || "").trim();
-const MANAGER_SEED_PASSWORD = String(process.env.MANAGER_PRIMARY_PASSWORD || "").trim();
+const ADMIN_SEED_PASSWORD = String(
+  process.env.ADMIN_PRIMARY_PASSWORD || "",
+).trim();
+const MANAGER_SEED_PASSWORD = String(
+  process.env.MANAGER_PRIMARY_PASSWORD || "",
+).trim();
 
 // Peanut Butter Categories
 const categories = [
@@ -550,7 +553,10 @@ const seedCombos = async (createdProducts = []) => {
       isBestSeller: true,
       pricing: { type: "percent_discount", value: 12 },
       items: [
-        { productId: getProductId("classic-creamy-peanut-butter"), quantity: 1 },
+        {
+          productId: getProductId("classic-creamy-peanut-butter"),
+          quantity: 1,
+        },
         {
           productId: getProductId("classic-crunchy-peanut-butter"),
           quantity: 1,
@@ -621,10 +627,13 @@ const seedCombos = async (createdProducts = []) => {
     ).filter((item) => item?.productId);
     if (filteredItems.length === 0) continue;
 
-    const { snapshots } = await buildComboItemsSnapshot({ items: filteredItems });
+    const { snapshots } = await buildComboItemsSnapshot({
+      items: filteredItems,
+    });
     const pricing = comboSeed?.pricing || { type: "fixed_price", value: 0 };
     const pricingResult = buildComboPricing({ items: snapshots, pricing });
-    const comboImage = snapshots.map((entry) => entry?.image).find(Boolean) || "";
+    const comboImage =
+      snapshots.map((entry) => entry?.image).find(Boolean) || "";
 
     const combo = await ComboModel.create({
       name: comboSeed.name,
@@ -708,7 +717,9 @@ const seedPrivilegedUser = async ({
     });
 
     console.log(`✅ ${role} user created: ${createdUser.email}`);
-    console.log("   Password: [set in seeder script] (change this immediately!)");
+    console.log(
+      "   Password: [set in seeder script] (change this immediately!)",
+    );
     return;
   }
 

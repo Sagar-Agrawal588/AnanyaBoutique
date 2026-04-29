@@ -1,7 +1,4 @@
 import express from "express";
-import admin from "../middlewares/admin.js";
-import auth from "../middlewares/auth.js";
-import requireAdminPermission from "../middlewares/requireAdminPermission.js";
 import {
   getShippingDisplayMetricsController,
   getShippingQuoteController,
@@ -16,6 +13,9 @@ import {
   xpressbeesServiceability,
   xpressbeesTrackShipment,
 } from "../controllers/shipping.controller.js";
+import admin from "../middlewares/admin.js";
+import auth from "../middlewares/auth.js";
+import requireAdminPermission from "../middlewares/requireAdminPermission.js";
 
 const router = express.Router();
 

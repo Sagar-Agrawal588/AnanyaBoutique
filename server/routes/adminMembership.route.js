@@ -19,14 +19,8 @@ router.use(auth, admin, requireAdminPermission("manage_membership"));
 router.get("/membership-users", getAdminMembershipUsers);
 router.get("/membership-users/:id", getAdminMembershipUserById);
 router.post("/membership-users/extend", extendAdminMembershipUser);
-router.post(
-  "/membership-users/add-points",
-  addPointsToAdminMembershipUser,
-);
-router.post(
-  "/membership-users/toggle-status",
-  toggleAdminMembershipUserStatus,
-);
+router.post("/membership-users/add-points", addPointsToAdminMembershipUser);
+router.post("/membership-users/toggle-status", toggleAdminMembershipUserStatus);
 router.post("/membership-users/convert", convertUserToMembershipAdmin);
 router.get("/membership-analytics", getAdminMembershipAnalytics);
 

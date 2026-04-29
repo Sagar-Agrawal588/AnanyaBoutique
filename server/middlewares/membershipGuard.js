@@ -42,7 +42,9 @@ export const getMembershipAccess = async (userId) => {
   let isActiveMember = false;
 
   if (user.membership_id) {
-    const membershipRecord = await MembershipUserModel.findById(user.membership_id)
+    const membershipRecord = await MembershipUserModel.findById(
+      user.membership_id,
+    )
       .select("status expiryDate")
       .lean();
     isActiveMember = isMembershipRecordActive(membershipRecord, now);

@@ -34,7 +34,6 @@ import {
   applyRedemptionToUser,
   awardCoinsToUser,
 } from "../services/coin.service.js";
-import { syncOrderContactToCrmSafely } from "../services/crm/crmAutoSync.service.js";
 import {
   buildComboOrderSnapshot,
   computeComboAvailability,
@@ -49,6 +48,7 @@ import {
   resolveUserSegment,
   restoreComboStock,
 } from "../services/combos/combo.service.js";
+import { syncOrderContactToCrmSafely } from "../services/crm/crmAutoSync.service.js";
 import { captureCrmTouchpointSafely } from "../services/crm/crmTracking.service.js";
 import { createEmailLog } from "../services/emailAutomation.service.js";
 import {

@@ -1,11 +1,11 @@
 import express from "express";
 import {
-  getAdminCrmWhatsappAudiencePreview,
-  getAdminCrmWhatsappOverview,
-  getAdminCrmWhatsappTemplates,
   getAdminCrmContactTimeline,
   getAdminCrmContacts,
   getAdminCrmOverview,
+  getAdminCrmWhatsappAudiencePreview,
+  getAdminCrmWhatsappOverview,
+  getAdminCrmWhatsappTemplates,
   patchAdminCrmContact,
   postAdminCrmContactWhatsappMessage,
   postAdminCrmWhatsappCampaign,
@@ -28,10 +28,7 @@ router.post(
 );
 router.get("/whatsapp/overview", getAdminCrmWhatsappOverview);
 router.get("/whatsapp/templates", getAdminCrmWhatsappTemplates);
-router.get(
-  "/whatsapp/audience-preview",
-  getAdminCrmWhatsappAudiencePreview,
-);
+router.get("/whatsapp/audience-preview", getAdminCrmWhatsappAudiencePreview);
 router.post("/whatsapp/campaign/send", postAdminCrmWhatsappCampaign);
 
 export default router;

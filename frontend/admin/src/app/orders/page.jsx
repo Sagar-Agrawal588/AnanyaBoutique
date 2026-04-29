@@ -3,6 +3,7 @@ import { useAdmin } from "@/context/AdminContext";
 import { useAdminRealtime } from "@/hooks/useAdminRealtime";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useLiveRefreshSetting } from "@/hooks/useLiveRefreshSetting";
+import { hasAdminPermission } from "@/utils/adminPermissions";
 import {
   API_BASE_URL,
   deleteData,
@@ -10,7 +11,6 @@ import {
   postData,
   putData,
 } from "@/utils/api";
-import { hasAdminPermission } from "@/utils/adminPermissions";
 import { withAdminBasePath } from "@/utils/basePath";
 import { Button } from "@mui/material";
 import MenuItem from "@mui/material/MenuItem";
@@ -1250,7 +1250,10 @@ const Orders = () => {
   const [backfillingPaymentIds, setBackfillingPaymentIds] = useState(false);
   const [repairingPaidOrders, setRepairingPaidOrders] = useState(false);
   const canManageStatus = hasAdminPermission(admin, "manage_orders");
-  const canRunOrderMaintenanceActions = hasAdminPermission(admin, "manage_shipping");
+  const canRunOrderMaintenanceActions = hasAdminPermission(
+    admin,
+    "manage_shipping",
+  );
   const { intervalMs } = useLiveRefreshSetting();
   const refreshConfig = useMemo(
     () => ({
@@ -1310,7 +1313,8 @@ const Orders = () => {
             : [];
           const visibleOrders = nextOrders.filter((order) => {
             if (isDemoOrTestOrder(order)) return false;
-            if (statusFilter === "all" && isPendingQueueOrder(order)) return false;
+            if (statusFilter === "all" && isPendingQueueOrder(order))
+              return false;
             return true;
           });
           const nextTotalPages = Number(payload?.pagination?.totalPages || 1);

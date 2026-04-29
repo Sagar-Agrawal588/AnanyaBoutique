@@ -19,7 +19,9 @@ const MANAGER_EMAIL = normalizeEmail(
   process.env.MANAGER_PRIMARY_EMAIL || "manager@buyonegram.com",
 );
 const ADMIN_PASSWORD = String(process.env.ADMIN_PRIMARY_PASSWORD || "").trim();
-const MANAGER_PASSWORD = String(process.env.MANAGER_PRIMARY_PASSWORD || "").trim();
+const MANAGER_PASSWORD = String(
+  process.env.MANAGER_PRIMARY_PASSWORD || "",
+).trim();
 
 const RAW_MANAGER_DEFAULT_PERMISSIONS = String(
   process.env.MANAGER_DEFAULT_PERMISSIONS || "",
@@ -27,8 +29,7 @@ const RAW_MANAGER_DEFAULT_PERMISSIONS = String(
 const HAS_MANAGER_DEFAULT_PERMISSIONS =
   RAW_MANAGER_DEFAULT_PERMISSIONS.length > 0;
 const MANAGER_DEFAULT_PERMISSIONS = normalizeManagerPermissions(
-  RAW_MANAGER_DEFAULT_PERMISSIONS
-    .split(",")
+  RAW_MANAGER_DEFAULT_PERMISSIONS.split(",")
     .map((permission) => permission.trim())
     .filter(Boolean),
 );
@@ -95,7 +96,10 @@ const upsertPrivilegedUser = async ({
       existing.managerPermissions = normalized;
       updated = true;
     }
-  } else if (Array.isArray(existing.managerPermissions) && existing.managerPermissions.length > 0) {
+  } else if (
+    Array.isArray(existing.managerPermissions) &&
+    existing.managerPermissions.length > 0
+  ) {
     existing.managerPermissions = [];
     updated = true;
   }
@@ -157,7 +161,10 @@ const main = async () => {
     await mongoose.connection.close();
     process.exit(0);
   } catch (error) {
-    console.error("Failed to ensure privileged users:", error?.message || error);
+    console.error(
+      "Failed to ensure privileged users:",
+      error?.message || error,
+    );
     try {
       await mongoose.connection.close();
     } catch {

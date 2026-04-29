@@ -3,10 +3,14 @@ import admin from "../middlewares/admin.js";
 import adminOnly from "../middlewares/adminOnly.js";
 import auth from "../middlewares/auth.js";
 import authOptional from "../middlewares/authOptional.js";
-import requireAdminPermission from "../middlewares/requireAdminPermission.js";
 import { authLimiter } from "../middlewares/rateLimiter.js";
+import requireAdminPermission from "../middlewares/requireAdminPermission.js";
 import { handleUploadError, uploadSingle } from "../middlewares/upload.js";
 
+import {
+  getUserCoinsSummary,
+  getUserCoinsTransactions,
+} from "../controllers/coin.controller.js";
 import {
   authWithGoogle,
   changePasswordController,
@@ -19,21 +23,24 @@ import {
   logoutController,
   refreshTokenController,
   registerUserController,
+  removeUserPhoto,
   resendOTPController,
   setBackupPassword,
-  updateUserProfile,
   updateManagerPermissions,
+  updateUserGstNumber,
+  updateUserProfile,
   updateUserRole,
   updateUserSettings,
   updateUserStatus,
-  removeUserPhoto,
   uploadUserPhoto,
-  updateUserGstNumber,
   verifyEmailController,
   verifyForgotPasswordOTPController,
 } from "../controllers/user.controller.js";
 
-const normalizeEmail = (value) => String(value || "").trim().toLowerCase();
+const normalizeEmail = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase();
 const ADMIN_PRIMARY_EMAIL = normalizeEmail(
   process.env.ADMIN_PRIMARY_EMAIL || "admin@buyonegram.com",
 );
@@ -48,10 +55,6 @@ const blockAdminEmailSignup = (req, res, next) => {
   }
   return next();
 };
-import {
-  getUserCoinsSummary,
-  getUserCoinsTransactions,
-} from "../controllers/coin.controller.js";
 
 const userRouter = Router();
 
@@ -77,8 +80,18 @@ userRouter.post(
   changePasswordController,
 );
 userRouter.post("/resend-otp", authLimiter, resendOTPController);
-userRouter.post("/authWithGoogle", authLimiter, blockAdminEmailSignup, authWithGoogle);
-userRouter.post("/google-login", authLimiter, blockAdminEmailSignup, authWithGoogle); // Alias for compatibility
+userRouter.post(
+  "/authWithGoogle",
+  authLimiter,
+  blockAdminEmailSignup,
+  authWithGoogle,
+);
+userRouter.post(
+  "/google-login",
+  authLimiter,
+  blockAdminEmailSignup,
+  authWithGoogle,
+); // Alias for compatibility
 userRouter.post(
   "/google-register",
   authLimiter,
@@ -141,7 +154,13 @@ userRouter.get(
   requireAdminPermission("manage_users"),
   getUserDetails,
 );
-userRouter.put("/admin/users/:userId/role", auth, admin, adminOnly, updateUserRole);
+userRouter.put(
+  "/admin/users/:userId/role",
+  auth,
+  admin,
+  adminOnly,
+  updateUserRole,
+);
 userRouter.put(
   "/admin/users/:userId/manager-permissions",
   auth,

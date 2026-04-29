@@ -8,8 +8,11 @@ import isPrivilegedAdminRole from "../utils/isPrivilegedAdminRole.js";
 const isOrderAccessible = (order, requester) => {
   const isAdmin = isPrivilegedAdminRole(requester?.role);
   if (isAdmin) return true;
-  const orderUserId = order?.user?._id?.toString?.() || order?.user?.toString?.();
-  return Boolean(orderUserId && requester && orderUserId === String(requester._id));
+  const orderUserId =
+    order?.user?._id?.toString?.() || order?.user?.toString?.();
+  return Boolean(
+    orderUserId && requester && orderUserId === String(requester._id),
+  );
 };
 
 const resolveRequester = async (req) => {
@@ -82,7 +85,9 @@ export const downloadInvoiceByOrder = async (req, res) => {
       });
     }
 
-    const order = await OrderModel.findById(orderId).select("user invoicePath invoiceNumber");
+    const order = await OrderModel.findById(orderId).select(
+      "user invoicePath invoiceNumber",
+    );
     if (!order) {
       return res.status(404).json({
         error: true,
@@ -99,7 +104,9 @@ export const downloadInvoiceByOrder = async (req, res) => {
       });
     }
 
-    const absolutePath = getAbsolutePathFromStoredInvoicePath(order.invoicePath);
+    const absolutePath = getAbsolutePathFromStoredInvoicePath(
+      order.invoicePath,
+    );
     if (!absolutePath) {
       return res.status(404).json({
         error: true,

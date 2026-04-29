@@ -2,27 +2,28 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import UserModel from "../models/user.model.js";
 
-import sendEmailFun from "../config/sendEmail.js";
 import {
   getAccessTokenSecret,
   getRefreshTokenSecret,
 } from "../config/authSecrets.js";
+import sendEmailFun from "../config/sendEmail.js";
+import OrderModel from "../models/order.model.js";
+import { emitTrackingEvent } from "../services/analytics/trackingEmitter.service.js";
+import { getUserCoinSummary } from "../services/coin.service.js";
+import { syncUserIdentityToCrmSafely } from "../services/crm/crmAutoSync.service.js";
+import {
+  MANAGER_PERMISSION_KEYS,
+  normalizeManagerPermissions,
+} from "../utils/adminPermissions.js";
 import generateAccessToken from "../utils/generateAccessToken.js";
 import generateRefreshToken from "../utils/generateRefreshToken.js";
+import isPrivilegedAdminRole from "../utils/isPrivilegedAdminRole.js";
 import {
   hashTokenValue,
   matchesStoredToken,
   normalizeTokenString,
 } from "../utils/tokenHash.js";
 import VerificationEmail from "../utils/verifyEmailTemplate.js";
-import { emitTrackingEvent } from "../services/analytics/trackingEmitter.service.js";
-import OrderModel from "../models/order.model.js";
-import { getUserCoinSummary } from "../services/coin.service.js";
-import isPrivilegedAdminRole from "../utils/isPrivilegedAdminRole.js";
-import {
-  MANAGER_PERMISSION_KEYS,
-  normalizeManagerPermissions,
-} from "../utils/adminPermissions.js";
 
 const ADMIN_ASSIGNABLE_ROLES = ["User", "Admin", "Manager"];
 const parseManagerPermissions = (permissions) =>
@@ -113,7 +114,9 @@ function isValidEmail(email) {
 }
 
 function normalizeEmail(email) {
-  return String(email || "").trim().toLowerCase();
+  return String(email || "")
+    .trim()
+    .toLowerCase();
 }
 
 const escapeRegex = (value) =>
@@ -228,6 +231,12 @@ export async function registerUserController(req, res) {
       otpExpires: Date.now() + 600000,
     });
     await user.save();
+    void syncUserIdentityToCrmSafely({
+      user,
+      req,
+      source: "email_signup",
+      pageUrl: "/register",
+    });
     const emailSent = await sendEmailFun({
       sendTo: normalizedEmail,
       subject: "Verify email from HealthyOneGram",
@@ -447,6 +456,13 @@ export async function loginUserController(req, res) {
         error: claimError?.message || String(claimError),
       });
     }
+
+    void syncUserIdentityToCrmSafely({
+      user,
+      req,
+      source: "email_login",
+      pageUrl: "/login",
+    });
 
     emitTrackingEvent({
       req,
@@ -673,7 +689,9 @@ export async function verifyForgotPasswordOTPController(req, res) {
       });
     }
 
-    const otpExpiryTime = user.otpExpires ? new Date(user.otpExpires).getTime() : 0;
+    const otpExpiryTime = user.otpExpires
+      ? new Date(user.otpExpires).getTime()
+      : 0;
     if (!otpExpiryTime || otpExpiryTime < Date.now()) {
       return res.status(400).json({
         success: false,
@@ -878,6 +896,13 @@ export async function authWithGoogle(req, res) {
       }
       await user.save();
     }
+
+    void syncUserIdentityToCrmSafely({
+      user,
+      req,
+      source: isNewGoogleUser ? "google_signup" : "google_login",
+      pageUrl: isNewGoogleUser ? "/register" : "/login",
+    });
 
     try {
       const claimed = await claimGuestOrdersForUser(user);
@@ -1119,7 +1144,9 @@ export async function updateUserRole(req, res) {
     if (role !== "Manager") {
       user.managerPermissions = [];
     } else {
-      user.managerPermissions = parseManagerPermissions(user.managerPermissions);
+      user.managerPermissions = parseManagerPermissions(
+        user.managerPermissions,
+      );
     }
 
     await user.save();
@@ -1434,17 +1461,23 @@ export async function updateUserProfile(req, res) {
   try {
     const userId = req.user?._id || req.user;
     const rawName = String(req.body?.name || "").trim();
-    const rawEmail = String(req.body?.email || "").trim().toLowerCase();
+    const rawEmail = String(req.body?.email || "")
+      .trim()
+      .toLowerCase();
     const hasMobileField = Object.prototype.hasOwnProperty.call(
       req.body || {},
       "mobile",
     );
-    const rawMobileInput = hasMobileField ? String(req.body?.mobile ?? "").trim() : "";
+    const rawMobileInput = hasMobileField
+      ? String(req.body?.mobile ?? "").trim()
+      : "";
     const hasAvatarField = Object.prototype.hasOwnProperty.call(
       req.body || {},
       "avatar",
     );
-    const rawAvatar = hasAvatarField ? String(req.body?.avatar ?? "").trim() : null;
+    const rawAvatar = hasAvatarField
+      ? String(req.body?.avatar ?? "").trim()
+      : null;
 
     const updateData = {};
 
@@ -1629,7 +1662,9 @@ export async function removeUserPhoto(req, res) {
 export async function updateUserGstNumber(req, res) {
   try {
     const userId = req.user?._id || req.user;
-    const rawGst = String(req.body?.gstNumber || "").trim().toUpperCase();
+    const rawGst = String(req.body?.gstNumber || "")
+      .trim()
+      .toUpperCase();
 
     if (rawGst && !/^[0-9A-Z]{15}$/.test(rawGst)) {
       return res.status(400).json({

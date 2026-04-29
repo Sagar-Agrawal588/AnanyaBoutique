@@ -178,6 +178,176 @@ const parseNumberLike = (value) => {
 
 const round2 = (value) => Math.round(Number(value || 0) * 100) / 100;
 
+const toTrimmedString = (value) => String(value || "").trim();
+
+const firstNonEmptyString = (...values) =>
+  values.map((value) => String(value || "").trim()).find(Boolean) || "";
+
+const joinNonEmpty = (values = [], separator = ", ") =>
+  values
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .join(separator);
+
+const composeSnapshotAddress = (snapshot = {}) =>
+  firstNonEmptyString(
+    snapshot?.full_address,
+    joinNonEmpty([
+      snapshot?.address_line1,
+      snapshot?.address_line2,
+      snapshot?.order_city,
+      snapshot?.order_state,
+      snapshot?.order_pincode,
+    ]),
+    joinNonEmpty([
+      snapshot?.order_flat_house,
+      snapshot?.order_area,
+      snapshot?.order_landmark,
+      snapshot?.order_city,
+      snapshot?.order_state,
+      snapshot?.order_pincode,
+    ]),
+  );
+
+const resolveCustomerEmail = (row) =>
+  firstNonEmptyString(
+    row?.billingDetails?.email,
+    row?.deliveryAddressSnapshot?.email,
+    row?.guestDetails?.email,
+  );
+
+const resolveCustomerPhone = (row) =>
+  firstNonEmptyString(
+    row?.billingDetails?.phone,
+    row?.deliveryAddressSnapshot?.order_mobile,
+    row?.guestDetails?.phone,
+  );
+
+const resolveCustomerAddress = (row) =>
+  firstNonEmptyString(
+    composeSnapshotAddress(row?.deliveryAddressSnapshot),
+    row?.billingDetails?.address,
+    row?.guestDetails?.address,
+  );
+
+const resolveCustomerCity = (row) =>
+  firstNonEmptyString(
+    row?.deliveryAddressSnapshot?.order_city,
+    row?.billingDetails?.city,
+    row?.guestDetails?.city,
+  );
+
+const resolveCustomerState = (row) =>
+  firstNonEmptyString(
+    row?.deliveryAddressSnapshot?.order_state,
+    row?.billingDetails?.state,
+    row?.guestDetails?.state,
+  );
+
+const resolveCustomerPincode = (row) =>
+  firstNonEmptyString(
+    row?.deliveryAddressSnapshot?.order_pincode,
+    row?.billingDetails?.pincode,
+    row?.guestDetails?.pincode,
+  );
+
+const resolveCustomerGstNumber = (row) =>
+  firstNonEmptyString(row?.gstNumber, row?.guestDetails?.gst);
+
+const resolveCouponsApplied = (row) => {
+  const couponCode = toTrimmedString(row?.couponCode);
+  if (couponCode) return couponCode;
+  return Number(row?.couponDiscount || 0) > 0 ? "Yes" : "No";
+};
+
+const resolveOrderGstAmount = (row) => {
+  const cgst = Number(row?.gst?.cgst || 0);
+  const sgst = Number(row?.gst?.sgst || 0);
+  const igst = Number(row?.gst?.igst || 0);
+  const totalFromBreakup = cgst + sgst + igst;
+  if (Number.isFinite(totalFromBreakup) && totalFromBreakup > 0) {
+    return round2(totalFromBreakup);
+  }
+
+  const taxAmount = Number(row?.tax || 0);
+  return Number.isFinite(taxAmount) ? round2(Math.max(taxAmount, 0)) : 0;
+};
+
+const resolveTaxableAmount = (row) => {
+  const gstTaxableAmount = Number(row?.gst?.taxableAmount || 0);
+  if (Number.isFinite(gstTaxableAmount) && gstTaxableAmount > 0) {
+    return round2(gstTaxableAmount);
+  }
+
+  const subtotal = Number(row?.subtotal || 0);
+  if (Number.isFinite(subtotal) && subtotal > 0) {
+    return round2(subtotal);
+  }
+
+  const calculatedOrderSubtotal = Number(row?.calculatedOrderSubtotal || 0);
+  return Number.isFinite(calculatedOrderSubtotal)
+    ? round2(Math.max(calculatedOrderSubtotal, 0))
+    : 0;
+};
+
+const resolveOrderTotalAmount = (row) => {
+  const finalAmount = Number(row?.finalAmount || 0);
+  if (Number.isFinite(finalAmount) && finalAmount > 0) {
+    return round2(finalAmount);
+  }
+
+  const totalAmt = Number(row?.totalAmt || 0);
+  return Number.isFinite(totalAmt) ? round2(Math.max(totalAmt, 0)) : 0;
+};
+
+const resolveStateOfSupply = (row) =>
+  firstNonEmptyString(
+    row?.gst?.state,
+    row?.deliveryAddressSnapshot?.order_state,
+    row?.billingDetails?.state,
+    row?.guestDetails?.state,
+  );
+
+export const buildOrderExportRow = (
+  row,
+  { orderId = "", sku = "", hsn = "", deliveryStatus = "" } = {},
+) => ({
+  orderId,
+  productId: toTrimmedString(row?.productId),
+  sku: sku || "N/A",
+  hsnCode: hsn ? String(hsn).trim() : "N/A",
+  productName: toTrimmedString(row?.productName),
+  variantName: toTrimmedString(row?.variantName),
+  quantity: Number(row?.quantity || 0),
+  price: Number(row?.price || 0),
+  productPaidAmountAfterDiscount: resolveProductPaidAfterDiscount(row),
+  couponCode: toTrimmedString(row?.couponCode),
+  couponDiscount: Number(row?.couponDiscount || 0),
+  membershipDiscount: Number(row?.membershipDiscount || 0),
+  influencerDiscount: Number(row?.influencerDiscount || 0),
+  coinDiscount: Number(row?.coinDiscount || 0),
+  totalDiscount: Number(row?.totalDiscount || 0),
+  orderStatus: resolveOrderStatusLabel(row?.order_status),
+  customer: toTrimmedString(row?.customerName) || "Guest",
+  orderDate: row?.createdAt
+    ? new Date(row.createdAt).toISOString().slice(0, 10)
+    : "",
+  deliveryStatus,
+  couponApplied: resolveCouponsApplied(row),
+  gstRate: Number(row?.gst?.rate || 0),
+  gstAmount: resolveOrderGstAmount(row),
+  taxableAmount: resolveTaxableAmount(row),
+  orderTotalAmount: resolveOrderTotalAmount(row),
+  stateOfSupply: resolveStateOfSupply(row),
+  customerEmail: resolveCustomerEmail(row),
+  customerPhone: resolveCustomerPhone(row),
+  customerAddress: resolveCustomerAddress(row),
+  customerCity: resolveCustomerCity(row),
+  customerState: resolveCustomerState(row),
+  customerPincode: resolveCustomerPincode(row),
+  customerGstNumber: resolveCustomerGstNumber(row),
+});
+
 const resolveProductPaidAfterDiscount = (row) => {
   const quantity = Number(row?.quantity || 0);
   const unitPrice = Number(row?.price || 0);
@@ -747,6 +917,9 @@ export const exportOrdersReport = asyncHandler(async (req, res) => {
           affiliateCode: 1,
           influencerCommission: 1,
           shipping: 1,
+          tax: { $ifNull: ["$tax", 0] },
+          totalAmt: { $ifNull: ["$totalAmt", 0] },
+          finalAmount: { $ifNull: ["$finalAmount", 0] },
           subtotal: {
             $cond: [
               { $gt: ["$subtotal", 0] },
@@ -758,6 +931,10 @@ export const exportOrdersReport = asyncHandler(async (req, res) => {
             $max: [{ $add: ["$totalAmt", "$discount"] }, 0],
           },
           gst: 1,
+          gstNumber: { $ifNull: ["$gstNumber", ""] },
+          billingDetails: 1,
+          deliveryAddressSnapshot: 1,
+          guestDetails: 1,
           productDoc: 1,
         },
       },
@@ -824,29 +1001,14 @@ export const exportOrdersReport = asyncHandler(async (req, res) => {
       ).trim();
 
       orderWorksheet
-        .addRow({
-          orderId: orderDisplayId || orderId,
-          productId: String(row?.productId || "").trim(),
-          sku: sku || "N/A",
-          hsnCode: hsn ? String(hsn).trim() : "N/A",
-          productName: String(row?.productName || "").trim(),
-          variantName: String(row?.variantName || "").trim(),
-          quantity: Number(row?.quantity || 0),
-          price: Number(row?.price || 0),
-          productPaidAmountAfterDiscount: resolveProductPaidAfterDiscount(row),
-          couponCode: String(row?.couponCode || "").trim(),
-          couponDiscount: Number(row?.couponDiscount || 0),
-          membershipDiscount: Number(row?.membershipDiscount || 0),
-          influencerDiscount: Number(row?.influencerDiscount || 0),
-          coinDiscount: Number(row?.coinDiscount || 0),
-          totalDiscount: Number(row?.totalDiscount || 0),
-          orderStatus: resolveOrderStatusLabel(row?.order_status),
-          customer: String(row?.customerName || "").trim() || "Guest",
-          orderDate: row?.createdAt
-            ? new Date(row.createdAt).toISOString().slice(0, 10)
-            : "",
-          deliveryStatus,
-        })
+        .addRow(
+          buildOrderExportRow(row, {
+            orderId: orderDisplayId || orderId,
+            sku,
+            hsn,
+            deliveryStatus,
+          }),
+        )
         .commit();
 
       const productId = String(row?.productId || "").trim();
