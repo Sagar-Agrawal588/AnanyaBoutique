@@ -725,7 +725,7 @@ const ProductDetailPage = () => {
         setLoading(false);
       }
     }
-  }, [routeId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [routeId]);
 
   const stopFallbackPolling = useCallback(() => {
     if (fallbackPollRef.current && typeof window !== "undefined") {
@@ -1059,7 +1059,11 @@ const ProductDetailPage = () => {
       const cartProduct = buildCartProduct();
       if (!cartProduct) return;
 
-      await addToCart(cartProduct, quantity);
+      const addResult = await addToCart(cartProduct, quantity);
+      if (addResult?.success === false) {
+        openSnackbar(addResult?.message || "Unable to add this item", "error");
+        return;
+      }
       openSnackbar("Added to cart!");
     } catch (error) {
       console.error("Error updating cart:", error);
@@ -1095,7 +1099,11 @@ const ProductDetailPage = () => {
 
         const cartProduct = buildCartProduct();
         if (!cartProduct) return;
-        await addToCart(cartProduct, quantity);
+        const addResult = await addToCart(cartProduct, quantity);
+        if (addResult?.success === false) {
+          openSnackbar(addResult?.message || "Unable to add this item", "error");
+          return;
+        }
       }
 
       router.push("/checkout");
@@ -1117,8 +1125,10 @@ const ProductDetailPage = () => {
       if (currentProductPayload) {
         const targetVariantId = currentProductPayload?.variantId || null;
         if (!hasSelectedVariantInCart(productId, targetVariantId)) {
-          await addToCart(currentProductPayload, quantity);
-          addedCount += 1;
+          const addResult = await addToCart(currentProductPayload, quantity);
+          if (addResult?.success !== false) {
+            addedCount += 1;
+          }
         }
       }
 
@@ -1132,8 +1142,10 @@ const ProductDetailPage = () => {
           continue;
         }
 
-        await addToCart(payload, 1);
-        addedCount += 1;
+        const addResult = await addToCart(payload, 1);
+        if (addResult?.success !== false) {
+          addedCount += 1;
+        }
       }
 
       openSnackbar(
@@ -1162,7 +1174,11 @@ const ProductDetailPage = () => {
     }
 
     try {
-      await addToCart(payload, 1);
+      const addResult = await addToCart(payload, 1);
+      if (addResult?.success === false) {
+        openSnackbar(addResult?.message || "Unable to add this item", "error");
+        return;
+      }
       openSnackbar("Added to cart!");
     } catch (error) {
       console.error("Error adding recommendation:", error);

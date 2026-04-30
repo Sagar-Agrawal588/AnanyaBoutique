@@ -6,6 +6,10 @@ import StockMovementModel from "../models/stockMovement.model.js";
 import { emitStockUpdateIfChanged } from "../realtime/stockEvents.js";
 import { trackStockOutEventIfNeeded } from "./productAvailabilityAnalytics.service.js";
 import { notifyBackInStock } from "./stockNotification.service.js";
+import {
+  markOrderReservationsCompleted,
+  markOrderReservationsExpired,
+} from "./stockReservation.service.js";
 import { AppError, logger } from "../utils/errorHandler.js";
 
 // Atomic inventory updates rely on $inc with $expr guards to avoid race conditions.
@@ -1072,6 +1076,7 @@ export const confirmInventory = async (order, source = "PAYMENT_SUCCESS") => {
       source,
       itemCount: items.length,
     });
+    await markOrderReservationsCompleted(order, { source });
     flushQueuedStockUpdates(pendingStockUpdates);
     return { status: "deducted" };
   } catch (error) {
@@ -1211,6 +1216,7 @@ export const releaseInventory = async (order, source = "PAYMENT_FAILURE") => {
       source,
       itemCount: items.length,
     });
+    await markOrderReservationsExpired(order, { source });
     flushQueuedStockUpdates(pendingStockUpdates);
     return { status: "released" };
   } catch (error) {

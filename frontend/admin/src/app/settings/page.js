@@ -418,9 +418,6 @@ const SettingsPage = () => {
     currencySymbol: "₹",
   });
 
-  const [seoSettings, setSeoSettings] = useState(DEFAULT_SEO_SETTINGS);
-  const [seoPagesOpen, setSeoPagesOpen] = useState(true);
-
   const [popupSettings, setPopupSettings] = useState(defaultPopupSettings);
   const [popupProducts, setPopupProducts] = useState([]);
   const [popupCategories, setPopupCategories] = useState([]);
@@ -738,9 +735,6 @@ const SettingsPage = () => {
             case "storeInfo":
               setStoreInfo(setting.value);
               break;
-            case "seoSettings":
-              setSeoSettings(normalizeSeoSettings(setting.value));
-              break;
             case "paymentGatewayEnabled":
               setSiteControls((prev) => ({
                 ...prev,
@@ -947,7 +941,6 @@ const SettingsPage = () => {
         orderNumberSeriesSaved,
         discountSaved,
         storeSaved,
-        seoSaved,
         trafficSaved,
         paymentSaved,
         defaultPaymentProviderSaved,
@@ -966,7 +959,6 @@ const SettingsPage = () => {
         saveSetting("orderNumberSeries", orderNumberSeries),
         saveSetting("discountSettings", discountSettings),
         saveSetting("storeInfo", storeInfo),
-        saveSetting("seoSettings", seoSettings),
         saveSetting("highTrafficNotice", highTrafficNotice),
         saveSetting(
           "paymentGatewayEnabled",
@@ -1024,7 +1016,6 @@ const SettingsPage = () => {
         orderNumberSeriesSaved,
         discountSaved,
         storeSaved,
-        seoSaved,
         trafficSaved,
         paymentSaved,
         defaultPaymentProviderSaved,
@@ -1054,19 +1045,6 @@ const SettingsPage = () => {
       setSaving(false);
     }
   };
-
-  const addSeoPage = useCallback((blank = false) => {
-    setSeoSettings((prev) => ({
-      ...prev,
-      pages: [
-        ...prev.pages,
-        blank
-          ? createBlankSeoPageEntry()
-          : cloneSeoPageEntry({ label: "New page", path: "/" }),
-      ],
-    }));
-    setSeoPagesOpen(true);
-  }, []);
 
   if (loading) {
     return (
@@ -2289,7 +2267,7 @@ const SettingsPage = () => {
         </div>
       </div>
 
-      {/* SEO Settings */}
+      {/* SEO Settings moved to /seo-pages
       <div className="bg-white rounded-xl shadow-sm p-6 mb-6" id="seo-settings">
         <button
           type="button"
@@ -2721,6 +2699,7 @@ const SettingsPage = () => {
           for every important image.
         </p>
       </div>
+      */}
 
       {/* Homepage Flavour Buttons */}
       <div className="bg-white rounded-xl shadow-sm p-6 mb-6">

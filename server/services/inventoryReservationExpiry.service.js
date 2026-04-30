@@ -5,6 +5,7 @@ import { logger } from "../utils/errorHandler.js";
 
 let reservationTimer = null;
 let reservationInFlight = false;
+const reservationExpiryListeners = new Set();
 
 const DEFAULT_RESERVATION_INTERVAL_SECONDS = 30;
 const DEFAULT_RESERVATION_BATCH_SIZE = 100;
@@ -61,6 +62,36 @@ const isReservationExpired = (order, now = new Date()) => {
   return expiry.getTime() <= now.getTime();
 };
 
+export const registerReservationExpiryListener = (listener) => {
+  if (typeof listener !== "function") {
+    return () => {};
+  }
+
+  reservationExpiryListeners.add(listener);
+  return () => {
+    reservationExpiryListeners.delete(listener);
+  };
+};
+
+const notifyReservationExpired = async (order, context = {}) => {
+  if (reservationExpiryListeners.size === 0) return;
+
+  for (const listener of reservationExpiryListeners) {
+    try {
+      await listener(order, context);
+    } catch (error) {
+      logger.error(
+        "reservationExpiry",
+        "Reservation expiry listener failed",
+        {
+          orderId: order?._id,
+          error: error?.message || String(error),
+        },
+      );
+    }
+  }
+};
+
 export const expireOrderReservation = async (
   order,
   { now = new Date(), source = "RESERVATION_EXPIRED" } = {},
@@ -115,6 +146,8 @@ export const expireOrderReservation = async (
       },
     );
   }
+
+  await notifyReservationExpired(order, { now, source });
 
   return { status: "released" };
 };

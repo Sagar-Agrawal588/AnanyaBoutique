@@ -1,6 +1,7 @@
 "use client";
 
 import { Crown, Gift, Package, Percent, Rocket, Trophy } from "lucide-react";
+import Link from "next/link";
 
 const perks = [
   {
@@ -124,7 +125,7 @@ const MembershipPerks = () => {
         {/* CTA Section */}
         <div className="text-center mt-10 sm:mt-16">
           <div className="inline-flex flex-col sm:flex-row items-center gap-3 sm:gap-4">
-            <a
+            <Link
               href="/membership"
               className="group inline-flex items-center gap-2 sm:gap-3 px-6 sm:px-8 py-3 sm:py-4 bg-gradient-to-r from-primary to-[var(--flavor-hover)] 
                          text-white font-semibold text-base sm:text-lg rounded-xl sm:rounded-2xl
@@ -135,7 +136,7 @@ const MembershipPerks = () => {
             >
               <span>Become a Member</span>
               <Rocket className="w-4 h-4 sm:w-5 sm:h-5 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform duration-300" />
-            </a>
+            </Link>
             <span className="text-gray-400 text-xs sm:text-sm">
               Join 10,000+ happy members
             </span>

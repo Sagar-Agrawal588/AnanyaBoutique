@@ -509,6 +509,110 @@ test("successful payment confirmation within the reservation window deducts stoc
   assert.equal(productDetail.payload?.data?.available_quantity, 0);
 });
 
+test("successful payment keeps customer name, phone, and address details on the stored order", async () => {
+  const product = await createProduct({
+    name: "Stored Details Product",
+    slug: `stored-details-product-${Date.now()}`,
+  });
+
+  const createResult = await requestJson("/api/orders", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(
+      buildCreateOrderPayload(product, "details-user@example.com"),
+    ),
+  });
+
+  assert.equal(createResult.response.status, 201);
+  const orderId = createResult.payload?.data?.orderId;
+  const merchantTransactionId = String(
+    createResult.payload?.data?.merchantTransactionId || "",
+  ).trim();
+  assert.ok(orderId);
+  assert.ok(merchantTransactionId);
+
+  paytmStatuses.set(merchantTransactionId, "TXN_SUCCESS");
+
+  const webhookResult = await requestJson("/api/orders/webhook/paytm", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      "x-requested-with": "fetch",
+    },
+    body: JSON.stringify({
+      merchantTransactionId,
+      paymentState: "success",
+      source: "integration_test_details",
+    }),
+  });
+
+  assert.ok([200, 303].includes(webhookResult.response.status));
+
+  const savedOrder = await OrderModel.findById(orderId).lean();
+  assert.equal(String(savedOrder?.payment_status || ""), "paid");
+  assert.ok(savedOrder?.paymentCompletedAt);
+  assert.equal(String(savedOrder?.billingDetails?.fullName || ""), "Reservation Tester");
+  assert.equal(String(savedOrder?.billingDetails?.phone || ""), "9876543210");
+  assert.equal(String(savedOrder?.guestDetails?.fullName || ""), "Reservation Tester");
+  assert.equal(String(savedOrder?.guestDetails?.phone || ""), "9876543210");
+  assert.match(
+    String(
+      savedOrder?.billingDetails?.address ||
+        savedOrder?.deliveryAddressSnapshot?.address_line1 ||
+        savedOrder?.deliveryAddressSnapshot?.full_address ||
+        "",
+    ),
+    /main road/i,
+  );
+});
+
+test("admin and manager cannot manually change order status", async () => {
+  const product = await createProduct({
+    name: "Manual Status Block Product",
+    slug: `manual-status-block-${Date.now()}`,
+  });
+  const order = await OrderModel.create(
+    buildManualOrderPayload(product, "status-block@example.com"),
+  );
+  const adminUser = await createUser({
+    email: `manual-status-admin-${Date.now()}@example.com`,
+    name: "Manual Status Admin",
+    role: "Admin",
+  });
+  const managerUser = await createUser({
+    email: `manual-status-manager-${Date.now()}@example.com`,
+    name: "Manual Status Manager",
+    role: "Manager",
+  });
+  managerUser.managerPermissions = ["manage_orders"];
+  await managerUser.save();
+
+  for (const actor of [adminUser, managerUser]) {
+    const token = createAuthToken(actor);
+    const result = await requestJson(`/api/orders/${order._id}/status`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ order_status: "shipped" }),
+    });
+
+    assert.equal(result.response.status, 403);
+    assert.equal(result.payload?.success, false);
+    assert.match(
+      String(result.payload?.message || ""),
+      /manual order status changes are disabled/i,
+    );
+  }
+
+  const unchangedOrder = await OrderModel.findById(order._id).lean();
+  assert.equal(String(unchangedOrder?.order_status || ""), "pending");
+});
+
 test("POST /api/notifications/stock dedupes guest requests and sends a back-in-stock email after reservation expiry", async () => {
   const product = await createProduct({
     name: "Notify Guest Product",

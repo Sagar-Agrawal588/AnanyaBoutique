@@ -437,7 +437,7 @@ const orderSchema = new mongoose.Schema(
 
     paymentReminderEmailFailureKind: {
       type: String,
-      enum: ["", "failed", "cancelled"],
+      enum: ["", "failed", "cancelled", "expired"],
       default: "",
     },
 

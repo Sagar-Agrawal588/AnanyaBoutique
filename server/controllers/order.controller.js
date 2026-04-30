@@ -60,8 +60,10 @@ import {
 } from "../services/inventory.service.js";
 import {
   expireOrderReservation,
+  registerReservationExpiryListener,
   releaseExpiredReservations,
 } from "../services/inventoryReservationExpiry.service.js";
+import { syncActiveStockReservations } from "../services/stockReservation.service.js";
 import { trackRestockConversionsForOrder } from "../services/productAvailabilityAnalytics.service.js";
 import {
   createPaytmPayment,
@@ -1797,6 +1799,7 @@ const ensureOrderHasActiveReservationForPayment = async (
   }
 
   order.updatedAt = new Date();
+  await syncActiveStockReservations(order, { source });
   await order.save();
 
   return {
@@ -1864,6 +1867,9 @@ const inferPaymentFailureKind = ({
 
 const buildPaymentFailureReason = ({ provider, failureKind }) => {
   const providerLabel = resolvePaymentProviderLabel(provider);
+  if (failureKind === "expired") {
+    return "Reserved inventory window expired before payment was completed";
+  }
   return failureKind === "cancelled"
     ? `${providerLabel} payment cancelled by customer`
     : `${providerLabel} payment failed`;
@@ -1879,11 +1885,17 @@ const sendOrderPaymentReminderEmail = async (
     const displayOrderNumber = resolveDisplayOrderNumber(order);
     const providerLabel = resolvePaymentProviderLabel(paymentProvider);
     const normalizedFailureKind =
-      failureKind === "cancelled" ? "cancelled" : "failed";
+      failureKind === "cancelled"
+        ? "cancelled"
+        : failureKind === "expired"
+          ? "expired"
+          : "failed";
     const subject =
       normalizedFailureKind === "cancelled"
         ? `Payment Cancelled - ${displayOrderNumber}`
-        : `Payment Reminder - ${displayOrderNumber}`;
+        : normalizedFailureKind === "expired"
+          ? "Complete Your Payment Before Items Sell Out"
+          : `Payment Reminder - ${displayOrderNumber}`;
     const emailLog = await createEmailLog({
       user_id: order?.user || null,
       order_id: order?._id || null,
@@ -1927,7 +1939,9 @@ const sendOrderPaymentReminderEmail = async (
         ? `${siteUrl}/orders/${encodeURIComponent(rawOrderId)}`
         : siteUrl);
     const actionLabel = paymentUrl
-      ? "Pay Now"
+      ? normalizedFailureKind === "expired"
+        ? "Complete Payment"
+        : "Pay Now"
       : order?.user
         ? "View your order"
         : "Visit the store";
@@ -1937,6 +1951,8 @@ const sendOrderPaymentReminderEmail = async (
     const failureMessage =
       normalizedFailureKind === "cancelled"
         ? "Your payment was cancelled before completion. You can return and place the order again when ready."
+        : normalizedFailureKind === "expired"
+          ? "Your 3 minute 30 second reservation window ended before payment completed. Use the link below to retry payment before these items sell out."
         : "Your payment did not complete successfully. You can retry from your order page or place the order again.";
 
     const text = [
@@ -1961,7 +1977,11 @@ const sendOrderPaymentReminderEmail = async (
         order_date: formatOrderDateForEmail(order?.createdAt),
         payment_provider: providerLabel,
         failure_kind:
-          normalizedFailureKind === "cancelled" ? "Cancelled" : "Failed",
+          normalizedFailureKind === "cancelled"
+            ? "Cancelled"
+            : normalizedFailureKind === "expired"
+              ? "Reservation Expired"
+              : "Failed",
         failure_message: failureMessage,
         items_text: stringifyOrderItemsForEmail(order),
         final_amount: formatInr(finalAmount),
@@ -2038,7 +2058,11 @@ const maybeSendOrderPaymentReminderEmail = async ({
 
   order.paymentReminderEmailSentAt = new Date();
   order.paymentReminderEmailFailureKind =
-    failureKind === "cancelled" ? "cancelled" : "failed";
+    failureKind === "cancelled"
+      ? "cancelled"
+      : failureKind === "expired"
+        ? "expired"
+        : "failed";
   order.paymentReminderEmailProvider = String(paymentProvider || "")
     .trim()
     .toUpperCase();
@@ -2054,6 +2078,33 @@ const maybeSendOrderPaymentReminderEmail = async ({
     return false;
   }
 };
+
+registerReservationExpiryListener(async (order) => {
+  if (!order) return;
+
+  const normalizedPaymentStatus = String(order.payment_status || "")
+    .trim()
+    .toLowerCase();
+  if (normalizedPaymentStatus === "paid") {
+    return;
+  }
+
+  const normalizedOrderStatus = normalizeOrderStatus(order.order_status);
+  if (!PAYMENT_PENDING_ORDER_STATUSES.has(normalizedOrderStatus)) {
+    return;
+  }
+
+  const paymentProvider =
+    normalizeSupportedPaymentProvider(order?.paymentMethod) ||
+    PAYMENT_PROVIDERS.PHONEPE;
+
+  await maybeSendOrderPaymentReminderEmail({
+    order,
+    failureKind: "expired",
+    paymentProvider,
+    logContext: "reservationExpiry",
+  });
+});
 
 const PAYMENT_EMAIL_DELAY_MS = Math.max(
   Number(process.env.ORDER_PAYMENT_EMAIL_DELAY_MS || 60_000),
@@ -2191,6 +2242,7 @@ const inferStoredPaymentFailureKind = (order) => {
     .trim()
     .toLowerCase();
   if (storedKind === "cancelled") return "cancelled";
+  if (storedKind === "expired") return "expired";
   if (storedKind === "failed") return "failed";
 
   const reason = String(order?.failureReason || "")
@@ -2218,11 +2270,23 @@ const processDueOrderPaymentReminderEmails = async ({
   );
 
   const dueOrders = await OrderModel.find({
-    payment_status: "failed",
     paymentReminderEmailSentAt: null,
     paymentMethod: { $in: Object.values(PAYMENT_PROVIDERS) },
-    paymentId: { $exists: true, $nin: [null, ""] },
-    updatedAt: { $lte: dueBefore, $gte: lookbackAfter },
+    updatedAt: { $gte: lookbackAfter },
+    $or: [
+      {
+        payment_status: "failed",
+        paymentId: { $exists: true, $nin: [null, ""] },
+        updatedAt: { $lte: dueBefore, $gte: lookbackAfter },
+      },
+      {
+        payment_status: "pending",
+        inventoryStatus: "released",
+        order_status: {
+          $in: [ORDER_STATUS.PENDING, ORDER_STATUS.PAYMENT_PENDING],
+        },
+      },
+    ],
   })
     .sort({ updatedAt: 1, createdAt: 1 })
     .limit(25);
@@ -2230,7 +2294,11 @@ const processDueOrderPaymentReminderEmails = async ({
   for (const order of dueOrders) {
     await maybeSendOrderPaymentReminderEmail({
       order,
-      failureKind: inferStoredPaymentFailureKind(order),
+      failureKind:
+        String(order?.payment_status || "").trim().toLowerCase() === "pending" &&
+        String(order?.inventoryStatus || "").trim().toLowerCase() === "released"
+          ? "expired"
+          : inferStoredPaymentFailureKind(order),
       paymentProvider:
         normalizeSupportedPaymentProvider(order?.paymentMethod) ||
         PAYMENT_PROVIDERS.PHONEPE,
@@ -4232,6 +4300,10 @@ export const getAllOrders = asyncHandler(async (req, res) => {
       ORDER_STATUS.RTO,
       ORDER_STATUS.RTO_COMPLETED,
     ];
+    const dispatchedStatuses = [
+      ORDER_STATUS.SHIPPED,
+      ORDER_STATUS.OUT_FOR_DELIVERY,
+    ];
     const paidLikeStatuses = [
       "paid",
       "confirmed",
@@ -4267,6 +4339,8 @@ export const getAllOrders = asyncHandler(async (req, res) => {
             { payment_status: { $in: pendingPaymentStatuses } },
           ],
         });
+      } else if (normalizedStatus === "dispatched") {
+        filter.order_status = { $in: dispatchedStatuses };
       } else {
         const normalizedOrderStatus = normalizeOrderStatus(normalizedStatus);
         if (normalizedOrderStatus === ORDER_STATUS.ACCEPTED) {
@@ -4925,111 +4999,15 @@ export const updateOrderStatus = asyncHandler(async (req, res) => {
       normalizedRequesterRole !== "admin"
     ) {
       throw new AppError("FORBIDDEN", {
-        message: "Only admin can change order status",
+        message: "Manual order status changes are disabled",
       });
     }
 
-    const { id, order_status, notes } = req.validatedData;
-
-    logger.debug("updateOrderStatus", "Updating order status", {
-      id,
-      order_status,
+    throw new AppError("FORBIDDEN", {
+      message:
+        "Manual order status changes are disabled. Order status is updated automatically from payment and shipping events.",
     });
 
-    const order = await OrderModel.findById(id)
-      .populate("user", "name email")
-      .populate("delivery_address");
-
-    if (!order) {
-      logger.warn("updateOrderStatus", "Order not found for update", { id });
-      throw new AppError("ORDER_NOT_FOUND");
-    }
-
-    const transition = applyOrderStatusTransition(order, order_status, {
-      source: "ADMIN",
-    });
-
-    if (!transition.updated) {
-      if (transition.reason === "invalid_transition") {
-        throw new AppError("CONFLICT", {
-          message: "Invalid status transition",
-          from: normalizeOrderStatus(order.order_status),
-          to: normalizeOrderStatus(order_status),
-        });
-      }
-
-      if (transition.reason === "final_state") {
-        throw new AppError("CONFLICT", {
-          message: "Order is already in a final state",
-          status: normalizeOrderStatus(order.order_status),
-        });
-      }
-    }
-
-    const normalizedNewStatus = normalizeOrderStatus(order.order_status);
-    const wasPaid = order.payment_status === "paid";
-
-    if (transition.updated && normalizedNewStatus === ORDER_STATUS.CANCELLED) {
-      if (wasPaid) {
-        await restoreComboStock(order, "ADMIN_CANCELLED");
-        await restoreInventory(order, "ADMIN_CANCELLED");
-      } else {
-        await releaseComboStock(order, "ADMIN_CANCELLED");
-        await releaseInventory(order, "ADMIN_CANCELLED");
-      }
-    }
-
-    if (typeof notes === "string") {
-      order.notes = notes;
-    }
-    order.lastUpdatedBy = req.user?.id || req.user?._id || req.user;
-    order.updatedAt = new Date();
-    await order.save();
-
-    logger.info("updateOrderStatus", "Order status updated", {
-      id,
-      newStatus: order.order_status,
-    });
-
-    // Send notification to user if order has user associated
-    if (order.user) {
-      sendOrderUpdateNotification(order, order.order_status).catch((err) =>
-        logger.error("updateOrderStatus", "Failed to send notification", {
-          orderId: id,
-          error: err.message,
-        }),
-      );
-    }
-
-    if (transition.updated && normalizedNewStatus === ORDER_STATUS.CANCELLED) {
-      sendOrderCancelledEmail(order).catch((err) =>
-        logger.error("updateOrderStatus", "Failed to send cancellation email", {
-          orderId: id,
-          error: err?.message || String(err),
-        }),
-      );
-    }
-
-    // Sync to Firestore for real-time updates
-    syncOrderStatus(id, order.order_status).catch((err) =>
-      logger.error("updateOrderStatus", "Failed to sync to Firestore", {
-        orderId: id,
-        error: err.message,
-      }),
-    );
-
-    if (isInvoiceEligible(order)) {
-      ensureOrderInvoice(order).catch((err) =>
-        logger.error("updateOrderStatus", "Failed to generate invoice", {
-          orderId: id,
-          error: err.message,
-        }),
-      );
-    }
-
-    emitOrderStatusUpdate(order, "ADMIN");
-
-    return sendSuccess(res, order, "Order status updated successfully");
   } catch (error) {
     if (error instanceof AppError) {
       return sendError(res, error);
@@ -5689,6 +5667,7 @@ export const createOrder = asyncHandler(async (req, res) => {
           );
         },
       });
+      await syncActiveStockReservations(order, { source: "ORDER_CREATE" });
 
       void captureOrderEmailInNewsletter({
         req,
@@ -6412,6 +6391,7 @@ export const saveOrderForLater = asyncHandler(async (req, res) => {
           );
         },
       });
+      await syncActiveStockReservations(savedOrder, { source: "ORDER_SAVE" });
 
       void captureOrderEmailInNewsletter({
         req,

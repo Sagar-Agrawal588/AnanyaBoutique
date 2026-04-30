@@ -9,7 +9,6 @@ import {
   deleteData,
   getData,
   postData,
-  putData,
 } from "@/utils/api";
 import { withAdminBasePath } from "@/utils/basePath";
 import { Button } from "@mui/material";
@@ -52,6 +51,19 @@ const SETTLED_PAYMENT_STATUSES = new Set([
   "success",
   "successful",
 ]);
+const DISPATCHED_ORDER_STATUSES = new Set(["shipped", "out_for_delivery"]);
+
+const ORDER_FILTER_OPTIONS = [
+  { value: "all", label: "All Orders" },
+  { value: "successful", label: "Successful Orders" },
+  { value: "failed", label: "Failed Orders" },
+  { value: "pending", label: "Pending Orders" },
+  { value: "accepted", label: "Accepted Orders" },
+  { value: "dispatched", label: "Dispatched Orders" },
+  { value: "delivered", label: "Delivered Orders" },
+  { value: "completed", label: "Completed Orders" },
+  { value: "cancelled", label: "Cancelled Orders" },
+];
 
 const normalizeOrderStatus = (status) => {
   if (!status) return "pending";
@@ -67,6 +79,56 @@ const formatStatusLabel = (status, fallback = "Pending") => {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+};
+
+const getStatusPresentation = (status) => {
+  const normalized = normalizeOrderStatus(status);
+
+  if (normalized === "cancelled" || normalized === "rto_completed") {
+    return {
+      backgroundColor: "#fef2f2",
+      borderColor: "#fecaca",
+      color: "#b91c1c",
+    };
+  }
+
+  if (normalized === "completed" || normalized === "delivered") {
+    return {
+      backgroundColor: "#f0fdf4",
+      borderColor: "#bbf7d0",
+      color: "#166534",
+    };
+  }
+
+  if (DISPATCHED_ORDER_STATUSES.has(normalized)) {
+    return {
+      backgroundColor: "#dcfce7",
+      borderColor: "#86efac",
+      color: "#166534",
+    };
+  }
+
+  if (normalized === "accepted" || normalized === "confirmed") {
+    return {
+      backgroundColor: "#eff6ff",
+      borderColor: "#bfdbfe",
+      color: "#1d4ed8",
+    };
+  }
+
+  if (normalized === "in_warehouse") {
+    return {
+      backgroundColor: "#fefce8",
+      borderColor: "#fde68a",
+      color: "#a16207",
+    };
+  }
+
+  return {
+    backgroundColor: "#ffffff",
+    borderColor: "rgba(148, 163, 184, 0.6)",
+    color: "#334155",
+  };
 };
 
 const isGatewayMerchantReference = (value) =>
@@ -485,16 +547,15 @@ const resolveTrackingUrl = (order = {}) => {
   }
 };
 
-const OrderRow = ({ order, index, token, onStatusUpdate, canManageStatus }) => {
+const OrderRow = ({ order, index, token }) => {
   const [expandIndex, setExpandIndex] = useState(false);
-  const [orderStatus, setOrderStatus] = useState(
-    normalizeOrderStatus(order?.order_status) || "pending",
-  );
-  const [updating, setUpdating] = useState(false);
   const [downloadingInvoice, setDownloadingInvoice] = useState(false);
   const [orderReviews, setOrderReviews] = useState([]);
   const [reviewsLoading, setReviewsLoading] = useState(false);
   const trackingUrl = resolveTrackingUrl(order);
+  const normalizedRowStatus = normalizeOrderStatus(order?.order_status);
+  const rowStatusStyles = getStatusPresentation(normalizedRowStatus);
+  const statusLabel = formatStatusLabel(normalizedRowStatus);
   const paymentSettled = hasSettledPayment(order);
   const upiRrn = paymentSettled ? resolveUpiRrn(order) : "";
   const transactionId = paymentSettled
@@ -682,32 +743,6 @@ const OrderRow = ({ order, index, token, onStatusUpdate, canManageStatus }) => {
     }
   };
 
-  const handleChange = async (event) => {
-    if (!canManageStatus) {
-      toast.error("You do not have permission to update order status.");
-      return;
-    }
-    const newStatus = event.target.value;
-    setUpdating(true);
-    try {
-      const response = await putData(
-        `/api/orders/${order._id}/status`,
-        { order_status: newStatus },
-        token,
-      );
-      if (response.success) {
-        setOrderStatus(newStatus);
-        toast.success("Order status updated");
-        if (onStatusUpdate) onStatusUpdate();
-      } else {
-        toast.error(response.message || "Failed to update status");
-      }
-    } catch (error) {
-      toast.error("Failed to update status");
-    }
-    setUpdating(false);
-  };
-
   const fetchOrderReviews = async () => {
     if (!token || !order?._id) return;
     setReviewsLoading(true);
@@ -851,39 +886,17 @@ const OrderRow = ({ order, index, token, onStatusUpdate, canManageStatus }) => {
           {order?.user?._id?.slice(-6) || "------"}
         </td>
         <td className="text-[14px] text-gray-600 font-[500] px-4 py-2">
-          <Select
-            value={orderStatus}
-            onChange={handleChange}
-            displayEmpty
-            inputProps={{ "aria-label": "Without label" }}
-            size="small"
-            disabled={updating || !canManageStatus}
-            fullWidth
-            sx={{
-              "& .MuiSelect-select": {
-                py: "9px",
-                pr: "28px",
-                fontSize: "14px",
-                fontWeight: 500,
-              },
-              borderRadius: "10px",
-              backgroundColor: "#ffffff",
-              "& fieldset": {
-                borderColor: "rgba(148, 163, 184, 0.6)",
-              },
+          <div
+            className="inline-flex min-h-10 w-full items-center justify-center rounded-[10px] border px-3 py-2 text-center text-[14px] font-semibold"
+            title="Order status is updated automatically from payment and shipping events."
+            style={{
+              color: rowStatusStyles.color,
+              backgroundColor: rowStatusStyles.backgroundColor,
+              borderColor: rowStatusStyles.borderColor,
             }}
           >
-            <MenuItem value="pending">Pending</MenuItem>
-            <MenuItem value="pending_payment">Pending Payment</MenuItem>
-            <MenuItem value="accepted">Accepted</MenuItem>
-            <MenuItem value="in_warehouse">In Warehouse</MenuItem>
-            <MenuItem value="shipped">Shipped</MenuItem>
-            <MenuItem value="out_for_delivery">Out for Delivery</MenuItem>
-            <MenuItem value="delivered">Delivered</MenuItem>
-            <MenuItem value="completed">Completed</MenuItem>
-            <MenuItem value="cancelled">Cancelled</MenuItem>
-            <MenuItem value="confirmed">Confirmed (Legacy)</MenuItem>
-          </Select>
+            {statusLabel}
+          </div>
         </td>
         <td className="text-[14px] text-gray-600 font-[500] px-4 py-2">
           <div className="inline-flex items-center gap-1 text-[14px] whitespace-nowrap">
@@ -1176,7 +1189,7 @@ const OrderRow = ({ order, index, token, onStatusUpdate, canManageStatus }) => {
   );
 };
 
-const OrdersTable = ({ orders, token, onStatusUpdate, canManageStatus }) => (
+const OrdersTable = ({ orders, token }) => (
   <div className="w-full mt-5 border border-gray-200 rounded-xl overflow-x-auto">
     <table className="min-w-[980px] w-full table-fixed">
       <colgroup>
@@ -1226,8 +1239,6 @@ const OrdersTable = ({ orders, token, onStatusUpdate, canManageStatus }) => (
             order={order}
             index={index}
             token={token}
-            onStatusUpdate={onStatusUpdate}
-            canManageStatus={canManageStatus}
           />
         ))}
       </tbody>
@@ -1249,7 +1260,6 @@ const Orders = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [backfillingPaymentIds, setBackfillingPaymentIds] = useState(false);
   const [repairingPaidOrders, setRepairingPaidOrders] = useState(false);
-  const canManageStatus = hasAdminPermission(admin, "manage_orders");
   const canRunOrderMaintenanceActions = hasAdminPermission(
     admin,
     "manage_shipping",
@@ -1360,7 +1370,7 @@ const Orders = () => {
     const rawStatus = String(
       searchParams?.get("status") || "all",
     ).toLowerCase();
-    const allowed = new Set(["all", "successful", "failed"]);
+    const allowed = new Set(ORDER_FILTER_OPTIONS.map((option) => option.value));
     const nextStatus = allowed.has(rawStatus) ? rawStatus : "all";
     setStatusFilter(nextStatus);
     setPage(1);
@@ -1559,12 +1569,20 @@ const Orders = () => {
               sx={{
                 minWidth: 180,
                 borderRadius: "10px",
-                backgroundColor: "#f9fafb",
+                backgroundColor:
+                  statusFilter === "dispatched" ? "#dcfce7" : "#f9fafb",
+                "& .MuiSelect-select": {
+                  color:
+                    statusFilter === "dispatched" ? "#166534" : "#111827",
+                  fontWeight: statusFilter === "dispatched" ? 700 : 500,
+                },
               }}
             >
-              <MenuItem value="all">All Orders</MenuItem>
-              <MenuItem value="successful">Successful Orders</MenuItem>
-              <MenuItem value="failed">Failed Orders</MenuItem>
+              {ORDER_FILTER_OPTIONS.map((option) => (
+                <MenuItem key={option.value} value={option.value}>
+                  {option.label}
+                </MenuItem>
+              ))}
             </Select>
             <form onSubmit={handleSearch} className="flex items-center gap-2">
               <div className="relative">
@@ -1613,8 +1631,6 @@ const Orders = () => {
               <OrdersTable
                 orders={primaryOrders}
                 token={token}
-                onStatusUpdate={fetchOrders}
-                canManageStatus={canManageStatus}
               />
             ) : (
               <div className="mt-5 rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-8 text-center text-sm text-gray-500">

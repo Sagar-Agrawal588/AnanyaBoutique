@@ -128,7 +128,7 @@ export const getDashboardStats = async (req, res) => {
         ...orderBaseFilter,
         createdAt: { $gte: startDate },
       }),
-      OrderModel.find(orderBaseFilter)
+      OrderModel.find(successfulOrdersFilter)
         .populate("user", "name email")
         .sort({ createdAt: -1 })
         .limit(5)

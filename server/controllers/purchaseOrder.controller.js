@@ -15,6 +15,7 @@ import {
   syncParentStockFromVariants,
 } from "../services/inventory.service.js";
 import { validateIndianPincode } from "../services/shippingRate.service.js";
+import { syncActiveStockReservations } from "../services/stockReservation.service.js";
 import { splitGstInclusiveAmount } from "../services/tax.service.js";
 import isPrivilegedAdminRole from "../utils/isPrivilegedAdminRole.js";
 
@@ -1577,6 +1578,7 @@ export const convertPurchaseOrderToOrder = async (req, res) => {
     try {
       await reserveInventory(order, "PO_CONVERT");
       await order.save();
+      await syncActiveStockReservations(order, { source: "PO_CONVERT" });
     } catch (inventoryError) {
       if (order.inventoryStatus === "reserved") {
         try {

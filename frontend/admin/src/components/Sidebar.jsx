@@ -239,6 +239,12 @@ const Sidebar = ({ isOpen = false, onClose }) => {
       requiredPermission: "manage_settings",
     },
     {
+      name: "SEO Pages",
+      icon: <MdOutlineArticle size={22} />,
+      href: "/seo-pages",
+      requiredPermission: "manage_settings",
+    },
+    {
       name: "Settings",
       icon: <MdSettings size={22} />,
       href: "/settings",
