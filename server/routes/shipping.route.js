@@ -1,5 +1,6 @@
 import express from "express";
 import {
+  getDeliveryPreviewController,
   getShippingDisplayMetricsController,
   getShippingQuoteController,
   xpressbeesBookShipment,
@@ -22,6 +23,7 @@ const router = express.Router();
 // Public shipping endpoints
 router.post("/quote", getShippingQuoteController);
 router.get("/display-metrics", getShippingDisplayMetricsController);
+router.post("/delivery-preview", getDeliveryPreviewController);
 
 // Admin-only shipping operations
 router.use(auth, admin);

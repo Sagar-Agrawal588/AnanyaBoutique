@@ -23,8 +23,10 @@ import {
   subscribeToStockConnection,
   subscribeToStockUpdates,
 } from "@/realtime/stockSocket";
+import useIndiaPincodeLookup from "@/hooks/useIndiaPincodeLookup";
 import { trackEvent } from "@/utils/analyticsTracker";
-import { fetchDataFromApi } from "@/utils/api";
+import { fetchDataFromApi, postData } from "@/utils/api";
+import { normalizePincode } from "@/utils/addressForm";
 import { getImageUrl } from "@/utils/imageUtils";
 import { sanitizeHTML } from "@/utils/sanitize";
 import {
@@ -90,6 +92,46 @@ const toNumber = (value, fallback = 0) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
 };
+
+const normalizeWeightUnit = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase();
+
+const convertWeightToGrams = (value, unit) => {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue) || numericValue <= 0) return 0;
+
+  switch (normalizeWeightUnit(unit)) {
+    case "kg":
+    case "kilogram":
+    case "kilograms":
+      return Math.round(numericValue * 1000);
+    case "mg":
+    case "milligram":
+    case "milligrams":
+      return Math.max(Math.round(numericValue / 1000), 0);
+    case "lb":
+    case "lbs":
+    case "pound":
+    case "pounds":
+      return Math.round(numericValue * 453.59237);
+    case "g":
+    case "gram":
+    case "grams":
+    default:
+      return Math.round(numericValue);
+  }
+};
+
+const buildStaticDeliveryMessage = (pincode) => {
+  const normalized = normalizePincode(pincode);
+  return normalized.length === 6
+    ? `Estimated delivery to ${normalized}: 2-4 business days.`
+    : "Enter a 6-digit pincode to preview delivery timing.";
+};
+
+const isPossibleIndianPincode = (value) => /^[1-9][0-9]{5}$/.test(value);
 
 const getResolvedProductId = (product) => product?._id || product?.id || "";
 
@@ -364,12 +406,19 @@ const ProductDetailPage = () => {
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [isImageZoomOpen, setIsImageZoomOpen] = useState(false);
   const [deliveryPincode, setDeliveryPincode] = useState("");
+  const [deliveryPreview, setDeliveryPreview] = useState({
+    status: "idle",
+    message: "Enter a 6-digit pincode to preview delivery timing.",
+    courierName: "",
+    estimatedDelivery: "",
+  });
   const [snackbar, setSnackbar] = useState({
     open: false,
     message: "",
     severity: "success",
   });
   const fallbackPollRef = useRef(null);
+  const { lookupPincode } = useIndiaPincodeLookup();
 
   const defaultVariant =
     product?.hasVariants && Array.isArray(product?.variants)
@@ -500,15 +549,22 @@ const ProductDetailPage = () => {
     resolveVariantLabel(selectedVariant, product) ||
     resolveVariantLabel(defaultVariant, product) ||
     "Default option";
+  const activeWeightGrams = resolvedSelectedVariant
+    ? convertWeightToGrams(
+        resolvedSelectedVariant.weight ?? product?.weight,
+        resolvedSelectedVariant.unit ?? product?.unit,
+      )
+    : convertWeightToGrams(product?.weight, product?.unit);
+  const deliveryPreviewWeightGrams =
+    activeWeightGrams > 0 ? activeWeightGrams : 500;
+  const deliveryPreviewOrderAmount = Math.max(toNumber(activePrice, 0), 0);
   const reviewSummaryLabel =
     displayReviewCount > 0
       ? `${displayReviewCount} review${displayReviewCount === 1 ? "" : "s"}`
       : "No reviews yet";
   const heroStatusLabel = getHeroStatusLabel(product, displayReviewCount);
   const deliveryReady = deliveryPincode.length === 6;
-  const deliveryMessage = deliveryReady
-    ? `Estimated delivery to ${deliveryPincode}: 2-4 business days.`
-    : "Enter a 6-digit pincode to preview delivery timing.";
+  const deliveryMessage = deliveryPreview.message;
   const showDescriptionSection =
     pageConfig?.tabs?.showDescription !== false &&
     pageConfig?.descriptionSection?.show !== false;
@@ -854,6 +910,143 @@ const ProductDetailPage = () => {
       setQuantity(maxQty);
     }
   }, [maxQty, quantity]);
+
+  useEffect(() => {
+    const pincode = normalizePincode(deliveryPincode);
+
+    if (!pincode) {
+      setDeliveryPreview({
+        status: "idle",
+        message: "Enter a 6-digit pincode to preview delivery timing.",
+        courierName: "",
+        estimatedDelivery: "",
+      });
+      return undefined;
+    }
+
+    if (pincode.length < 6) {
+      setDeliveryPreview({
+        status: "typing",
+        message: "Enter a 6-digit pincode to preview delivery timing.",
+        courierName: "",
+        estimatedDelivery: "",
+      });
+      return undefined;
+    }
+
+    if (!isPossibleIndianPincode(pincode)) {
+      setDeliveryPreview({
+        status: "invalid",
+        message: "Enter Right Pincode",
+        courierName: "",
+        estimatedDelivery: "",
+      });
+      return undefined;
+    }
+
+    if (isDemoPreview) {
+      setDeliveryPreview({
+        status: "unavailable",
+        message: buildStaticDeliveryMessage(pincode),
+        courierName: "",
+        estimatedDelivery: "",
+      });
+      return undefined;
+    }
+
+    let isCancelled = false;
+    const timer = setTimeout(async () => {
+      setDeliveryPreview({
+        status: "validating",
+        message: "Validating pincode...",
+        courierName: "",
+        estimatedDelivery: "",
+      });
+
+      const lookupResult = await lookupPincode(pincode);
+      if (isCancelled) return;
+
+      if (!lookupResult) {
+        setDeliveryPreview({
+          status: "unavailable",
+          message: buildStaticDeliveryMessage(pincode),
+          courierName: "",
+          estimatedDelivery: "",
+        });
+        return;
+      }
+
+      if (lookupResult?.status === "empty") {
+        setDeliveryPreview({
+          status: "invalid",
+          message: "Enter Right Pincode",
+          courierName: "",
+          estimatedDelivery: "",
+        });
+        return;
+      }
+
+      setDeliveryPreview({
+        status: "checking",
+        message: "Checking live delivery timing...",
+        courierName: "",
+        estimatedDelivery: "",
+      });
+
+      const response = await postData("/api/shipping/delivery-preview", {
+        pincode,
+        orderAmount: deliveryPreviewOrderAmount,
+        weightGrams: deliveryPreviewWeightGrams,
+        productId,
+        variantId: selectedVariantId,
+      });
+
+      if (isCancelled) return;
+
+      if (response?.success && response?.data?.available) {
+        const previewData = response.data;
+        const estimatedDelivery = String(
+          previewData.estimatedDelivery ||
+            previewData.estimatedDeliveryDate ||
+            "",
+        ).trim();
+        const courierName = String(previewData.courierName || "").trim();
+        const message = estimatedDelivery
+          ? `Estimated delivery to ${pincode}: ${estimatedDelivery}.`
+          : courierName
+            ? `Delivery preview available via ${courierName}.`
+            : `Delivery preview available for ${pincode}.`;
+
+        setDeliveryPreview({
+          status: "live",
+          message,
+          courierName,
+          estimatedDelivery,
+        });
+        return;
+      }
+
+      setDeliveryPreview({
+        status: "unavailable",
+        message: buildStaticDeliveryMessage(pincode),
+        courierName: "",
+        estimatedDelivery: "",
+      });
+    }, 350);
+
+    return () => {
+      isCancelled = true;
+      clearTimeout(timer);
+    };
+  }, [
+    deliveryPincode,
+    deliveryPreviewOrderAmount,
+    deliveryPreviewWeightGrams,
+    isDemoPreview,
+    lookupPincode,
+    productId,
+    selectedVariantId,
+  ]);
 
   useEffect(() => {
     if (!isImageZoomOpen) return;
@@ -1510,7 +1703,16 @@ const ProductDetailPage = () => {
                         Delivery Preview
                       </p>
                       <span className="text-xs font-medium text-[#5d4b41]">
-                        {deliveryReady ? "Ready" : "Optional"}
+                        {deliveryPreview.status === "live"
+                          ? "Live"
+                          : deliveryPreview.status === "checking" ||
+                              deliveryPreview.status === "validating"
+                            ? "Checking"
+                            : deliveryPreview.status === "invalid"
+                              ? "Invalid"
+                              : deliveryReady
+                                ? "Ready"
+                                : "Optional"}
                       </span>
                     </div>
                     <input
@@ -1519,14 +1721,18 @@ const ProductDetailPage = () => {
                       maxLength={6}
                       value={deliveryPincode}
                       onChange={(event) =>
-                        setDeliveryPincode(
-                          event.target.value.replace(/\D/g, "").slice(0, 6),
-                        )
+                        setDeliveryPincode(normalizePincode(event.target.value))
                       }
                       placeholder="Enter pincode"
                       className="product-delivery-input mt-4 h-14 w-full rounded-2xl border border-[#d8c6bb] bg-white px-4 text-base text-[#24150f] outline-none transition"
                     />
-                    <p className="mt-3 text-sm text-[#5d4b41]">
+                    <p
+                      className={`mt-3 text-sm ${
+                        deliveryPreview.status === "invalid"
+                          ? "font-semibold text-[#b42318]"
+                          : "text-[#5d4b41]"
+                      }`}
+                    >
                       {deliveryMessage}
                     </p>
                   </div>
