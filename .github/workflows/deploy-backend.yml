@@ -204,14 +204,6 @@ jobs:
                   "FIREBASE_CLIENT_EMAIL",
                   "FIREBASE_PRIVATE_KEY",
               ],
-              "WhatsApp Cloud API + Webhooks": [
-                  "WHATSAPP_ACCESS_TOKEN",
-                  "WHATSAPP_APP_ID",
-                  "WHATSAPP_PHONE_NUMBER_ID",
-                  "WHATSAPP_BUSINESS_ACCOUNT_ID",
-                  "WHATSAPP_WEBHOOK_VERIFY_TOKEN",
-                  "WHATSAPP_APP_SECRET",
-              ],
               "Paytm Credentials": [
                   "PAYTM_MERCHANT_ID",
                   "PAYTM_MERCHANT_KEY",
