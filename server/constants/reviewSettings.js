@@ -3,7 +3,7 @@ const REVIEW_SOURCE_VALUES = ["order", "public", "admin"];
 
 export const DEFAULT_REVIEW_SETTINGS = Object.freeze({
   allowPublicSubmissions: true,
-  autoPublishPublicReviews: false,
+  autoPublishPublicReviews: true,
   showPublicReviewForm: true,
   showOrderReviewActions: true,
 });

@@ -26,13 +26,6 @@ import {
 
 const router = express.Router();
 
-// Public
-router.get("/", optionalAuth, getCombos);
-router.get("/sections", optionalAuth, getComboSections);
-router.post("/cart-upsell", optionalAuth, getCartUpsells);
-router.get("/slug/:slug", optionalAuth, getComboBySlug);
-router.get("/:id", optionalAuth, getComboById);
-
 // Admin
 router.get("/admin/all", auth, admin, getAdminCombos);
 router.post("/admin/create", auth, admin, createCombo);
@@ -48,5 +41,12 @@ router.patch("/admin/drafts/:id/reject", auth, admin, rejectComboDraft);
 router.patch("/admin/drafts/:id/publish", auth, admin, publishComboDraft);
 router.get("/admin/analytics", auth, admin, getComboAnalyticsDashboard);
 router.get("/admin/analytics/orders", auth, admin, getComboOrderInsights);
+
+// Public
+router.get("/", optionalAuth, getCombos);
+router.get("/sections", optionalAuth, getComboSections);
+router.post("/cart-upsell", optionalAuth, getCartUpsells);
+router.get("/slug/:slug", optionalAuth, getComboBySlug);
+router.get("/:id", optionalAuth, getComboById);
 
 export default router;

@@ -35,7 +35,7 @@ const columns = [
   { id: "DEMAND", label: "DEMAND STATUS", minWidth: 120 },
   { id: "ACCESS", label: "ACCESS", minWidth: 120 },
   { id: "RATING", label: "RATING", minWidth: 100 },
-  { id: "ACTIONS", label: "ACTIONS", minWidth: 200 },
+  { id: "ACTIONS", label: "ACTIONS", minWidth: 280 },
 ];
 
 const normalizeVariantLabel = (variant) => {
@@ -606,6 +606,16 @@ const ProductsListContent = () => {
                           <Link href={`/products-list/${product._id}`}>
                             <Button className="!w-[40px] !h-[40px] !min-w-[20px] !rounded-full !text-gray-900">
                               <IoEyeOutline size={20} />
+                            </Button>
+                          </Link>
+
+                          <Link href={`/products-list/${product._id}#reviews`}>
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              className="!min-w-[78px] !rounded-full"
+                            >
+                              Reviews
                             </Button>
                           </Link>
 

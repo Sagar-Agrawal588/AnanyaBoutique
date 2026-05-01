@@ -66,14 +66,14 @@ const DEFAULT_TABS = [
 const FALLBACK_POLL_INTERVAL_MS = 30000;
 const DEFAULT_REVIEW_SETTINGS = {
   allowPublicSubmissions: true,
-  autoPublishPublicReviews: false,
+  autoPublishPublicReviews: true,
   showPublicReviewForm: true,
   showOrderReviewActions: true,
 };
 
 const normalizePublicReviewSettings = (value = {}) => ({
   allowPublicSubmissions: value?.allowPublicSubmissions !== false,
-  autoPublishPublicReviews: value?.autoPublishPublicReviews === true,
+  autoPublishPublicReviews: value?.autoPublishPublicReviews !== false,
   showPublicReviewForm: value?.showPublicReviewForm !== false,
   showOrderReviewActions: value?.showOrderReviewActions !== false,
 });
@@ -713,7 +713,7 @@ const ProductDetailPage = () => {
       }
 
       const nextReview = response?.data || null;
-      if (nextReview?.visibility === "visible") {
+      if (nextReview) {
         setCustomerReviews((current) => [nextReview, ...current]);
       }
 
@@ -725,10 +725,7 @@ const ProductDetailPage = () => {
       });
       setSnackbar({
         open: true,
-        message:
-          nextReview?.visibility === "visible"
-            ? "Review submitted successfully."
-            : "Review submitted and sent for admin approval.",
+        message: "Review submitted successfully.",
         severity: "success",
       });
     } catch (error) {
@@ -2428,16 +2425,12 @@ const ProductDetailPage = () => {
                       Add your own review
                     </h3>
                     <p className="mt-2 max-w-2xl text-sm leading-6 text-[#5c473d]">
-                      Anyone can submit product feedback here.{" "}
-                      {reviewSettings.autoPublishPublicReviews
-                        ? "New reviews publish immediately."
-                        : "New reviews stay hidden until the admin team approves them."}
+                      Anyone can submit product feedback here. New reviews
+                      publish immediately.
                     </p>
                   </div>
                   <span className="rounded-full border border-[#dbc9bd] bg-white px-3 py-1 text-xs font-semibold text-[#6d584a]">
-                    {reviewSettings.autoPublishPublicReviews
-                      ? "Instant publish"
-                      : "Admin approval"}
+                    Instant publish
                   </span>
                 </div>
 
@@ -2515,8 +2508,8 @@ const ProductDetailPage = () => {
 
                 <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
                   <p className="text-xs leading-5 text-[#6d584a]">
-                    Public reviews can be hidden or removed later from the admin
-                    review queue.
+                    Public reviews can be removed later from admin review
+                    management.
                   </p>
                   <button
                     type="button"

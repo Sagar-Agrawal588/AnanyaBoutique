@@ -111,6 +111,7 @@ export const AdminProvider = ({ children }) => {
 
       if (storedToken) {
         setToken(storedToken);
+        setLoading(false);
 
         debugLog("Token and admin restored from localStorage:", {
           tokenLength: storedToken.length,
@@ -159,6 +160,7 @@ export const AdminProvider = ({ children }) => {
       }
 
       if (adminData) {
+        setLoading(false);
         try {
           const response = await postData("/api/user/refresh-token", {});
           const refreshedToken = response?.data?.accessToken || null;
@@ -176,6 +178,8 @@ export const AdminProvider = ({ children }) => {
         }
 
         debugWarn("Admin profile exists but no valid token could be restored.");
+        logout();
+        return;
       }
     } catch (error) {
       console.error("Session check error:", error);

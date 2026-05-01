@@ -19,7 +19,7 @@ import { toast } from "react-hot-toast";
 
 const DEFAULT_REVIEW_SETTINGS = {
   allowPublicSubmissions: true,
-  autoPublishPublicReviews: false,
+  autoPublishPublicReviews: true,
   showPublicReviewForm: true,
   showOrderReviewActions: true,
 };
@@ -27,7 +27,6 @@ const DEFAULT_REVIEW_SETTINGS = {
 const REVIEW_VISIBILITY_OPTIONS = [
   { value: "", label: "All Visibility" },
   { value: "visible", label: "Visible" },
-  { value: "pending", label: "Pending" },
   { value: "hidden", label: "Hidden" },
 ];
 
@@ -40,7 +39,7 @@ const REQUEST_TIMEOUT_MS = 12000;
 
 const normalizeReviewSettings = (value = {}) => ({
   allowPublicSubmissions: value?.allowPublicSubmissions !== false,
-  autoPublishPublicReviews: value?.autoPublishPublicReviews === true,
+  autoPublishPublicReviews: value?.autoPublishPublicReviews !== false,
   showPublicReviewForm: value?.showPublicReviewForm !== false,
   showOrderReviewActions: value?.showOrderReviewActions !== false,
 });
@@ -84,10 +83,10 @@ const prettify = (value = "") =>
     .replaceAll("_", " ")
     .replace(/\b\w/g, (char) => char.toUpperCase());
 
-const visibilityBadgeClass = (value = "pending") => {
+const visibilityBadgeClass = (value = "visible") => {
   if (value === "visible") return "bg-emerald-100 text-emerald-700";
   if (value === "hidden") return "bg-slate-200 text-slate-700";
-  return "bg-amber-100 text-amber-700";
+  return "bg-sky-100 text-sky-700";
 };
 
 const sourceBadgeClass = (value = "public") => {
@@ -309,10 +308,11 @@ export default function CrmReviewsPage() {
     <section className="p-4 md:p-6">
       <div className="mx-auto max-w-6xl space-y-6">
         <div className="rounded-3xl bg-white p-6 shadow-sm">
-          <h1 className="text-3xl font-semibold text-slate-900">Review Queue</h1>
+          <h1 className="text-3xl font-semibold text-slate-900">Reviews</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-            Moderate public and order-linked reviews from one place. Hidden and
-            pending reviews are removed from the storefront immediately.
+            Manage public and order-linked reviews from one place. New reviews
+            publish immediately, and hidden reviews are removed from the
+            storefront immediately.
           </p>
         </div>
 
@@ -352,20 +352,6 @@ export default function CrmReviewsPage() {
                   />
                 }
                 label="Allow Public Review Submissions"
-              />
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={reviewSettings.autoPublishPublicReviews}
-                    onChange={(event) =>
-                      setReviewSettings((prev) => ({
-                        ...prev,
-                        autoPublishPublicReviews: event.target.checked,
-                      }))
-                    }
-                  />
-                }
-                label="Auto Publish Public Reviews"
               />
               <FormControlLabel
                 control={
@@ -540,21 +526,8 @@ export default function CrmReviewsPage() {
                           }
                           sx={{ textTransform: "none", borderRadius: "12px" }}
                         >
-                          {review.visibility === "visible" ? "Hide" : "Publish"}
+                          {review.visibility === "visible" ? "Hide" : "Show"}
                         </Button>
-                        {review.visibility === "pending" ? (
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            disabled={isBusy}
-                            onClick={() =>
-                              handleVisibilityChange(review._id, "hidden")
-                            }
-                            sx={{ textTransform: "none", borderRadius: "12px" }}
-                          >
-                            Keep Hidden
-                          </Button>
-                        ) : null}
                         <Button
                           size="small"
                           color="error"
@@ -570,9 +543,13 @@ export default function CrmReviewsPage() {
 
                     <div className="mt-4 grid gap-3 md:grid-cols-3">
                       <div className="rounded-2xl border border-white bg-white px-4 py-3 text-sm">
-                        <p className="text-slate-500">Product</p>
+                        <p className="text-slate-500">Item</p>
                         <p className="mt-1 font-semibold text-slate-900">
-                          {review.product?.name || review.productId || "Unknown"}
+                          {review.combo?.name ||
+                            review.product?.name ||
+                            review.comboId ||
+                            review.productId ||
+                            "Unknown"}
                         </p>
                       </div>
                       <div className="rounded-2xl border border-white bg-white px-4 py-3 text-sm">

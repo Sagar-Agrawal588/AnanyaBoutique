@@ -12,7 +12,7 @@ import {
   normalizeProductPageConfig,
 } from "@/components/productDetail/pageConfig";
 import { trackEvent } from "@/utils/analyticsTracker";
-import { fetchDataFromApi } from "@/utils/api";
+import { fetchDataFromApi, postData } from "@/utils/api";
 import { getImageUrl } from "@/utils/imageUtils";
 import { sanitizeHTML } from "@/utils/sanitize";
 import { Rating } from "@mui/material";
@@ -192,6 +192,46 @@ const buildStaticDeliveryMessage = (pincode) => {
   return `Estimated delivery to ${normalized}: 2-4 business days.`;
 };
 
+const DEFAULT_REVIEW_SETTINGS = {
+  allowPublicSubmissions: true,
+  autoPublishPublicReviews: true,
+  showPublicReviewForm: true,
+};
+
+const normalizePublicReviewSettings = (value = {}) => ({
+  allowPublicSubmissions: value?.allowPublicSubmissions !== false,
+  autoPublishPublicReviews: value?.autoPublishPublicReviews !== false,
+  showPublicReviewForm: value?.showPublicReviewForm !== false,
+});
+
+const averageReviewRating = (reviews = []) => {
+  if (!Array.isArray(reviews) || reviews.length === 0) return 0;
+  const total = reviews.reduce(
+    (sum, review) => sum + Math.max(Number(review?.rating || 0), 0),
+    0,
+  );
+  return total > 0 ? total / reviews.length : 0;
+};
+
+const getReviewInitials = (review) =>
+  String(review?.userName || "Customer")
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join("");
+
+const formatReviewDate = (value) => {
+  if (!value) return "";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return new Intl.DateTimeFormat("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(parsed);
+};
+
 export default function ComboDetailPage() {
   const { id } = useParams();
   const routeId = String(id || "").trim();
@@ -207,6 +247,16 @@ export default function ComboDetailPage() {
   const [activeTab, setActiveTab] = useState("description");
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [deliveryPincode, setDeliveryPincode] = useState("");
+  const [customerReviews, setCustomerReviews] = useState([]);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [reviewSettings, setReviewSettings] = useState(DEFAULT_REVIEW_SETTINGS);
+  const [publicReviewForm, setPublicReviewForm] = useState({
+    userName: "",
+    city: "",
+    rating: 5,
+    comment: "",
+  });
+  const [submittingPublicReview, setSubmittingPublicReview] = useState(false);
 
   useEffect(() => {
     if (!routeId) return;
@@ -279,7 +329,10 @@ export default function ComboDetailPage() {
       ? Math.min(maxPerOrder, Math.max(availableStock, 1))
       : Math.max(availableStock, 1);
   const starRating = toNumber(combo?.adminStarRating ?? combo?.rating, 0);
-  const reviewCount = toNumber(combo?.reviewCount, 0);
+  const reviewCount = customerReviews.length || toNumber(combo?.reviewCount, 0);
+  const reviewRating = customerReviews.length
+    ? averageReviewRating(customerReviews)
+    : starRating;
   const outOfStockItems = useMemo(() => {
     if (Array.isArray(combo?.outOfStockItems)) return combo.outOfStockItems;
     if (Array.isArray(combo?.availability?.outOfStockItems)) {
@@ -321,6 +374,55 @@ export default function ComboDetailPage() {
     buildShippingPoints(),
   );
   const heroStatusLabel = getHeroStatusLabel(combo, reviewCount);
+  const showPublicReviewForm =
+    pageConfig?.reviewsSection?.show !== false &&
+    reviewSettings.allowPublicSubmissions !== false &&
+    reviewSettings.showPublicReviewForm !== false;
+
+  useEffect(() => {
+    const loadReviewSettings = async () => {
+      try {
+        const response = await fetchDataFromApi("/api/settings/public/reviewSettings");
+        if (response?.success) {
+          setReviewSettings(
+            normalizePublicReviewSettings(response?.data?.value || response?.data || {}),
+          );
+          return;
+        }
+      } catch {
+        // Ignore and fall back to defaults.
+      }
+
+      setReviewSettings(DEFAULT_REVIEW_SETTINGS);
+    };
+
+    loadReviewSettings();
+  }, []);
+
+  useEffect(() => {
+    const loadComboReviews = async () => {
+      if (!comboId) {
+        setCustomerReviews([]);
+        return;
+      }
+
+      try {
+        setReviewsLoading(true);
+        const response = await fetchDataFromApi(`/api/reviews/combo/${comboId}`);
+        if (response?.success && Array.isArray(response?.data)) {
+          setCustomerReviews(response.data);
+        } else {
+          setCustomerReviews([]);
+        }
+      } catch {
+        setCustomerReviews([]);
+      } finally {
+        setReviewsLoading(false);
+      }
+    };
+
+    loadComboReviews();
+  }, [comboId]);
 
   const tabs = [
     pageConfig?.tabs?.showDescription !== false
@@ -389,6 +491,63 @@ export default function ComboDetailPage() {
       return result;
     } finally {
       setIsAdding(false);
+    }
+  };
+
+  const handleSubmitPublicReview = async () => {
+    const userName = String(publicReviewForm.userName || "").trim();
+    const comment = String(publicReviewForm.comment || "").trim();
+    const city = String(publicReviewForm.city || "").trim();
+    const rating = Number(publicReviewForm.rating || 0);
+
+    if (!comboId) {
+      toast.error("Combo context missing. Please refresh and try again.");
+      return;
+    }
+
+    if (!userName) {
+      toast.error("Please enter your name before submitting a review.");
+      return;
+    }
+
+    if (!comment) {
+      toast.error("Please write a short review comment.");
+      return;
+    }
+
+    if (!rating || rating < 1 || rating > 5) {
+      toast.error("Please select a rating between 1 and 5.");
+      return;
+    }
+
+    setSubmittingPublicReview(true);
+    try {
+      const response = await postData("/api/reviews", {
+        comboId,
+        userName,
+        city,
+        rating,
+        comment,
+      });
+
+      if (!response?.success) {
+        throw new Error(response?.message || "Failed to submit review.");
+      }
+
+      if (response?.data) {
+        setCustomerReviews((current) => [response.data, ...current]);
+      }
+      setPublicReviewForm({
+        userName: "",
+        city: "",
+        rating: 5,
+        comment: "",
+      });
+      toast.success("Review submitted successfully.");
+    } catch (error) {
+      toast.error(error?.message || "Failed to submit review.");
+    } finally {
+      setSubmittingPublicReview(false);
     }
   };
 
@@ -1024,21 +1183,181 @@ export default function ComboDetailPage() {
 
         {pageConfig?.reviewsSection?.show !== false ? (
           <div className="product-reveal product-reveal-delay-3 mt-12 rounded-[36px] border border-[#e1cdbf] bg-white/88 p-6 shadow-[0_34px_90px_-55px_rgba(44,29,20,0.38)] backdrop-blur sm:p-8">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7b6355]">
-              {mergeTextOverride(pageConfig?.reviewsSection?.eyebrow, "Review Section")}
-            </p>
-            <h2 className="mt-2 text-3xl font-semibold text-[#24150f]">
-              {mergeTextOverride(
-                pageConfig?.reviewsSection?.title,
-                "Customer reviews below the combo story",
-              )}
-            </h2>
-            <div className="mt-6 rounded-[28px] border border-dashed border-[#d9c8bc] bg-[#fbf7f2] p-8 text-center text-[#5d4b41]">
-              {mergeTextOverride(
-                pageConfig?.reviewsSection?.emptyState,
-                "No reviews yet. This section is ready to show combo feedback as soon as customer reviews are available.",
+            <div className="flex flex-wrap items-end justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7b6355]">
+                  {mergeTextOverride(pageConfig?.reviewsSection?.eyebrow, "Review Section")}
+                </p>
+                <h2 className="mt-2 text-3xl font-semibold text-[#24150f]">
+                  {mergeTextOverride(
+                    pageConfig?.reviewsSection?.title,
+                    "Customer reviews below the combo story",
+                  )}
+                </h2>
+              </div>
+              <div className="rounded-[24px] border border-[#eaded5] bg-[#f6efe7] px-5 py-4 text-right">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#6a4b39]">
+                  Average Rating
+                </p>
+                <div className="mt-2 flex items-center justify-end gap-3">
+                  <span className="text-2xl font-semibold text-[#2f1b12]">
+                    {reviewRating > 0 ? reviewRating.toFixed(1) : "0.0"}
+                  </span>
+                  <Rating value={reviewRating} precision={0.5} readOnly size="small" />
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-6">
+              {reviewsLoading ? (
+                <p className="text-sm text-[#6d584a]">Loading reviews...</p>
+              ) : customerReviews.length > 0 ? (
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  {customerReviews.slice(0, 6).map((review, index) => (
+                    <article
+                      key={review?._id || `${review?.userName || "review"}-${index}`}
+                      className="rounded-[28px] border border-[#e7dad1] bg-[#fbf7f2] p-6 shadow-[0_24px_50px_-42px_rgba(42,28,20,0.28)]"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#2f1b12] text-base font-semibold text-white">
+                          {getReviewInitials(review)}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-semibold text-[#24150f]">
+                            {review?.userName || "Customer"}
+                          </p>
+                          <p className="text-sm text-[#6d584a]">
+                            {[review?.city, formatReviewDate(review?.createdAt)]
+                              .filter(Boolean)
+                              .join("  •  ")}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="mt-4">
+                        <Rating
+                          value={Math.max(Number(review?.rating || 0), 0)}
+                          readOnly
+                          size="small"
+                        />
+                      </div>
+                      <p className="mt-4 text-sm leading-7 text-[#4b392f]">
+                        {review?.comment || "No written comment available."}
+                      </p>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-[28px] border border-dashed border-[#d9c8bc] bg-[#fbf7f2] p-8 text-center text-[#5d4b41]">
+                  {mergeTextOverride(
+                    pageConfig?.reviewsSection?.emptyState,
+                    "No reviews yet. This section is ready to show combo feedback as soon as customer reviews are available.",
+                  )}
+                </div>
               )}
             </div>
+
+            {showPublicReviewForm ? (
+              <div className="mt-8 rounded-[28px] border border-[#eaded5] bg-[#f8f2eb] p-6">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7b6355]">
+                      Share Feedback
+                    </p>
+                    <h3 className="mt-2 text-2xl font-semibold text-[#24150f]">
+                      Add your own review
+                    </h3>
+                    <p className="mt-2 max-w-2xl text-sm leading-6 text-[#5c473d]">
+                      Anyone can submit combo feedback here. New reviews publish immediately.
+                    </p>
+                  </div>
+                  <span className="rounded-full border border-[#dbc9bd] bg-white px-3 py-1 text-xs font-semibold text-[#6d584a]">
+                    Instant publish
+                  </span>
+                </div>
+
+                <div className="mt-5 grid gap-4 md:grid-cols-2">
+                  <label className="text-sm text-[#4b392f]">
+                    <span className="mb-2 block font-semibold">Your Name</span>
+                    <input
+                      type="text"
+                      value={publicReviewForm.userName}
+                      onChange={(event) =>
+                        setPublicReviewForm((current) => ({
+                          ...current,
+                          userName: event.target.value,
+                        }))
+                      }
+                      placeholder="Enter your name"
+                      className="w-full rounded-2xl border border-[#d8c6bb] bg-white px-4 py-3 outline-none transition focus:border-[#b18062]"
+                    />
+                  </label>
+
+                  <label className="text-sm text-[#4b392f]">
+                    <span className="mb-2 block font-semibold">City</span>
+                    <input
+                      type="text"
+                      value={publicReviewForm.city}
+                      onChange={(event) =>
+                        setPublicReviewForm((current) => ({
+                          ...current,
+                          city: event.target.value,
+                        }))
+                      }
+                      placeholder="Jaipur, Delhi, Mumbai"
+                      className="w-full rounded-2xl border border-[#d8c6bb] bg-white px-4 py-3 outline-none transition focus:border-[#b18062]"
+                    />
+                  </label>
+
+                  <div className="md:col-span-2">
+                    <p className="text-sm font-semibold text-[#4b392f]">Your Rating</p>
+                    <div className="mt-3 flex flex-wrap items-center gap-3">
+                      <Rating
+                        value={publicReviewForm.rating}
+                        onChange={(_event, value) =>
+                          setPublicReviewForm((current) => ({
+                            ...current,
+                            rating: value || 1,
+                          }))
+                        }
+                      />
+                      <span className="text-sm text-[#6d584a]">
+                        {Number(publicReviewForm.rating || 0).toFixed(1)} / 5
+                      </span>
+                    </div>
+                  </div>
+
+                  <label className="text-sm text-[#4b392f] md:col-span-2">
+                    <span className="mb-2 block font-semibold">Review Comment</span>
+                    <textarea
+                      value={publicReviewForm.comment}
+                      onChange={(event) =>
+                        setPublicReviewForm((current) => ({
+                          ...current,
+                          comment: event.target.value,
+                        }))
+                      }
+                      placeholder="Tell other customers what stood out for you"
+                      rows={5}
+                      className="w-full rounded-[24px] border border-[#d8c6bb] bg-white px-4 py-3 outline-none transition focus:border-[#b18062]"
+                    />
+                  </label>
+                </div>
+
+                <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-xs leading-5 text-[#6d584a]">
+                    Reviews can be removed later from admin review management.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleSubmitPublicReview}
+                    disabled={submittingPublicReview}
+                    className="rounded-full bg-[#2f1b12] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#1f120d] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {submittingPublicReview ? "Submitting..." : "Submit Review"}
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </div>
         ) : null}
 

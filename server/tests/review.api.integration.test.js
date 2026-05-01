@@ -5,6 +5,7 @@ import express from "express";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 import { MongoMemoryServer } from "mongodb-memory-server";
+import ComboModel from "../models/combo.model.js";
 import ProductModel from "../models/product.model.js";
 import ReviewModel from "../models/review.model.js";
 import UserModel from "../models/user.model.js";
@@ -68,6 +69,7 @@ test.before(async () => {
 
 test.afterEach(async () => {
   await Promise.all([
+    ComboModel.deleteMany({}),
     ProductModel.deleteMany({}),
     ReviewModel.deleteMany({}),
     UserModel.deleteMany({}),
@@ -90,7 +92,7 @@ test.after(async () => {
   }
 });
 
-test("public reviews stay hidden until admin publishes them", async () => {
+test("public reviews publish immediately", async () => {
   const product = await ProductModel.create({
     name: "Reviewable Product",
     slug: `reviewable-product-${Date.now()}`,
@@ -112,43 +114,53 @@ test("public reviews stay hidden until admin publishes them", async () => {
       userName: "Guest Reviewer",
       city: "Jaipur",
       rating: 5,
-      comment: "Public review should wait for approval.",
+      comment: "Public review should publish immediately.",
     }),
   });
 
   assert.equal(createResponse.response.status, 201);
   assert.equal(createResponse.payload?.success, true);
   assert.equal(createResponse.payload?.data?.source, "public");
-  assert.equal(createResponse.payload?.data?.visibility, "pending");
-
-  const hiddenListResponse = await requestJson(`/api/reviews/${product._id}`);
-  assert.equal(hiddenListResponse.response.status, 200);
-  assert.equal(hiddenListResponse.payload?.total, 0);
-
-  const adminToken = await issueAdminToken();
-  const publishResponse = await requestJson(
-    `/api/admin/reviews/${createResponse.payload?.data?._id}`,
-    {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${adminToken}`,
-      },
-      body: JSON.stringify({
-        visibility: "visible",
-      }),
-    },
-  );
-
-  assert.equal(publishResponse.response.status, 200);
-  assert.equal(publishResponse.payload?.success, true);
-  assert.equal(publishResponse.payload?.data?.visibility, "visible");
+  assert.equal(createResponse.payload?.data?.visibility, "visible");
 
   const publicListResponse = await requestJson(`/api/reviews/${product._id}`);
   assert.equal(publicListResponse.response.status, 200);
   assert.equal(publicListResponse.payload?.total, 1);
   assert.equal(publicListResponse.payload?.data?.[0]?.userName, "Guest Reviewer");
   assert.equal(publicListResponse.payload?.data?.[0]?.visibility, "visible");
+});
+
+test("combo reviews publish immediately and are listed separately", async () => {
+  const combo = await ComboModel.create({
+    name: "Reviewable Combo",
+    slug: `reviewable-combo-${Date.now()}`,
+  });
+
+  const createResponse = await requestJson("/api/reviews", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      comboId: combo._id.toString(),
+      userName: "Combo Reviewer",
+      city: "Indore",
+      rating: 4,
+      comment: "Combo review should publish immediately.",
+    }),
+  });
+
+  assert.equal(createResponse.response.status, 201);
+  assert.equal(createResponse.payload?.success, true);
+  assert.equal(createResponse.payload?.data?.comboId, combo._id.toString());
+  assert.equal(createResponse.payload?.data?.visibility, "visible");
+
+  const listResponse = await requestJson(`/api/reviews/combo/${combo._id}`);
+  assert.equal(listResponse.response.status, 200);
+  assert.equal(listResponse.payload?.success, true);
+  assert.equal(listResponse.payload?.total, 1);
+  assert.equal(listResponse.payload?.data?.[0]?.userName, "Combo Reviewer");
+  assert.equal(listResponse.payload?.data?.[0]?.comboId, combo._id.toString());
 });
 
 test("admin review queue lists and deletes reviews", async () => {

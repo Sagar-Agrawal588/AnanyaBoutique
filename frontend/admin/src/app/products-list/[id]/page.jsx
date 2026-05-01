@@ -1,7 +1,7 @@
 "use client";
 import { useAdmin } from "@/context/AdminContext";
+import { deleteData, getData } from "@/utils/api";
 import { withAdminBasePath } from "@/utils/basePath";
-import { getData } from "@/utils/api";
 import { getImageUrl } from "@/utils/imageUtils";
 import { Button } from "@mui/material";
 import Rating from "@mui/material/Rating";
@@ -21,7 +21,12 @@ const normalizeVariantLabel = (variant) => {
     if (rawUnit === "g") {
       return weight >= 1000 ? `${weight / 1000}kg` : `${weight}g`;
     }
-    if (rawUnit === "kg" || rawUnit === "ml" || rawUnit === "l" || rawUnit === "pcs") {
+    if (
+      rawUnit === "kg" ||
+      rawUnit === "ml" ||
+      rawUnit === "l" ||
+      rawUnit === "pcs"
+    ) {
       return `${weight}${rawUnit}`;
     }
     if (rawUnit) {
@@ -52,10 +57,10 @@ const ViewProduct = () => {
   const productId = params.id;
 
   const [product, setProduct] = useState(null);
-  const [productDemand, setProductDemand] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isDemandLoading, setIsDemandLoading] = useState(true);
   const [selectedImage, setSelectedImage] = useState(0);
+  const [reviews, setReviews] = useState([]);
+  const [reviewsLoading, setReviewsLoading] = useState(true);
 
   const fetchProduct = useCallback(async () => {
     setIsLoading(true);
@@ -73,22 +78,25 @@ const ViewProduct = () => {
     setIsLoading(false);
   }, [productId, token, router]);
 
-  const fetchProductDemand = useCallback(async () => {
+  const fetchProductReviews = useCallback(async () => {
     if (!productId || !token) return;
 
-    setIsDemandLoading(true);
+    setReviewsLoading(true);
     try {
-      const response = await getData(`/api/admin/product-demand/${productId}`, token);
-      if (response?.success && response?.data) {
-        setProductDemand(response.data);
+      const response = await getData(
+        `/api/admin/reviews?productId=${encodeURIComponent(String(productId))}&limit=100`,
+        token,
+      );
+      if (response?.success && Array.isArray(response?.data)) {
+        setReviews(response.data);
       } else {
-        setProductDemand(null);
+        setReviews([]);
       }
     } catch (error) {
-      console.error("Failed to fetch product demand:", error);
-      setProductDemand(null);
+      console.error("Failed to fetch product reviews:", error);
+      setReviews([]);
     } finally {
-      setIsDemandLoading(false);
+      setReviewsLoading(false);
     }
   }, [productId, token]);
 
@@ -101,9 +109,34 @@ const ViewProduct = () => {
   useEffect(() => {
     if (isAuthenticated && token && productId) {
       fetchProduct();
-      fetchProductDemand();
+      fetchProductReviews();
     }
-  }, [isAuthenticated, token, productId, fetchProduct, fetchProductDemand]);
+  }, [isAuthenticated, token, productId, fetchProduct, fetchProductReviews]);
+
+  const handleDeleteReview = async (reviewId) => {
+    if (!reviewId || !token) return;
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm("Delete this review permanently?")
+    ) {
+      return;
+    }
+
+    try {
+      const response = await deleteData(
+        `/api/admin/reviews/${reviewId}`,
+        token,
+      );
+      if (!response?.success) {
+        throw new Error(response?.message || "Failed to delete review.");
+      }
+      setReviews((current) =>
+        current.filter((review) => review._id !== reviewId),
+      );
+    } catch (error) {
+      console.error("Failed to delete review:", error);
+    }
+  };
 
   if (loading || !isAuthenticated || isLoading) {
     return (
@@ -197,9 +230,8 @@ const ViewProduct = () => {
                       onError={(e) => {
                         if (e.currentTarget.dataset.fallbackApplied) return;
                         e.currentTarget.dataset.fallbackApplied = "true";
-                        e.currentTarget.src = withAdminBasePath(
-                          "/placeholder.png",
-                        );
+                        e.currentTarget.src =
+                          withAdminBasePath("/placeholder.png");
                       }}
                     />
                   </button>
@@ -275,9 +307,7 @@ const ViewProduct = () => {
                 <p
                   className={`font-bold ${totalStock > 0 ? "text-green-600" : "text-red-600"}`}
                 >
-                  {totalStock > 0
-                    ? `${totalStock} units`
-                    : "Out of Stock"}
+                  {totalStock > 0 ? `${totalStock} units` : "Out of Stock"}
                 </p>
               </div>
               <div className="bg-gray-50 p-3 rounded-lg">
@@ -310,7 +340,9 @@ const ViewProduct = () => {
                 <p className="text-sm text-gray-500">Variants</p>
                 <p className="font-medium text-gray-800">
                   {variantInventoryLines.length > 0
-                    ? variantInventoryLines.map((entry) => entry.label).join(", ")
+                    ? variantInventoryLines
+                        .map((entry) => entry.label)
+                        .join(", ")
                     : "No variants"}
                 </p>
               </div>
@@ -318,14 +350,6 @@ const ViewProduct = () => {
                 <p className="text-sm text-gray-500">Views</p>
                 <p className="font-medium text-gray-800">
                   {product.viewCount || 0}
-                </p>
-              </div>
-              <div className="bg-gray-50 p-3 rounded-lg">
-                <p className="text-sm text-gray-500">Users Waiting</p>
-                <p className="font-medium text-gray-800">
-                  {isDemandLoading
-                    ? "Loading..."
-                    : Number(productDemand?.waiting_users_count || 0)}
                 </p>
               </div>
             </div>
@@ -370,93 +394,77 @@ const ViewProduct = () => {
         )}
 
         <div className="mt-8 border-t pt-6">
-          <div className="flex items-start justify-between gap-4 mb-4">
+          <div
+            id="reviews"
+            className="flex items-start justify-between gap-4 mb-4"
+          >
             <div>
               <h3 className="text-lg font-semibold text-gray-700">
-                Stock Notification Demand
+                Customer Reviews
               </h3>
               <p className="text-sm text-gray-500">
-                Waiting users and recent back-in-stock request history for this product.
+                All reviews currently published or hidden for this product.
               </p>
             </div>
-            <div className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-right">
-              <p className="text-xs uppercase tracking-wide text-orange-700">
-                Users waiting for this product
+            <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-right">
+              <p className="text-xs uppercase tracking-wide text-blue-700">
+                Reviews
               </p>
-              <p className="text-lg font-semibold text-orange-900">
-                {isDemandLoading
-                  ? "..."
-                  : Number(productDemand?.waiting_users_count || 0)}
+              <p className="text-lg font-semibold text-blue-900">
+                {reviews.length}
               </p>
             </div>
           </div>
 
-          {isDemandLoading ? (
-            <p className="text-sm text-gray-500">Loading demand details...</p>
-          ) : !productDemand?.requests?.length ? (
+          {reviewsLoading ? (
+            <p className="text-sm text-gray-500">Loading reviews...</p>
+          ) : reviews.length === 0 ? (
             <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-sm text-gray-500">
-              No stock notification requests have been recorded for this product yet.
+              No reviews have been submitted for this product yet.
             </div>
           ) : (
-            <div className="overflow-x-auto rounded-lg border border-gray-200">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-600">
-                      User
-                    </th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-600">
-                      Email
-                    </th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-600">
-                      Pack
-                    </th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-600">
-                      Requested
-                    </th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-600">
-                      Status
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {productDemand.requests.map((request) => {
-                    const status = String(request?.notification_status || "pending");
-                    const statusClasses =
-                      status === "sent"
-                        ? "bg-green-100 text-green-700"
-                        : status === "failed"
-                          ? "bg-red-100 text-red-700"
-                          : "bg-amber-100 text-amber-700";
-
-                    return (
-                      <tr key={request.id} className="border-t border-gray-100">
-                        <td className="px-4 py-3 text-gray-800">
-                          {request.user_name || "Guest"}
-                        </td>
-                        <td className="px-4 py-3 text-gray-600">
-                          {request.email || "-"}
-                        </td>
-                        <td className="px-4 py-3 text-gray-600">
-                          {request.variant_label || "-"}
-                        </td>
-                        <td className="px-4 py-3 text-gray-600">
-                          {request.requested_at
-                            ? new Date(request.requested_at).toLocaleString()
-                            : "-"}
-                        </td>
-                        <td className="px-4 py-3">
-                          <span
-                            className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium capitalize ${statusClasses}`}
-                          >
-                            {status}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            <div className="space-y-3">
+              {reviews.map((review) => (
+                <div
+                  key={review._id}
+                  className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-4"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-3">
+                        <p className="font-semibold text-gray-800">
+                          {review.userName || "Customer"}
+                        </p>
+                        <Rating
+                          value={Number(review.rating || 0)}
+                          precision={0.5}
+                          readOnly
+                          size="small"
+                        />
+                        <span className="rounded-full bg-slate-200 px-2.5 py-1 text-xs font-medium text-slate-700 capitalize">
+                          {review.visibility || "visible"}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-sm text-gray-500">
+                        {[review.userEmail, review.city]
+                          .filter(Boolean)
+                          .join(" • ") || "No extra identity"}
+                      </p>
+                      <p className="mt-2 text-sm text-gray-700">
+                        {review.comment}
+                      </p>
+                    </div>
+                    <Button
+                      size="small"
+                      color="error"
+                      variant="outlined"
+                      onClick={() => handleDeleteReview(review._id)}
+                    >
+                      Delete
+                    </Button>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>

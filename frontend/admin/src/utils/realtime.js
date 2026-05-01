@@ -1,7 +1,7 @@
 import { io } from "socket.io-client";
 import { API_BASE_URL } from "@/utils/api";
 
-const SOCKET_TRANSPORTS = ["polling", "websocket"];
+const SOCKET_TRANSPORTS = ["websocket", "polling"];
 
 const sanitizeBaseUrl = (value) =>
   String(value || "")
@@ -43,6 +43,8 @@ const createSocket = () =>
     autoConnect: false,
     transports: SOCKET_TRANSPORTS,
     withCredentials: true,
+    timeout: 8000,
+    reconnection: true,
   });
 
 export const getAdminSocket = (token) => {

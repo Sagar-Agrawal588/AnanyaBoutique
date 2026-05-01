@@ -6,6 +6,7 @@ const HEALTHY_ONE_GRAM_HOSTS = new Set([
 ]);
 
 const LOCAL_API_FALLBACK = "http://localhost:8000";
+const REQUEST_TIMEOUT_MS = 12000;
 const LOCAL_API_FALLBACKS = [
   "http://localhost:8000",
   "http://localhost:8001",
@@ -155,6 +156,7 @@ export const API_BASE_URL = resolveApiBaseUrl();
 export const axiosClient = axios.create({
   baseURL: API_BASE_URL,
   withCredentials: true,
+  timeout: REQUEST_TIMEOUT_MS,
   headers: {
     "Content-Type": "application/json",
   },
@@ -248,6 +250,7 @@ const executeRequestAcrossBaseUrls = async ({
         method,
         url: normalizePath(url, baseURL),
         data,
+        timeout: REQUEST_TIMEOUT_MS,
         headers: includeStoredToken ? buildHeaders(token, headers) : headers,
         ...(responseType ? { responseType } : {}),
         ...(baseURL !== sanitizeBaseUrl(API_BASE_URL) ? { baseURL } : {}),

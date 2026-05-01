@@ -5,12 +5,7 @@ import {
   fetchCrmWhatsappConfig,
   saveCrmWhatsappConfig,
 } from "@/services/crmApi";
-import {
-  Alert,
-  Button,
-  CircularProgress,
-  TextField,
-} from "@mui/material";
+import { Alert, Button, CircularProgress, TextField } from "@mui/material";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "react-hot-toast";
@@ -37,7 +32,8 @@ const formatDateTime = (value) => {
 };
 
 const toneClassByState = (state = "unknown") => {
-  if (state === "ready") return "border-emerald-200 bg-emerald-50 text-emerald-800";
+  if (state === "ready")
+    return "border-emerald-200 bg-emerald-50 text-emerald-800";
   if (state === "sender_warning")
     return "border-amber-200 bg-amber-50 text-amber-800";
   if (state === "health_check_timeout")
@@ -116,7 +112,14 @@ export default function WhatsappConfigPage() {
   }, [isAuthenticated, loading, router]);
 
   useEffect(() => {
-    if (!isAuthenticated || !token) return;
+    if (!isAuthenticated) return;
+
+    if (!token) {
+      setIsLoading(false);
+      setLoadTimeout(false);
+      setLoadError("Admin session missing. Please sign in again.");
+      return;
+    }
 
     const loadConfig = async () => {
       setIsLoading(true);
@@ -124,14 +127,17 @@ export default function WhatsappConfigPage() {
       setLoadTimeout(false);
 
       // Set a 10 second timeout to prevent indefinite loading
-      const timeoutId = setTimeout(() => {
+      let timeoutId = setTimeout(() => {
         setLoadTimeout(true);
         setIsLoading(false);
       }, 10000);
 
       try {
         const response = await fetchCrmWhatsappConfig(token);
-        clearTimeout(timeoutId);
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          timeoutId = null;
+        }
 
         if (!response?.success) {
           throw new Error(
@@ -157,6 +163,9 @@ export default function WhatsappConfigPage() {
         setLoadError(nextMessage);
         toast.error(nextMessage);
       } finally {
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
         setIsLoading(false);
       }
     };
@@ -233,6 +242,12 @@ export default function WhatsappConfigPage() {
           </div>
         </div>
 
+        {loadError ? (
+          <Alert severity="error" className="rounded-3xl">
+            {loadError}
+          </Alert>
+        ) : null}
+
         {health ? (
           <div
             className={`rounded-3xl border px-5 py-4 text-sm ${toneClassByState(
@@ -242,7 +257,9 @@ export default function WhatsappConfigPage() {
             <p className="font-semibold">
               {prettifyKey(health.state || "needs_check")}
             </p>
-            <p className="mt-1">{health.message || "Health check unavailable."}</p>
+            <p className="mt-1">
+              {health.message || "Health check unavailable."}
+            </p>
           </div>
         ) : null}
 
@@ -254,7 +271,8 @@ export default function WhatsappConfigPage() {
               </div>
             ) : loadTimeout ? (
               <Alert severity="warning" className="mb-4">
-                The configuration is taking longer than expected to load. Please try refreshing the page.
+                The configuration is taking longer than expected to load. Please
+                try refreshing the page.
               </Alert>
             ) : (
               <div className="grid gap-4 md:grid-cols-2">
@@ -373,7 +391,9 @@ export default function WhatsappConfigPage() {
                     key={entry.label}
                     className="flex items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3"
                   >
-                    <span className="text-sm text-slate-700">{entry.label}</span>
+                    <span className="text-sm text-slate-700">
+                      {entry.label}
+                    </span>
                     <span
                       className={`rounded-full px-2.5 py-1 text-xs font-semibold ${sourceBadgeClass(
                         entry.value,
@@ -402,16 +422,23 @@ export default function WhatsappConfigPage() {
                 </div>
               ) : (
                 <div className="mt-4 space-y-3 text-sm text-slate-600">
-                  <Alert severity={summary?.messagingReady ? "success" : "warning"}>
-                    Messaging send: {summary?.messagingReady ? "ready" : "needs config"}
+                  <Alert
+                    severity={summary?.messagingReady ? "success" : "warning"}
+                  >
+                    Messaging send:{" "}
+                    {summary?.messagingReady ? "ready" : "needs config"}
                   </Alert>
                   <Alert
-                    severity={summary?.templateSyncReady ? "success" : "warning"}
+                    severity={
+                      summary?.templateSyncReady ? "success" : "warning"
+                    }
                   >
                     Template sync:{" "}
                     {summary?.templateSyncReady ? "ready" : "needs config"}
                   </Alert>
-                  <Alert severity={summary?.webhookReady ? "success" : "warning"}>
+                  <Alert
+                    severity={summary?.webhookReady ? "success" : "warning"}
+                  >
                     Webhook verification:{" "}
                     {summary?.webhookReady ? "ready" : "needs config"}
                   </Alert>

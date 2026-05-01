@@ -115,11 +115,44 @@ export const getAdminCrmWhatsappTemplates = async (_req, res) => {
 
 export const getAdminCrmWhatsappConfig = async (_req, res) => {
   try {
-    const [config, summary, health] = await Promise.all([
+    const [configResult, summaryResult, healthResult] = await Promise.allSettled([
       getWhatsappRuntimeConfigSnapshot(),
       getWhatsappMessagingConfigSummary(),
       getWhatsappMessagingHealthSnapshot(),
     ]);
+
+    const config =
+      configResult.status === "fulfilled"
+        ? configResult.value
+        : {
+            accessToken: "",
+            phoneNumberId: "",
+            businessAccountId: "",
+            graphApiVersion: "v25.0",
+            webhookVerifyToken: "",
+            appSecret: "",
+            sources: {},
+            updatedAt: null,
+          };
+    const summary =
+      summaryResult.status === "fulfilled"
+        ? summaryResult.value
+        : {
+            messagingReady: false,
+            templateSyncReady: false,
+            webhookReady: false,
+            graphApiVersion: config?.graphApiVersion || "v25.0",
+            missing: [],
+          };
+    const health =
+      healthResult.status === "fulfilled"
+        ? healthResult.value
+        : {
+            ok: false,
+            state: "health_check_failed",
+            message:
+              "Live WhatsApp verification is unavailable right now. Saved config can still be edited.",
+          };
 
     return res.status(200).json({
       error: false,
