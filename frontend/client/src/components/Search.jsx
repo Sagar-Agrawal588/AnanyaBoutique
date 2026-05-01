@@ -7,7 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { IoSearchOutline } from "react-icons/io5";
 
 const Search = ({
-  placeholder = "Weight Gainer Peanut Butter",
+  placeholder = "India's Most Honest Peanut Butter",
   width = "100%",
   onSearch = null,
 }) => {

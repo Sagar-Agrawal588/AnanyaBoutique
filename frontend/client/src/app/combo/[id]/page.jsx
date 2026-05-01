@@ -1,24 +1,33 @@
 "use client";
 
-import DetailPriceBlock from "@/components/productDetail/PriceBlock";
-import ProductDetail from "@/components/productDetail/ProductDetail";
-import DetailRating from "@/components/productDetail/Rating";
-import ProductZoom from "@/components/ProductZoom";
-import QtyBox from "@/components/QtyBox";
+/* eslint-disable @next/next/no-img-element */
+
 import ShareButton from "@/components/ShareButton";
 import { formatPrice } from "@/config/siteConfig";
 import { useCart } from "@/context/CartContext";
+import {
+  mergeCardsWithDefaults,
+  mergeListWithDefaults,
+  mergeTextOverride,
+  normalizeProductPageConfig,
+} from "@/components/productDetail/pageConfig";
 import { trackEvent } from "@/utils/analyticsTracker";
 import { fetchDataFromApi } from "@/utils/api";
 import { getImageUrl } from "@/utils/imageUtils";
 import { sanitizeHTML } from "@/utils/sanitize";
-import { Button } from "@mui/material";
+import { Rating } from "@mui/material";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "react-hot-toast";
+import { FiChevronLeft, FiChevronRight } from "react-icons/fi";
 import { IoMdCart } from "react-icons/io";
-import { MdLocalShipping, MdPolicy, MdVerified } from "react-icons/md";
+import {
+  MdLocalShipping,
+  MdOutlineInventory2,
+  MdOutlineSecurity,
+  MdVerified,
+} from "react-icons/md";
 
 const isObjectId = (value) => /^[0-9a-f]{24}$/i.test(String(value || ""));
 
@@ -26,6 +35,15 @@ const toNumber = (value, fallback = 0) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
 };
+
+const stripHtml = (value) =>
+  String(value || "")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 
 const isImageCandidate = (value) => {
   const normalized = String(value || "").trim();
@@ -39,9 +57,6 @@ const isImageCandidate = (value) => {
     normalized.startsWith("data:image/")
   );
 };
-
-const FALLBACK_COMBO_IMAGE =
-  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='700' height='700' viewBox='0 0 700 700'%3E%3Crect width='700' height='700' fill='%23f3f4f6'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%239ca3af' font-family='Arial,sans-serif' font-size='36'%3ECombo%20Image%3C/text%3E%3C/svg%3E";
 
 const resolveComboGallery = (combo) => {
   const itemImages = (Array.isArray(combo?.items) ? combo.items : [])
@@ -58,7 +73,7 @@ const resolveComboGallery = (combo) => {
     ...itemImages,
   ].filter((entry) => isImageCandidate(entry));
 
-  return [...new Set(candidates)].slice(0, 10);
+  return [...new Set(candidates)].slice(0, 10).map((entry) => getImageUrl(entry));
 };
 
 const formatComboVariantLabel = (item = {}) => {
@@ -81,7 +96,103 @@ const formatComboVariantLabel = (item = {}) => {
   return variantSku;
 };
 
-const ComboDetailPage = () => {
+const FALLBACK_COMBO_IMAGE =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='700' height='700' viewBox='0 0 700 700'%3E%3Crect width='700' height='700' fill='%23f3f4f6'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%239ca3af' font-family='Arial,sans-serif' font-size='36'%3ECombo%20Image%3C/text%3E%3C/svg%3E";
+
+const buildDescriptionParagraphs = (combo) => {
+  const descriptionText = stripHtml(
+    combo?.description || combo?.shortDescription || "",
+  );
+
+  if (descriptionText) {
+    const sentences = descriptionText
+      .split(/(?<=[.!?])\s+/)
+      .map((part) => part.trim())
+      .filter(Boolean);
+
+    if (sentences.length <= 2) {
+      return [descriptionText];
+    }
+
+    const grouped = [];
+    for (let index = 0; index < sentences.length; index += 2) {
+      grouped.push(sentences.slice(index, index + 2).join(" "));
+    }
+    return grouped.slice(0, 3);
+  }
+
+  const name = String(combo?.name || "This combo").trim();
+  return [
+    `${name} is arranged to keep the key bundle value, included products, and delivery context close to the purchase decision.`,
+    "The refreshed layout gives combo bundles the same calmer editorial structure used on product pages while still keeping the buying path direct.",
+  ];
+};
+
+const getHeroStatusLabel = (combo, reviewCount) => {
+  if (combo?.isBestSeller) return "Best seller";
+  if (String(combo?.demandStatus || "").trim().toUpperCase() === "HIGH") {
+    return "High demand";
+  }
+  if (reviewCount > 0) return "Top rated";
+  return "Combo deal";
+};
+
+const buildDetailCards = ({ combo, includedCount, reviewCount, availableStock }) => [
+  {
+    label: "Category",
+    value: combo?.category || combo?.categoryName || "Combo Deals",
+    helper: "Live combo taxonomy",
+  },
+  {
+    label: "Items Included",
+    value: `${includedCount}`,
+    helper: "Products bundled in this deal",
+  },
+  {
+    label: "Customer Reviews",
+    value: `${reviewCount}`,
+    helper: "Visible social proof",
+  },
+  {
+    label: "Availability",
+    value: availableStock > 0 ? "Bundle available" : "Currently unavailable",
+    helper: "Bundle stock signal",
+  },
+];
+
+const buildSnapshotItems = ({ combo, availableStock, savings, includedLabels }) => {
+  const items = [];
+
+  items.push(`Category: ${combo?.category || combo?.categoryName || "Combo Deals"}`);
+  if (combo?.sku) items.push(`SKU: ${combo.sku}`);
+  items.push(`Availability: ${availableStock > 0 ? "Bundle available" : "Currently unavailable"}`);
+  if (includedLabels.length > 0) {
+    items.push(`Included: ${includedLabels.slice(0, 3).join(", ")}`);
+  }
+  if (savings > 0) {
+    items.push(`Savings: ${formatPrice(savings)}`);
+  }
+
+  return items;
+};
+
+const buildShippingPoints = () => [
+  "Standard delivery typically lands within 3-5 business days after dispatch.",
+  "Bundle packaging is prepared to keep every included product protected in transit.",
+  "Checkout runs through secure payment handling with verified order tracking.",
+];
+
+const buildStaticDeliveryMessage = (pincode) => {
+  const normalized = String(pincode || "")
+    .replace(/\D/g, "")
+    .slice(0, 6);
+
+  if (!normalized) return "Enter a 6-digit pincode to preview delivery timing.";
+  if (!/^[1-9][0-9]{5}$/.test(normalized)) return "Enter Right Pincode";
+  return `Estimated delivery to ${normalized}: 2-4 business days.`;
+};
+
+export default function ComboDetailPage() {
   const { id } = useParams();
   const routeId = String(id || "").trim();
   const decodedRouteId = routeId ? decodeURIComponent(routeId) : "";
@@ -94,44 +205,8 @@ const ComboDetailPage = () => {
   const [quantity, setQuantity] = useState(1);
   const [isAdding, setIsAdding] = useState(false);
   const [activeTab, setActiveTab] = useState("description");
-
-  const galleryImages = useMemo(() => resolveComboGallery(combo), [combo]);
-  const comboImage = galleryImages[0] || FALLBACK_COMBO_IMAGE;
-
-  const originalTotal = toNumber(
-    combo?.originalPrice ?? combo?.originalTotal,
-    0,
-  );
-  const comboPrice = toNumber(
-    combo?.price ?? combo?.comboPrice ?? combo?.suggestedPrice,
-    0,
-  );
-  const discountPercent =
-    originalTotal > 0
-      ? Math.round(((originalTotal - comboPrice) / originalTotal) * 100)
-      : Math.round(toNumber(combo?.discountPercentage, 0));
-  const comboId = combo?._id || combo?.id || "";
-  const availableStock = toNumber(
-    combo?.availableStock ?? combo?.stockQuantity,
-    0,
-  );
-  const isOutOfStock = availableStock <= 0;
-  const maxPerOrder = toNumber(combo?.maxPerOrder, 0);
-  const maxQty =
-    maxPerOrder > 0
-      ? Math.min(maxPerOrder, Math.max(availableStock, 1))
-      : Math.max(availableStock, 1);
-  const starRating = toNumber(combo?.adminStarRating ?? combo?.rating, 0);
-  const reviewCount = toNumber(combo?.reviewCount, 0);
-  const outOfStockItems = useMemo(() => {
-    if (Array.isArray(combo?.outOfStockItems)) {
-      return combo.outOfStockItems;
-    }
-    if (Array.isArray(combo?.availability?.outOfStockItems)) {
-      return combo.availability.outOfStockItems;
-    }
-    return [];
-  }, [combo]);
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [deliveryPincode, setDeliveryPincode] = useState("");
 
   useEffect(() => {
     if (!routeId) return;
@@ -140,6 +215,7 @@ const ComboDetailPage = () => {
       setLoading(true);
       setError("");
       setCombo(null);
+
       try {
         const lookupChain = isObjectId(decodedRouteId)
           ? [`/api/combos/${decodedRouteId}`]
@@ -163,17 +239,13 @@ const ComboDetailPage = () => {
         }
 
         setCombo(payload);
-        try {
-          trackEvent("combo_view", {
-            comboId: String(payload?._id || payload?.id || ""),
-            comboName: payload?.name || "",
-            comboSlug: payload?.slug || "",
-            comboType: payload?.comboType || "",
-            sectionName: "combo_detail",
-          });
-        } catch {
-          // non-blocking analytics
-        }
+        trackEvent("combo_view", {
+          comboId: String(payload?._id || payload?.id || ""),
+          comboName: payload?.name || "",
+          comboSlug: payload?.slug || "",
+          comboType: payload?.comboType || "",
+          sectionName: "combo_detail",
+        });
       } catch {
         setError("Unable to load combo details.");
       } finally {
@@ -182,18 +254,124 @@ const ComboDetailPage = () => {
     };
 
     loadCombo();
-  }, [routeId, decodedRouteId]);
+  }, [decodedRouteId, routeId]);
+
+  const galleryImages = useMemo(() => resolveComboGallery(combo), [combo]);
+  const images = galleryImages.length > 0 ? galleryImages : [FALLBACK_COMBO_IMAGE];
+  const activeImage = images[activeImageIndex] || images[0] || FALLBACK_COMBO_IMAGE;
+
+  const originalTotal = toNumber(combo?.originalPrice ?? combo?.originalTotal, 0);
+  const comboPrice = toNumber(
+    combo?.price ?? combo?.comboPrice ?? combo?.suggestedPrice,
+    0,
+  );
+  const savings = Math.max(originalTotal - comboPrice, 0);
+  const discountPercent =
+    originalTotal > 0
+      ? Math.round(((originalTotal - comboPrice) / originalTotal) * 100)
+      : Math.round(toNumber(combo?.discountPercentage, 0));
+  const comboId = combo?._id || combo?.id || "";
+  const availableStock = toNumber(combo?.availableStock ?? combo?.stockQuantity, 0);
+  const isOutOfStock = availableStock <= 0;
+  const maxPerOrder = toNumber(combo?.maxPerOrder, 0);
+  const maxQty =
+    maxPerOrder > 0
+      ? Math.min(maxPerOrder, Math.max(availableStock, 1))
+      : Math.max(availableStock, 1);
+  const starRating = toNumber(combo?.adminStarRating ?? combo?.rating, 0);
+  const reviewCount = toNumber(combo?.reviewCount, 0);
+  const outOfStockItems = useMemo(() => {
+    if (Array.isArray(combo?.outOfStockItems)) return combo.outOfStockItems;
+    if (Array.isArray(combo?.availability?.outOfStockItems)) {
+      return combo.availability.outOfStockItems;
+    }
+    return [];
+  }, [combo]);
+  const includedItems = Array.isArray(combo?.items) ? combo.items : [];
+  const includedLabels = includedItems
+    .map((item) => String(item?.productTitle || "").trim())
+    .filter(Boolean);
+
+  const pageConfig = normalizeProductPageConfig(combo?.productPage);
+  const defaultDescriptionParagraphs = buildDescriptionParagraphs(combo);
+  const descriptionParagraphs = mergeListWithDefaults(
+    pageConfig?.descriptionSection?.extraParagraphs || [],
+    defaultDescriptionParagraphs,
+  );
+  const detailCards = mergeCardsWithDefaults(
+    buildDetailCards({
+      combo,
+      includedCount: includedItems.length,
+      reviewCount,
+      availableStock,
+    }),
+    pageConfig?.detailsSection?.cards || [],
+  );
+  const snapshotItems = mergeListWithDefaults(
+    pageConfig?.detailsSection?.snapshotItems || [],
+    buildSnapshotItems({
+      combo,
+      availableStock,
+      savings,
+      includedLabels,
+    }),
+  );
+  const shippingPoints = mergeListWithDefaults(
+    pageConfig?.shippingSection?.points || [],
+    buildShippingPoints(),
+  );
+  const heroStatusLabel = getHeroStatusLabel(combo, reviewCount);
+
+  const tabs = [
+    pageConfig?.tabs?.showDescription !== false
+      ? {
+          id: "description",
+          label: mergeTextOverride(pageConfig?.tabs?.descriptionLabel, "Description"),
+        }
+      : null,
+    pageConfig?.tabs?.showDetails !== false
+      ? {
+          id: "details",
+          label: mergeTextOverride(pageConfig?.tabs?.detailsLabel, "Product Details"),
+        }
+      : null,
+    pageConfig?.tabs?.showShipping !== false
+      ? {
+          id: "shipping",
+          label: mergeTextOverride(pageConfig?.tabs?.shippingLabel, "Shipping & Trust"),
+        }
+      : null,
+  ].filter(Boolean);
 
   useEffect(() => {
-    if (comboId) {
-      setQuantity(1);
+    if (activeImageIndex >= images.length) {
+      setActiveImageIndex(0);
     }
+  }, [activeImageIndex, images.length]);
+
+  useEffect(() => {
+    setQuantity(1);
+    setActiveImageIndex(0);
+    setActiveTab("description");
+    setDeliveryPincode("");
   }, [comboId]);
+
+  useEffect(() => {
+    if (quantity > maxQty) {
+      setQuantity(maxQty);
+    }
+  }, [maxQty, quantity]);
+
+  useEffect(() => {
+    if (tabs.length === 0) return;
+    if (!tabs.some((tab) => tab.id === activeTab)) {
+      setActiveTab(tabs[0].id);
+    }
+  }, [activeTab, tabs]);
 
   const handleAddCombo = async () => {
     if (!combo || isAdding) return;
-    const safeItems = Array.isArray(combo?.items) ? combo.items : [];
-    if (safeItems.length === 0) {
+    if (includedItems.length === 0) {
       toast.error("Combo items are unavailable right now");
       return;
     }
@@ -201,6 +379,7 @@ const ComboDetailPage = () => {
       toast.error("One of the items in this combo is out of stock");
       return;
     }
+
     setIsAdding(true);
     try {
       const result = await addComboToCart(combo, quantity);
@@ -222,343 +401,13 @@ const ComboDetailPage = () => {
         toast.error(result?.message || "Unable to proceed to checkout");
         return;
       }
-      if (result?.success !== false) {
-        router.push("/checkout");
-      }
+      router.push("/checkout");
     } catch {
       toast.error("Unable to proceed to checkout");
     } finally {
       setIsAdding(false);
     }
   };
-
-  const breadcrumb = (
-    <nav className="flex items-center gap-2 text-xs sm:text-sm text-gray-500 mb-4 sm:mb-6 overflow-x-auto whitespace-nowrap pb-2">
-      <Link href="/" className="hover:text-primary">
-        Home
-      </Link>
-      <span>/</span>
-      <Link href="/combo-deals" className="hover:text-primary">
-        Combo Deals
-      </Link>
-      <span>/</span>
-      <span className="text-gray-800 font-medium truncate max-w-50">
-        {combo?.name || "Combo"}
-      </span>
-    </nav>
-  );
-
-  const hero = (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8">
-      <div className="relative">
-        <div className="relative">
-          {discountPercent > 0 && (
-            <span className="absolute top-4 left-4 bg-red-500 text-white text-sm font-bold px-3 py-1 rounded-full z-10">
-              {discountPercent}% OFF
-            </span>
-          )}
-          <div className="absolute top-4 right-4 z-20">
-            <ShareButton
-              productId={comboId}
-              productName={combo?.name || "Combo Deal"}
-              productDetails={{
-                brand: combo?.brand,
-                price: comboPrice,
-                originalPrice: originalTotal,
-                sku: combo?.sku,
-              }}
-              variant="icon"
-              showLabel={false}
-            />
-          </div>
-          <ProductZoom
-            images={galleryImages.length > 0 ? galleryImages : [comboImage]}
-            productId={String(comboId || "")}
-            zoomType="combo"
-          />
-        </div>
-      </div>
-
-      <div className="flex flex-col">
-        {combo?.brand ? (
-          <p className="text-xs font-bold uppercase tracking-wider text-primary mb-2">
-            {combo.brand}
-          </p>
-        ) : (
-          <p className="text-xs font-bold uppercase tracking-wider text-primary mb-2">
-            Combo Deal
-          </p>
-        )}
-
-        <h1 className="text-xl sm:text-2xl md:text-4xl font-semibold tracking-tight text-gray-900 mb-3">
-          {combo?.name || "Combo Deal"}
-        </h1>
-
-        <DetailRating value={starRating} reviewCount={reviewCount} />
-
-        <DetailPriceBlock
-          finalPrice={comboPrice}
-          originalPrice={originalTotal}
-          discount={discountPercent}
-        />
-
-        {combo?.shortDescription && (
-          <p className="text-gray-600 mb-6 leading-relaxed">
-            {combo.shortDescription}
-          </p>
-        )}
-
-        <div className="flex flex-wrap items-center gap-4 mb-6">
-          <div className="flex items-center gap-3">
-            <span className="text-gray-700 font-medium">Qty:</span>
-            <div className="flex flex-col">
-              <QtyBox value={quantity} onChange={setQuantity} max={maxQty} />
-              {availableStock === 0 ? (
-                <span className="text-xs text-red-500 mt-1">Out of stock</span>
-              ) : null}
-            </div>
-          </div>
-
-          <Button
-            variant="contained"
-            size="large"
-            startIcon={<IoMdCart />}
-            onClick={handleAddCombo}
-            disabled={isOutOfStock || isAdding}
-            sx={{
-              backgroundColor: "var(--primary)",
-              "&:hover": { backgroundColor: "var(--flavor-hover)" },
-              padding: "12px 32px",
-              borderRadius: "14px",
-              fontWeight: "bold",
-              textTransform: "none",
-              fontSize: "16px",
-              boxShadow: "0 16px 30px -20px rgba(var(--flavor-badge),0.85)",
-            }}
-          >
-            {isAdding ? "Adding..." : "Add to Cart"}
-          </Button>
-
-          <Button
-            variant="contained"
-            size="large"
-            onClick={handleBuyNow}
-            disabled={isOutOfStock || isAdding}
-            sx={{
-              backgroundColor: "#dc2626",
-              color: "#fff",
-              "&:hover": { backgroundColor: "#b91c1c" },
-              padding: "12px 20px",
-              borderRadius: "14px",
-              textTransform: "none",
-              fontWeight: 600,
-              boxShadow: "0 16px 30px -20px rgba(220,38,38,0.7)",
-            }}
-          >
-            Buy Now
-          </Button>
-
-        </div>
-
-        {isOutOfStock && (
-          <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 mb-6">
-            <p>
-              Out of stock because one product in this combo is unavailable.
-            </p>
-            {outOfStockItems.slice(0, 3).map((item, index) => (
-              <p key={`${item.productId}-${index}`} className="text-xs mt-1">
-                {item?.productTitle || "Product"}
-                {item?.variantName ? ` ${item.variantName}` : ""} is currently
-                out of stock.
-              </p>
-            ))}
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 py-6 border-t border-b border-gray-100">
-          <div className="flex items-center gap-3">
-            <MdLocalShipping className="text-2xl text-primary" />
-            <div>
-              <p className="font-semibold text-gray-800 text-sm">
-                Free Delivery
-              </p>
-              <p className="text-xs text-gray-500">
-                On all orders (₹0 shipping)
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <MdVerified className="text-2xl text-primary" />
-            <div>
-              <p className="font-semibold text-gray-800 text-sm">
-                Quality Products
-              </p>
-              <p className="text-xs text-gray-500">Fresh & authentic items</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <MdPolicy className="text-2xl text-primary" />
-            <div>
-              <p className="font-semibold text-gray-800 text-sm">
-                Secure Payment
-              </p>
-              <p className="text-xs text-gray-500">100% secure checkout</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-6 text-sm text-gray-500">
-          {combo?.sku ? (
-            <p>
-              <span className="font-medium">SKU:</span> {combo.sku}
-            </p>
-          ) : null}
-          <p>
-            <span className="font-medium">Category:</span>{" "}
-            <Link href="/combo-deals" className="text-primary hover:underline">
-              {combo?.category || combo?.categoryName || "Combo Deals"}
-            </Link>
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-
-  const tabs = (
-    <>
-      <div className="flex border-b border-gray-200">
-        {["description", "reviews", "shipping"].map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`px-6 py-3 font-semibold text-sm capitalize transition-colors ${
-              activeTab === tab
-                ? "text-primary border-b-2 border-primary"
-                : "text-gray-500 hover:text-gray-700"
-            }`}
-          >
-            {tab === "reviews" ? `Reviews (${reviewCount})` : tab}
-          </button>
-        ))}
-      </div>
-
-      <div className="py-6">
-        {activeTab === "description" && (
-          <div className="prose max-w-none text-gray-600">
-            {combo?.description ? (
-              <div
-                dangerouslySetInnerHTML={{
-                  __html: sanitizeHTML(combo.description),
-                }}
-              />
-            ) : (
-              <p>{combo?.shortDescription || "No description available."}</p>
-            )}
-          </div>
-        )}
-
-        {activeTab === "reviews" && (
-          <div>
-            <p className="text-gray-500">
-              Customer reviews for this combo will appear here.
-            </p>
-          </div>
-        )}
-
-        {activeTab === "shipping" && (
-          <div className="text-gray-600 space-y-4">
-            <p>
-              <strong>Delivery:</strong> Standard delivery within 3-5 business
-              days.
-            </p>
-            <p>
-              <strong>Shipping Charges:</strong> ₹0 on all orders.
-            </p>
-            <p>
-              <strong>Packaging:</strong> Eco-friendly packaging to ensure
-              product safety.
-            </p>
-          </div>
-        )}
-      </div>
-    </>
-  );
-
-  const sections = (
-    <div className="mt-12" data-track-section="combo_included_products">
-      <div className="flex items-center justify-between gap-4 mb-6">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">
-            Products Included in this Combo
-          </h2>
-          <p className="text-sm text-gray-500">
-            Everything included in this combo pack.
-          </p>
-        </div>
-        <Link
-          href="/combo-deals"
-          className="text-sm text-primary font-semibold"
-        >
-          View all combos
-        </Link>
-      </div>
-
-      {Array.isArray(combo?.items) && combo.items.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {combo.items.map((item, index) => {
-            const itemImage = item?.image || FALLBACK_COMBO_IMAGE;
-            return (
-              <div
-                key={`${item.productId || "combo-item"}-${index}`}
-                className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm"
-              >
-                <div className="flex gap-4">
-                  <div className="w-16 h-16 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-center p-2 shrink-0">
-                    <img
-                      src={getImageUrl(itemImage)}
-                      alt={item?.productTitle || "Product"}
-                      className="w-full h-full object-contain"
-                    />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <Link
-                      href={`/product/${item?.productId || ""}`}
-                      className="text-sm font-semibold text-gray-900 hover:text-primary"
-                    >
-                      {item?.productTitle || "Product"}
-                    </Link>
-                    {formatComboVariantLabel(item) ? (
-                      <p className="text-xs text-gray-500 mt-1">
-                        Variant: {formatComboVariantLabel(item)}
-                      </p>
-                    ) : null}
-                    <p className="text-xs text-gray-500 mt-1">
-                      Qty: {item?.quantity || 1}
-                    </p>
-                    <div className="mt-2 flex items-center gap-2">
-                      {toNumber(item?.originalPrice, 0) >
-                      toNumber(item?.price, 0) ? (
-                        <span className="text-xs text-gray-400 line-through">
-                          {formatPrice(toNumber(item?.originalPrice, 0))}
-                        </span>
-                      ) : null}
-                      <span className="text-sm font-semibold text-gray-900">
-                        {formatPrice(toNumber(item?.price, 0))}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      ) : (
-        <p className="text-sm text-gray-500">
-          Combo items are not available right now.
-        </p>
-      )}
-    </div>
-  );
 
   if (loading) {
     return (
@@ -577,13 +426,787 @@ const ComboDetailPage = () => {
   }
 
   return (
-    <ProductDetail
-      breadcrumb={breadcrumb}
-      hero={hero}
-      tabs={tabs}
-      sections={sections}
-    />
-  );
-};
+    <section
+      className="product-page-shell min-h-screen bg-[linear-gradient(180deg,#fff8f2_0%,#f7efe8_100%)] py-6 sm:py-8"
+      style={{ fontFamily: "'Sora', 'Segoe UI', sans-serif" }}
+    >
+      <div className="mx-auto w-full max-w-[1200px] px-3 sm:px-4">
+        <nav className="mb-5 flex items-center gap-2 overflow-x-auto whitespace-nowrap text-xs text-[#7b6355] sm:text-sm">
+          <Link href="/" className="hover:text-[var(--primary)]">
+            Home
+          </Link>
+          <span>/</span>
+          <Link href="/combo-deals" className="hover:text-[var(--primary)]">
+            Combo Deals
+          </Link>
+          <span>/</span>
+          <span className="font-medium text-[#3a261c]">
+            {combo?.name || "Combo"}
+          </span>
+        </nav>
 
-export default ComboDetailPage;
+        <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_500px] xl:items-start">
+          <div className="product-reveal rounded-[36px] border border-[#ecd8c9] bg-[linear-gradient(180deg,rgba(255,255,255,0.9)_0%,rgba(249,239,229,0.92)_100%)] p-4 shadow-[0_34px_90px_-55px_rgba(44,29,20,0.35)] sm:p-6">
+            <div className="flex items-center justify-between gap-4">
+              <span className="rounded-full border border-[#ead7ca] bg-white/70 px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-[#7b6355]">
+                Product Gallery
+              </span>
+              <div className="flex items-center gap-2">
+                {images.length > 1 ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setActiveImageIndex((previous) =>
+                          previous === 0 ? images.length - 1 : previous - 1,
+                        )
+                      }
+                      className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-[#6c4a3a] shadow-sm"
+                      aria-label="Previous combo image"
+                    >
+                      <FiChevronLeft />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setActiveImageIndex((previous) =>
+                          previous === images.length - 1 ? 0 : previous + 1,
+                        )
+                      }
+                      className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-[#6c4a3a] shadow-sm"
+                      aria-label="Next combo image"
+                    >
+                      <FiChevronRight />
+                    </button>
+                  </>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="relative mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-stretch">
+              <div className="product-image-stage relative flex min-h-[480px] items-center justify-center overflow-hidden rounded-[30px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.92)_0%,rgba(244,236,229,0.88)_100%)] p-6 lg:min-h-[540px]">
+                {discountPercent > 0 ? (
+                  <span className="absolute left-5 top-5 z-10 rounded-full bg-[#ef4444] px-3 py-1 text-xs font-bold text-white">
+                    {discountPercent}% OFF
+                  </span>
+                ) : null}
+                <img
+                  src={activeImage}
+                  alt={combo?.name || "Combo image"}
+                  className="max-h-[420px] w-full object-contain"
+                />
+              </div>
+
+              {pageConfig?.hero?.showStoryCard !== false ? (
+                <div className="product-story-card rounded-[30px] bg-[linear-gradient(180deg,#6a4331_0%,#8c624d_100%)] p-6 text-white shadow-[0_28px_60px_-40px_rgba(44,29,20,0.8)]">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#f6dfcf]">
+                    {mergeTextOverride(pageConfig?.hero?.storyEyebrow, "Product Story")}
+                  </p>
+                  <h2 className="mt-4 text-[32px] font-semibold leading-[1.12]">
+                    {mergeTextOverride(
+                      pageConfig?.hero?.storyTitle,
+                      "A stronger bundle story with the key actions close to the decision point.",
+                    )}
+                  </h2>
+                  <p className="mt-5 text-[15px] leading-8 text-[#f7ebdf]">
+                    {mergeTextOverride(
+                      pageConfig?.hero?.storyDescription,
+                      "Use the combo story card to explain why the bundle exists, what makes the pairings useful, and why this storefront layout should feel more intentional.",
+                    )}
+                  </p>
+
+                  <div className="mt-6 space-y-3">
+                    {detailCards.slice(0, 2).map((card, index) => (
+                      <div
+                        key={`story-card-${index}`}
+                        className="rounded-[22px] border border-white/12 bg-white/12 p-4"
+                      >
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#f3d9c7]">
+                          {card.label}
+                        </p>
+                        <p className="mt-2 text-[18px] font-semibold text-white">
+                          {card.value}
+                        </p>
+                        <p className="mt-1 text-sm text-[#f7ebdf]">{card.helper}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            {images.length > 1 ? (
+              <div className="mt-6 flex flex-wrap gap-3">
+                {images.map((image, index) => (
+                  <button
+                    key={`${image}-${index}`}
+                    type="button"
+                    onClick={() => setActiveImageIndex(index)}
+                    className={`h-[98px] w-[98px] overflow-hidden rounded-[22px] border bg-white p-2 shadow-sm transition ${
+                      activeImageIndex === index
+                        ? "border-[#6a4331] ring-1 ring-[#6a4331]"
+                        : "border-[#ead7ca]"
+                    }`}
+                  >
+                    <img
+                      src={image}
+                      alt={`${combo?.name || "Combo"} ${index + 1}`}
+                      className="h-full w-full object-contain"
+                    />
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="product-reveal product-reveal-delay-1 rounded-[36px] border border-[#ecd8c9] bg-white/92 p-6 shadow-[0_34px_90px_-55px_rgba(44,29,20,0.35)] sm:p-8 xl:sticky xl:top-[calc(var(--header-height,80px)+20px)]">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#7b6355]">
+                  {combo?.brand || "Combo Deal"}
+                </p>
+                <h1 className="mt-3 text-[28px] font-semibold leading-[1.08] text-[#24150f] sm:text-[42px]">
+                  {combo?.name || "Combo Deal"}
+                </h1>
+              </div>
+              <ShareButton
+                productId={comboId}
+                productName={combo?.name || "Combo Deal"}
+                productDetails={{
+                  brand: combo?.brand,
+                  price: comboPrice,
+                  originalPrice: originalTotal,
+                  sku: combo?.sku,
+                }}
+                variant="icon"
+                showLabel={false}
+              />
+            </div>
+
+            <div className="mt-5 flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-2 rounded-full border border-[#ecd8c9] bg-[#fbf7f2] px-4 py-2">
+                <Rating value={Math.max(starRating, reviewCount > 0 ? starRating : 5)} readOnly size="small" />
+                <span className="text-sm text-[#4b392f]">
+                  {reviewCount > 0
+                    ? `${reviewCount} review${reviewCount === 1 ? "" : "s"}`
+                    : "No reviews yet"}
+                </span>
+              </div>
+              <div className="rounded-full border border-[#ecd8c9] bg-[#fbf7f2] px-4 py-2 text-sm font-medium text-[#6c4a3a]">
+                {heroStatusLabel}
+              </div>
+            </div>
+
+            <p className="mt-5 text-lg leading-8 text-[#6d584a]">
+              {combo?.shortDescription ||
+                "A curated bundle with stronger pricing context, included item clarity, and a cleaner path to checkout."}
+            </p>
+
+            <div className="mt-6 flex flex-wrap items-center gap-3">
+              <span className="text-[42px] font-semibold tracking-tight text-[#24150f]">
+                {formatPrice(comboPrice)}
+              </span>
+              {originalTotal > comboPrice ? (
+                <span className="text-2xl text-[#a08d80] line-through">
+                  {formatPrice(originalTotal)}
+                </span>
+              ) : null}
+              {savings > 0 ? (
+                <span className="rounded-full bg-[#6a4331] px-4 py-2 text-sm font-semibold text-white">
+                  Save {formatPrice(savings)}
+                </span>
+              ) : null}
+            </div>
+
+            <div className="mt-8">
+              <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#7b6355]">
+                Included Products
+              </p>
+              <div className="mt-4 flex flex-wrap gap-3">
+                {includedItems.length > 0 ? (
+                  includedItems.map((item, index) => (
+                    <div
+                      key={`${item?.productId || "combo-item"}-${index}`}
+                      className="rounded-full border border-[#e4d0c3] bg-[#fbf7f2] px-4 py-2 text-sm font-medium text-[#4b392f]"
+                    >
+                      {item?.productTitle || "Product"}
+                    </div>
+                  ))
+                ) : (
+                  <div className="rounded-full border border-[#e4d0c3] bg-[#fbf7f2] px-4 py-2 text-sm text-[#6d584a]">
+                    Combo items unavailable
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className={`mt-8 grid gap-4 ${pageConfig?.hero?.showDeliveryPreview !== false ? "xl:grid-cols-2" : ""}`}>
+              {pageConfig?.hero?.showDeliveryPreview !== false ? (
+                <div className="rounded-[28px] border border-[#e3d4c9] bg-[#fbf7f2] p-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#7b6355]">
+                      Delivery Preview
+                    </p>
+                    <span className="text-xs font-medium text-[#5d4b41]">
+                      {deliveryPincode.length === 6 ? "Ready" : "Optional"}
+                    </span>
+                  </div>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={6}
+                    value={deliveryPincode}
+                    onChange={(event) =>
+                      setDeliveryPincode(
+                        event.target.value.replace(/\D/g, "").slice(0, 6),
+                      )
+                    }
+                    placeholder="Enter pincode"
+                    className="product-delivery-input mt-4 h-14 w-full rounded-2xl border border-[#d8c6bb] bg-white px-4 text-base text-[#24150f] outline-none transition"
+                  />
+                  <p
+                    className={`mt-3 text-sm ${
+                      buildStaticDeliveryMessage(deliveryPincode) === "Enter Right Pincode"
+                        ? "font-semibold text-[#b42318]"
+                        : "text-[#5d4b41]"
+                    }`}
+                  >
+                    {buildStaticDeliveryMessage(deliveryPincode)}
+                  </p>
+                </div>
+              ) : null}
+
+              <div className="rounded-[28px] border border-[#e3d4c9] bg-[#fbf7f2] p-5">
+                <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#7b6355]">
+                  Quantity
+                </p>
+                <div className="mt-4 flex items-center justify-between rounded-[22px] border border-[#e4d0c3] bg-white px-4 py-3">
+                  <button
+                    type="button"
+                    onClick={() => setQuantity((current) => Math.max(current - 1, 1))}
+                    className="product-qty-action flex h-11 w-11 items-center justify-center rounded-full bg-[#e9ddd4] text-lg font-semibold text-[#6a4331]"
+                  >
+                    -
+                  </button>
+                  <span className="text-lg font-semibold text-[#24150f]">{quantity}</span>
+                  <button
+                    type="button"
+                    onClick={() => setQuantity((current) => Math.min(current + 1, maxQty))}
+                    className="product-qty-action flex h-11 w-11 items-center justify-center rounded-full bg-[#e9ddd4] text-lg font-semibold text-[#6a4331]"
+                  >
+                    +
+                  </button>
+                </div>
+                <p className="mt-4 text-xs font-semibold uppercase tracking-[0.16em] text-[#9a877a]">
+                  SKU
+                </p>
+                <p className="mt-1 text-base font-semibold text-[#4b392f]">
+                  {combo?.sku || "COMBO"}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+              <button
+                type="button"
+                onClick={handleAddCombo}
+                disabled={isOutOfStock || isAdding}
+                className="flex flex-1 items-center justify-center gap-3 rounded-[22px] border border-[#6a4331] px-6 py-4 text-base font-semibold text-[#6a4331] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <IoMdCart className="text-xl" />
+                {isAdding ? "Adding..." : "Add to Cart"}
+              </button>
+              <button
+                type="button"
+                onClick={handleBuyNow}
+                disabled={isOutOfStock || isAdding}
+                className="product-cta-primary flex-1 rounded-[22px] bg-[#6a4331] px-6 py-4 text-base font-semibold text-white transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Buy Now
+              </button>
+            </div>
+
+            <div className="mt-8 grid gap-4 sm:grid-cols-2">
+              <div className="rounded-[24px] border border-[#ead7ca] bg-[#fbf7f2] p-5">
+                <div className="flex items-start gap-3">
+                  <span className="product-trust-icon mt-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-white">
+                    <MdLocalShipping className="text-xl" />
+                  </span>
+                  <div>
+                    <p className="text-[15px] font-semibold text-[#24150f]">
+                      Free Delivery
+                    </p>
+                    <p className="mt-1 text-sm leading-6 text-[#6d584a]">
+                      Stronger utility near the CTA block.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="rounded-[24px] border border-[#ead7ca] bg-[#fbf7f2] p-5">
+                <div className="flex items-start gap-3">
+                  <span className="product-trust-icon mt-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-white">
+                    <MdOutlineSecurity className="text-xl" />
+                  </span>
+                  <div>
+                    <p className="text-[15px] font-semibold text-[#24150f]">
+                      Secure Payment
+                    </p>
+                    <p className="mt-1 text-sm leading-6 text-[#6d584a]">
+                      Checkout trust signal stays visible.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="rounded-[24px] border border-[#ead7ca] bg-[#fbf7f2] p-5">
+                <div className="flex items-start gap-3">
+                  <span className="product-trust-icon mt-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-white">
+                    <MdVerified className="text-xl" />
+                  </span>
+                  <div>
+                    <p className="text-[15px] font-semibold text-[#24150f]">
+                      Authentic Product
+                    </p>
+                    <p className="mt-1 text-sm leading-6 text-[#6d584a]">
+                      Premium surface with useful proof points.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="rounded-[24px] border border-[#ead7ca] bg-[#fbf7f2] p-5">
+                <div className="flex items-start gap-3">
+                  <span className="product-trust-icon mt-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-white">
+                    <MdOutlineInventory2 className="text-xl" />
+                  </span>
+                  <div>
+                    <p className="text-[15px] font-semibold text-[#24150f]">
+                      Clear Inventory
+                    </p>
+                    <p className="mt-1 text-sm leading-6 text-[#6d584a]">
+                      Bundle-aware stock display for better decisions.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {isOutOfStock ? (
+              <div className="mt-6 rounded-[24px] border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                <p>Out of stock because one product in this combo is unavailable.</p>
+                {outOfStockItems.slice(0, 3).map((item, index) => (
+                  <p key={`${item?.productId || "oos"}-${index}`} className="mt-1 text-xs">
+                    {item?.productTitle || "Product"}
+                    {item?.variantName ? ` ${item.variantName}` : ""} is currently out of stock.
+                  </p>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        {pageConfig?.hero?.showInsightCards !== false ? (
+          <div className="product-reveal product-reveal-delay-2 mt-12 grid gap-4 xl:grid-cols-3">
+            <div className="rounded-[30px] border border-[#e1cdbf] bg-white/88 p-6 shadow-[0_34px_90px_-55px_rgba(44,29,20,0.28)] backdrop-blur">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#7b6355]">
+                {mergeTextOverride(pageConfig?.hero?.priceCardEyebrow, "Price Focus")}
+              </p>
+              <p className="mt-4 text-[18px] font-semibold leading-8 text-[#24150f]">
+                {comboPrice > 0 ? formatPrice(comboPrice) : "Bundle pricing"}
+              </p>
+              <p className="mt-3 text-sm leading-7 text-[#5d4b41]">
+                {mergeTextOverride(
+                  pageConfig?.hero?.priceCardDescription,
+                  "Bundle pricing is placed closer to the story and CTA so the value proposition stays easy to scan.",
+                )}
+              </p>
+            </div>
+            <div className="rounded-[30px] border border-[#e1cdbf] bg-white/88 p-6 shadow-[0_34px_90px_-55px_rgba(44,29,20,0.28)] backdrop-blur">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#7b6355]">
+                {mergeTextOverride(pageConfig?.hero?.variantCardEyebrow, "Bundle View")}
+              </p>
+              <p className="mt-4 text-[18px] font-semibold leading-8 text-[#24150f]">
+                {includedItems.length} item{includedItems.length === 1 ? "" : "s"}
+              </p>
+              <p className="mt-3 text-sm leading-7 text-[#5d4b41]">
+                {mergeTextOverride(
+                  pageConfig?.hero?.variantCardDescription,
+                  "Included items stay close to the hero so customers understand what they are buying without hunting through tabs.",
+                )}
+              </p>
+            </div>
+            <div className="rounded-[30px] border border-[#e1cdbf] bg-white/88 p-6 shadow-[0_34px_90px_-55px_rgba(44,29,20,0.28)] backdrop-blur">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#7b6355]">
+                {mergeTextOverride(pageConfig?.hero?.socialProofEyebrow, "Social Proof")}
+              </p>
+              <p className="mt-4 text-[18px] font-semibold leading-8 text-[#24150f]">
+                {reviewCount > 0
+                  ? `${reviewCount} review${reviewCount === 1 ? "" : "s"}`
+                  : "No reviews yet"}
+              </p>
+              <p className="mt-3 text-sm leading-7 text-[#5d4b41]">
+                {mergeTextOverride(
+                  pageConfig?.hero?.socialProofDescription,
+                  "Ratings and trust cues sit closer to the main decision block so the combo page feels more complete and conversion-ready.",
+                )}
+              </p>
+            </div>
+          </div>
+        ) : null}
+
+        {tabs.length > 0 ? (
+          <div className="product-reveal product-reveal-delay-2 mt-12 rounded-[36px] border border-[#e1cdbf] bg-white/88 p-6 shadow-[0_34px_90px_-55px_rgba(44,29,20,0.38)] backdrop-blur sm:p-8">
+            <div className="flex flex-wrap gap-3">
+              {tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`rounded-full border px-5 py-2.5 text-sm font-semibold transition ${
+                    activeTab === tab.id
+                      ? "product-tab-active border-[#6a4331]"
+                      : "border-[#e5d4c7] bg-[#fbf7f2] text-[#6d584a]"
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {activeTab === "description" && pageConfig?.descriptionSection?.show !== false ? (
+              <div className="mt-8 space-y-8">
+                {pageConfig?.descriptionSection?.showEditorialBanner !== false ? (
+                  <div className="rounded-[32px] border border-[#e7dad1] bg-[#fbf7f2] p-6 sm:p-8">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7b6355]">
+                      {mergeTextOverride(
+                        pageConfig?.descriptionSection?.editorialEyebrow,
+                        "Featured Overview",
+                      )}
+                    </p>
+                    <h2 className="mt-3 text-3xl font-semibold text-[#24150f]">
+                      {mergeTextOverride(
+                        pageConfig?.descriptionSection?.editorialTitle,
+                        "A stronger combo story can live next to the bundle without overwhelming the purchase decision.",
+                      )}
+                    </h2>
+                    <p className="mt-4 text-base leading-8 text-[#5d4b41]">
+                      {mergeTextOverride(
+                        pageConfig?.descriptionSection?.editorialDescription,
+                        "Use this section to explain the thinking behind the bundle, the shopping outcome it solves, and why the included products belong together.",
+                      )}
+                    </p>
+                  </div>
+                ) : null}
+
+                {pageConfig?.descriptionSection?.showDescriptionFlow !== false ? (
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7b6355]">
+                      {mergeTextOverride(
+                        pageConfig?.descriptionSection?.flowEyebrow,
+                        "Description Flow",
+                      )}
+                    </p>
+                    <div className="mt-4 grid gap-4 lg:grid-cols-3">
+                      {descriptionParagraphs.map((paragraph, index) => (
+                        <div
+                          key={`combo-desc-${index}`}
+                          className="rounded-[24px] border border-[#e7dad1] bg-white p-5 text-[15px] leading-8 text-[#4b392f] shadow-sm"
+                        >
+                          {paragraph}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {combo?.description ? (
+                  <div
+                    className="prose prose-stone max-w-none text-[#4b392f]"
+                    dangerouslySetInnerHTML={{ __html: sanitizeHTML(combo.description) }}
+                  />
+                ) : null}
+              </div>
+            ) : null}
+
+            {activeTab === "details" && pageConfig?.detailsSection?.show !== false ? (
+              <div className="mt-8 space-y-8">
+                {pageConfig?.detailsSection?.showCards !== false ? (
+                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                    {detailCards.map((card, index) => (
+                      <div
+                        key={`combo-detail-card-${index}`}
+                        className="rounded-[24px] border border-[#e7dad1] bg-[#fbf7f2] p-5"
+                      >
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#7b6355]">
+                          {card.label}
+                        </p>
+                        <p className="mt-3 text-[22px] font-semibold text-[#24150f]">
+                          {card.value}
+                        </p>
+                        <p className="mt-2 text-sm leading-6 text-[#6d584a]">
+                          {card.helper}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
+                {pageConfig?.detailsSection?.showSnapshot !== false ? (
+                  <div className="rounded-[30px] border border-[#e7dad1] bg-white p-6">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7b6355]">
+                      {mergeTextOverride(
+                        pageConfig?.detailsSection?.snapshotEyebrow,
+                        "Snapshot",
+                      )}
+                    </p>
+                    <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                      {snapshotItems.map((item, index) => (
+                        <div
+                          key={`combo-snapshot-${index}`}
+                          className="rounded-[18px] border border-[#efe4dc] bg-[#fbf7f2] px-4 py-3 text-sm text-[#4b392f]"
+                        >
+                          {item}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            {activeTab === "shipping" && pageConfig?.shippingSection?.show !== false ? (
+              <div className="mt-8 grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
+                {pageConfig?.shippingSection?.showPoints !== false ? (
+                  <div className="rounded-[30px] border border-[#e7dad1] bg-[#fbf7f2] p-6">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7b6355]">
+                      {mergeTextOverride(
+                        pageConfig?.shippingSection?.pointsEyebrow,
+                        "Shipping & Trust",
+                      )}
+                    </p>
+                    <div className="mt-5 space-y-4">
+                      {shippingPoints.map((point, index) => (
+                        <div key={`combo-shipping-point-${index}`} className="flex gap-3">
+                          <span className="product-trust-icon mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white">
+                            {index === 0 ? <MdLocalShipping /> : index === 1 ? <MdVerified /> : <MdOutlineSecurity />}
+                          </span>
+                          <p className="text-[15px] leading-7 text-[#4b392f]">{point}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {pageConfig?.shippingSection?.showReasonsPanel !== false ? (
+                  <div className="rounded-[30px] border border-[#e7dad1] bg-white p-6">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7b6355]">
+                      {mergeTextOverride(
+                        pageConfig?.shippingSection?.reasonsEyebrow,
+                        "Why This Feels Better",
+                      )}
+                    </p>
+                    <div className="mt-4 space-y-4 text-[15px] leading-7 text-[#4b392f]">
+                      {mergeListWithDefaults(
+                        pageConfig?.shippingSection?.reasonsParagraphs || [],
+                        [
+                          "The combo detail page now keeps trust information inside a calmer layout instead of pushing it far below the bundle hero.",
+                          "Included product clarity, savings, and delivery context stay easier to scan without losing the editorial feel.",
+                          "That makes combo bundles feel more intentional and much closer to the upgraded product detail experience.",
+                        ],
+                      ).map((paragraph, index) => (
+                        <p key={`combo-reason-${index}`}>{paragraph}</p>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {pageConfig?.reviewsSection?.show !== false ? (
+          <div className="product-reveal product-reveal-delay-3 mt-12 rounded-[36px] border border-[#e1cdbf] bg-white/88 p-6 shadow-[0_34px_90px_-55px_rgba(44,29,20,0.38)] backdrop-blur sm:p-8">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7b6355]">
+              {mergeTextOverride(pageConfig?.reviewsSection?.eyebrow, "Review Section")}
+            </p>
+            <h2 className="mt-2 text-3xl font-semibold text-[#24150f]">
+              {mergeTextOverride(
+                pageConfig?.reviewsSection?.title,
+                "Customer reviews below the combo story",
+              )}
+            </h2>
+            <div className="mt-6 rounded-[28px] border border-dashed border-[#d9c8bc] bg-[#fbf7f2] p-8 text-center text-[#5d4b41]">
+              {mergeTextOverride(
+                pageConfig?.reviewsSection?.emptyState,
+                "No reviews yet. This section is ready to show combo feedback as soon as customer reviews are available.",
+              )}
+            </div>
+          </div>
+        ) : null}
+
+        <div
+          className="product-reveal product-reveal-delay-3 mt-12 rounded-[36px] border border-[#e1cdbf] bg-white/88 p-6 shadow-[0_34px_90px_-55px_rgba(44,29,20,0.38)] backdrop-blur sm:p-8"
+          data-track-section="combo_included_products"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7b6355]">
+                Bundle Composition
+              </p>
+              <h2 className="mt-2 text-3xl font-semibold text-[#24150f]">
+                Products included in this combo
+              </h2>
+            </div>
+            <Link href="/combo-deals" className="text-sm font-semibold" style={{ color: "var(--primary)" }}>
+              View all combos
+            </Link>
+          </div>
+
+          {includedItems.length > 0 ? (
+            <div className="mt-6 grid gap-4 md:grid-cols-2">
+              {includedItems.map((item, index) => {
+                const itemImage = getImageUrl(item?.image || FALLBACK_COMBO_IMAGE);
+                return (
+                  <div
+                    key={`${item?.productId || "combo-item"}-${index}`}
+                    className="rounded-[28px] border border-[#e7dad1] bg-[#fbf7f2] p-5"
+                  >
+                    <div className="flex gap-4">
+                      <div className="flex h-[84px] w-[84px] items-center justify-center rounded-2xl border border-[#efe4dc] bg-white p-2">
+                        <img
+                          src={itemImage}
+                          alt={item?.productTitle || "Product"}
+                          className="h-full w-full object-contain"
+                        />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <Link
+                          href={`/product/${item?.productId || ""}`}
+                          className="text-base font-semibold text-[#24150f] hover:text-[var(--primary)]"
+                        >
+                          {item?.productTitle || "Product"}
+                        </Link>
+                        {formatComboVariantLabel(item) ? (
+                          <p className="mt-1 text-sm text-[#6d584a]">
+                            Variant: {formatComboVariantLabel(item)}
+                          </p>
+                        ) : null}
+                        <p className="mt-1 text-sm text-[#6d584a]">Qty: {item?.quantity || 1}</p>
+                        <div className="mt-3 flex items-center gap-2">
+                          {toNumber(item?.originalPrice, 0) > toNumber(item?.price, 0) ? (
+                            <span className="text-sm text-[#a08d80] line-through">
+                              {formatPrice(toNumber(item?.originalPrice, 0))}
+                            </span>
+                          ) : null}
+                          <span className="text-base font-semibold text-[#24150f]">
+                            {formatPrice(toNumber(item?.price, 0))}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="mt-6 text-sm text-[#6d584a]">
+              Combo items are not available right now.
+            </p>
+          )}
+        </div>
+      </div>
+
+      <style jsx global>{`
+        @keyframes productFadeUp {
+          from {
+            opacity: 0;
+            transform: translate3d(0, 26px, 0) scale(0.985);
+          }
+          to {
+            opacity: 1;
+            transform: translate3d(0, 0, 0) scale(1);
+          }
+        }
+
+        .product-page-shell {
+          --pd-accent: var(--primary, #6a4331);
+          --pd-accent-hover: var(--flavor-hover, #52382a);
+          --pd-accent-text: var(--flavor-text, #ffffff);
+          position: relative;
+          overflow: clip;
+        }
+
+        .product-page-shell::before {
+          content: "";
+          position: absolute;
+          top: 0;
+          left: 50%;
+          width: min(720px, 72vw);
+          height: 420px;
+          transform: translateX(-50%);
+          background: radial-gradient(
+            circle,
+            rgba(106, 67, 49, 0.12) 0%,
+            rgba(106, 67, 49, 0) 68%
+          );
+          filter: blur(10px);
+          pointer-events: none;
+        }
+
+        .product-reveal {
+          opacity: 0;
+          animation: productFadeUp 0.72s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+        }
+
+        .product-reveal-delay-1 {
+          animation-delay: 0.06s;
+        }
+
+        .product-reveal-delay-2 {
+          animation-delay: 0.14s;
+        }
+
+        .product-reveal-delay-3 {
+          animation-delay: 0.22s;
+        }
+
+        .product-image-stage {
+          isolation: isolate;
+        }
+
+        .product-story-card {
+          position: relative;
+          overflow: hidden;
+        }
+
+        .product-delivery-input:focus {
+          border-color: var(--pd-accent);
+          box-shadow: 0 0 0 2px var(--flavor-glass, rgba(106, 67, 49, 0.12));
+        }
+
+        .product-qty-action:hover {
+          filter: brightness(0.96);
+        }
+
+        .product-tab-active {
+          background: var(--pd-accent);
+          color: var(--pd-accent-text);
+        }
+
+        .product-cta-primary:hover {
+          background-color: var(--pd-accent-hover) !important;
+        }
+
+        .product-trust-icon {
+          background: var(--pd-accent);
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .product-reveal {
+            animation: none !important;
+            opacity: 1 !important;
+            transform: none !important;
+          }
+        }
+      `}</style>
+    </section>
+  );
+}

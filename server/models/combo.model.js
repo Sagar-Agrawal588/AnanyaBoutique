@@ -350,6 +350,10 @@ const comboSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    productPage: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",

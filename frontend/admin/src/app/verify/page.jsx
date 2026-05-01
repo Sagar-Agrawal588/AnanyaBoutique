@@ -38,7 +38,7 @@ const VerifyContent = () => {
 
     setLoading(true);
     try {
-      const res = await postData("verify-Forgot-Password-OTP", {
+      const res = await postData("/api/user/verify-Forgot-Password-OTP", {
         email: email,
         otp: otp,
         newPassword: "temp", // Backend requires this field but doesn't seem to use it for verification step

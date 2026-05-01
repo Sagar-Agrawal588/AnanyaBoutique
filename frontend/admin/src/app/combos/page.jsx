@@ -1,8 +1,13 @@
 "use client";
 
+import ProductPageSettingsSection from "@/components/ProductPageSettingsSection";
 import UploadBox from "@/components/UploadBox";
 import { useAdmin } from "@/context/AdminContext";
 import { withAdminBasePath } from "@/utils/basePath";
+import {
+  createDefaultProductPageConfig,
+  mergeProductPageConfig,
+} from "@/utils/productPageConfig";
 import {
   deleteData,
   getData,
@@ -410,6 +415,9 @@ export default function ComboManagementPage() {
   const [formData, setFormData] = useState(defaultFormData);
   const [comboItems, setComboItems] = useState([defaultItem]);
   const [comboImages, setComboImages] = useState([]);
+  const [productPage, setProductPage] = useState(() =>
+    createDefaultProductPageConfig(),
+  );
 
   const productMap = useMemo(
     () =>
@@ -506,10 +514,10 @@ export default function ComboManagementPage() {
         : computedOriginalTotal;
     let comboPrice = originalTotal;
 
-    if (manualComboPrice > 0) {
-      comboPrice = round2(manualComboPrice);
-    } else if (formData.pricingType === "fixed_price" && pricingValue > 0) {
+    if (formData.pricingType === "fixed_price" && pricingValue > 0) {
       comboPrice = pricingValue;
+    } else if (manualComboPrice > 0) {
+      comboPrice = round2(manualComboPrice);
     } else if (formData.pricingType === "percent_discount") {
       comboPrice = round2(originalTotal * (1 - pricingValue / 100));
     } else if (formData.pricingType === "fixed_discount") {
@@ -596,6 +604,7 @@ export default function ComboManagementPage() {
     setFormData(defaultFormData);
     setComboItems([defaultItem]);
     setComboImages([]);
+    setProductPage(createDefaultProductPageConfig());
     setEditingCombo(null);
   };
 
@@ -661,6 +670,7 @@ export default function ComboManagementPage() {
             }))
           : [defaultItem],
       );
+      setProductPage(mergeProductPageConfig(combo.productPage));
     } else {
       resetForm();
     }
@@ -735,7 +745,10 @@ export default function ComboManagementPage() {
 
   const buildPayload = () => {
     const shouldRoundForAi = isAiComboType(formData.comboType);
-    const rawComboPrice = toSafeNumber(formData.price, 0);
+    const rawComboPrice =
+      formData.pricingType === "fixed_price"
+        ? toSafeNumber(formData.pricingValue, 0)
+        : toSafeNumber(formData.price, 0);
     const normalizedComboPrice = shouldRoundForAi
       ? roundCurrency(rawComboPrice)
       : rawComboPrice;
@@ -793,6 +806,7 @@ export default function ComboManagementPage() {
         Math.min(toSafeNumber(formData.adminStarRating, 0), 5),
         0,
       ),
+      productPage,
       items: comboItems
         .map((item) => ({
           productId: item.productId,
@@ -1665,6 +1679,15 @@ export default function ComboManagementPage() {
               fullWidth
             />
           </div>
+
+          <ProductPageSettingsSection
+            productPage={productPage}
+            setProductPage={setProductPage}
+            pageTitle="Storefront Combo Page"
+            storefrontPath="/combo/[id]"
+            entityLabel="combo"
+            lowerSectionLabel="combo"
+          />
 
           <div className="flex flex-col gap-2 mt-2">
             <h3 className="text-sm font-semibold text-gray-700">
