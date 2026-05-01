@@ -175,14 +175,21 @@ let refreshPromise = null;
 
 const getStoredAdminToken = () => {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem("adminToken");
+  return (
+    localStorage.getItem("adminToken") ||
+    sessionStorage.getItem("adminToken") ||
+    null
+  );
 };
 
 const setStoredAdminToken = (token) => {
   if (typeof window === "undefined") return;
 
   if (typeof token === "string" && token.trim()) {
-    localStorage.setItem("adminToken", token);
+    const targetStorage = sessionStorage.getItem("adminToken")
+      ? sessionStorage
+      : localStorage;
+    targetStorage.setItem("adminToken", token);
     window.dispatchEvent(
       new CustomEvent("adminTokenRefreshed", { detail: token }),
     );
@@ -190,6 +197,7 @@ const setStoredAdminToken = (token) => {
   }
 
   localStorage.removeItem("adminToken");
+  sessionStorage.removeItem("adminToken");
   window.dispatchEvent(
     new CustomEvent("adminTokenRefreshed", { detail: null }),
   );
@@ -210,7 +218,6 @@ const refreshAdminToken = async () => {
       setStoredAdminToken(token);
       return token;
     } catch (error) {
-      setStoredAdminToken(null);
       return null;
     } finally {
       refreshPromise = null;
@@ -330,7 +337,6 @@ const requestWithRetry = async ({
 
       // Fallback to cookie-only auth when local token is stale or refresh fails.
       try {
-        setStoredAdminToken(null);
         return await requestWithoutAuthHeader();
       } catch (cookieRetryError) {
         return toErrorPayload(cookieRetryError, fallbackMessage);

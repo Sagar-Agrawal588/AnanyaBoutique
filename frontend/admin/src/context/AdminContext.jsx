@@ -4,6 +4,11 @@ import {
   normalizeManagerPermissions,
 } from "@/utils/adminPermissions";
 import { getData, postData } from "@/utils/api";
+import {
+  clearAdminSession,
+  persistAdminSession,
+  readStoredAdminSession,
+} from "@/utils/authSession";
 import { useRouter } from "next/navigation";
 import {
   createContext,
@@ -72,8 +77,7 @@ export const AdminProvider = ({ children }) => {
   }, []);
 
   const logout = useCallback(() => {
-    localStorage.removeItem("adminToken");
-    localStorage.removeItem("adminUser");
+    clearAdminSession();
     setAdmin(null);
     setToken(null);
     router.push("/login");
@@ -81,8 +85,9 @@ export const AdminProvider = ({ children }) => {
 
   const checkAdminSession = useCallback(async () => {
     try {
-      const storedToken = localStorage.getItem("adminToken");
-      const storedAdmin = localStorage.getItem("adminUser");
+      const storedSession = readStoredAdminSession();
+      const storedToken = storedSession?.token;
+      const storedAdmin = storedSession?.admin;
 
       debugLog("AdminContext checkAdminSession:", {
         hasStoredToken: !!storedToken,
@@ -178,7 +183,6 @@ export const AdminProvider = ({ children }) => {
         }
 
         debugWarn("Admin profile exists but no valid token could be restored.");
-        logout();
         return;
       }
     } catch (error) {
@@ -208,9 +212,14 @@ export const AdminProvider = ({ children }) => {
       window.removeEventListener("adminTokenRefreshed", handleTokenRefreshed);
   }, []);
 
-  const login = useCallback(async (email, password) => {
+  const login = useCallback(async (email, password, options = {}) => {
     try {
-      const response = await postData("/api/admin/login", { email, password });
+      const rememberMe = options?.rememberMe !== false;
+      const response = await postData("/api/admin/login", {
+        email,
+        password,
+        rememberMe,
+      });
 
       if (response.error === false) {
         const { data } = response;
@@ -244,8 +253,11 @@ export const AdminProvider = ({ children }) => {
           });
         }
 
-        localStorage.setItem("adminToken", accessToken);
-        localStorage.setItem("adminUser", JSON.stringify(normalizedAdmin));
+        persistAdminSession({
+          accessToken,
+          admin: normalizedAdmin,
+          rememberMe,
+        });
 
         setAdmin(normalizedAdmin);
         setToken(accessToken);

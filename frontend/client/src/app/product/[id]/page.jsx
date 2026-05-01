@@ -19,14 +19,14 @@ import {
 } from "@/components/productDetail/pageConfig";
 import { formatPrice } from "@/config/siteConfig";
 import { useCart } from "@/context/CartContext";
+import useIndiaPincodeLookup from "@/hooks/useIndiaPincodeLookup";
 import {
   subscribeToStockConnection,
   subscribeToStockUpdates,
 } from "@/realtime/stockSocket";
-import useIndiaPincodeLookup from "@/hooks/useIndiaPincodeLookup";
+import { normalizePincode } from "@/utils/addressForm";
 import { trackEvent } from "@/utils/analyticsTracker";
 import { fetchDataFromApi, postData } from "@/utils/api";
-import { normalizePincode } from "@/utils/addressForm";
 import { getImageUrl } from "@/utils/imageUtils";
 import { sanitizeHTML } from "@/utils/sanitize";
 import {
@@ -488,11 +488,10 @@ const ProductDetailPage = () => {
   const productId = getResolvedProductId(product);
   const currentVariantInCart =
     productId && isInCart(productId, selectedVariantId);
-  const productRating = Number(
-    product?.adminStarRating ??
-      product?.rating ??
-      averageReviewRating(customerReviews),
-  );
+  const productRating =
+    customerReviews.length > 0
+      ? averageReviewRating(customerReviews)
+      : Number(product?.adminStarRating ?? product?.rating ?? 0);
   const displayReviews =
     customerReviews.length > 0 ? customerReviews : demoReviewFallback;
   const displayReviewCount = Math.max(
@@ -620,7 +619,9 @@ const ProductDetailPage = () => {
 
   const fetchReviewSettings = useCallback(async () => {
     try {
-      const response = await fetchDataFromApi("/api/settings/public/reviewSettings");
+      const response = await fetchDataFromApi(
+        "/api/settings/public/reviewSettings",
+      );
       if (response?.success) {
         const nextValue = response?.data?.value || response?.data || {};
         setReviewSettings(normalizePublicReviewSettings(nextValue));
@@ -793,120 +794,122 @@ const ProductDetailPage = () => {
     }
   };
 
-  const fetchProduct = useCallback(async ({
-    showLoader = true,
-    preserveCurrent = false,
-  } = {}) => {
-    try {
-      if (showLoader) {
-        setLoading(true);
-      }
-      const response = await fetchDataFromApi(`/api/products/${routeId}`, {
-        skipCache: true,
-      });
+  const fetchProduct = useCallback(
+    async ({ showLoader = true, preserveCurrent = false } = {}) => {
+      try {
+        if (showLoader) {
+          setLoading(true);
+        }
+        const response = await fetchDataFromApi(`/api/products/${routeId}`, {
+          skipCache: true,
+        });
 
-      if (response?.error !== true && response?.data) {
-        const resolvedProduct = response.data;
-        const resolvedProductId = getResolvedProductId(resolvedProduct);
-        const resolvedPageConfig = normalizeProductPageConfig(
-          resolvedProduct?.productPage,
-        );
+        if (response?.error !== true && response?.data) {
+          const resolvedProduct = response.data;
+          const resolvedProductId = getResolvedProductId(resolvedProduct);
+          const resolvedPageConfig = normalizeProductPageConfig(
+            resolvedProduct?.productPage,
+          );
 
-        setProduct(resolvedProduct);
-        setSelectedVariant((previous) => {
-          if (
-            !resolvedProduct?.hasVariants ||
-            !Array.isArray(resolvedProduct?.variants)
-          ) {
-            return null;
-          }
-
-          const previousVariantId = previous?._id || previous?.id;
-          if (previousVariantId) {
-            const matchedVariant =
-              resolvedProduct.variants.find(
-                (variant) =>
-                  String(variant?._id || variant?.id || "") ===
-                  String(previousVariantId),
-              ) || null;
-            if (matchedVariant) {
-              return matchedVariant;
+          setProduct(resolvedProduct);
+          setSelectedVariant((previous) => {
+            if (
+              !resolvedProduct?.hasVariants ||
+              !Array.isArray(resolvedProduct?.variants)
+            ) {
+              return null;
             }
-          }
 
-          return (
-            resolvedProduct.variants.find((variant) => variant?.isDefault) ||
-            resolvedProduct.variants[0] ||
-            null
-          );
-        });
+            const previousVariantId = previous?._id || previous?.id;
+            if (previousVariantId) {
+              const matchedVariant =
+                resolvedProduct.variants.find(
+                  (variant) =>
+                    String(variant?._id || variant?.id || "") ===
+                    String(previousVariantId),
+                ) || null;
+              if (matchedVariant) {
+                return matchedVariant;
+              }
+            }
 
-        trackEvent("product_view", {
-          productId: String(resolvedProductId || ""),
-          productName: String(
-            resolvedProduct?.name || resolvedProduct?.title || "",
-          ),
-          categoryId: String(
-            resolvedProduct?.category?._id || resolvedProduct?.category || "",
-          ),
-          price: Number(resolvedProduct?.price || 0),
-        });
-
-        if (resolvedPageConfig?.reviewsSection?.show !== false) {
-          fetchProductReviews(resolvedProductId);
-        } else {
-          setCustomerReviews([]);
-        }
-
-        if (resolvedPageConfig?.frequentlyBoughtSection?.show !== false) {
-          fetchFrequentlyBought(resolvedProductId);
-        } else {
-          setFrequentlyBought([]);
-        }
-
-        if (resolvedPageConfig?.recommendedCombosSection?.show !== false) {
-          fetchRecommendedCombos(resolvedProductId);
-        } else {
-          setRecommendedCombos([]);
-        }
-
-        if (
-          resolvedPageConfig?.relatedProductsSection?.show !== false &&
-          resolvedProduct?.category
-        ) {
-          const relatedResponse = await fetchDataFromApi(
-            `/api/products?category=${resolvedProduct.category._id || resolvedProduct.category}&limit=5&exclude=${routeId}`,
-          );
-          if (relatedResponse?.error !== true) {
-            setRelatedProducts(
-              (relatedResponse?.data || relatedResponse?.products || []).filter(
-                (item) => !isExclusiveProduct(item),
-              ),
+            return (
+              resolvedProduct.variants.find((variant) => variant?.isDefault) ||
+              resolvedProduct.variants[0] ||
+              null
             );
+          });
+
+          trackEvent("product_view", {
+            productId: String(resolvedProductId || ""),
+            productName: String(
+              resolvedProduct?.name || resolvedProduct?.title || "",
+            ),
+            categoryId: String(
+              resolvedProduct?.category?._id || resolvedProduct?.category || "",
+            ),
+            price: Number(resolvedProduct?.price || 0),
+          });
+
+          if (resolvedPageConfig?.reviewsSection?.show !== false) {
+            fetchProductReviews(resolvedProductId);
+          } else {
+            setCustomerReviews([]);
+          }
+
+          if (resolvedPageConfig?.frequentlyBoughtSection?.show !== false) {
+            fetchFrequentlyBought(resolvedProductId);
+          } else {
+            setFrequentlyBought([]);
+          }
+
+          if (resolvedPageConfig?.recommendedCombosSection?.show !== false) {
+            fetchRecommendedCombos(resolvedProductId);
+          } else {
+            setRecommendedCombos([]);
+          }
+
+          if (
+            resolvedPageConfig?.relatedProductsSection?.show !== false &&
+            resolvedProduct?.category
+          ) {
+            const relatedResponse = await fetchDataFromApi(
+              `/api/products?category=${resolvedProduct.category._id || resolvedProduct.category}&limit=5&exclude=${routeId}`,
+            );
+            if (relatedResponse?.error !== true) {
+              setRelatedProducts(
+                (
+                  relatedResponse?.data ||
+                  relatedResponse?.products ||
+                  []
+                ).filter((item) => !isExclusiveProduct(item)),
+              );
+            }
+          } else {
+            setRelatedProducts([]);
           }
         } else {
-          setRelatedProducts([]);
+          if (!preserveCurrent) {
+            setProduct(null);
+          }
         }
-      } else {
+      } catch (error) {
+        console.error("Error fetching product:", error);
         if (!preserveCurrent) {
           setProduct(null);
+          setCustomerReviews([]);
+          setFrequentlyBought([]);
+          setRecommendedCombos([]);
+          setRelatedProducts([]);
+        }
+      } finally {
+        if (showLoader) {
+          setLoading(false);
         }
       }
-    } catch (error) {
-      console.error("Error fetching product:", error);
-      if (!preserveCurrent) {
-        setProduct(null);
-        setCustomerReviews([]);
-        setFrequentlyBought([]);
-        setRecommendedCombos([]);
-        setRelatedProducts([]);
-      }
-    } finally {
-      if (showLoader) {
-        setLoading(false);
-      }
-    }
-  }, [routeId]);
+    },
+    [routeId],
+  );
 
   const stopFallbackPolling = useCallback(() => {
     if (fallbackPollRef.current && typeof window !== "undefined") {
@@ -916,7 +919,11 @@ const ProductDetailPage = () => {
   }, []);
 
   const startFallbackPolling = useCallback(() => {
-    if (typeof window === "undefined" || fallbackPollRef.current || isDemoPreview) {
+    if (
+      typeof window === "undefined" ||
+      fallbackPollRef.current ||
+      isDemoPreview
+    ) {
       return;
     }
 
@@ -1428,7 +1435,10 @@ const ProductDetailPage = () => {
         if (!cartProduct) return;
         const addResult = await addToCart(cartProduct, quantity);
         if (addResult?.success === false) {
-          openSnackbar(addResult?.message || "Unable to add this item", "error");
+          openSnackbar(
+            addResult?.message || "Unable to add this item",
+            "error",
+          );
           return;
         }
       }
@@ -1517,7 +1527,11 @@ const ProductDetailPage = () => {
     actionLoading || (!currentVariantInCart && availableQty === 0);
   const isOutOfStock = availableQty === 0;
   const selectedVariantStockQuantity = Math.max(
-    Number(resolvedSelectedVariant?.stock_quantity ?? resolvedSelectedVariant?.stock ?? 0),
+    Number(
+      resolvedSelectedVariant?.stock_quantity ??
+        resolvedSelectedVariant?.stock ??
+        0,
+    ),
     0,
   );
   const selectedVariantReservedQuantity = Math.max(
@@ -1528,12 +1542,13 @@ const ProductDetailPage = () => {
     isOutOfStock && selectedVariantReservedQuantity > 0;
   const notifyVariantId = selectedVariantId || defaultVariant?._id || null;
   const notifyVariantName =
-    (resolvedSelectedVariant ? formatVariantLabel(resolvedSelectedVariant) : "") ||
-    (defaultVariant ? formatVariantLabel(defaultVariant) : "");
+    (resolvedSelectedVariant
+      ? formatVariantLabel(resolvedSelectedVariant)
+      : "") || (defaultVariant ? formatVariantLabel(defaultVariant) : "");
   const notifyRequested = Boolean(
     resolvedSelectedVariant?.stockNotificationRequested ||
-      defaultVariant?.stockNotificationRequested ||
-      product?.stockNotificationRequested,
+    defaultVariant?.stockNotificationRequested ||
+    product?.stockNotificationRequested,
   );
 
   if (loading) {
@@ -1917,7 +1932,9 @@ const ProductDetailPage = () => {
               {isOutOfStock ? (
                 <div className="mt-8 rounded-[28px] border border-[#f3d2c9] bg-[linear-gradient(135deg,#fff8f5_0%,#fffdf9_100%)] p-5 shadow-[0_24px_60px_-46px_rgba(77,33,20,0.42)]">
                   <div className="inline-flex rounded-full bg-[#fef2f2] px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-[#cb1f1f]">
-                    {isReservedForCheckout ? "Reserved for checkout" : "Out of stock"}
+                    {isReservedForCheckout
+                      ? "Reserved for checkout"
+                      : "Out of stock"}
                   </div>
                   <p className="mt-3 text-lg font-semibold text-[#24150f]">
                     {isReservedForCheckout
@@ -1951,7 +1968,9 @@ const ProductDetailPage = () => {
                         Status
                       </p>
                       <p className="mt-1 text-sm font-semibold text-[#24150f]">
-                        {isReservedForCheckout ? "Temporarily locked" : "Unavailable"}
+                        {isReservedForCheckout
+                          ? "Temporarily locked"
+                          : "Unavailable"}
                       </p>
                     </div>
                   </div>
