@@ -37,6 +37,39 @@ const startServer = async (app) =>
     const server = app.listen(0, "127.0.0.1", () => resolve(server));
   });
 
+const connectMongo = async () => {
+  if (!mongoServer) {
+    mongoServer = await MongoMemoryServer.create();
+  }
+
+  const uri = mongoServer.getUri();
+  await mongoose.connect(uri, {
+    dbName: "bogEcom-reservation-integration",
+    serverSelectionTimeoutMS: 5000,
+  });
+};
+
+const ensureMongoConnection = async () => {
+  if (mongoose.connection.readyState === 1) {
+    try {
+      await mongoose.connection.db.admin().ping();
+      return;
+    } catch (error) {
+      // Connection dropped; fall through to reconnect.
+    }
+  }
+
+  try {
+    await connectMongo();
+  } catch (error) {
+    if (mongoServer) {
+      await mongoServer.stop().catch(() => {});
+    }
+    mongoServer = null;
+    await connectMongo();
+  }
+};
+
 const requestJson = async (path, options = {}) => {
   const response = await fetch(`${baseUrl}${path}`, {
     redirect: "manual",
@@ -264,10 +297,7 @@ test.before(async () => {
     };
   });
 
-  mongoServer = await MongoMemoryServer.create();
-  await mongoose.connect(mongoServer.getUri(), {
-    dbName: "bogEcom-reservation-integration",
-  });
+  await connectMongo();
 
   const app = express();
   app.use(express.json());
@@ -293,6 +323,7 @@ test.before(async () => {
 });
 
 test.afterEach(async () => {
+  await ensureMongoConnection();
   paytmStatuses.clear();
   sentStockEmails = [];
   if (typeof resetStockNotificationQueueForTests === "function") {
