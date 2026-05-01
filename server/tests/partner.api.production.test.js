@@ -38,6 +38,8 @@ const requestJson = async (path, options = {}) => {
   return { response, payload };
 };
 
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 const adminRequest = async (path, options = {}) => {
   const headers = {
     "Content-Type": "application/json",
@@ -438,7 +440,7 @@ test("logging and monitoring: requests are stored and surfaced in admin APIs", a
     daily: 2000,
   });
 
-  await Promise.all([
+  const results = await Promise.all([
     requestJson("/api/v1/partner/products?limit=2", {
       headers: { "x-api-key": apiKey },
     }),
@@ -450,8 +452,24 @@ test("logging and monitoring: requests are stored and surfaced in admin APIs", a
     }),
   ]);
 
-  const dbLogs = await PartnerApiRequestLog.find({ partnerId }).lean();
-  assert.ok(dbLogs.length >= 3);
+  results.forEach(({ response }) => {
+    assert.equal(response.status, 200);
+  });
+
+  const maxWaitMs = process.env.CI ? 3000 : 1200;
+  const start = Date.now();
+  let dbLogs = [];
+
+  while (Date.now() - start < maxWaitMs) {
+    dbLogs = await PartnerApiRequestLog.find({ partnerId }).lean();
+    if (dbLogs.length >= 3) break;
+    await wait(150);
+  }
+
+  assert.ok(
+    dbLogs.length >= 3,
+    `expected >=3 partner logs, got ${dbLogs.length}`,
+  );
 
   const overview = await adminRequest("/api/v1/partner/admin/overview");
   assert.equal(overview.response.status, 200);

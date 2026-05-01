@@ -7,6 +7,10 @@ on:
       - master
     paths:
       - "server/**"
+      - "frontend/admin/src/app/crm/**"
+      - "frontend/admin/src/services/crmApi.js"
+      - "frontend/admin/src/utils/api.js"
+      - "frontend/admin/src/utils/realtime.js"
       - ".github/workflows/deploy-backend.yml"
   workflow_dispatch:
 
@@ -199,20 +203,12 @@ jobs:
                   "CLOUDINARY_API_KEY",
                   "CLOUDINARY_API_SECRET",
               ],
-              "Firebase Admin": [
+                "Firebase Admin": [
                   "FIREBASE_PROJECT_ID",
                   "FIREBASE_CLIENT_EMAIL",
                   "FIREBASE_PRIVATE_KEY",
-              ],
-              "WhatsApp Cloud API + Webhooks": [
-                  "WHATSAPP_ACCESS_TOKEN",
-                  "WHATSAPP_APP_ID",
-                  "WHATSAPP_PHONE_NUMBER_ID",
-                  "WHATSAPP_BUSINESS_ACCOUNT_ID",
-                  "WHATSAPP_WEBHOOK_VERIFY_TOKEN",
-                  "WHATSAPP_APP_SECRET",
-              ],
-              "Paytm Credentials": [
+                ],
+                "Paytm Credentials": [
                   "PAYTM_MERCHANT_ID",
                   "PAYTM_MERCHANT_KEY",
               ],

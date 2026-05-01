@@ -1,13 +1,13 @@
-import test from "node:test";
-import assert from "node:assert/strict";
-import mongoose from "mongoose";
 import { MongoMemoryServer } from "mongodb-memory-server";
-import ProductModel from "../models/product.model.js";
-import OrderModel from "../models/order.model.js";
-import PurchaseOrderModel from "../models/purchaseOrder.model.js";
-import InventoryAuditModel from "../models/inventoryAudit.model.js";
-import StockMovementModel from "../models/stockMovement.model.js";
+import mongoose from "mongoose";
+import assert from "node:assert/strict";
+import test from "node:test";
 import { updatePurchaseOrderReceipt } from "../controllers/purchaseOrder.controller.js";
+import InventoryAuditModel from "../models/inventoryAudit.model.js";
+import OrderModel from "../models/order.model.js";
+import ProductModel from "../models/product.model.js";
+import PurchaseOrderModel from "../models/purchaseOrder.model.js";
+import StockMovementModel from "../models/stockMovement.model.js";
 import {
   applyPurchaseOrderInventory,
   confirmInventory,
@@ -685,8 +685,9 @@ test("concurrent order deductions never drive stock below zero", async () => {
     confirmInventory(order2, "TEST_ORDER_2"),
   ]);
 
-  const successCount = results.filter((result) => result.status === "fulfilled")
-    .length;
+  const successCount = results.filter(
+    (result) => result.status === "fulfilled",
+  ).length;
   assert.equal(successCount, 1);
 
   const updated = await ProductModel.findById(product._id).lean();
@@ -735,10 +736,12 @@ test("concurrent reservations allow only one buyer for the last unit", async () 
     reserveInventory(order2, "TEST_RESERVE_2"),
   ]);
 
-  const successCount = results.filter((result) => result.status === "fulfilled")
-    .length;
-  const failedCount = results.filter((result) => result.status === "rejected")
-    .length;
+  const successCount = results.filter(
+    (result) => result.status === "fulfilled",
+  ).length;
+  const failedCount = results.filter(
+    (result) => result.status === "rejected",
+  ).length;
 
   assert.equal(successCount, 1);
   assert.equal(failedCount, 1);
@@ -747,7 +750,8 @@ test("concurrent reservations allow only one buyer for the last unit", async () 
   assert.equal(Number(updated.stock_quantity || 0), 1);
   assert.equal(Number(updated.reserved_quantity || 0), 1);
   assert.equal(
-    Number(updated.stock_quantity || 0) - Number(updated.reserved_quantity || 0),
+    Number(updated.stock_quantity || 0) -
+      Number(updated.reserved_quantity || 0),
     0,
   );
 });
@@ -787,8 +791,9 @@ test("expired reservation is released by cleanup", async () => {
     await reserveInventory(order, "TEST_EXPIRY");
     await order.save();
 
+    const waitMs = process.env.CI ? 2200 : 1200;
     await new Promise((resolve) => {
-      setTimeout(resolve, 1200);
+      setTimeout(resolve, waitMs);
     });
 
     await releaseExpiredReservations();
