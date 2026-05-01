@@ -3,7 +3,7 @@
 import { useProducts } from "@/context/ProductContext";
 import { getHeroImageUrl, isCloudinaryUrl } from "@/utils/imageUtils";
 import { AnimatePresence, motion } from "framer-motion";
-import Image from "next/image";
+import SeoImage from "@/components/SeoImage";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Swiper, SwiperSlide } from "swiper/react";
@@ -74,7 +74,7 @@ const HomeSlider = ({ initialSlides = [] }) => {
   }, [homeSlides, initialSlides]);
 
   return (
-    <section className="relative w-full h-[60vh] md:h-[85vh] min-h-[400px] md:min-h-[600px] overflow-hidden bg-black p-0">
+    <section className="relative w-full h-[60vh] md:h-[85vh] min-h-100 md:min-h-150 overflow-hidden bg-black p-0">
       <Swiper
         speed={1000}
         spaceBetween={0}
@@ -118,9 +118,9 @@ const HomeSlider = ({ initialSlides = [] }) => {
                   return (
                     <>
                 <div className="absolute inset-0 hidden md:block">
-                  <Image
+                  <SeoImage
                     src={desktopSrc}
-                    alt={slide.title}
+                    fallbackAlt={slide.title}
                     fill
                     priority={index === 0}
                     sizes="100vw"
@@ -131,9 +131,9 @@ const HomeSlider = ({ initialSlides = [] }) => {
                   />
                 </div>
                 <div className="absolute inset-0 md:hidden">
-                  <Image
+                  <SeoImage
                     src={mobileSrc}
-                    alt={slide.title}
+                    fallbackAlt={slide.title}
                     fill
                     priority={index === 0}
                     sizes="100vw"
@@ -172,7 +172,7 @@ const HomeSlider = ({ initialSlides = [] }) => {
                       initial={{ opacity: 0, x: -20 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ duration: 0.5, delay: 0.2 }}
-                      className="inline-block px-3 py-1 mb-4 text-xs font-bold tracking-widest text-primary uppercase bg-[var(--flavor-glass)] rounded-full border border-primary/20"
+                      className="inline-block px-3 py-1 mb-4 text-xs font-bold tracking-widest text-primary uppercase bg-(--flavor-glass) rounded-full border border-primary/20"
                     >
                       Top Pick
                     </motion.span>
@@ -199,7 +199,7 @@ const HomeSlider = ({ initialSlides = [] }) => {
                     >
                       <Link
                         href={slide.link}
-                        className="inline-flex items-center gap-2 px-8 py-4 bg-linear-to-r from-primary to-[var(--flavor-hover)] text-white rounded-full font-bold shadow-lg shadow-primary/40 hover:scale-105 transition-transform"
+                        className="inline-flex items-center gap-2 px-8 py-4 bg-linear-to-r from-primary to-(--flavor-hover) text-white rounded-full font-bold shadow-lg shadow-primary/40 hover:scale-105 transition-transform"
                       >
                         {slide.cta}
                         <svg

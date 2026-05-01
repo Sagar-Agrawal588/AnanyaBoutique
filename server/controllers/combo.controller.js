@@ -30,6 +30,7 @@ import {
   getComboSectionsForProduct,
 } from "../services/combos/comboRecommendation.service.js";
 import { AppError, asyncHandler, sendSuccess } from "../utils/errorHandler.js";
+import { normalizeProductPageConfig } from "../utils/productPageConfig.js";
 
 const round2 = (value) =>
   Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
@@ -244,7 +245,9 @@ const parseComboPayload = async (body = {}, { existingCombo = null } = {}) => {
     Math.abs(manualComboPrice - Number(calculatedPricing.comboPrice || 0)) >
     0.01;
   const shouldUseManualComboPrice =
-    manualComboPrice > 0 && manualComboPriceDiffersFromRule;
+    pricingType !== "fixed_price" &&
+    manualComboPrice > 0 &&
+    manualComboPriceDiffersFromRule;
   const rawComboType = normalizeComboType(
     body?.comboType || body?.type || existingCombo?.comboType || "fixed_bundle",
   );
@@ -434,6 +437,9 @@ const parseComboPayload = async (body = {}, { existingCombo = null } = {}) => {
     aiScore: Number(body?.aiScore || existingCombo?.aiScore || 0),
     generatedFrom: String(
       body?.generatedFrom || existingCombo?.generatedFrom || "",
+    ),
+    productPage: normalizeProductPageConfig(
+      body?.productPage || existingCombo?.productPage || {},
     ),
   };
 

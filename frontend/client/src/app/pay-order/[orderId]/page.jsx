@@ -1,9 +1,9 @@
 "use client";
 
-import { API_BASE_URL } from "@/utils/api";
+import { API_BASE_URL, invalidatePublicGetCache } from "@/utils/api";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 const API_URL = API_BASE_URL;
 
@@ -11,6 +11,15 @@ const round2 = (value) =>
   Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
 
 const toRoundedRupee = (value) => Math.max(Math.round(Number(value || 0)), 0);
+
+const formatReservationCountdown = (value) => {
+  const seconds = Math.max(Math.floor(Number(value || 0)), 0);
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(
+    remainingSeconds,
+  ).padStart(2, "0")}`;
+};
 
 const buildDisplayTotals = (order) => {
   const totals = order?.totals || {};
@@ -68,39 +77,50 @@ const PayOrderPage = () => {
   const [paymentStatus, setPaymentStatus] = useState(null);
   const [selectedProvider, setSelectedProvider] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [reservationSecondsRemaining, setReservationSecondsRemaining] =
+    useState(0);
 
   const canPay = Boolean(order?.payable);
   const displayTotals = useMemo(() => buildDisplayTotals(order), [order]);
+  const loadOrder = useCallback(async () => {
+    if (!orderId || !token) {
+      setError("Missing or invalid payment link.");
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const res = await fetch(
+        `${API_URL}/api/orders/pay-order/${encodeURIComponent(
+          orderId,
+        )}?key=${encodeURIComponent(token)}`,
+      );
+      const data = await res.json();
+      if (!data?.success) {
+        throw new Error(data?.message || "Invalid or expired payment link.");
+      }
+      setOrder(data.data);
+      setReservationSecondsRemaining(
+        Math.max(Number(data?.data?.reservationSecondsRemaining || 0), 0),
+      );
+      invalidatePublicGetCache();
+      setError("");
+    } catch (err) {
+      setError(err?.message || "Unable to load order.");
+    } finally {
+      setLoading(false);
+    }
+  }, [orderId, token]);
 
   useEffect(() => {
-    const load = async () => {
-      if (!orderId || !token) {
-        setError("Missing or invalid payment link.");
-        setLoading(false);
-        return;
-      }
+    loadOrder();
+  }, [loadOrder]);
 
-      try {
-        const res = await fetch(
-          `${API_URL}/api/orders/pay-order/${encodeURIComponent(
-            orderId,
-          )}?key=${encodeURIComponent(token)}`,
-        );
-        const data = await res.json();
-        if (!data?.success) {
-          throw new Error(data?.message || "Invalid or expired payment link.");
-        }
-        setOrder(data.data);
-        setError("");
-      } catch (err) {
-        setError(err?.message || "Unable to load order.");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    load();
-  }, [orderId, token]);
+  useEffect(() => {
+    setReservationSecondsRemaining(
+      Math.max(Number(order?.reservationSecondsRemaining || 0), 0),
+    );
+  }, [order?.reservationSecondsRemaining]);
 
   useEffect(() => {
     const loadPaymentStatus = async () => {
@@ -127,6 +147,26 @@ const PayOrderPage = () => {
 
     loadPaymentStatus();
   }, []);
+
+  useEffect(() => {
+    if (!canPay || reservationSecondsRemaining <= 0) return undefined;
+
+    const timer = window.setInterval(() => {
+      setReservationSecondsRemaining((current) => {
+        const nextValue = Math.max(current - 1, 0);
+        return nextValue;
+      });
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [canPay, reservationSecondsRemaining]);
+
+  useEffect(() => {
+    if (!order?.reservationStatus) return;
+    if (order.reservationStatus !== "reserved") return;
+    if (reservationSecondsRemaining > 0) return;
+    void loadOrder();
+  }, [loadOrder, order?.reservationStatus, reservationSecondsRemaining]);
 
   const availableProviders = useMemo(() => {
     const list = paymentStatus?.enabledProviders || [];
@@ -160,6 +200,7 @@ const PayOrderPage = () => {
       window.location.assign(paymentUrl);
     } catch (err) {
       setError(err?.message || "Failed to initiate payment.");
+      await loadOrder();
     } finally {
       setSubmitting(false);
     }
@@ -240,6 +281,21 @@ const PayOrderPage = () => {
 
         <div className="bg-white border border-slate-200 rounded-2xl p-6">
           <h2 className="text-lg font-semibold text-slate-800 mb-4">Payment</h2>
+          {order?.reservationStatus === "reserved" && canPay ? (
+            <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              Items are reserved for you for{" "}
+              <strong>
+                {formatReservationCountdown(reservationSecondsRemaining)}
+              </strong>
+              .
+            </div>
+          ) : null}
+          {order?.reservationStatus === "unavailable" ? (
+            <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              This order can no longer be paid because the reserved item is no
+              longer available.
+            </div>
+          ) : null}
           {!canPay ? (
             <p className="text-slate-600">
               This order is not payable. Current status:{" "}
@@ -268,7 +324,7 @@ const PayOrderPage = () => {
               <button
                 type="button"
                 onClick={handlePay}
-                disabled={submitting}
+                disabled={submitting || reservationSecondsRemaining === 0}
                 className="w-full rounded-lg bg-blue-600 text-white py-3 font-semibold hover:bg-blue-700 disabled:opacity-60"
               >
                 {submitting ? "Redirecting..." : "Pay Now"}

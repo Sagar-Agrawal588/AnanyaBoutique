@@ -24,7 +24,7 @@ const ForgotPassword = () => {
 
     setLoading(true);
     try {
-      const res = await postData("forgot-Password", { email });
+      const res = await postData("/api/user/forgot-Password", { email });
 
       if (res.success !== false && !res.error) {
         toast.success(res.message);

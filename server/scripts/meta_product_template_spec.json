@@ -1,0 +1,49 @@
+{
+  "name": "product_image_ad_v1",
+  "category": "MARKETING",
+  "language": "en_US",
+  "header": {
+    "format": "IMAGE",
+    "example": {
+      "header_handle": ["https://cloudinary.com/path/to/product-image.jpg"]
+    }
+  },
+  "body": {
+    "text": "Hi {{1}}, check out our *{{2}}*! 🎁\n\nPrice: ₹{{3}}\nSpecial Offer: {{4}}\n\nShop now and save big!",
+    "example": {
+      "body_text": [
+        ["Customer"],
+        ["Healthy Peanut Butter 500g"],
+        ["499"],
+        ["20% OFF - Limited time only!"]
+      ]
+    }
+  },
+  "buttons": [
+    {
+      "type": "QUICK_REPLY",
+      "text": "Shop Now"
+    },
+    {
+      "type": "QUICK_REPLY",
+      "text": "View Details"
+    }
+  ],
+  "footer": {
+    "text": "BM COMPANIES | www.healthyonegram.com"
+  },
+  "metadata": {
+    "description": "Product announcement template with image header, title, price, discount offer, and CTA buttons",
+    "variables_count": 4,
+    "variable_mapping": {
+      "1": "customer_name",
+      "2": "product_title",
+      "3": "product_price",
+      "4": "discount_offer_text"
+    },
+    "header_required": true,
+    "header_format": "IMAGE",
+    "body_variables": 4,
+    "approved_for": "MARKETING"
+  }
+}

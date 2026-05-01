@@ -43,7 +43,7 @@ const ResetPasswordContent = () => {
 
     setLoading(true);
     try {
-      const res = await postData("forgot-Password/change-Password", {
+      const res = await postData("/api/user/forgot-Password/change-Password", {
         email: email,
         newPassword: password,
         confirmPassword: confirmPassword,

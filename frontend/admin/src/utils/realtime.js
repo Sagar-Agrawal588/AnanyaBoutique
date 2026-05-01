@@ -1,11 +1,39 @@
 import { io } from "socket.io-client";
 import { API_BASE_URL } from "@/utils/api";
 
-const SOCKET_URL = API_BASE_URL.endsWith("/api")
-  ? API_BASE_URL.slice(0, -4)
-  : API_BASE_URL;
+const SOCKET_TRANSPORTS = ["websocket", "polling"];
 
-const SOCKET_TRANSPORTS = ["polling"];
+const sanitizeBaseUrl = (value) =>
+  String(value || "")
+    .trim()
+    .replace(/^['"]|['"]$/g, "")
+    .replace(/\/+$/, "");
+
+const resolveSocketBaseUrl = () => {
+  const baseUrl = sanitizeBaseUrl(API_BASE_URL);
+  const normalizedBaseUrl = baseUrl.endsWith("/api")
+    ? baseUrl.slice(0, -4)
+    : baseUrl;
+
+  try {
+    const parsed = new URL(normalizedBaseUrl);
+    const hostname = String(parsed.hostname || "").toLowerCase();
+    const isLocalhost = hostname === "localhost" || hostname === "127.0.0.1";
+
+    // Local backend defaults to port 8000. Prefer that for sockets so a stale
+    // 8001 override in frontend env does not keep live updates offline.
+    if (isLocalhost && parsed.port && parsed.port !== "8000") {
+      parsed.port = "8000";
+      return parsed.toString().replace(/\/+$/, "");
+    }
+
+    return parsed.toString().replace(/\/+$/, "");
+  } catch {
+    return normalizedBaseUrl;
+  }
+};
+
+const SOCKET_URL = resolveSocketBaseUrl();
 
 let socketInstance = null;
 let activeToken = null;
@@ -15,6 +43,8 @@ const createSocket = () =>
     autoConnect: false,
     transports: SOCKET_TRANSPORTS,
     withCredentials: true,
+    timeout: 8000,
+    reconnection: true,
   });
 
 export const getAdminSocket = (token) => {
@@ -33,7 +63,7 @@ export const getAdminSocket = (token) => {
     }
   }
 
-  if (resolvedToken && !socketInstance.connected && !socketInstance.connecting) {
+  if (resolvedToken && !socketInstance.connected) {
     socketInstance.connect();
   }
 

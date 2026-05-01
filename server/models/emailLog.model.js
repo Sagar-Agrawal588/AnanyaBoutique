@@ -30,6 +30,8 @@ const emailLogSchema = new mongoose.Schema(
         "promotion",
         "newsletter",
         "campaign",
+        "stock_back_in_stock",
+        "order_payment_reminder",
         "system",
       ],
       required: true,

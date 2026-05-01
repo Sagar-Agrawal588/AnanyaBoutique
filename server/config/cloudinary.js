@@ -47,7 +47,11 @@ cloudinary.config({
  * @param {string} folder - Folder name in Cloudinary
  * @returns {Promise<object>} Upload result with url, public_id, etc.
  */
-export const uploadToCloudinary = async (file, folder = "buyonegram") => {
+export const uploadToCloudinary = async (
+  file,
+  folder = "buyonegram",
+  { mimeType = "image/jpeg", resourceType = "" } = {},
+) => {
   try {
     // Verify Cloudinary is configured
     const config = cloudinary.config();
@@ -63,19 +67,30 @@ export const uploadToCloudinary = async (file, folder = "buyonegram") => {
       };
     }
 
+    const normalizedMimeType = String(mimeType || "image/jpeg").trim().toLowerCase();
+    const normalizedResourceType = String(
+      resourceType || (normalizedMimeType.startsWith("video/") ? "video" : "image"),
+    )
+      .trim()
+      .toLowerCase();
+
     const options = {
       folder: folder,
-      resource_type: "image",
-      transformation: [
-        { quality: "auto:best" }, // Auto optimize quality
-        { fetch_format: "auto" }, // Auto format (webp, etc.)
-      ],
+      resource_type: normalizedResourceType,
+      ...(normalizedResourceType === "image"
+        ? {
+            transformation: [
+              { quality: "auto:best" }, // Auto optimize quality
+              { fetch_format: "auto" }, // Auto format (webp, etc.)
+            ],
+          }
+        : {}),
     };
 
     // If file is a buffer, convert to base64
     let uploadStr = file;
     if (Buffer.isBuffer(file)) {
-      uploadStr = `data:image/jpeg;base64,${file.toString("base64")}`;
+      uploadStr = `data:${normalizedMimeType};base64,${file.toString("base64")}`;
     }
 
     debugLog("Uploading to Cloudinary folder:", folder);
@@ -112,9 +127,16 @@ export const uploadMultipleToCloudinary = async (
   folder = "buyonegram",
 ) => {
   try {
-    const uploadPromises = files.map((file) =>
-      uploadToCloudinary(file, folder),
-    );
+    const uploadPromises = files.map((file) => {
+      if (Buffer.isBuffer(file) || typeof file === "string") {
+        return uploadToCloudinary(file, folder);
+      }
+
+      const resolvedBuffer = file?.buffer || file;
+      return uploadToCloudinary(resolvedBuffer, folder, {
+        mimeType: file?.mimetype || "image/jpeg",
+      });
+    });
     const results = await Promise.all(uploadPromises);
     return results;
   } catch (error) {

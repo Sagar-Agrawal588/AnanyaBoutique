@@ -99,7 +99,7 @@ test("recordCrmTouchpoint merges WhatsApp phone variants into the same contact",
   assert.equal(contacts[0].phone, "9876543210");
 });
 
-test("recordCrmTouchpoint only auto-enables WhatsApp consent for inbound chat", async () => {
+test("recordCrmTouchpoint auto-enables WhatsApp consent for inbound chat and customer orders", async () => {
   const inbound = await recordCrmTouchpoint({
     channel: "whatsapp",
     eventType: "chat_message",
@@ -118,6 +118,16 @@ test("recordCrmTouchpoint only auto-enables WhatsApp consent for inbound chat", 
     idempotencyKey: "crm-whatsapp-outbound-consent",
   });
 
+  const orderContact = await recordCrmTouchpoint({
+    channel: "website",
+    eventType: "order_created",
+    phone: "919777665544",
+    name: "Order Contact",
+    orderId: new mongoose.Types.ObjectId().toString(),
+    idempotencyKey: "crm-whatsapp-order-consent",
+  });
+
   assert.equal(inbound.contact.consent.whatsapp, true);
   assert.equal(outbound.contact.consent.whatsapp, null);
+  assert.equal(orderContact.contact.consent.whatsapp, true);
 });

@@ -21,6 +21,11 @@ import {
 } from "@mui/material";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  MdAdd,
+  MdDeleteOutline,
+  MdFolder,
+  MdFolderOpen,
+  MdOutlineArticle,
   MdLocalOffer,
   MdLocalShipping,
   MdPercent,
@@ -167,6 +172,181 @@ const buildOrderSeriesPreview = (settings = {}) => {
   );
   const sequence = String(1).padStart(padding, "0");
   return `${prefix}${fyCode}/${sequence}`;
+};
+
+const DEFAULT_SEO_PAGE_ENTRIES = [
+  {
+    label: "Blank SEO Page",
+    path: "",
+    metaTitle: "",
+    metaDescription: "",
+    keywords: "",
+    indexable: false,
+    notes: "Use this row as a blank SEO template for a new page.",
+  },
+  {
+    label: "Home",
+    path: "/",
+    metaTitle: "Buy OneGram - Premium Health Products",
+    metaDescription:
+      "Shop premium quality peanut butter and healthy food products at Buy OneGram.",
+    keywords: "peanut butter, healthy food, organic, natural, protein",
+    indexable: true,
+    notes: "Main homepage SEO entry.",
+  },
+  {
+    label: "Products",
+    path: "/products",
+    metaTitle: "Healthy Products | Buy OneGram",
+    metaDescription:
+      "Browse healthy pantry essentials, protein-rich snacks, and wellness products from Buy OneGram.",
+    keywords: "healthy products, peanut butter, snacks, protein, wellness",
+    indexable: true,
+    notes: "Catalog landing page.",
+  },
+  {
+    label: "Blogs",
+    path: "/blogs",
+    metaTitle: "Wellness Blog | Buy OneGram",
+    metaDescription:
+      "Read nutrition tips, healthy eating guides, and product advice from Buy OneGram.",
+    keywords: "health blog, nutrition tips, wellness, healthy eating",
+    indexable: true,
+    notes: "Content hub for search traffic.",
+  },
+  {
+    label: "About",
+    path: "/about",
+    metaTitle: "About Buy OneGram",
+    metaDescription:
+      "Learn more about Buy OneGram, our story, and the healthy products we build for everyday use.",
+    keywords: "about buy onegram, healthy brand, peanut butter store",
+    indexable: true,
+    notes: "Brand story page.",
+  },
+  {
+    label: "Membership",
+    path: "/membership",
+    metaTitle: "Membership Benefits | Buy OneGram",
+    metaDescription:
+      "Unlock premium membership benefits, savings, and rewards with Buy OneGram.",
+    keywords: "membership benefits, rewards, savings, healthy products",
+    indexable: true,
+    notes: "Membership landing page.",
+  },
+  {
+    label: "Healthy Peanut Butter Guide",
+    path: "/healthy-peanut-butter-guide",
+    metaTitle: "Healthy Peanut Butter Guide | Buy OneGram",
+    metaDescription:
+      "Explore how to choose healthy peanut butter, simple snack ideas, and ingredient tips from Buy OneGram.",
+    keywords:
+      "healthy peanut butter, snack ideas, ingredient tips, wellness guide",
+    indexable: true,
+    notes: "SEO guide page.",
+  },
+  {
+    label: "Login",
+    path: "/login",
+    metaTitle: "Login | Buy OneGram",
+    metaDescription: "Sign in to your Buy OneGram account.",
+    keywords: "login, account sign in",
+    indexable: false,
+    notes: "Usually noindex.",
+  },
+  {
+    label: "Register",
+    path: "/register",
+    metaTitle: "Register | Buy OneGram",
+    metaDescription: "Create your Buy OneGram account.",
+    keywords: "register, create account",
+    indexable: false,
+    notes: "Usually noindex.",
+  },
+];
+
+const DEFAULT_SEO_IMAGE_ENTRIES = [
+  {
+    label: "Logo",
+    target: "/logo.png",
+    altText: "Buy OneGram logo",
+    titleText: "Buy OneGram",
+    notes: "Keep the brand logo alt text short.",
+  },
+  {
+    label: "Homepage banners",
+    target: "Homepage hero and promotional sliders",
+    altText: "Buy OneGram premium health products banner",
+    titleText: "Homepage banner",
+    notes: "Use for hero banners and promotional creatives.",
+  },
+  {
+    label: "Product images",
+    target: "/product/[id]",
+    altText: "Product image",
+    titleText: "Product image",
+    notes: "Prefer descriptive product names in the storefront component.",
+  },
+  {
+    label: "Blog covers",
+    target: "/blogs/[slug]",
+    altText: "Blog cover image",
+    titleText: "Blog image",
+    notes: "Pair the blog title with the topic when used dynamically.",
+  },
+];
+
+const cloneSeoPageEntry = (entry = {}) => ({
+  label: String(entry.label || "Page").trim() || "Page",
+  path: String(entry.path || "/").trim() || "/",
+  metaTitle: String(entry.metaTitle || "").trim(),
+  metaDescription: String(entry.metaDescription || "").trim(),
+  keywords: String(entry.keywords || "").trim(),
+  indexable: entry.indexable === undefined ? true : Boolean(entry.indexable),
+  notes: String(entry.notes || "").trim(),
+});
+
+const cloneSeoImageEntry = (entry = {}) => ({
+  label: String(entry.label || "Image").trim() || "Image",
+  target: String(entry.target || "").trim(),
+  altText: String(entry.altText || "").trim(),
+  titleText: String(entry.titleText || "").trim(),
+  notes: String(entry.notes || "").trim(),
+});
+
+const DEFAULT_SEO_SETTINGS = {
+  pages: DEFAULT_SEO_PAGE_ENTRIES.map(cloneSeoPageEntry),
+  imageAltTexts: DEFAULT_SEO_IMAGE_ENTRIES.map(cloneSeoImageEntry),
+};
+
+const createBlankSeoPageEntry = () =>
+  cloneSeoPageEntry({
+    label: "Blank SEO Page",
+    path: "",
+    metaTitle: "",
+    metaDescription: "",
+    keywords: "",
+    indexable: false,
+    notes: "Use this row as a blank SEO template for a new page.",
+  });
+
+const normalizeSeoSettings = (value) => {
+  const raw = value && typeof value === "object" ? value : {};
+  const pages = Array.isArray(raw.pages) ? raw.pages : [];
+  const imageAltTexts = Array.isArray(raw.imageAltTexts)
+    ? raw.imageAltTexts
+    : [];
+
+  return {
+    pages:
+      pages.length > 0
+        ? pages.map(cloneSeoPageEntry)
+        : DEFAULT_SEO_SETTINGS.pages.map(cloneSeoPageEntry),
+    imageAltTexts:
+      imageAltTexts.length > 0
+        ? imageAltTexts.map(cloneSeoImageEntry)
+        : DEFAULT_SEO_SETTINGS.imageAltTexts.map(cloneSeoImageEntry),
+  };
 };
 
 /**
@@ -1920,7 +2100,7 @@ const SettingsPage = () => {
                   popupSettings.imageUrl,
                 )}
                 alt="Popup preview"
-                className="w-full h-[140px] object-cover"
+                className="w-full h-35 object-cover"
               />
             ) : null}
             <div className="p-4">
@@ -2086,6 +2266,440 @@ const SettingsPage = () => {
           />
         </div>
       </div>
+
+      {/* SEO Settings moved to /seo-pages
+      <div className="bg-white rounded-xl shadow-sm p-6 mb-6" id="seo-settings">
+        <button
+          type="button"
+          className="flex w-full items-center justify-between gap-3 text-left"
+          onClick={() => setSeoPagesOpen((prev) => !prev)}
+          aria-expanded={seoPagesOpen}
+          aria-controls="seo-settings-folder"
+        >
+          <div className="flex items-center gap-3">
+            {seoPagesOpen ? (
+              <MdFolderOpen className="text-2xl text-slate-500" />
+            ) : (
+              <MdFolder className="text-2xl text-slate-500" />
+            )}
+            <div>
+              <h2 className="text-lg font-semibold text-gray-800">
+                SEO Pages Folder
+              </h2>
+              <p className="text-sm text-gray-500">
+                Click to open and edit page tags, keywords, and image alt text.
+              </p>
+            </div>
+          </div>
+          <span className="text-sm font-semibold text-gray-500">
+            {seoPagesOpen ? "Collapse" : "Open"}
+          </span>
+        </button>
+
+        {seoPagesOpen && (
+          <div id="seo-settings-folder" className="mt-6 space-y-8">
+            <div className="rounded-xl border border-dashed border-teal-200 bg-teal-50/60 p-4">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-teal-900">
+                    Blank SEO Page Workspace
+                  </h3>
+                  <p className="mt-1 text-sm text-teal-800">
+                    Use this area when you want to build a new SEO page from
+                    scratch without touching an existing page row.
+                  </p>
+                </div>
+                <Button
+                  variant="contained"
+                  size="small"
+                  startIcon={<MdAdd />}
+                  onClick={() => addSeoPage(true)}
+                  sx={{ bgcolor: "#0f766e", "&:hover": { bgcolor: "#115e59" } }}
+                >
+                  Create Blank SEO Page
+                </Button>
+              </div>
+
+              <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-teal-900">
+                <div className="rounded-lg bg-white/80 p-3 border border-teal-100">
+                  <p className="font-semibold">Recommended usage</p>
+                  <p className="mt-1 text-teal-800">
+                    Add a blank page, fill the route, then write a custom title,
+                    description, and keywords for that specific URL.
+                  </p>
+                </div>
+                <div className="rounded-lg bg-white/80 p-3 border border-teal-100">
+                  <p className="font-semibold">More effective SEO</p>
+                  <p className="mt-1 text-teal-800">
+                    Keep each page focused on one topic, use short route names,
+                    and avoid duplicate titles or repeated keyword lists.
+                  </p>
+                </div>
+                <div className="rounded-lg bg-white/80 p-3 border border-teal-100 md:col-span-2">
+                  <p className="font-semibold">Best practice checklist</p>
+                  <ul className="mt-2 grid gap-2 sm:grid-cols-2 text-teal-800">
+                    <li>• Add one primary keyword theme per page.</li>
+                    <li>• Keep meta descriptions natural and helpful.</li>
+                    <li>• Turn off indexing for draft or private pages.</li>
+                    <li>• Use the blank template for new landing pages first.</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                <h3 className="text-sm font-semibold text-gray-700">
+                  Page SEO Entries
+                </h3>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={<MdAdd />}
+                    onClick={() => addSeoPage(false)}
+                  >
+                    Add Page
+                  </Button>
+                  <Button
+                    variant="contained"
+                    size="small"
+                    startIcon={<MdAdd />}
+                    onClick={() => addSeoPage(true)}
+                    sx={{ bgcolor: "#0f766e", "&:hover": { bgcolor: "#115e59" } }}
+                  >
+                    Add Blank Page
+                  </Button>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                {seoSettings.pages.map((page, index) => (
+                  <div
+                    key={`${page.path || "page"}-${index}`}
+                    className="rounded-lg border border-gray-100 p-4"
+                  >
+                    <div className="flex items-center justify-between gap-3 mb-4">
+                      <p className="text-sm font-semibold text-gray-800">
+                        {page.label || `Page ${index + 1}`}
+                      </p>
+                      <Button
+                        variant="text"
+                        color="error"
+                        size="small"
+                        startIcon={<MdDeleteOutline />}
+                        onClick={() =>
+                          setSeoSettings((prev) => ({
+                            ...prev,
+                            pages: prev.pages.filter((_, pageIndex) => pageIndex !== index),
+                          }))
+                        }
+                      >
+                        Remove
+                      </Button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <TextField
+                        label="Page Label"
+                        value={page.label}
+                        onChange={(e) =>
+                          setSeoSettings((prev) => ({
+                            ...prev,
+                            pages: prev.pages.map((item, pageIndex) =>
+                              pageIndex === index
+                                ? { ...item, label: e.target.value }
+                                : item,
+                            ),
+                          }))
+                        }
+                        size="small"
+                        fullWidth
+                      />
+
+                      <TextField
+                        label="Route Path"
+                        value={page.path}
+                        onChange={(e) =>
+                          setSeoSettings((prev) => ({
+                            ...prev,
+                            pages: prev.pages.map((item, pageIndex) =>
+                              pageIndex === index
+                                ? { ...item, path: e.target.value }
+                                : item,
+                            ),
+                          }))
+                        }
+                        size="small"
+                        fullWidth
+                        placeholder="/products"
+                      />
+
+                      <TextField
+                        label="Meta Title"
+                        value={page.metaTitle}
+                        onChange={(e) =>
+                          setSeoSettings((prev) => ({
+                            ...prev,
+                            pages: prev.pages.map((item, pageIndex) =>
+                              pageIndex === index
+                                ? { ...item, metaTitle: e.target.value }
+                                : item,
+                            ),
+                          }))
+                        }
+                        size="small"
+                        fullWidth
+                        className="md:col-span-2"
+                      />
+
+                      <TextField
+                        label="Meta Description"
+                        value={page.metaDescription}
+                        onChange={(e) =>
+                          setSeoSettings((prev) => ({
+                            ...prev,
+                            pages: prev.pages.map((item, pageIndex) =>
+                              pageIndex === index
+                                ? { ...item, metaDescription: e.target.value }
+                                : item,
+                            ),
+                          }))
+                        }
+                        size="small"
+                        fullWidth
+                        multiline
+                        minRows={2}
+                        className="md:col-span-2"
+                      />
+
+                      <TextField
+                        label="Keywords"
+                        value={page.keywords}
+                        onChange={(e) =>
+                          setSeoSettings((prev) => ({
+                            ...prev,
+                            pages: prev.pages.map((item, pageIndex) =>
+                              pageIndex === index
+                                ? { ...item, keywords: e.target.value }
+                                : item,
+                            ),
+                          }))
+                        }
+                        size="small"
+                        fullWidth
+                        className="md:col-span-2"
+                        placeholder="comma, separated, keywords"
+                      />
+
+                      <FormControlLabel
+                        control={
+                          <Switch
+                            checked={page.indexable}
+                            onChange={(e) =>
+                              setSeoSettings((prev) => ({
+                                ...prev,
+                                pages: prev.pages.map((item, pageIndex) =>
+                                  pageIndex === index
+                                    ? { ...item, indexable: e.target.checked }
+                                    : item,
+                                ),
+                              }))
+                            }
+                            color="warning"
+                          />
+                        }
+                        label="Allow search indexing"
+                      />
+
+                      <TextField
+                        label="Notes"
+                        value={page.notes}
+                        onChange={(e) =>
+                          setSeoSettings((prev) => ({
+                            ...prev,
+                            pages: prev.pages.map((item, pageIndex) =>
+                              pageIndex === index
+                                ? { ...item, notes: e.target.value }
+                                : item,
+                            ),
+                          }))
+                        }
+                        size="small"
+                        fullWidth
+                        multiline
+                        minRows={2}
+                        className="md:col-span-2"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <Divider />
+
+            <div>
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <h3 className="text-sm font-semibold text-gray-700">
+                  Image Alt Text Rules
+                </h3>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<MdAdd />}
+                  onClick={() =>
+                    setSeoSettings((prev) => ({
+                      ...prev,
+                      imageAltTexts: [
+                        ...prev.imageAltTexts,
+                        cloneSeoImageEntry({ label: "New image" }),
+                      ],
+                    }))
+                  }
+                >
+                  Add Image Rule
+                </Button>
+              </div>
+
+              <div className="space-y-4">
+                {seoSettings.imageAltTexts.map((imageItem, index) => (
+                  <div
+                    key={`${imageItem.label || "image"}-${index}`}
+                    className="rounded-lg border border-gray-100 p-4"
+                  >
+                    <div className="flex items-center justify-between gap-3 mb-4">
+                      <p className="text-sm font-semibold text-gray-800">
+                        Image Rule {index + 1}
+                      </p>
+                      <Button
+                        variant="text"
+                        color="error"
+                        size="small"
+                        startIcon={<MdDeleteOutline />}
+                        onClick={() =>
+                          setSeoSettings((prev) => ({
+                            ...prev,
+                            imageAltTexts: prev.imageAltTexts.filter(
+                              (_, imageIndex) => imageIndex !== index,
+                            ),
+                          }))
+                        }
+                      >
+                        Remove
+                      </Button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <TextField
+                        label="Label"
+                        value={imageItem.label}
+                        onChange={(e) =>
+                          setSeoSettings((prev) => ({
+                            ...prev,
+                            imageAltTexts: prev.imageAltTexts.map(
+                              (item, imageIndex) =>
+                                imageIndex === index
+                                  ? { ...item, label: e.target.value }
+                                  : item,
+                            ),
+                          }))
+                        }
+                        size="small"
+                        fullWidth
+                      />
+
+                      <TextField
+                        label="Target / Asset"
+                        value={imageItem.target}
+                        onChange={(e) =>
+                          setSeoSettings((prev) => ({
+                            ...prev,
+                            imageAltTexts: prev.imageAltTexts.map(
+                              (item, imageIndex) =>
+                                imageIndex === index
+                                  ? { ...item, target: e.target.value }
+                                  : item,
+                            ),
+                          }))
+                        }
+                        size="small"
+                        fullWidth
+                        placeholder="/product/[id]"
+                      />
+
+                      <TextField
+                        label="Alt Text"
+                        value={imageItem.altText}
+                        onChange={(e) =>
+                          setSeoSettings((prev) => ({
+                            ...prev,
+                            imageAltTexts: prev.imageAltTexts.map(
+                              (item, imageIndex) =>
+                                imageIndex === index
+                                  ? { ...item, altText: e.target.value }
+                                  : item,
+                            ),
+                          }))
+                        }
+                        size="small"
+                        fullWidth
+                        className="md:col-span-2"
+                      />
+
+                      <TextField
+                        label="Title Text"
+                        value={imageItem.titleText}
+                        onChange={(e) =>
+                          setSeoSettings((prev) => ({
+                            ...prev,
+                            imageAltTexts: prev.imageAltTexts.map(
+                              (item, imageIndex) =>
+                                imageIndex === index
+                                  ? { ...item, titleText: e.target.value }
+                                  : item,
+                            ),
+                          }))
+                        }
+                        size="small"
+                        fullWidth
+                      />
+
+                      <TextField
+                        label="Notes"
+                        value={imageItem.notes}
+                        onChange={(e) =>
+                          setSeoSettings((prev) => ({
+                            ...prev,
+                            imageAltTexts: prev.imageAltTexts.map(
+                              (item, imageIndex) =>
+                                imageIndex === index
+                                  ? { ...item, notes: e.target.value }
+                                  : item,
+                            ),
+                          }))
+                        }
+                        size="small"
+                        fullWidth
+                        multiline
+                        minRows={2}
+                        className="md:col-span-2"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        <p className="text-sm text-gray-500 mt-3">
+          This section stays inside the admin panel. Keep public pages indexed
+          only when they should appear in search, and use descriptive alt text
+          for every important image.
+        </p>
+      </div>
+      */}
 
       {/* Homepage Flavour Buttons */}
       <div className="bg-white rounded-xl shadow-sm p-6 mb-6">

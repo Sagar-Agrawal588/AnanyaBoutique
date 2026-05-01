@@ -4,7 +4,7 @@ import { useAdmin } from "@/context/AdminContext";
 import { useAdminRealtime } from "@/hooks/useAdminRealtime";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useLiveRefreshSetting } from "@/hooks/useLiveRefreshSetting";
-import { getData } from "@/utils/api";
+import { getBlobData, getData } from "@/utils/api";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -263,6 +263,23 @@ const getApiErrorMessage = (response, fallback) =>
   [response?.message, response?.details].filter(Boolean).join(" - ") ||
   fallback;
 
+const extractFileNameFromContentDisposition = (headerValue = "") => {
+  const raw = String(headerValue || "").trim();
+  if (!raw) return "";
+
+  const utf8Match = raw.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1].trim());
+    } catch {
+      return utf8Match[1].trim();
+    }
+  }
+
+  const plainMatch = raw.match(/filename="?([^";]+)"?/i);
+  return plainMatch?.[1] ? plainMatch[1].trim() : "";
+};
+
 const getSessionIntent = (session) => {
   const events = toNumber(session?.eventCount, 0);
   const pages = toNumber(session?.pageViews, 0);
@@ -498,6 +515,7 @@ export default function BehaviorAnalyticsPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [showGuide, setShowGuide] = useState(true);
+  const [downloadingReport, setDownloadingReport] = useState(false);
   const { intervalMs } = useLiveRefreshSetting();
   const analyticsRefreshConfig = useMemo(
     () => ({
@@ -994,6 +1012,51 @@ export default function BehaviorAnalyticsPage() {
     }
   };
 
+  const handleDownloadObservationPdf = async () => {
+    setDownloadingReport(true);
+    setError("");
+
+    try {
+      const query = new URLSearchParams({
+        from: selectedRange.from,
+        to: selectedRange.to,
+      });
+
+      const response = await getBlobData(
+        `/api/admin/analytics/behavior/export-report?${query.toString()}`,
+        token,
+      );
+
+      if (!response?.success || !response?.blob) {
+        throw new Error(
+          response?.message || "Failed to download behavior analytics PDF",
+        );
+      }
+
+      const contentDisposition =
+        response?.headers?.["content-disposition"] || "";
+      const fileNameFromHeader =
+        extractFileNameFromContentDisposition(contentDisposition);
+      const fallbackFileName = `behavior-analytics-observations-${startDate || "from"}-to-${endDate || "to"}.pdf`;
+      const fileName = fileNameFromHeader || fallbackFileName;
+
+      const blobUrl = window.URL.createObjectURL(response.blob);
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (downloadError) {
+      setError(
+        downloadError?.message || "Failed to download behavior analytics PDF",
+      );
+    } finally {
+      setDownloadingReport(false);
+    }
+  };
+
   if (authLoading || loading) return <LoadingSpinner />;
   if (!isAuthenticated) return null;
 
@@ -1066,6 +1129,32 @@ export default function BehaviorAnalyticsPage() {
                 {selectedRange.days} days
               </span>
             </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+          <h2 className="text-lg font-semibold text-gray-900">
+            Download Traffic Observation PDF
+          </h2>
+          <p className="text-sm text-gray-600 mt-1">
+            Download observation report for current behavior date range with
+            visitor count, time spent, top clicked button, and top interacted
+            product.
+          </p>
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="text-xs text-gray-600">
+              From: {startDate || "-"} | To: {endDate || "-"}
+            </div>
+            <button
+              type="button"
+              onClick={handleDownloadObservationPdf}
+              disabled={downloadingReport}
+              className="bg-slate-900 text-white px-4 py-2 rounded-lg font-semibold disabled:opacity-60"
+            >
+              {downloadingReport
+                ? "Preparing PDF..."
+                : "Download Observation PDF"}
+            </button>
           </div>
         </div>
 

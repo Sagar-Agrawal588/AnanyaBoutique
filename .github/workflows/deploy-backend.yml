@@ -121,6 +121,7 @@ jobs:
           FIREBASE_CLIENT_EMAIL: ${{ secrets.FIREBASE_CLIENT_EMAIL }}
           FIREBASE_PRIVATE_KEY: ${{ secrets.FIREBASE_PRIVATE_KEY }}
           WHATSAPP_ACCESS_TOKEN: ${{ secrets.WHATSAPP_ACCESS_TOKEN }}
+          WHATSAPP_APP_ID: ${{ secrets.WHATSAPP_APP_ID }}
           WHATSAPP_PHONE_NUMBER_ID: ${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}
           WHATSAPP_BUSINESS_ACCOUNT_ID: ${{ secrets.WHATSAPP_BUSINESS_ACCOUNT_ID }}
           WHATSAPP_WEBHOOK_VERIFY_TOKEN: ${{ secrets.WHATSAPP_WEBHOOK_VERIFY_TOKEN }}
@@ -206,6 +207,7 @@ jobs:
               ],
               "WhatsApp Cloud API + Webhooks": [
                   "WHATSAPP_ACCESS_TOKEN",
+                  "WHATSAPP_APP_ID",
                   "WHATSAPP_PHONE_NUMBER_ID",
                   "WHATSAPP_BUSINESS_ACCOUNT_ID",
                   "WHATSAPP_WEBHOOK_VERIFY_TOKEN",
@@ -263,6 +265,7 @@ jobs:
               "FIREBASE_CLIENT_EMAIL",
               "FIREBASE_PRIVATE_KEY",
               "WHATSAPP_ACCESS_TOKEN",
+              "WHATSAPP_APP_ID",
               "WHATSAPP_PHONE_NUMBER_ID",
               "WHATSAPP_BUSINESS_ACCOUNT_ID",
               "WHATSAPP_WEBHOOK_VERIFY_TOKEN",

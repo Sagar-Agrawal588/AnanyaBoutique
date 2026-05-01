@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { fetchSeoSettings, resolveAltText } from "../lib/seo";
 
 const DEFAULT_MIN_SCALE = 1;
 const DEFAULT_MAX_SCALE = 3;
@@ -72,6 +73,7 @@ export default function ZoomableImage({
   maxScale = DEFAULT_MAX_SCALE,
   onScaleChange,
 }) {
+  const [computedAlt, setComputedAlt] = useState(alt);
   const containerRef = useRef(null);
   const imageRef = useRef(null);
   const frameRef = useRef(null);
@@ -483,6 +485,23 @@ export default function ZoomableImage({
   }, [resetTransform, src, syncCursor]);
 
   useEffect(() => {
+    let mounted = true;
+    // If caller provided a descriptive alt, keep it. Otherwise try to resolve from seoSettings.
+    if (!alt || alt === "Zoomable product image") {
+      fetchSeoSettings().then((seo) => {
+        if (!mounted) return;
+        const candidate = resolveAltText(src || window.location.pathname, seo);
+        if (candidate) setComputedAlt(candidate);
+      });
+    } else {
+      setComputedAlt(alt);
+    }
+    return () => {
+      mounted = false;
+    };
+  }, [alt, src]);
+
+  useEffect(() => {
     const image = imageRef.current;
     if (!image) return undefined;
 
@@ -545,7 +564,7 @@ export default function ZoomableImage({
       <img
         ref={imageRef}
         src={src}
-        alt={alt}
+        alt={computedAlt}
         draggable={false}
         className="max-w-full max-h-full object-contain pointer-events-none"
         style={{

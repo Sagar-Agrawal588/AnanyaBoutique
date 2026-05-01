@@ -95,6 +95,9 @@ export const getPublicSettings = async (req, res) => {
       "discountSettings",
       "storeInfo",
       "headerSettings",
+      "reviewSettings",
+      // Expose SEO settings so the storefront can build sitemap and meta tags
+      "seoSettings",
       ...FLAVOUR_BUTTON_SETTING_KEYS,
     ];
 
@@ -587,6 +590,8 @@ export const deleteSetting = async (req, res) => {
       "discountSettings",
       "popupSettings",
       "headerSettings",
+      "reviewSettings",
+      "seoSettings",
       ...FLAVOUR_BUTTON_SETTING_KEYS,
     ];
     if (protectedKeys.includes(key)) {

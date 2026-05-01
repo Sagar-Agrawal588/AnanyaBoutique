@@ -8,6 +8,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useContext, useEffect, useRef, useState } from "react";
 import { FiVolume2, FiVolumeX } from "react-icons/fi";
+import useSeoAlt from "@/hooks/useSeoAlt";
 
 const BannerMedia = ({ banner, onMuteToggle, isMuted }) => {
   const containerRef = useRef(null);
@@ -42,6 +43,11 @@ const BannerMedia = ({ banner, onMuteToggle, isMuted }) => {
     setVideoError(true);
   };
 
+  const desktopSrc = banner.image ? getBannerImageUrl(banner.image) : null;
+  const mobileSrc = banner.image ? getBannerImageUrl(banner.mobileImage || banner.image) : null;
+  const desktopAlt = useSeoAlt(desktopSrc || banner.title, banner.title);
+  const mobileAlt = useSeoAlt(mobileSrc || banner.title, banner.title);
+
   if (banner.mediaType === "video" && banner.videoUrl && !videoError) {
     return (
       <div
@@ -69,15 +75,13 @@ const BannerMedia = ({ banner, onMuteToggle, isMuted }) => {
   }
 
   if (banner.image) {
-    const desktopSrc = getBannerImageUrl(banner.image);
-    const mobileSrc = getBannerImageUrl(banner.mobileImage || banner.image);
 
     return (
       <div className="relative h-56 sm:h-64 md:h-72 w-full overflow-hidden rounded-3xl">
         <div className="absolute inset-0 hidden md:block">
-          <Image
-            src={desktopSrc}
-            alt={banner.title}
+                  <Image
+                    src={desktopSrc}
+                    alt={desktopAlt}
             fill
             sizes="(max-width: 768px) 100vw, 50vw"
             unoptimized={isCloudinaryUrl(desktopSrc)}
@@ -85,9 +89,9 @@ const BannerMedia = ({ banner, onMuteToggle, isMuted }) => {
           />
         </div>
         <div className="absolute inset-0 md:hidden">
-          <Image
-            src={mobileSrc}
-            alt={banner.title}
+                  <Image
+                    src={mobileSrc}
+                    alt={mobileAlt}
             fill
             sizes="100vw"
             unoptimized={isCloudinaryUrl(mobileSrc)}
@@ -190,7 +194,7 @@ const Banners = ({ initialBanners = [] }) => {
                       />
 
                       {/* Gradient Overlay */}
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent pointer-events-none rounded-3xl" />
+                      <div className="absolute inset-0 bg-linear-to-t from-black/80 via-black/20 to-transparent pointer-events-none rounded-3xl" />
 
                       {/* Content */}
                       <div className="absolute bottom-0 left-0 p-6 sm:p-8 w-full z-10">

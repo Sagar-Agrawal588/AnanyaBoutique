@@ -2,6 +2,7 @@
 import { useAdmin } from "@/context/AdminContext";
 import { firebaseApp } from "@/firebase";
 import { postData } from "@/utils/api";
+import { persistAdminSession } from "@/utils/authSession";
 import { withAdminBasePath } from "@/utils/basePath";
 import { Button } from "@mui/material";
 import Checkbox from "@mui/material/Checkbox";
@@ -22,7 +23,11 @@ const label = { slotProps: { input: { "aria-label": "Checkbox demo" } } };
 const GOOGLE_REDIRECT_ATTEMPT_KEY = "googleAuthRedirectAttemptedAdmin";
 const PRIVILEGED_ADMIN_ROLES = new Set(["admin", "manager"]);
 const isPrivilegedAdminRole = (role) =>
-  PRIVILEGED_ADMIN_ROLES.has(String(role || "").trim().toLowerCase());
+  PRIVILEGED_ADMIN_ROLES.has(
+    String(role || "")
+      .trim()
+      .toLowerCase(),
+  );
 
 const Login = () => {
   const [email, setEmail] = useState("");
@@ -31,7 +36,7 @@ const Login = () => {
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
-  const [rememberMe, setRememberMe] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
   const [auth, setAuth] = useState(null);
   const [provider, setProvider] = useState(null);
 
@@ -52,10 +57,10 @@ const Login = () => {
       googleId: user.uid,
     };
 
-    const backendResponse = await postData(
-      "/api/admin/google-login",
-      googleUserData,
-    );
+    const backendResponse = await postData("/api/admin/google-login", {
+      ...googleUserData,
+      rememberMe,
+    });
 
     if (backendResponse?.error === true) {
       throw new Error(backendResponse?.message || "Google Sign-In failed");
@@ -65,8 +70,11 @@ const Login = () => {
       throw new Error("Access denied. Admin or Manager privileges required.");
     }
 
-    localStorage.setItem("adminToken", backendResponse?.data?.accessToken);
-    localStorage.setItem("adminUser", JSON.stringify(backendResponse?.data));
+    persistAdminSession({
+      accessToken: backendResponse?.data?.accessToken,
+      admin: backendResponse?.data,
+      rememberMe,
+    });
     router.push("/");
   };
 
@@ -126,7 +134,7 @@ const Login = () => {
       return;
     }
 
-    const result = await login(email, password);
+    const result = await login(email, password, { rememberMe });
 
     if (result.error) {
       setError(result.message);

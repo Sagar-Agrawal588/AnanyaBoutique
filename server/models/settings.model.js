@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { DEFAULT_REVIEW_SETTINGS } from "../constants/reviewSettings.js";
 
 const DEFAULT_FLAVOUR_BUTTON_SETTINGS = [
   {
@@ -74,6 +75,40 @@ const DEFAULT_FLAVOUR_BUTTON_SETTINGS = [
     category: "display",
   },
 ];
+
+const createSeoPageDefaults = ({
+  label,
+  path,
+  metaTitle,
+  metaDescription,
+  keywords,
+  indexable,
+  notes,
+  heroTitle = "",
+  heroSubtitle = "",
+  heroImageUrl = "",
+  heroImageAlt = "",
+  ctaLabel = "Explore Products",
+  ctaHref = "/products",
+  bodySections = [],
+  faqItems = [],
+}) => ({
+  label,
+  path,
+  metaTitle,
+  metaDescription,
+  keywords,
+  indexable,
+  notes,
+  heroTitle,
+  heroSubtitle,
+  heroImageUrl,
+  heroImageAlt,
+  ctaLabel,
+  ctaHref,
+  bodySections,
+  faqItems,
+});
 
 /**
  * Settings Schema
@@ -291,6 +326,179 @@ settingsSchema.statics.defaultSettings = [
     },
     description: "Store contact and business information",
     category: "general",
+  },
+  {
+    key: "seoSettings",
+    value: {
+      pages: [
+        createSeoPageDefaults({
+          label: "Home",
+          path: "/",
+          metaTitle: "Buy OneGram - Premium Health Products",
+          metaDescription:
+            "Shop premium quality peanut butter and healthy food products at Buy OneGram.",
+          keywords:
+            "peanut butter, healthy food, organic, natural, protein",
+          indexable: true,
+          notes: "Main homepage SEO entry.",
+          heroTitle: "Premium health products for everyday wellness",
+          heroSubtitle:
+            "Discover healthy pantry staples, better ingredients, and practical nutrition-first choices from Buy OneGram.",
+          ctaLabel: "Browse Products",
+          ctaHref: "/products",
+          bodySections: [
+            {
+              heading: "Why customers choose Buy OneGram",
+              content:
+                "We focus on ingredient clarity, satisfying everyday flavor, and products that fit into practical routines. Our catalog is built for repeat use, not one-time trends.",
+            },
+          ],
+        }),
+        createSeoPageDefaults({
+          label: "Products",
+          path: "/products",
+          metaTitle: "Healthy Products | Buy OneGram",
+          metaDescription:
+            "Browse healthy pantry essentials, protein-rich snacks, and wellness products from Buy OneGram.",
+          keywords:
+            "healthy products, peanut butter, snacks, protein, wellness",
+          indexable: true,
+          notes: "Catalog landing page.",
+          heroTitle: "Healthy pantry essentials built for repeat buying",
+          heroSubtitle:
+            "Shop a product range designed for simple daily routines, better ingredients, and practical wellness habits.",
+          ctaLabel: "Shop the Catalog",
+          ctaHref: "/products",
+        }),
+        createSeoPageDefaults({
+          label: "Blogs",
+          path: "/blogs",
+          metaTitle: "Wellness Blog | Buy OneGram",
+          metaDescription:
+            "Read nutrition tips, healthy eating guides, and product advice from Buy OneGram.",
+          keywords: "health blog, nutrition tips, wellness, healthy eating",
+          indexable: true,
+          notes: "Content hub for search traffic.",
+          heroTitle: "Practical wellness reads and nutrition guidance",
+          heroSubtitle:
+            "Explore health articles, ingredient explainers, and snack ideas that support daily routines.",
+          ctaLabel: "Read Articles",
+          ctaHref: "/blogs",
+        }),
+        createSeoPageDefaults({
+          label: "About",
+          path: "/about",
+          metaTitle: "About Buy OneGram",
+          metaDescription:
+            "Learn more about Buy OneGram, our story, and the healthy products we build for everyday use.",
+          keywords: "about buy onegram, healthy brand, peanut butter store",
+          indexable: true,
+          notes: "Brand story page.",
+          ctaLabel: "Explore Products",
+          ctaHref: "/products",
+        }),
+        createSeoPageDefaults({
+          label: "Membership",
+          path: "/membership",
+          metaTitle: "Membership Benefits | Buy OneGram",
+          metaDescription:
+            "Unlock premium membership benefits, savings, and rewards with Buy OneGram.",
+          keywords:
+            "membership benefits, rewards, savings, healthy products",
+          indexable: true,
+          notes: "Membership landing page.",
+          ctaLabel: "View Membership",
+          ctaHref: "/membership",
+        }),
+        createSeoPageDefaults({
+          label: "Healthy Peanut Butter Guide",
+          path: "/healthy-peanut-butter-guide",
+          metaTitle: "Healthy Peanut Butter Guide | Buy OneGram",
+          metaDescription:
+            "Explore how to choose healthy peanut butter, simple snack ideas, and ingredient tips from Buy OneGram.",
+          keywords:
+            "healthy peanut butter, snack ideas, ingredient tips, wellness guide",
+          indexable: true,
+          notes: "SEO guide page.",
+          heroTitle: "How to choose healthy peanut butter with confidence",
+          heroSubtitle:
+            "Use this guide to compare ingredients, understand common labels, and find practical snack ideas for everyday use.",
+          ctaLabel: "Explore Peanut Butter",
+          ctaHref: "/products",
+          faqItems: [
+            {
+              question: "What ingredients should healthy peanut butter include?",
+              answer:
+                "The shortest ingredient list is usually the safest starting point. Look for peanuts first, and avoid unnecessary fillers when possible.",
+            },
+          ],
+        }),
+        createSeoPageDefaults({
+          label: "Login",
+          path: "/login",
+          metaTitle: "Login | Buy OneGram",
+          metaDescription: "Sign in to your Buy OneGram account.",
+          keywords: "login, account sign in",
+          indexable: false,
+          notes: "Usually noindex.",
+          ctaLabel: "Go to Login",
+          ctaHref: "/login",
+        }),
+        createSeoPageDefaults({
+          label: "Register",
+          path: "/register",
+          metaTitle: "Register | Buy OneGram",
+          metaDescription: "Create your Buy OneGram account.",
+          keywords: "register, create account",
+          indexable: false,
+          notes: "Usually noindex.",
+          ctaLabel: "Create Account",
+          ctaHref: "/register",
+        }),
+      ],
+      imageAltTexts: [
+        {
+          label: "Logo",
+          target: "/logo.png",
+          altText: "Buy OneGram logo",
+          titleText: "Buy OneGram",
+          notes: "Keep the brand logo alt text short.",
+        },
+        {
+          label: "Homepage banners",
+          target: "Homepage hero and promotional sliders",
+          altText: "Buy OneGram premium health products banner",
+          titleText: "Homepage banner",
+          notes: "Use for hero banners and promotional creatives.",
+        },
+        {
+          label: "Product images",
+          target: "/product/[id]",
+          altText: "Product image",
+          titleText: "Product image",
+          notes:
+            "Prefer descriptive product names in the storefront component.",
+        },
+        {
+          label: "Blog covers",
+          target: "/blogs/[slug]",
+          altText: "Blog cover image",
+          titleText: "Blog image",
+          notes: "Pair the blog title with the topic when used dynamically.",
+        },
+      ],
+    },
+    description: "SEO page metadata and image alt-text rules",
+    category: "general",
+  },
+  {
+    key: "reviewSettings",
+    value: {
+      ...DEFAULT_REVIEW_SETTINGS,
+    },
+    description:
+      "Storefront review submission and review-action visibility controls",
+    category: "display",
   },
 ];
 

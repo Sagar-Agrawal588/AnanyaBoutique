@@ -3,6 +3,13 @@ import ProductModel from "../models/product.model.js";
 import PurchaseOrderModel from "../models/purchaseOrder.model.js";
 import InventoryAuditModel from "../models/inventoryAudit.model.js";
 import StockMovementModel from "../models/stockMovement.model.js";
+import { emitStockUpdateIfChanged } from "../realtime/stockEvents.js";
+import { trackStockOutEventIfNeeded } from "./productAvailabilityAnalytics.service.js";
+import { notifyBackInStock } from "./stockNotification.service.js";
+import {
+  markOrderReservationsCompleted,
+  markOrderReservationsExpired,
+} from "./stockReservation.service.js";
 import { AppError, logger } from "../utils/errorHandler.js";
 
 // Atomic inventory updates rely on $inc with $expr guards to avoid race conditions.
@@ -14,12 +21,33 @@ const TRACK_INVENTORY_FILTER = {
   ],
 };
 
-const DEFAULT_RESERVATION_MINUTES = 30;
+const DEFAULT_RESERVATION_SECONDS = 210;
 
-const getReservationExpiryDate = () => {
-  const minutes = Number(process.env.INVENTORY_RESERVATION_MINUTES || DEFAULT_RESERVATION_MINUTES);
-  if (!Number.isFinite(minutes) || minutes <= 0) return null;
-  return new Date(Date.now() + minutes * 60 * 1000);
+const resolveReservationSeconds = () => {
+  const configuredSeconds = Number(process.env.INVENTORY_RESERVATION_SECONDS);
+  if (Number.isFinite(configuredSeconds) && configuredSeconds > 0) {
+    return configuredSeconds;
+  }
+
+  const configuredMinutes = Number(process.env.INVENTORY_RESERVATION_MINUTES);
+  if (Number.isFinite(configuredMinutes) && configuredMinutes > 0) {
+    return configuredMinutes * 60;
+  }
+
+  return DEFAULT_RESERVATION_SECONDS;
+};
+
+export const getReservationExpiryDate = (baseDate = new Date()) => {
+  const seconds = resolveReservationSeconds();
+  if (!Number.isFinite(seconds) || seconds <= 0) return null;
+
+  const resolvedBaseDate =
+    baseDate instanceof Date ? baseDate : new Date(baseDate);
+  const baseTimestamp = Number.isNaN(resolvedBaseDate.getTime())
+    ? Date.now()
+    : resolvedBaseDate.getTime();
+
+  return new Date(baseTimestamp + seconds * 1000);
 };
 
 const toObjectId = (value) => {
@@ -160,6 +188,115 @@ const getAvailableFromVariant = (variant) => {
   const stock = Number(variant?.stock_quantity ?? variant?.stock ?? 0);
   const reserved = Number(variant?.reserved_quantity ?? 0);
   return Math.max(stock - reserved, 0);
+};
+
+const queueStockUpdate = (
+  pendingUpdates,
+  { productBefore, productAfter, variantId = null, source = "SYSTEM" },
+) => {
+  if (!Array.isArray(pendingUpdates) || !productBefore || !productAfter) {
+    return;
+  }
+
+  pendingUpdates.push({
+    productBefore,
+    productAfter,
+    variantId: variantId || null,
+    source,
+  });
+};
+
+const flushQueuedStockUpdates = (pendingUpdates = []) => {
+  if (!Array.isArray(pendingUpdates) || pendingUpdates.length === 0) {
+    return 0;
+  }
+
+  return pendingUpdates.reduce(
+    (count, update) =>
+      count +
+      emitStockUpdateIfChanged({
+        productBefore: update.productBefore,
+        productAfter: update.productAfter,
+        variantId: update.variantId,
+        source: update.source,
+      }),
+    0,
+  );
+};
+
+export const triggerBackInStockNotificationsIfRecovered = async ({
+  productBefore,
+  productAfter,
+  variantId = null,
+  source = "INVENTORY_AVAILABLE",
+}) => {
+  try {
+    if (!productBefore || !productAfter || !isInventoryTracked(productAfter)) {
+      return;
+    }
+
+    const normalizedVariantId = variantId ? String(variantId) : "";
+
+    if (normalizedVariantId) {
+      const beforeVariant = getVariantFromDoc(productBefore, normalizedVariantId);
+      const afterVariant = getVariantFromDoc(productAfter, normalizedVariantId);
+
+      if (
+        beforeVariant &&
+        afterVariant &&
+        getAvailableFromVariant(beforeVariant) > 0 &&
+        getAvailableFromVariant(afterVariant) <= 0
+      ) {
+        await trackStockOutEventIfNeeded({
+          productBefore,
+          productAfter,
+          variantId: normalizedVariantId,
+          source,
+        });
+      }
+
+      if (
+        beforeVariant &&
+        afterVariant &&
+        getAvailableFromVariant(beforeVariant) <= 0 &&
+        getAvailableFromVariant(afterVariant) > 0
+      ) {
+        await notifyBackInStock({
+          product: productAfter,
+          variant: afterVariant,
+          source,
+        });
+      }
+    }
+
+    if (
+      getAvailableFromDoc(productBefore) > 0 &&
+      getAvailableFromDoc(productAfter) <= 0
+    ) {
+      await trackStockOutEventIfNeeded({
+        productBefore,
+        productAfter,
+        source,
+      });
+    }
+
+    if (
+      getAvailableFromDoc(productBefore) <= 0 &&
+      getAvailableFromDoc(productAfter) > 0
+    ) {
+      await notifyBackInStock({
+        product: productAfter,
+        source,
+      });
+    }
+  } catch (error) {
+    logger.warn("stockNotification", "Back-in-stock trigger failed", {
+      productId: productAfter?._id || productBefore?._id || null,
+      variantId: variantId || null,
+      source,
+      error: error?.message || String(error),
+    });
+  }
 };
 
 const isInventoryTracked = (product) => {
@@ -618,6 +755,7 @@ export const reserveInventory = async (order, source = "ORDER_CREATE") => {
   }
 
   const applied = [];
+  const pendingStockUpdates = [];
   try {
     for (const item of items) {
       const variantObjectId = resolveVariantObjectId(item.variantId);
@@ -712,6 +850,18 @@ export const reserveInventory = async (order, source = "ORDER_CREATE") => {
       });
 
       maybeEmitLowStockAlert(productAfter, variantObjectId ? auditAfter : null);
+      await triggerBackInStockNotificationsIfRecovered({
+        productBefore,
+        productAfter,
+        variantId: variantObjectId,
+        source,
+      });
+      queueStockUpdate(pendingStockUpdates, {
+        productBefore,
+        productAfter,
+        variantId: variantObjectId,
+        source,
+      });
 
       applied.push(item);
     }
@@ -722,6 +872,13 @@ export const reserveInventory = async (order, source = "ORDER_CREATE") => {
     if (!order.reservationExpiresAt && order.payment_status !== "paid") {
       order.reservationExpiresAt = getReservationExpiryDate();
     }
+    logger.info("inventoryReservation", "Reservation created", {
+      orderId: order?._id || null,
+      source,
+      itemCount: items.length,
+      expiresAt: order.reservationExpiresAt || null,
+    });
+    flushQueuedStockUpdates(pendingStockUpdates);
     return { status: "reserved" };
   } catch (error) {
     if (applied.length > 0) {
@@ -743,6 +900,7 @@ export const confirmInventory = async (order, source = "PAYMENT_SUCCESS") => {
   }
 
   const applied = [];
+  const pendingStockUpdates = [];
   try {
     for (const item of items) {
       const variantObjectId = resolveVariantObjectId(item.variantId);
@@ -893,6 +1051,18 @@ export const confirmInventory = async (order, source = "PAYMENT_SUCCESS") => {
       });
 
       maybeEmitLowStockAlert(productAfter, variantObjectId ? auditAfter : null);
+      await triggerBackInStockNotificationsIfRecovered({
+        productBefore,
+        productAfter,
+        variantId: variantObjectId,
+        source,
+      });
+      queueStockUpdate(pendingStockUpdates, {
+        productBefore,
+        productAfter,
+        variantId: variantObjectId,
+        source,
+      });
 
       applied.push({ ...item, deductReserved });
     }
@@ -901,6 +1071,13 @@ export const confirmInventory = async (order, source = "PAYMENT_SUCCESS") => {
     order.inventoryUpdatedAt = new Date();
     order.inventorySource = source;
     order.reservationExpiresAt = null;
+    logger.info("inventoryReservation", "Reservation confirmed", {
+      orderId: order?._id || null,
+      source,
+      itemCount: items.length,
+    });
+    await markOrderReservationsCompleted(order, { source });
+    flushQueuedStockUpdates(pendingStockUpdates);
     return { status: "deducted" };
   } catch (error) {
     if (applied.length > 0) {
@@ -922,6 +1099,7 @@ export const releaseInventory = async (order, source = "PAYMENT_FAILURE") => {
   }
 
   const applied = [];
+  const pendingStockUpdates = [];
   try {
     for (const item of items) {
       const variantObjectId = resolveVariantObjectId(item.variantId);
@@ -1013,6 +1191,19 @@ export const releaseInventory = async (order, source = "PAYMENT_FAILURE") => {
         referenceId: String(order._id || ""),
       });
 
+      await triggerBackInStockNotificationsIfRecovered({
+        productBefore,
+        productAfter,
+        variantId: variantObjectId,
+        source,
+      });
+      queueStockUpdate(pendingStockUpdates, {
+        productBefore,
+        productAfter,
+        variantId: variantObjectId,
+        source,
+      });
+
       applied.push(item);
     }
 
@@ -1020,6 +1211,13 @@ export const releaseInventory = async (order, source = "PAYMENT_FAILURE") => {
     order.inventoryUpdatedAt = new Date();
     order.inventorySource = source;
     order.reservationExpiresAt = null;
+    logger.info("inventoryReservation", "Reservation released", {
+      orderId: order?._id || null,
+      source,
+      itemCount: items.length,
+    });
+    await markOrderReservationsExpired(order, { source });
+    flushQueuedStockUpdates(pendingStockUpdates);
     return { status: "released" };
   } catch (error) {
     if (applied.length > 0) {
@@ -1041,6 +1239,7 @@ export const restoreInventory = async (order, source = "ORDER_CANCELLED") => {
   }
 
   const applied = [];
+  const pendingStockUpdates = [];
   try {
     for (const item of items) {
       const variantObjectId = resolveVariantObjectId(item.variantId);
@@ -1127,6 +1326,19 @@ export const restoreInventory = async (order, source = "ORDER_CANCELLED") => {
         newStock: Number(auditAfter?.stock_quantity ?? auditAfter?.stock ?? 0),
       });
 
+      await triggerBackInStockNotificationsIfRecovered({
+        productBefore,
+        productAfter,
+        variantId: variantObjectId,
+        source,
+      });
+      queueStockUpdate(pendingStockUpdates, {
+        productBefore,
+        productAfter,
+        variantId: variantObjectId,
+        source,
+      });
+
       applied.push(item);
     }
 
@@ -1134,6 +1346,7 @@ export const restoreInventory = async (order, source = "ORDER_CANCELLED") => {
     order.inventoryUpdatedAt = new Date();
     order.inventorySource = source;
     order.reservationExpiresAt = null;
+    flushQueuedStockUpdates(pendingStockUpdates);
     return { status: "restored" };
   } catch (error) {
     if (applied.length > 0) {
@@ -1147,6 +1360,7 @@ export const applyPurchaseOrderInventory = async (
   poOrId,
   { receivedItems = [], adminId = null, session: providedSession = null } = {},
 ) => {
+  const pendingStockUpdates = [];
   const applyWithSession = async (session) => {
     const poId =
       typeof poOrId === "string" ? poOrId : String(poOrId?._id || "");
@@ -1179,7 +1393,6 @@ export const applyPurchaseOrderInventory = async (
       const existing = Number(receivedMap.get(key) || 0);
       receivedMap.set(key, Math.max(existing + qty, 0));
     }
-
     const applied = [];
     const consumedReceivedKeys = new Set();
     try {
@@ -1360,6 +1573,19 @@ export const applyPurchaseOrderInventory = async (
           session,
         });
 
+        await triggerBackInStockNotificationsIfRecovered({
+          productBefore,
+          productAfter,
+          variantId: variantObjectId,
+          source: "PO_RECEIVE",
+        });
+        queueStockUpdate(pendingStockUpdates, {
+          productBefore,
+          productAfter,
+          variantId: variantObjectId,
+          source: "PO_RECEIVE",
+        });
+
         item.qty_received = qty;
         item.receivedQuantity = qty;
         applied.push({
@@ -1410,8 +1636,16 @@ export const applyPurchaseOrderInventory = async (
   };
 
   if (providedSession) {
-    return applyWithSession(providedSession);
+    const result = await applyWithSession(providedSession);
+    if (typeof providedSession?.inTransaction !== "function" || !providedSession.inTransaction()) {
+      flushQueuedStockUpdates(pendingStockUpdates);
+    }
+    return result;
   }
 
-  return runWithMongoTransaction((session) => applyWithSession(session));
+  const result = await runWithMongoTransaction((session) =>
+    applyWithSession(session),
+  );
+  flushQueuedStockUpdates(pendingStockUpdates);
+  return result;
 };

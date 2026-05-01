@@ -21,6 +21,8 @@ const Header = ({ onMenuClick }) => {
   const router = useRouter();
   const { status: socketStatus } = useAdminRealtime({ token });
   const liveConnected = socketStatus === "connected";
+  const liveConnecting =
+    socketStatus === "connecting" || socketStatus === "reconnecting";
   const canOpenSettings = hasAdminPermission(admin, "manage_settings");
 
   const open = Boolean(anchorEl);
@@ -71,15 +73,25 @@ const Header = ({ onMenuClick }) => {
           className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${
             liveConnected
               ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+              : liveConnecting
+                ? "border-sky-200 bg-sky-50 text-sky-700"
               : "border-amber-200 bg-amber-50 text-amber-700"
           }`}
         >
           <span
             className={`h-2 w-2 rounded-full ${
-              liveConnected ? "bg-emerald-500" : "bg-amber-500"
+              liveConnected
+                ? "bg-emerald-500"
+                : liveConnecting
+                  ? "bg-sky-500"
+                  : "bg-amber-500"
             }`}
           />
-          {liveConnected ? "Live updates on" : "Live updates offline"}
+          {liveConnected
+            ? "Live updates on"
+            : liveConnecting
+              ? "Live updates connecting"
+              : "Live updates offline"}
         </span>
       </div>
 

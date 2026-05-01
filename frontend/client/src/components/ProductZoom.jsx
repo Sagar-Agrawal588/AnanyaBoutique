@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import "swiper/css";
 import { Swiper, SwiperSlide } from "swiper/react";
+import SeoImg from "@/components/SeoImg";
 
 /**
  * Product Zoom Component
@@ -59,11 +60,11 @@ const ProductZoom = ({
         >
           {normalizedImages.map((img, index) => (
             <SwiperSlide key={index}>
-              <div className="flex justify-center items-center aspect-square">
-                <img
+                <div className="flex justify-center items-center aspect-square">
+                <SeoImg
                   src={img}
-                  alt={`Product Image ${index + 1}`}
-                  className="w-full h-auto max-h-[500px] object-contain transition-transform duration-300 hover:scale-105 cursor-zoom-in"
+                  fallbackAlt={`Product Image ${index + 1}`}
+                  className="w-full h-auto max-h-125 object-contain transition-transform duration-300 hover:scale-105 cursor-zoom-in"
                   onClick={() => openFullImageView(index)}
                 />
               </div>
@@ -99,7 +100,7 @@ const ProductZoom = ({
                   <img
                     src={img}
                     alt={`Thumbnail ${index + 1}`}
-                    className="w-full h-[80px] object-contain"
+                    className="w-full h-20 object-contain"
                   />
                 </div>
               </SwiperSlide>

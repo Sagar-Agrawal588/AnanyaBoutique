@@ -17,7 +17,7 @@ const toBoolean = (value, fallback = false) => {
 const resolveSocketTransports = () => {
   const preferWebsocket = toBoolean(
     process.env.PERF_SOCKET_PREFER_WEBSOCKET,
-    false,
+    true,
   );
   const allowPolling = toBoolean(process.env.PERF_SOCKET_ALLOW_POLLING, true);
 

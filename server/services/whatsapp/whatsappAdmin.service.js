@@ -7,11 +7,13 @@ import {
 } from "../crm/channelResolver.service.js";
 import {
   getWhatsappMessagingConfigSummary,
+  getWhatsappMessagingHealthSnapshot,
   listApprovedWhatsappTemplates,
   sendWhatsappMessage,
 } from "./whatsappMessaging.service.js";
 
 const MAX_CAMPAIGN_RECIPIENTS = 200;
+const CUSTOMER_WHATSAPP_STAGES = ["customer", "repeat_customer"];
 
 const normalizePositiveInteger = (value, fallback, max) => {
   const parsed = Number.parseInt(String(value || "").trim(), 10);
@@ -20,7 +22,9 @@ const normalizePositiveInteger = (value, fallback, max) => {
 };
 
 const normalizeWhatsappSegment = (value) => {
-  const normalized = sanitizeText(value || "all", { maxLength: 40 }).toLowerCase();
+  const normalized = sanitizeText(value || "all", {
+    maxLength: 40,
+  }).toLowerCase();
   if (!normalized) return "all";
 
   const allowed = new Set([
@@ -48,43 +52,84 @@ const buildPhonePresentFilter = () => ({
   },
 });
 
-const buildWhatsappAudienceFilter = ({ segment = "all", inactiveDays = 45 } = {}) => {
+const buildWhatsappCampaignEligibilityFilter = () => ({
+  $or: [
+    { "consent.whatsapp": true },
+    {
+      "consent.whatsapp": null,
+      lifecycleStage: { $in: CUSTOMER_WHATSAPP_STAGES },
+    },
+  ],
+});
+
+const buildWhatsappAudienceFilter = ({
+  segment = "all",
+  inactiveDays = 45,
+} = {}) => {
   const normalizedSegment = normalizeWhatsappSegment(segment);
   const cutoff = new Date(
-    Date.now() - normalizePositiveInteger(inactiveDays, 45, 365) * 24 * 60 * 60 * 1000,
+    Date.now() -
+      normalizePositiveInteger(inactiveDays, 45, 365) * 24 * 60 * 60 * 1000,
   );
 
-  const filter = {
-    ...buildPhonePresentFilter(),
-    "consent.whatsapp": true,
-    status: { $ne: "lost" },
-  };
+  const clauses = [
+    buildPhonePresentFilter(),
+    buildWhatsappCampaignEligibilityFilter(),
+    { status: { $ne: "lost" } },
+  ];
 
   if (normalizedSegment === "leads") {
-    filter.lifecycleStage = { $in: ["lead", "prospect"] };
+    clauses.push({ lifecycleStage: { $in: ["lead", "prospect"] } });
   }
 
   if (normalizedSegment === "customers") {
-    filter.lifecycleStage = { $in: ["customer", "repeat_customer"] };
+    clauses.push({ lifecycleStage: { $in: CUSTOMER_WHATSAPP_STAGES } });
   }
 
   if (normalizedSegment === "repeat_customers") {
-    filter.lifecycleStage = "repeat_customer";
+    clauses.push({ lifecycleStage: "repeat_customer" });
   }
 
   if (normalizedSegment === "inactive") {
-    filter.$or = [
-      { lastInteractionAt: { $lt: cutoff } },
-      { lastInteractionAt: null },
-    ];
+    clauses.push({
+      $or: [
+        { lastInteractionAt: { $lt: cutoff } },
+        { lastInteractionAt: null },
+      ],
+    });
   }
 
   if (normalizedSegment === "vip") {
-    filter.tags = "vip";
+    clauses.push({ tags: "vip" });
   }
 
-  return filter;
+  return { $and: clauses };
 };
+
+const normalizeAudiencePhoneKey = (value) => {
+  const digits = String(value || "").replace(/\D/g, "");
+  if (!digits) return "";
+  return digits.length > 10 ? digits.slice(-10) : digits;
+};
+
+const dedupeWhatsappAudienceContacts = (contacts = []) => {
+  const seenPhoneKeys = new Set();
+  const dedupedContacts = [];
+
+  for (const contact of contacts) {
+    const phoneKey = normalizeAudiencePhoneKey(contact?.phone);
+    if (!phoneKey || seenPhoneKeys.has(phoneKey)) continue;
+    seenPhoneKeys.add(phoneKey);
+    dedupedContacts.push(contact);
+  }
+
+  return dedupedContacts;
+};
+
+const fetchSortedCrmContacts = async (filter = {}) =>
+  CrmContact.find(filter)
+    .sort({ lastInteractionAt: -1, updatedAt: -1, createdAt: -1 })
+    .lean();
 
 const toPlainAudienceContact = (contact = {}) => ({
   id: String(contact?._id || ""),
@@ -121,29 +166,43 @@ const toPlainWhatsappEvent = (interaction = {}) => ({
   metadata: interaction?.metadata || {},
 });
 
+const countWhatsappAudienceContacts = async (options = {}) => {
+  const contacts = await fetchSortedCrmContacts(
+    buildWhatsappAudienceFilter(options),
+  );
+  return dedupeWhatsappAudienceContacts(contacts).length;
+};
+
+const countUniquePhoneContacts = async (filter = {}) => {
+  const contacts = await fetchSortedCrmContacts(filter);
+  return dedupeWhatsappAudienceContacts(contacts).length;
+};
+
 const getWhatsappAudienceContacts = async ({
   segment = "all",
   inactiveDays = 45,
   limit = 100,
 } = {}) => {
-  const filter = buildWhatsappAudienceFilter({ segment, inactiveDays });
+  const contacts = await fetchSortedCrmContacts(
+    buildWhatsappAudienceFilter({ segment, inactiveDays }),
+  );
 
-  return CrmContact.find(filter)
-    .sort({ lastInteractionAt: -1, updatedAt: -1 })
-    .limit(normalizePositiveInteger(limit, 100, MAX_CAMPAIGN_RECIPIENTS))
-    .lean();
+  return dedupeWhatsappAudienceContacts(contacts).slice(
+    0,
+    normalizePositiveInteger(limit, 100, MAX_CAMPAIGN_RECIPIENTS),
+  );
 };
 
 export const getWhatsappAudiencePreview = async (query = {}) => {
   const segment = normalizeWhatsappSegment(query.segment || "all");
   const inactiveDays = normalizePositiveInteger(query.inactiveDays, 45, 365);
-  const filter = buildWhatsappAudienceFilter({ segment, inactiveDays });
   const [count, sample] = await Promise.all([
-    CrmContact.countDocuments(filter),
-    CrmContact.find(filter)
-      .sort({ lastInteractionAt: -1, updatedAt: -1 })
-      .limit(8)
-      .lean(),
+    countWhatsappAudienceContacts({ segment, inactiveDays }),
+    getWhatsappAudienceContacts({
+      segment,
+      inactiveDays,
+      limit: 8,
+    }),
   ]);
 
   return {
@@ -156,9 +215,10 @@ export const getWhatsappAudiencePreview = async (query = {}) => {
 
 export const getWhatsappAdminOverview = async () => {
   const last30Days = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-  const config = getWhatsappMessagingConfigSummary();
+  const configPromise = getWhatsappMessagingConfigSummary();
 
   const [
+    config,
     totalWhatsappReachableContacts,
     totalConsentedWhatsappContacts,
     inboundLast30Days,
@@ -166,11 +226,12 @@ export const getWhatsappAdminOverview = async () => {
     statusBreakdown,
     recentWhatsappEvents,
     templateResult,
+    messagingHealth,
   ] = await Promise.all([
-    CrmContact.countDocuments(buildPhonePresentFilter()),
-    CrmContact.countDocuments({
-      ...buildPhonePresentFilter(),
-      "consent.whatsapp": true,
+    configPromise,
+    countUniquePhoneContacts(buildPhonePresentFilter()),
+    countWhatsappAudienceContacts({
+      segment: "all",
     }),
     CrmInteraction.countDocuments({
       channel: "whatsapp",
@@ -209,12 +270,18 @@ export const getWhatsappAdminOverview = async () => {
       configured: false,
       templates: [],
     })),
+    getWhatsappMessagingHealthSnapshot(),
   ]);
 
-  const templates = Array.isArray(templateResult?.templates) ? templateResult.templates : [];
+  const templates = Array.isArray(templateResult?.templates)
+    ? templateResult.templates
+    : [];
 
   return {
-    configuration: config,
+    configuration: {
+      ...config,
+      health: messagingHealth,
+    },
     summary: {
       totalWhatsappReachableContacts,
       totalConsentedWhatsappContacts,
@@ -222,51 +289,79 @@ export const getWhatsappAdminOverview = async () => {
       outboundLast30Days,
     },
     statusBreakdown: statusBreakdown.map((entry) => ({
-      status: sanitizeText(entry?._id || "unknown", { maxLength: 40 }).toLowerCase(),
+      status: sanitizeText(entry?._id || "unknown", {
+        maxLength: 40,
+      }).toLowerCase(),
       count: Number(entry?.count || 0),
     })),
     templates: {
       configured: Boolean(templateResult?.configured),
       total: templates.length,
       approved: templates.filter((item) => item.status === "approved").length,
-      marketing: templates.filter((item) => item.category === "marketing").length,
-      utility: templates.filter((item) => item.category === "utility").length,
-      authentication: templates.filter((item) => item.category === "authentication")
+      marketing: templates.filter((item) => item.category === "marketing")
         .length,
+      utility: templates.filter((item) => item.category === "utility").length,
+      authentication: templates.filter(
+        (item) => item.category === "authentication",
+      ).length,
     },
     recentEvents: recentWhatsappEvents.map(toPlainWhatsappEvent),
   };
 };
 
 export const getWhatsappTemplateCatalog = async () => {
-  const result = await listApprovedWhatsappTemplates();
+  const [config, result, messagingHealth] = await Promise.all([
+    getWhatsappMessagingConfigSummary(),
+    listApprovedWhatsappTemplates(),
+    getWhatsappMessagingHealthSnapshot(),
+  ]);
+
   return {
-    configuration: getWhatsappMessagingConfigSummary(),
+    configuration: {
+      ...config,
+      health: messagingHealth,
+    },
     templates: Array.isArray(result?.templates) ? result.templates : [],
   };
 };
 
-export const sendWhatsappMessageToContact = async (contactId, payload = {}, adminUserId = "") => {
+export const sendWhatsappMessageToContact = async (
+  contactId,
+  payload = {},
+  adminUserId = "",
+) => {
   const normalizedContactId = normalizeObjectId(contactId);
   if (!normalizedContactId) {
-    throw buildCrmValidationError("Valid CRM contactId is required for WhatsApp send.");
+    throw buildCrmValidationError(
+      "Valid CRM contactId is required for WhatsApp send.",
+    );
   }
 
   return sendWhatsappMessage({
     contactId: normalizedContactId,
+    mode: payload?.mode,
     body: payload?.body,
     previewUrl: payload?.previewUrl,
     templateName: payload?.templateName,
     languageCode: payload?.languageCode,
     bodyVariables: payload?.bodyVariables,
     headerVariables: payload?.headerVariables,
+    templateHeaderMediaType: payload?.templateHeaderMediaType,
+    templateHeaderMediaUrl: payload?.templateHeaderMediaUrl,
+    templateHeaderMediaFilename: payload?.templateHeaderMediaFilename,
+    mediaType: payload?.mediaType,
+    mediaUrl: payload?.mediaUrl,
+    mediaCaption: payload?.mediaCaption,
+    mediaFilename: payload?.mediaFilename,
     campaignName: payload?.campaignName,
     adminUserId,
   });
 };
 
 export const sendWhatsappCampaign = async (payload = {}, adminUserId = "") => {
-  const templateName = sanitizeText(payload?.templateName || "", { maxLength: 120 });
+  const templateName = sanitizeText(payload?.templateName || "", {
+    maxLength: 120,
+  });
   if (!templateName) {
     throw buildCrmValidationError(
       "WhatsApp campaign send requires an approved templateName.",
@@ -310,6 +405,9 @@ export const sendWhatsappCampaign = async (payload = {}, adminUserId = "") => {
         languageCode: payload?.languageCode,
         bodyVariables: payload?.bodyVariables,
         headerVariables: payload?.headerVariables,
+        templateHeaderMediaType: payload?.templateHeaderMediaType,
+        templateHeaderMediaUrl: payload?.templateHeaderMediaUrl,
+        templateHeaderMediaFilename: payload?.templateHeaderMediaFilename,
         campaignName,
         segment,
         adminUserId,

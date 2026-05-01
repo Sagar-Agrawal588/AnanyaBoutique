@@ -1,7 +1,7 @@
 "use client";
 import { useAdmin } from "@/context/AdminContext";
+import { deleteData, getData } from "@/utils/api";
 import { withAdminBasePath } from "@/utils/basePath";
-import { getData } from "@/utils/api";
 import { getImageUrl } from "@/utils/imageUtils";
 import { Button } from "@mui/material";
 import Rating from "@mui/material/Rating";
@@ -21,7 +21,12 @@ const normalizeVariantLabel = (variant) => {
     if (rawUnit === "g") {
       return weight >= 1000 ? `${weight / 1000}kg` : `${weight}g`;
     }
-    if (rawUnit === "kg" || rawUnit === "ml" || rawUnit === "l" || rawUnit === "pcs") {
+    if (
+      rawUnit === "kg" ||
+      rawUnit === "ml" ||
+      rawUnit === "l" ||
+      rawUnit === "pcs"
+    ) {
       return `${weight}${rawUnit}`;
     }
     if (rawUnit) {
@@ -54,6 +59,8 @@ const ViewProduct = () => {
   const [product, setProduct] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedImage, setSelectedImage] = useState(0);
+  const [reviews, setReviews] = useState([]);
+  const [reviewsLoading, setReviewsLoading] = useState(true);
 
   const fetchProduct = useCallback(async () => {
     setIsLoading(true);
@@ -71,6 +78,28 @@ const ViewProduct = () => {
     setIsLoading(false);
   }, [productId, token, router]);
 
+  const fetchProductReviews = useCallback(async () => {
+    if (!productId || !token) return;
+
+    setReviewsLoading(true);
+    try {
+      const response = await getData(
+        `/api/admin/reviews?productId=${encodeURIComponent(String(productId))}&limit=100`,
+        token,
+      );
+      if (response?.success && Array.isArray(response?.data)) {
+        setReviews(response.data);
+      } else {
+        setReviews([]);
+      }
+    } catch (error) {
+      console.error("Failed to fetch product reviews:", error);
+      setReviews([]);
+    } finally {
+      setReviewsLoading(false);
+    }
+  }, [productId, token]);
+
   useEffect(() => {
     if (!loading && !isAuthenticated) {
       router.push("/login");
@@ -80,8 +109,34 @@ const ViewProduct = () => {
   useEffect(() => {
     if (isAuthenticated && token && productId) {
       fetchProduct();
+      fetchProductReviews();
     }
-  }, [isAuthenticated, token, productId, fetchProduct]);
+  }, [isAuthenticated, token, productId, fetchProduct, fetchProductReviews]);
+
+  const handleDeleteReview = async (reviewId) => {
+    if (!reviewId || !token) return;
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm("Delete this review permanently?")
+    ) {
+      return;
+    }
+
+    try {
+      const response = await deleteData(
+        `/api/admin/reviews/${reviewId}`,
+        token,
+      );
+      if (!response?.success) {
+        throw new Error(response?.message || "Failed to delete review.");
+      }
+      setReviews((current) =>
+        current.filter((review) => review._id !== reviewId),
+      );
+    } catch (error) {
+      console.error("Failed to delete review:", error);
+    }
+  };
 
   if (loading || !isAuthenticated || isLoading) {
     return (
@@ -175,9 +230,8 @@ const ViewProduct = () => {
                       onError={(e) => {
                         if (e.currentTarget.dataset.fallbackApplied) return;
                         e.currentTarget.dataset.fallbackApplied = "true";
-                        e.currentTarget.src = withAdminBasePath(
-                          "/placeholder.png",
-                        );
+                        e.currentTarget.src =
+                          withAdminBasePath("/placeholder.png");
                       }}
                     />
                   </button>
@@ -253,9 +307,7 @@ const ViewProduct = () => {
                 <p
                   className={`font-bold ${totalStock > 0 ? "text-green-600" : "text-red-600"}`}
                 >
-                  {totalStock > 0
-                    ? `${totalStock} units`
-                    : "Out of Stock"}
+                  {totalStock > 0 ? `${totalStock} units` : "Out of Stock"}
                 </p>
               </div>
               <div className="bg-gray-50 p-3 rounded-lg">
@@ -288,7 +340,9 @@ const ViewProduct = () => {
                 <p className="text-sm text-gray-500">Variants</p>
                 <p className="font-medium text-gray-800">
                   {variantInventoryLines.length > 0
-                    ? variantInventoryLines.map((entry) => entry.label).join(", ")
+                    ? variantInventoryLines
+                        .map((entry) => entry.label)
+                        .join(", ")
                     : "No variants"}
                 </p>
               </div>
@@ -338,6 +392,82 @@ const ViewProduct = () => {
             </p>
           </div>
         )}
+
+        <div className="mt-8 border-t pt-6">
+          <div
+            id="reviews"
+            className="flex items-start justify-between gap-4 mb-4"
+          >
+            <div>
+              <h3 className="text-lg font-semibold text-gray-700">
+                Customer Reviews
+              </h3>
+              <p className="text-sm text-gray-500">
+                All reviews currently published or hidden for this product.
+              </p>
+            </div>
+            <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-right">
+              <p className="text-xs uppercase tracking-wide text-blue-700">
+                Reviews
+              </p>
+              <p className="text-lg font-semibold text-blue-900">
+                {reviews.length}
+              </p>
+            </div>
+          </div>
+
+          {reviewsLoading ? (
+            <p className="text-sm text-gray-500">Loading reviews...</p>
+          ) : reviews.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-sm text-gray-500">
+              No reviews have been submitted for this product yet.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {reviews.map((review) => (
+                <div
+                  key={review._id}
+                  className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-4"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-3">
+                        <p className="font-semibold text-gray-800">
+                          {review.userName || "Customer"}
+                        </p>
+                        <Rating
+                          value={Number(review.rating || 0)}
+                          precision={0.5}
+                          readOnly
+                          size="small"
+                        />
+                        <span className="rounded-full bg-slate-200 px-2.5 py-1 text-xs font-medium text-slate-700 capitalize">
+                          {review.visibility || "visible"}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-sm text-gray-500">
+                        {[review.userEmail, review.city]
+                          .filter(Boolean)
+                          .join(" • ") || "No extra identity"}
+                      </p>
+                      <p className="mt-2 text-sm text-gray-700">
+                        {review.comment}
+                      </p>
+                    </div>
+                    <Button
+                      size="small"
+                      color="error"
+                      variant="outlined"
+                      onClick={() => handleDeleteReview(review._id)}
+                    >
+                      Delete
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </section>
   );

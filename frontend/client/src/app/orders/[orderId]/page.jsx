@@ -1,12 +1,18 @@
 "use client";
 import { API_BASE_URL } from "@/utils/api";
 
+import OrderDetailsOverview from "@/components/orders/OrderDetailsOverview";
 import { useShippingDisplayCharge } from "@/hooks/useShippingDisplayCharge";
 import {
   buildSavedOrderCalculationInput,
   calculateOrderTotals,
 } from "@/utils/calculateOrderTotals.mjs";
 import { getImageUrl } from "@/utils/imageUtils";
+import {
+  buildOrderProductDescriptor,
+  resolveOrderPaymentMethodLabel,
+  resolveOrderTransactionReference,
+} from "@/utils/orderComplaint";
 import {
   Button,
   Dialog,
@@ -39,7 +45,14 @@ import { io } from "socket.io-client";
 const API_URL = API_BASE_URL.endsWith("/api")
   ? API_BASE_URL
   : `${API_BASE_URL}/api`;
-const LOCAL_API_FALLBACKS = ["http://localhost:8000", "http://localhost:8001"];
+const LOCAL_API_FALLBACKS = [
+  "http://localhost:8000",
+  "http://localhost:8001",
+  "http://localhost:8002",
+  "http://127.0.0.1:8000",
+  "http://127.0.0.1:8001",
+  "http://127.0.0.1:8002",
+];
 const SOCKET_URL = API_BASE_URL.endsWith("/api")
   ? API_BASE_URL.slice(0, -4)
   : API_BASE_URL;
@@ -126,6 +139,7 @@ const STATUS_STEPS = [
 ];
 
 const ORDER_ID_REGEX = /^[a-f\d]{24}$/i;
+const SUPPORT_ORDER_STORAGE_KEY = "supportOrderData";
 const getAuthToken = () => {
   if (typeof window === "undefined") return cookies.get("accessToken") || "";
   return (
@@ -182,6 +196,11 @@ const normalizeStatus = (status) => {
   if (value === "confirmed") return "accepted";
   return value;
 };
+
+const normalizePaymentStateValue = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase();
 
 const toMoneyNumber = (value, fallback = 0) => {
   const parsed = Number(value);
@@ -352,6 +371,9 @@ const OrderDetailsPage = () => {
   )
     .trim()
     .toUpperCase();
+  const paymentStateParam = normalizePaymentStateValue(
+    searchParams?.get("paymentState") || "",
+  );
 
   // State
   const [order, setOrder] = useState(null);
@@ -711,10 +733,22 @@ const OrderDetailsPage = () => {
         label: "Out for Delivery",
       },
       delivered: {
-        color: "text-primary",
-        bg: "bg-[var(--flavor-glass)] text-primary",
+        color: "text-emerald-700",
+        bg: "bg-emerald-50",
         icon: MdCheckCircle,
         label: "Delivered",
+      },
+      completed: {
+        color: "text-emerald-700",
+        bg: "bg-emerald-50",
+        icon: MdCheckCircle,
+        label: "Successful",
+      },
+      successful: {
+        color: "text-emerald-700",
+        bg: "bg-emerald-50",
+        icon: MdCheckCircle,
+        label: "Successful",
       },
       cancelled: {
         color: "text-red-600",
@@ -748,10 +782,16 @@ const OrderDetailsPage = () => {
         label: "Pending",
       },
       paid: {
-        color: "text-primary",
-        bg: "bg-[var(--flavor-glass)] text-primary",
+        color: "text-emerald-700",
+        bg: "bg-emerald-50",
         icon: MdCheckCircle,
         label: "Paid",
+      },
+      successful: {
+        color: "text-emerald-700",
+        bg: "bg-emerald-50",
+        icon: MdCheckCircle,
+        label: "Successful",
       },
       failed: {
         color: "text-red-600",
@@ -778,6 +818,27 @@ const OrderDetailsPage = () => {
   // Handle retry payment click (stub - shows modal only)
   const handleRetryPayment = () => {
     setShowPaymentModal(true);
+  };
+
+  const handleGetSupport = () => {
+    if (typeof window === "undefined") return;
+
+    const supportData = {
+      name: resolvedAddressName || "",
+      email: resolvedAddressEmail || "",
+      phone: resolvedAddressPhone || "",
+      address: [resolvedAddressLine1, resolvedAddressLine2]
+        .filter(Boolean)
+        .join(", "),
+      orderId: canonicalOrderId || "",
+    };
+
+    window.sessionStorage.setItem(
+      SUPPORT_ORDER_STORAGE_KEY,
+      JSON.stringify(supportData),
+    );
+
+    router.push("/contact");
   };
 
   const downloadFile = async (path, filename, key) => {
@@ -1111,6 +1172,39 @@ const OrderDetailsPage = () => {
     resolvedAddressPhone ||
     resolvedAddressEmail,
   );
+  const paymentMethodLabel = resolveOrderPaymentMethodLabel(order?.paymentMethod);
+  const paymentStatusLabel = getPaymentStatusInfo(order?.payment_status).label;
+  const orderStatusLabel = getOrderStatusInfo(order?.order_status).label;
+  const purchaseTimestamp =
+    order?.paymentCompletedAt ||
+    order?.confirmedAt ||
+    order?.confirmed_at ||
+    order?.createdAt ||
+    null;
+  const purchaseTimestampLabel =
+    normalizeStatus(order?.payment_status) === "paid"
+      ? "Purchase date and time"
+      : "Order date and time";
+  const purchaseTimestampValue = formatDate(purchaseTimestamp);
+  const transactionReference = resolveOrderTransactionReference(order);
+  const transactionDisplayValue =
+    transactionReference ||
+    (normalizeStatus(order?.payment_status) === "paid"
+      ? "Not available"
+      : "Available after payment confirmation");
+  const invoiceNumber = String(order?.invoiceNumber || "").trim();
+  const invoiceDisplayValue =
+    invoiceNumber ||
+    (canDownloadInvoice
+      ? "Available from invoice download"
+      : "Generated after payment confirmation");
+  const overviewProductNames = [
+    ...orderCombos.map((combo) => buildOrderProductDescriptor(combo)),
+    ...displayedProducts.map((item) => buildOrderProductDescriptor(item)),
+  ].filter(Boolean);
+  const showPaymentConfirmationBanner =
+    paymentStateParam === "paid" &&
+    normalizeStatus(order?.payment_status) === "paid";
   const isReviewEligibleOrder = (() => {
     return isDeliveredLikeOrder;
   })();
@@ -1345,6 +1439,44 @@ const OrderDetailsPage = () => {
               </div>
             </div>
           </div>
+
+          {showPaymentConfirmationBanner && (
+            <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 p-5">
+              <div className="flex items-start gap-4">
+                <div className="rounded-full bg-emerald-100 p-3">
+                  <MdCheckCircle className="text-2xl text-emerald-600" />
+                </div>
+                <div className="flex-1">
+                  <h2 className="text-lg font-bold text-emerald-900">
+                    Payment Confirmed
+                  </h2>
+                  <p className="mt-1 text-sm text-emerald-800">
+                    Your payment for{" "}
+                    <span className="font-semibold">{displayOrderId}</span> was
+                    confirmed successfully. We have taken you to the full order
+                    details page so you can review everything in one place.
+                  </p>
+                  <p className="mt-2 text-xs text-emerald-700">
+                    Method: {paymentMethodLabel} | UTR / Transaction No.:{" "}
+                    {transactionDisplayValue}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <OrderDetailsOverview
+            productNames={overviewProductNames}
+            orderIdLabel={displayOrderId}
+            purchaseTimestampLabel={purchaseTimestampLabel}
+            purchaseTimestampValue={purchaseTimestampValue}
+            paymentMethodLabel={paymentMethodLabel}
+            paymentStatusLabel={paymentStatusLabel}
+            orderStatusLabel={orderStatusLabel}
+            transactionReference={transactionDisplayValue}
+            invoiceNumber={invoiceDisplayValue}
+            customerEmail={resolvedAddressEmail}
+          />
 
           {/* Order Tracker */}
           <div className="bg-white rounded-xl shadow-sm p-5 md:p-6 mb-6">
@@ -1785,6 +1917,20 @@ const OrderDetailsPage = () => {
                 Continue Shopping
               </Button>
             </Link>
+            <Button
+              onClick={handleGetSupport}
+              sx={{
+                backgroundColor: "#ea580c",
+                color: "white",
+                padding: "12px 24px",
+                borderRadius: "12px",
+                fontWeight: 600,
+                textTransform: "none",
+                "&:hover": { backgroundColor: "#c2410c" },
+              }}
+            >
+              Get Order Support
+            </Button>
           </div>
         </div>
       </section>

@@ -132,7 +132,9 @@ router.post(
       }
 
       // Upload to Cloudinary
-      const result = await uploadToCloudinary(req.file.buffer, folder);
+      const result = await uploadToCloudinary(req.file.buffer, folder, {
+        mimeType: req.file.mimetype,
+      });
 
       if (!result.success) {
         return res.status(500).json({
@@ -196,8 +198,7 @@ router.post(
       }
 
       // Upload all files to Cloudinary
-      const buffers = req.files.map((file) => file.buffer);
-      const results = await uploadMultipleToCloudinary(buffers, folder);
+      const results = await uploadMultipleToCloudinary(req.files, folder);
 
       const successfulUploads = results.filter((r) => r.success);
       const failedUploads = results.filter((r) => !r.success);

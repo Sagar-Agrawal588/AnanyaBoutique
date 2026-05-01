@@ -54,6 +54,85 @@ const validatePaymentType = (value) => {
   }
 };
 
+const normalizePreviewPincode = (value) =>
+  String(value || "")
+    .replace(/\D/g, "")
+    .slice(0, 6);
+
+const toSafeNumber = (value, fallback = 0) => {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : fallback;
+};
+
+const resolvePublicPreviewOriginPincode = () =>
+  normalizePreviewPincode(
+    process.env.XPRESSBEES_PICKUP_PINCODE ||
+      process.env.XPRESSBEES_ORIGIN_PINCODE ||
+      process.env.SHIPPER_PINCODE ||
+      "",
+  );
+
+const resolveEtaLabel = (entry = {}) => {
+  const directCandidates = [
+    entry?.estimated_delivery_date,
+    entry?.estimatedDeliveryDate,
+    entry?.estimated_delivery,
+    entry?.estimatedDelivery,
+    entry?.eta,
+    entry?.edd,
+    entry?.delivery_date,
+    entry?.deliveryDate,
+  ];
+
+  const directMatch = directCandidates.find(
+    (candidate) => String(candidate || "").trim().length > 0,
+  );
+  if (directMatch) {
+    return String(directMatch).trim();
+  }
+
+  const rangeStart = String(
+    entry?.min_delivery_days ?? entry?.minDeliveryDays ?? "",
+  ).trim();
+  const rangeEnd = String(
+    entry?.max_delivery_days ?? entry?.maxDeliveryDays ?? "",
+  ).trim();
+
+  if (rangeStart && rangeEnd) {
+    return `${rangeStart}-${rangeEnd} business days`;
+  }
+
+  return "";
+};
+
+const normalizePreviewOption = (entry = {}) => ({
+  courierName: String(
+    entry?.name || entry?.courier_name || entry?.courierName || "",
+  ).trim(),
+  estimatedDelivery: resolveEtaLabel(entry),
+  totalCharges: toSafeNumber(
+    entry?.total_charges ??
+      entry?.totalCharges ??
+      entry?.charges ??
+      entry?.freight_charges ??
+      0,
+    Number.POSITIVE_INFINITY,
+  ),
+});
+
+const pickBestPreviewOption = (response) => {
+  const options = Array.isArray(response?.data)
+    ? response.data.map(normalizePreviewOption).filter(Boolean)
+    : [];
+
+  if (!options.length) return null;
+
+  return options.reduce((best, current) => {
+    if (!best) return current;
+    return current.totalCharges < best.totalCharges ? current : best;
+  }, null);
+};
+
 const buildOrderItemsFromOrder = (orderDoc) => {
   const products = Array.isArray(orderDoc?.products) ? orderDoc.products : [];
   return products
@@ -168,6 +247,77 @@ export const getShippingDisplayMetricsController = asyncHandler(async (req, res)
     return sendSuccess(res, metrics, "Shipping display metrics fetched");
   } catch (error) {
     return sendError(res, error);
+  }
+});
+
+export const getDeliveryPreviewController = asyncHandler(async (req, res) => {
+  try {
+    const pincode = normalizePreviewPincode(req.body?.pincode);
+    if (!validateIndianPincode(pincode)) {
+      throw new AppError("INVALID_FORMAT", {
+        field: "pincode",
+        message: "Pincode must be 6 digits",
+      });
+    }
+
+    const origin = resolvePublicPreviewOriginPincode();
+    if (!validateIndianPincode(origin)) {
+      return sendSuccess(
+        res,
+        {
+          available: false,
+          pincode,
+          courierName: "",
+          estimatedDelivery: "",
+          reason: "ORIGIN_PINCODE_NOT_CONFIGURED",
+        },
+        "Delivery preview unavailable",
+      );
+    }
+
+    const payload = {
+      origin,
+      destination: pincode,
+      payment_type: "prepaid",
+      order_amount: Math.max(toSafeNumber(req.body?.orderAmount, 0), 0),
+      weight: Math.max(toSafeNumber(req.body?.weightGrams, 500), 1),
+      length: Math.max(toSafeNumber(req.body?.lengthCm, 10), 1),
+      breadth: Math.max(toSafeNumber(req.body?.breadthCm, 10), 1),
+      height: Math.max(toSafeNumber(req.body?.heightCm, 10), 1),
+    };
+
+    const response = await checkServiceability(payload);
+    const selected = pickBestPreviewOption(response);
+
+    return sendSuccess(
+      res,
+      {
+        available: Boolean(selected),
+        pincode,
+        courierName: selected?.courierName || "",
+        estimatedDelivery: selected?.estimatedDelivery || "",
+      },
+      selected ? "Delivery preview fetched" : "Delivery preview unavailable",
+    );
+  } catch (error) {
+    if (
+      error?.code === "INVALID_FORMAT" ||
+      error?.code === "INVALID_PINCODE" ||
+      error?.statusCode === 400
+    ) {
+      return sendError(res, error);
+    }
+
+    return sendSuccess(
+      res,
+      {
+        available: false,
+        pincode: normalizePreviewPincode(req.body?.pincode),
+        courierName: "",
+        estimatedDelivery: "",
+      },
+      "Delivery preview unavailable",
+    );
   }
 });
 

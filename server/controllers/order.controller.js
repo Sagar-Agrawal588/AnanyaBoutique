@@ -48,14 +48,23 @@ import {
   resolveUserSegment,
   restoreComboStock,
 } from "../services/combos/combo.service.js";
+import { syncOrderContactToCrmSafely } from "../services/crm/crmAutoSync.service.js";
 import { captureCrmTouchpointSafely } from "../services/crm/crmTracking.service.js";
 import { createEmailLog } from "../services/emailAutomation.service.js";
 import {
   confirmInventory,
+  getReservationExpiryDate,
   releaseInventory,
   reserveInventory,
   restoreInventory,
 } from "../services/inventory.service.js";
+import {
+  expireOrderReservation,
+  registerReservationExpiryListener,
+  releaseExpiredReservations,
+} from "../services/inventoryReservationExpiry.service.js";
+import { syncActiveStockReservations } from "../services/stockReservation.service.js";
+import { trackRestockConversionsForOrder } from "../services/productAvailabilityAnalytics.service.js";
 import {
   createPaytmPayment,
   getPaytmStatus,
@@ -121,7 +130,6 @@ import {
   updateInfluencerStats,
 } from "./influencer.controller.js";
 import { sendOrderUpdateNotification } from "./notification.controller.js";
-import isPrivilegedAdminRole from "../utils/isPrivilegedAdminRole.js";
 
 // ==================== PAYMENT PROVIDER CONFIGURATION ====================
 
@@ -383,48 +391,39 @@ const captureOrderEmailInNewsletter = async ({
   const normalizedEmail = String(email || "")
     .trim()
     .toLowerCase();
-  if (!normalizedEmail || !isValidNewsletterEmail(normalizedEmail)) return;
 
-  const source = userId ? "signin_order" : "guest_order";
-  await NewsletterModel.findOneAndUpdate(
-    { email: normalizedEmail },
-    {
-      $setOnInsert: {
-        email: normalizedEmail,
+  if (normalizedEmail && isValidNewsletterEmail(normalizedEmail)) {
+    const source = userId ? "signin_order" : "guest_order";
+    await NewsletterModel.findOneAndUpdate(
+      { email: normalizedEmail },
+      {
+        $setOnInsert: {
+          email: normalizedEmail,
+        },
+        $set: {
+          isActive: true,
+          source,
+        },
       },
-      $set: {
-        isActive: true,
-        source,
+      {
+        upsert: true,
+        setDefaultsOnInsert: true,
       },
-    },
-    {
-      upsert: true,
-      setDefaultsOnInsert: true,
-    },
-  );
+    );
+  }
 
-  if (!orderId) return;
-
-  await captureCrmTouchpointSafely({
-    channel: "website",
-    eventType: "order_created",
-    userId,
+  await syncOrderContactToCrmSafely({
+    req,
     email: normalizedEmail,
-    phone,
+    userId,
     name,
+    phone,
     orderId,
     orderAmount,
     sessionId,
-    pageUrl: "/checkout",
-    referrer: req?.headers?.referer || "",
-    happenedAt: new Date(),
-    idempotencyKey: `crm:order:${orderId}:created`,
-    metadata: {
-      source: "order_create",
-      affiliateSource: affiliateSource || null,
-      influencerCode: influencerCode || null,
-      isSavedOrder: Boolean(isSavedOrder),
-    },
+    affiliateSource,
+    influencerCode,
+    isSavedOrder,
   });
 };
 
@@ -1651,6 +1650,168 @@ const clearOrderPaymentReminderState = (order) => {
   order.paymentReminderEmailProvider = "";
 };
 
+const PAYMENT_PENDING_ORDER_STATUSES = new Set([
+  ORDER_STATUS.PENDING,
+  ORDER_STATUS.PAYMENT_PENDING,
+]);
+
+const resolveReservationSecondsRemaining = (
+  reservationExpiresAt,
+  now = new Date(),
+) => {
+  if (!reservationExpiresAt) return 0;
+  const expiry = new Date(reservationExpiresAt);
+  if (Number.isNaN(expiry.getTime())) return 0;
+
+  const remainingMs = expiry.getTime() - now.getTime();
+  if (remainingMs <= 0) return 0;
+  return Math.ceil(remainingMs / 1000);
+};
+
+const flushExpiredReservationsSafely = async (
+  context = "reservationCleanup",
+) => {
+  try {
+    await releaseExpiredReservations();
+  } catch (error) {
+    logger.warn(context, "Failed to flush expired reservations", {
+      error: error?.message || String(error),
+    });
+  }
+};
+
+const ensureOrderHasActiveReservationForPayment = async (
+  order,
+  { source = "PAYMENT_PAGE", refreshExpiry = true, throwOnUnavailable = true } = {},
+) => {
+  if (!order) {
+    throw new AppError("ORDER_NOT_FOUND");
+  }
+
+  const now = new Date();
+  const normalizedPaymentStatus = String(order.payment_status || "")
+    .trim()
+    .toLowerCase();
+
+  if (normalizedPaymentStatus === "paid") {
+    return {
+      status: "paid",
+      expiresAt: null,
+      secondsRemaining: 0,
+    };
+  }
+
+  const normalizedOrderStatus = normalizeOrderStatus(order.order_status);
+  if (!PAYMENT_PENDING_ORDER_STATUSES.has(normalizedOrderStatus)) {
+    return {
+      status: "noop",
+      reason: "invalid_order_status",
+      expiresAt: order.reservationExpiresAt || null,
+      secondsRemaining: resolveReservationSecondsRemaining(
+        order.reservationExpiresAt,
+        now,
+      ),
+    };
+  }
+
+  const inventoryStatus = String(order.inventoryStatus || "")
+    .trim()
+    .toLowerCase();
+  if (inventoryStatus === "reserved") {
+    const expiryResult = await expireOrderReservation(order, {
+      now,
+      source: `${source}_EXPIRED`,
+    });
+
+    if (expiryResult.status === "released") {
+      logger.info(
+        "orderReservation",
+        "Expired reservation released before payment action",
+        {
+          orderId: order._id,
+          source,
+        },
+      );
+    }
+  }
+
+  let reservationStatus = String(order.inventoryStatus || "")
+    .trim()
+    .toLowerCase();
+
+  if (reservationStatus !== "reserved") {
+    await reserveComboStock(order, `${source}_RESERVE`);
+    try {
+      await reserveInventory(order, `${source}_RESERVE`);
+      reservationStatus = String(order.inventoryStatus || "")
+        .trim()
+        .toLowerCase();
+    } catch (reservationError) {
+      try {
+        await releaseComboStock(order, `${source}_RESERVE_FAIL`);
+      } catch (rollbackError) {
+        logger.error(
+          "orderReservation",
+          "Failed to rollback combo reservation",
+          {
+            orderId: order?._id,
+            source,
+            error: rollbackError?.message || String(rollbackError),
+          },
+        );
+      }
+
+      if (
+        !throwOnUnavailable &&
+        reservationError instanceof AppError &&
+        reservationError.code === "INSUFFICIENT_STOCK"
+      ) {
+        return {
+          status: "unavailable",
+          reason: "insufficient_stock",
+          expiresAt: null,
+          secondsRemaining: 0,
+        };
+      }
+
+      throw reservationError;
+    }
+  }
+
+  if (reservationStatus !== "reserved") {
+    if (throwOnUnavailable) {
+      throw new AppError("CONFLICT", {
+        field: "inventoryStatus",
+        message: "Unable to reserve inventory for payment",
+      });
+    }
+
+    return {
+      status: "unavailable",
+      reason: "reservation_unavailable",
+      expiresAt: null,
+      secondsRemaining: 0,
+    };
+  }
+
+  if (refreshExpiry || !order.reservationExpiresAt) {
+    order.reservationExpiresAt = getReservationExpiryDate(now);
+  }
+
+  order.updatedAt = new Date();
+  await syncActiveStockReservations(order, { source });
+  await order.save();
+
+  return {
+    status: "reserved",
+    expiresAt: order.reservationExpiresAt || null,
+    secondsRemaining: resolveReservationSecondsRemaining(
+      order.reservationExpiresAt,
+      now,
+    ),
+  };
+};
+
 const resolvePaymentProviderLabel = (provider) =>
   String(provider || "")
     .trim()
@@ -1706,6 +1867,9 @@ const inferPaymentFailureKind = ({
 
 const buildPaymentFailureReason = ({ provider, failureKind }) => {
   const providerLabel = resolvePaymentProviderLabel(provider);
+  if (failureKind === "expired") {
+    return "Reserved inventory window expired before payment was completed";
+  }
   return failureKind === "cancelled"
     ? `${providerLabel} payment cancelled by customer`
     : `${providerLabel} payment failed`;
@@ -1721,11 +1885,17 @@ const sendOrderPaymentReminderEmail = async (
     const displayOrderNumber = resolveDisplayOrderNumber(order);
     const providerLabel = resolvePaymentProviderLabel(paymentProvider);
     const normalizedFailureKind =
-      failureKind === "cancelled" ? "cancelled" : "failed";
+      failureKind === "cancelled"
+        ? "cancelled"
+        : failureKind === "expired"
+          ? "expired"
+          : "failed";
     const subject =
       normalizedFailureKind === "cancelled"
         ? `Payment Cancelled - ${displayOrderNumber}`
-        : `Payment Reminder - ${displayOrderNumber}`;
+        : normalizedFailureKind === "expired"
+          ? "Complete Your Payment Before Items Sell Out"
+          : `Payment Reminder - ${displayOrderNumber}`;
     const emailLog = await createEmailLog({
       user_id: order?.user || null,
       order_id: order?._id || null,
@@ -1769,7 +1939,9 @@ const sendOrderPaymentReminderEmail = async (
         ? `${siteUrl}/orders/${encodeURIComponent(rawOrderId)}`
         : siteUrl);
     const actionLabel = paymentUrl
-      ? "Pay Now"
+      ? normalizedFailureKind === "expired"
+        ? "Complete Payment"
+        : "Pay Now"
       : order?.user
         ? "View your order"
         : "Visit the store";
@@ -1779,6 +1951,8 @@ const sendOrderPaymentReminderEmail = async (
     const failureMessage =
       normalizedFailureKind === "cancelled"
         ? "Your payment was cancelled before completion. You can return and place the order again when ready."
+        : normalizedFailureKind === "expired"
+          ? "Your 3 minute 30 second reservation window ended before payment completed. Use the link below to retry payment before these items sell out."
         : "Your payment did not complete successfully. You can retry from your order page or place the order again.";
 
     const text = [
@@ -1803,7 +1977,11 @@ const sendOrderPaymentReminderEmail = async (
         order_date: formatOrderDateForEmail(order?.createdAt),
         payment_provider: providerLabel,
         failure_kind:
-          normalizedFailureKind === "cancelled" ? "Cancelled" : "Failed",
+          normalizedFailureKind === "cancelled"
+            ? "Cancelled"
+            : normalizedFailureKind === "expired"
+              ? "Reservation Expired"
+              : "Failed",
         failure_message: failureMessage,
         items_text: stringifyOrderItemsForEmail(order),
         final_amount: formatInr(finalAmount),
@@ -1880,7 +2058,11 @@ const maybeSendOrderPaymentReminderEmail = async ({
 
   order.paymentReminderEmailSentAt = new Date();
   order.paymentReminderEmailFailureKind =
-    failureKind === "cancelled" ? "cancelled" : "failed";
+    failureKind === "cancelled"
+      ? "cancelled"
+      : failureKind === "expired"
+        ? "expired"
+        : "failed";
   order.paymentReminderEmailProvider = String(paymentProvider || "")
     .trim()
     .toUpperCase();
@@ -1896,6 +2078,33 @@ const maybeSendOrderPaymentReminderEmail = async ({
     return false;
   }
 };
+
+registerReservationExpiryListener(async (order) => {
+  if (!order) return;
+
+  const normalizedPaymentStatus = String(order.payment_status || "")
+    .trim()
+    .toLowerCase();
+  if (normalizedPaymentStatus === "paid") {
+    return;
+  }
+
+  const normalizedOrderStatus = normalizeOrderStatus(order.order_status);
+  if (!PAYMENT_PENDING_ORDER_STATUSES.has(normalizedOrderStatus)) {
+    return;
+  }
+
+  const paymentProvider =
+    normalizeSupportedPaymentProvider(order?.paymentMethod) ||
+    PAYMENT_PROVIDERS.PHONEPE;
+
+  await maybeSendOrderPaymentReminderEmail({
+    order,
+    failureKind: "expired",
+    paymentProvider,
+    logContext: "reservationExpiry",
+  });
+});
 
 const PAYMENT_EMAIL_DELAY_MS = Math.max(
   Number(process.env.ORDER_PAYMENT_EMAIL_DELAY_MS || 60_000),
@@ -2033,6 +2242,7 @@ const inferStoredPaymentFailureKind = (order) => {
     .trim()
     .toLowerCase();
   if (storedKind === "cancelled") return "cancelled";
+  if (storedKind === "expired") return "expired";
   if (storedKind === "failed") return "failed";
 
   const reason = String(order?.failureReason || "")
@@ -2060,11 +2270,23 @@ const processDueOrderPaymentReminderEmails = async ({
   );
 
   const dueOrders = await OrderModel.find({
-    payment_status: "failed",
     paymentReminderEmailSentAt: null,
     paymentMethod: { $in: Object.values(PAYMENT_PROVIDERS) },
-    paymentId: { $exists: true, $nin: [null, ""] },
-    updatedAt: { $lte: dueBefore, $gte: lookbackAfter },
+    updatedAt: { $gte: lookbackAfter },
+    $or: [
+      {
+        payment_status: "failed",
+        paymentId: { $exists: true, $nin: [null, ""] },
+        updatedAt: { $lte: dueBefore, $gte: lookbackAfter },
+      },
+      {
+        payment_status: "pending",
+        inventoryStatus: "released",
+        order_status: {
+          $in: [ORDER_STATUS.PENDING, ORDER_STATUS.PAYMENT_PENDING],
+        },
+      },
+    ],
   })
     .sort({ updatedAt: 1, createdAt: 1 })
     .limit(25);
@@ -2072,7 +2294,11 @@ const processDueOrderPaymentReminderEmails = async ({
   for (const order of dueOrders) {
     await maybeSendOrderPaymentReminderEmail({
       order,
-      failureKind: inferStoredPaymentFailureKind(order),
+      failureKind:
+        String(order?.payment_status || "").trim().toLowerCase() === "pending" &&
+        String(order?.inventoryStatus || "").trim().toLowerCase() === "released"
+          ? "expired"
+          : inferStoredPaymentFailureKind(order),
       paymentProvider:
         normalizeSupportedPaymentProvider(order?.paymentMethod) ||
         PAYMENT_PROVIDERS.PHONEPE,
@@ -2794,6 +3020,15 @@ const normalizePhonePeState = (value) =>
     .trim()
     .toUpperCase();
 
+const UPI_REFERENCE_REGEX = /^\d{12,16}$/;
+const extractNumericUpiReference = (value) => {
+  const normalized = String(value || "").trim();
+  if (!normalized) return "";
+  if (UPI_REFERENCE_REGEX.test(normalized)) return normalized;
+  const embedded = normalized.match(/(?:^|[^\d])(\d{12,16})(?:[^\d]|$)/);
+  return embedded?.[1] || "";
+};
+
 const verifyPhonePeWebhookState = async (merchantOrderId) => {
   try {
     const statusResponse = await getPhonePeOrderStatus({ merchantOrderId });
@@ -2802,6 +3037,17 @@ const verifyPhonePeWebhookState = async (merchantOrderId) => {
       ? statusResponse.paymentDetails
       : [];
     const firstPayment = paymentDetails[0] || {};
+    const upiReferenceCandidate =
+      firstPayment?.providerReferenceId ||
+      firstPayment?.utr ||
+      firstPayment?.rrn ||
+      firstPayment?.bankTransactionId ||
+      statusResponse?.providerReferenceId ||
+      statusResponse?.utr ||
+      statusResponse?.rrn ||
+      statusResponse?.bankTransactionId ||
+      "";
+    const upiReference = extractNumericUpiReference(upiReferenceCandidate);
 
     return {
       state,
@@ -2812,6 +3058,7 @@ const verifyPhonePeWebhookState = async (merchantOrderId) => {
         firstPayment?.providerReferenceId ||
         firstPayment?.utr ||
         null,
+      upiReference: upiReference || null,
       raw: statusResponse,
     };
   } catch (error) {
@@ -4053,6 +4300,10 @@ export const getAllOrders = asyncHandler(async (req, res) => {
       ORDER_STATUS.RTO,
       ORDER_STATUS.RTO_COMPLETED,
     ];
+    const dispatchedStatuses = [
+      ORDER_STATUS.SHIPPED,
+      ORDER_STATUS.OUT_FOR_DELIVERY,
+    ];
     const paidLikeStatuses = [
       "paid",
       "confirmed",
@@ -4088,6 +4339,8 @@ export const getAllOrders = asyncHandler(async (req, res) => {
             { payment_status: { $in: pendingPaymentStatuses } },
           ],
         });
+      } else if (normalizedStatus === "dispatched") {
+        filter.order_status = { $in: dispatchedStatuses };
       } else {
         const normalizedOrderStatus = normalizeOrderStatus(normalizedStatus);
         if (normalizedOrderStatus === ORDER_STATUS.ACCEPTED) {
@@ -4098,6 +4351,11 @@ export const getAllOrders = asyncHandler(async (req, res) => {
           filter.order_status = normalizedOrderStatus;
         }
       }
+    } else {
+      andFilters.push({
+        order_status: { $nin: pendingStatuses },
+        payment_status: { $nin: pendingPaymentStatuses },
+      });
     }
 
     // Search by payment identifiers or user email
@@ -4205,6 +4463,17 @@ export const getAllOrders = asyncHandler(async (req, res) => {
  */
 export const removeAllPendingOrders = asyncHandler(async (req, res) => {
   try {
+    const requesterRole = String(req?.user?.role || "").trim();
+    const normalizedRequesterRole = requesterRole.toLowerCase();
+    if (
+      !isPrivilegedAdminRole(requesterRole) ||
+      normalizedRequesterRole !== "admin"
+    ) {
+      throw new AppError("FORBIDDEN", {
+        message: "Only admin can remove pending orders",
+      });
+    }
+
     const pendingStatuses = [
       ORDER_STATUS.PENDING,
       ORDER_STATUS.PAYMENT_PENDING,
@@ -4723,107 +4992,22 @@ export const getOrderById = asyncHandler(async (req, res) => {
  */
 export const updateOrderStatus = asyncHandler(async (req, res) => {
   try {
-    const { id, order_status, notes } = req.validatedData;
+    const requesterRole = String(req?.user?.role || "").trim();
+    const normalizedRequesterRole = requesterRole.toLowerCase();
+    if (
+      !isPrivilegedAdminRole(requesterRole) ||
+      normalizedRequesterRole !== "admin"
+    ) {
+      throw new AppError("FORBIDDEN", {
+        message: "Manual order status changes are disabled",
+      });
+    }
 
-    logger.debug("updateOrderStatus", "Updating order status", {
-      id,
-      order_status,
+    throw new AppError("FORBIDDEN", {
+      message:
+        "Manual order status changes are disabled. Order status is updated automatically from payment and shipping events.",
     });
 
-    const order = await OrderModel.findById(id)
-      .populate("user", "name email")
-      .populate("delivery_address");
-
-    if (!order) {
-      logger.warn("updateOrderStatus", "Order not found for update", { id });
-      throw new AppError("ORDER_NOT_FOUND");
-    }
-
-    const transition = applyOrderStatusTransition(order, order_status, {
-      source: "ADMIN",
-    });
-
-    if (!transition.updated) {
-      if (transition.reason === "invalid_transition") {
-        throw new AppError("CONFLICT", {
-          message: "Invalid status transition",
-          from: normalizeOrderStatus(order.order_status),
-          to: normalizeOrderStatus(order_status),
-        });
-      }
-
-      if (transition.reason === "final_state") {
-        throw new AppError("CONFLICT", {
-          message: "Order is already in a final state",
-          status: normalizeOrderStatus(order.order_status),
-        });
-      }
-    }
-
-    const normalizedNewStatus = normalizeOrderStatus(order.order_status);
-    const wasPaid = order.payment_status === "paid";
-
-    if (transition.updated && normalizedNewStatus === ORDER_STATUS.CANCELLED) {
-      if (wasPaid) {
-        await restoreComboStock(order, "ADMIN_CANCELLED");
-        await restoreInventory(order, "ADMIN_CANCELLED");
-      } else {
-        await releaseComboStock(order, "ADMIN_CANCELLED");
-        await releaseInventory(order, "ADMIN_CANCELLED");
-      }
-    }
-
-    if (typeof notes === "string") {
-      order.notes = notes;
-    }
-    order.lastUpdatedBy = req.user?.id || req.user?._id || req.user;
-    order.updatedAt = new Date();
-    await order.save();
-
-    logger.info("updateOrderStatus", "Order status updated", {
-      id,
-      newStatus: order.order_status,
-    });
-
-    // Send notification to user if order has user associated
-    if (order.user) {
-      sendOrderUpdateNotification(order, order.order_status).catch((err) =>
-        logger.error("updateOrderStatus", "Failed to send notification", {
-          orderId: id,
-          error: err.message,
-        }),
-      );
-    }
-
-    if (transition.updated && normalizedNewStatus === ORDER_STATUS.CANCELLED) {
-      sendOrderCancelledEmail(order).catch((err) =>
-        logger.error("updateOrderStatus", "Failed to send cancellation email", {
-          orderId: id,
-          error: err?.message || String(err),
-        }),
-      );
-    }
-
-    // Sync to Firestore for real-time updates
-    syncOrderStatus(id, order.order_status).catch((err) =>
-      logger.error("updateOrderStatus", "Failed to sync to Firestore", {
-        orderId: id,
-        error: err.message,
-      }),
-    );
-
-    if (isInvoiceEligible(order)) {
-      ensureOrderInvoice(order).catch((err) =>
-        logger.error("updateOrderStatus", "Failed to generate invoice", {
-          orderId: id,
-          error: err.message,
-        }),
-      );
-    }
-
-    emitOrderStatusUpdate(order, "ADMIN");
-
-    return sendSuccess(res, order, "Order status updated successfully");
   } catch (error) {
     if (error instanceof AppError) {
       return sendError(res, error);
@@ -5459,6 +5643,8 @@ export const createOrder = asyncHandler(async (req, res) => {
       purchaseOrder: checkoutPurchaseOrder?._id || null,
     });
 
+    await flushExpiredReservationsSafely("createOrder");
+
     try {
       await reserveComboStock(order, "ORDER_CREATE");
       await reserveInventory(order, "ORDER_CREATE");
@@ -5481,6 +5667,7 @@ export const createOrder = asyncHandler(async (req, res) => {
           );
         },
       });
+      await syncActiveStockReservations(order, { source: "ORDER_CREATE" });
 
       void captureOrderEmailInNewsletter({
         req,
@@ -6180,6 +6367,8 @@ export const saveOrderForLater = asyncHandler(async (req, res) => {
       notes: notes || "Order saved - awaiting payment gateway activation",
     });
 
+    await flushExpiredReservationsSafely("saveOrderForLater");
+
     try {
       await reserveComboStock(savedOrder, "ORDER_SAVE");
       await reserveInventory(savedOrder, "ORDER_SAVE");
@@ -6202,6 +6391,7 @@ export const saveOrderForLater = asyncHandler(async (req, res) => {
           );
         },
       });
+      await syncActiveStockReservations(savedOrder, { source: "ORDER_SAVE" });
 
       void captureOrderEmailInNewsletter({
         req,
@@ -6490,7 +6680,7 @@ export const getPayOrderDetails = asyncHandler(async (req, res) => {
     const orderIdentifier = req.params.orderId || req.params.id;
     const token = String(req.query?.key || req.body?.key || "").trim();
 
-    const order = await findOrderByIdentifier(orderIdentifier, { lean: true });
+    const order = await findOrderByIdentifier(orderIdentifier);
     if (!order) {
       throw new AppError("ORDER_NOT_FOUND");
     }
@@ -6513,9 +6703,28 @@ export const getPayOrderDetails = asyncHandler(async (req, res) => {
       ORDER_STATUS.PENDING,
       ORDER_STATUS.PAYMENT_PENDING,
     ]);
+    let reservationState = null;
+    if (
+      normalizedPaymentStatus !== "paid" &&
+      pendingStatuses.has(normalizedOrderStatus)
+    ) {
+      await flushExpiredReservationsSafely("getPayOrderDetails");
+      reservationState = await ensureOrderHasActiveReservationForPayment(order, {
+        source: "PAY_ORDER_DETAILS",
+        refreshExpiry: true,
+        throwOnUnavailable: false,
+      });
+    }
+
     const isPayable =
       normalizedPaymentStatus !== "paid" &&
-      pendingStatuses.has(normalizedOrderStatus);
+      pendingStatuses.has(normalizedOrderStatus) &&
+      reservationState?.status !== "unavailable";
+    const reservationExpiresAt =
+      reservationState?.expiresAt || order.reservationExpiresAt || null;
+    const reservationSecondsRemaining = resolveReservationSecondsRemaining(
+      reservationExpiresAt,
+    );
 
     const displayOrderId = resolveDisplayOrderNumber(order);
     const items = Array.isArray(order.products)
@@ -6536,6 +6745,13 @@ export const getPayOrderDetails = asyncHandler(async (req, res) => {
       paymentStatus: normalizedPaymentStatus || "pending",
       orderStatus: normalizedOrderStatus || "pending",
       payable: isPayable,
+      reservationStatus: reservationState?.status || null,
+      reservationExpiresAt,
+      reservationSecondsRemaining,
+      reservationUnavailableReason:
+        reservationState?.status === "unavailable"
+          ? reservationState.reason || "insufficient_stock"
+          : null,
       couponCode: String(order.couponCode || "").trim(),
       couponDiscount: round2(Number(order.discountAmount || 0)),
       totals: {
@@ -6618,6 +6834,13 @@ export const initiatePayOrderPayment = asyncHandler(async (req, res) => {
         message: "Order is not eligible for payment",
       });
     }
+
+    await flushExpiredReservationsSafely("initiatePayOrderPayment");
+    await ensureOrderHasActiveReservationForPayment(order, {
+      source: "PAY_ORDER_INITIATE",
+      refreshExpiry: true,
+      throwOnUnavailable: true,
+    });
 
     const requestedPaymentProvider = String(
       req.body?.paymentProvider || order.paymentMethod || "",
@@ -6865,6 +7088,21 @@ export const retryOrderPayment = asyncHandler(async (req, res) => {
         message: "Order is not eligible for payment retry",
       });
     }
+
+    if (!PAYMENT_PENDING_ORDER_STATUSES.has(normalizedOrderStatus)) {
+      throw new AppError("INVALID_STATUS", {
+        field: "order_status",
+        status: normalizedOrderStatus,
+        message: "Order is not eligible for payment retry",
+      });
+    }
+
+    await flushExpiredReservationsSafely("retryOrderPayment");
+    await ensureOrderHasActiveReservationForPayment(order, {
+      source: "RETRY_PAYMENT",
+      refreshExpiry: true,
+      throwOnUnavailable: true,
+    });
 
     const requestedPaymentProvider = String(
       req.body?.paymentProvider || order.paymentMethod || "",
@@ -7434,6 +7672,9 @@ const applyResolvedPaymentStatus = async ({
       });
       await confirmComboStock(order, successSource);
       await confirmInventory(order, successSource);
+      await trackRestockConversionsForOrder(order, {
+        source: successSource,
+      });
       orderMutated = true;
     }
     if (hasPaymentReminder) {
@@ -7699,6 +7940,13 @@ const reconcileOrderPaymentStatus = async ({
       extraUpdates: {
         phonepeOrderId:
           verifiedStatus?.phonepeOrderId || order.phonepeOrderId || null,
+        upiRef: verifiedStatus?.upiReference || order.upiRef || null,
+        upiReferenceNumber:
+          verifiedStatus?.upiReference || order.upiReferenceNumber || null,
+        upiReferenceNo:
+          verifiedStatus?.upiReference || order.upiReferenceNo || null,
+        rrn: verifiedStatus?.upiReference || order.rrn || null,
+        utr: verifiedStatus?.upiReference || order.utr || null,
       },
       successSource,
       shipmentSource,
@@ -8053,6 +8301,17 @@ export const handlePaytmWebhook = asyncHandler(async (req, res) => {
  */
 export const repairPaidOrders = asyncHandler(async (req, res) => {
   try {
+    const requesterRole = String(req?.user?.role || "").trim();
+    const normalizedRequesterRole = requesterRole.toLowerCase();
+    if (
+      !isPrivilegedAdminRole(requesterRole) ||
+      normalizedRequesterRole !== "admin"
+    ) {
+      throw new AppError("FORBIDDEN", {
+        message: "Only admin can repair paid orders",
+      });
+    }
+
     const limitRaw = req.body?.limit ?? req.query?.limit ?? 10;
     const limit = Math.min(Math.max(Number(limitRaw) || 10, 1), 50);
 
@@ -8118,6 +8377,9 @@ export const repairPaidOrders = asyncHandler(async (req, res) => {
       "Paid order repair completed",
     );
   } catch (error) {
+    if (error instanceof AppError) {
+      return sendError(res, error);
+    }
     const dbError = handleDatabaseError(error, "repairPaidOrders");
     return sendError(res, dbError);
   }
@@ -8131,6 +8393,17 @@ export const repairPaidOrders = asyncHandler(async (req, res) => {
 export const backfillSuccessfulOrderPaymentIds = asyncHandler(
   async (req, res) => {
     try {
+      const requesterRole = String(req?.user?.role || "").trim();
+      const normalizedRequesterRole = requesterRole.toLowerCase();
+      if (
+        !isPrivilegedAdminRole(requesterRole) ||
+        normalizedRequesterRole !== "admin"
+      ) {
+        throw new AppError("FORBIDDEN", {
+          message: "Only admin can backfill successful payment IDs",
+        });
+      }
+
       const limitRaw = req.body?.limit ?? req.query?.limit ?? 250;
       const limit = Math.min(Math.max(Number(limitRaw) || 250, 1), 1000);
 
@@ -8239,6 +8512,9 @@ export const backfillSuccessfulOrderPaymentIds = asyncHandler(
         "Successful-order payment ID backfill completed",
       );
     } catch (error) {
+      if (error instanceof AppError) {
+        return sendError(res, error);
+      }
       const dbError = handleDatabaseError(
         error,
         "backfillSuccessfulOrderPaymentIds",
@@ -8377,6 +8653,13 @@ export const handlePhonePeWebhook = asyncHandler(async (req, res) => {
       extraUpdates: {
         phonepeOrderId:
           verifiedStatus.phonepeOrderId || order.phonepeOrderId || null,
+        upiRef: verifiedStatus?.upiReference || order.upiRef || null,
+        upiReferenceNumber:
+          verifiedStatus?.upiReference || order.upiReferenceNumber || null,
+        upiReferenceNo:
+          verifiedStatus?.upiReference || order.upiReferenceNo || null,
+        rrn: verifiedStatus?.upiReference || order.rrn || null,
+        utr: verifiedStatus?.upiReference || order.utr || null,
       },
       successSource: "PHONEPE_WEBHOOK",
       shipmentSource: "PHONEPE_WEBHOOK_AUTO_SHIPMENT",

@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import CrmContact from "../../models/crmContact.model.js";
 import CrmInteraction from "../../models/crmInteraction.model.js";
+import isPrivilegedAdminRole from "../../utils/isPrivilegedAdminRole.js";
 import {
   buildCrmValidationError,
   isPlainObject,
@@ -32,6 +33,18 @@ const CONTACT_STATUS_RANK = {
   contacted: 2,
   qualified: 3,
   converted: 4,
+};
+const CUSTOMER_WHATSAPP_APPROVAL_STAGES = new Set([
+  "customer",
+  "repeat_customer",
+]);
+
+const normalizeRoleName = (value) => String(value || "").trim();
+
+const isDefaultCustomerRole = (role) => {
+  const normalizedRole = normalizeRoleName(role);
+  if (!normalizedRole) return false;
+  return !isPrivilegedAdminRole(normalizedRole);
 };
 
 const isDuplicateKeyError = (error) => Number(error?.code || 0) === 11000;
@@ -166,8 +179,17 @@ const buildAttributionSnapshot = ({
   };
 };
 
-const resolveDerivedLifecycleStage = ({ eventType, contact, explicitStage }) => {
+const resolveDerivedLifecycleStage = ({
+  eventType,
+  contact,
+  explicitStage,
+  userRole = "",
+}) => {
   if (explicitStage) return explicitStage;
+
+  if (eventType === "lead_capture" && isDefaultCustomerRole(userRole)) {
+    return "customer";
+  }
 
   if (eventType === "order_paid") {
     return Number(contact?.totalOrders || 0) >= 1 ? "repeat_customer" : "customer";
@@ -282,6 +304,37 @@ const deriveConsentPatch = ({
   }
 
   return derived;
+};
+
+const maybeAutoApproveWhatsappConsent = (contact, touchpoint) => {
+  if (!contact) return;
+
+  const currentWhatsappConsent = contact?.consent?.whatsapp;
+  if (currentWhatsappConsent === true || currentWhatsappConsent === false) {
+    return;
+  }
+
+  const hasPhone = Boolean(contact?.phone || touchpoint?.phone);
+  if (!hasPhone) return;
+
+  if (
+    touchpoint?.channel === "whatsapp" &&
+    touchpoint?.direction === "inbound" &&
+    touchpoint?.eventType === "chat_message"
+  ) {
+    contact.consent = {
+      ...(contact.consent || {}),
+      whatsapp: true,
+    };
+    return;
+  }
+
+  if (CUSTOMER_WHATSAPP_APPROVAL_STAGES.has(contact?.lifecycleStage || "")) {
+    contact.consent = {
+      ...(contact.consent || {}),
+      whatsapp: true,
+    };
+  }
 };
 
 const ensureObjectId = (value) => {
@@ -414,6 +467,11 @@ const buildNormalizedTouchpoint = (input = {}, options = {}) => {
   const supportTicketId = normalizeObjectId(
     input.supportTicketId || input.support_ticket_id || "",
   );
+  const metadata = sanitizeMetadata(input.metadata);
+  const userRole = sanitizeText(
+    input.userRole || input.user_role || metadata?.role || "",
+    { maxLength: 40 },
+  );
 
   return {
     userId,
@@ -448,15 +506,16 @@ const buildNormalizedTouchpoint = (input = {}, options = {}) => {
       maxLength: 80,
     }),
     tags: normalizeTagList(input.tags),
-    metadata: sanitizeMetadata(input.metadata),
-    campaign: normalizeCampaign(input.campaign, input.metadata),
+    metadata,
+    userRole,
+    campaign: normalizeCampaign(input.campaign, metadata),
     consent: deriveConsentPatch({
       eventType,
       channel,
       direction: resolvedDirection || "system",
       consent: normalizeConsentPatch(input.consent),
     }),
-    orderAmount: extractOrderAmount(input.orderAmount, input.metadata),
+    orderAmount: extractOrderAmount(input.orderAmount, metadata),
   };
 };
 
@@ -515,6 +574,7 @@ const applyContactMetricsFromInteraction = (contact, touchpoint) => {
     eventType: touchpoint.eventType,
     contact,
     explicitStage: touchpoint.lifecycleStage,
+    userRole: touchpoint.userRole,
   });
   const derivedStatus = resolveDerivedStatus({
     eventType: touchpoint.eventType,
@@ -527,6 +587,7 @@ const applyContactMetricsFromInteraction = (contact, touchpoint) => {
   contact.status = pickStatus(contact.status, derivedStatus, {
     explicit: Boolean(touchpoint.status),
   });
+  maybeAutoApproveWhatsappConsent(contact, touchpoint);
 
   if (touchpoint.eventType === "order_paid") {
     contact.totalOrders = Number(contact.totalOrders || 0) + 1;

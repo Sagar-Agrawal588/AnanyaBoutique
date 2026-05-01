@@ -59,6 +59,10 @@ const fromLines = (value) =>
 export default function ProductPageSettingsSection({
   productPage,
   setProductPage,
+  pageTitle = "Storefront Product Page",
+  storefrontPath = "/product/[id]",
+  entityLabel = "product",
+  lowerSectionLabel = "product",
 }) {
   const updateSectionField = (section, field, nextValue) => {
     setProductPage((current) => ({
@@ -92,17 +96,18 @@ export default function ProductPageSettingsSection({
     <div className="mt-8 space-y-5">
       <div>
         <h3 className="text-[18px] font-semibold text-gray-800">
-          Storefront Product Page
+          {pageTitle}
         </h3>
         <p className="mt-1 text-sm text-gray-500">
-          Control the copy and visibility of the live `/product/[id]` page from
-          admin. Empty fields keep the default storefront behavior.
+          Control the copy and visibility of the live `{storefrontPath}` page
+          from admin. Empty fields keep the default storefront behavior.
         </p>
       </div>
 
       <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-        Changes here update the real client product page layout, including the
-        review section shown below the product details.
+        Changes here update the real client {entityLabel} page layout,
+        including the review section shown below the {lowerSectionLabel}{" "}
+        details.
       </div>
 
       <div className={sectionCardClass}>

@@ -7,13 +7,14 @@ export const useAdminRealtime = ({
   token,
   onOrderUpdate,
   onAnalyticsBatch,
+  onStockUpdate,
 } = {}) => {
   const [status, setStatus] = useState("disconnected");
-  const handlersRef = useRef({ onOrderUpdate, onAnalyticsBatch });
+  const handlersRef = useRef({ onOrderUpdate, onAnalyticsBatch, onStockUpdate });
 
   useEffect(() => {
-    handlersRef.current = { onOrderUpdate, onAnalyticsBatch };
-  }, [onOrderUpdate, onAnalyticsBatch]);
+    handlersRef.current = { onOrderUpdate, onAnalyticsBatch, onStockUpdate };
+  }, [onOrderUpdate, onAnalyticsBatch, onStockUpdate]);
 
   useEffect(() => {
     if (!token) {
@@ -36,6 +37,9 @@ export const useAdminRealtime = ({
     const handleAnalyticsBatch = (payload) => {
       handlersRef.current.onAnalyticsBatch?.(payload);
     };
+    const handleStockUpdate = (payload) => {
+      handlersRef.current.onStockUpdate?.(payload);
+    };
 
     socket.on("connect", handleConnect);
     socket.on("disconnect", handleDisconnect);
@@ -46,6 +50,7 @@ export const useAdminRealtime = ({
     socket.on("order.updated", handleOrderUpdate);
     socket.on("analytics:batch", handleAnalyticsBatch);
     socket.on("analytics:event", handleAnalyticsBatch);
+    socket.on("stock_update", handleStockUpdate);
 
     setStatus(socket.connected ? "connected" : "connecting");
 
@@ -58,6 +63,7 @@ export const useAdminRealtime = ({
       socket.off("order.updated", handleOrderUpdate);
       socket.off("analytics:batch", handleAnalyticsBatch);
       socket.off("analytics:event", handleAnalyticsBatch);
+      socket.off("stock_update", handleStockUpdate);
     };
   }, [token]);
 

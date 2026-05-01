@@ -365,6 +365,68 @@ const buildCartLineKey = (item) => {
 const getCartLineQuantity = (item) =>
   Math.max(Number(item?.quantity || 0), 0);
 
+const firstFiniteNumber = (...values) => {
+  for (const value of values) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+};
+
+const getLocalCartAvailableQuantity = (product) => {
+  if (!product || typeof product !== "object") return 0;
+  if (product.track_inventory === false || product.trackInventory === false) {
+    return Number.MAX_SAFE_INTEGER;
+  }
+
+  if (isComboPayload(product)) {
+    const comboAvailable = firstFiniteNumber(
+      product.available_quantity,
+      product.available_stock,
+      product.availableStock,
+      product.availableStockQuantity,
+      product.stockQuantity,
+      product.stock,
+    );
+    return comboAvailable === null
+      ? Number.MAX_SAFE_INTEGER
+      : Math.max(comboAvailable, 0);
+  }
+
+  const variantId = String(
+    product?.variantId ||
+      product?.selectedVariant?._id ||
+      product?.selectedVariant?.id ||
+      product?.variant?._id ||
+      product?.variant?.id ||
+      "",
+  ).trim();
+  const selectedVariant =
+    product?.selectedVariant ||
+    product?.variant ||
+    (variantId && Array.isArray(product?.variants)
+      ? product.variants.find(
+          (variant) =>
+            String(variant?._id || variant?.id || "") === variantId,
+        )
+      : null);
+  const source = selectedVariant || product;
+  const explicitAvailable = firstFiniteNumber(
+    source?.available_quantity,
+    source?.available_stock,
+    source?.availableStock,
+  );
+  if (explicitAvailable !== null) {
+    return Math.max(explicitAvailable, 0);
+  }
+
+  const stock = firstFiniteNumber(source?.stock_quantity, source?.stock);
+  if (stock === null) return Number.MAX_SAFE_INTEGER;
+
+  const reserved = firstFiniteNumber(source?.reserved_quantity) || 0;
+  return Math.max(stock - reserved, 0);
+};
+
 const buildCartSyncSignature = (items = []) =>
   JSON.stringify(
     (Array.isArray(items) ? items : [])
@@ -875,7 +937,10 @@ export const CartProvider = ({ children }) => {
         }
 
         if (shouldUseLocalDevFallback()) {
-          addToCartLocal(product, quantity);
+          const addedLocally = addToCartLocal(product, quantity);
+          if (!addedLocally) {
+            return { success: false, message: "Insufficient stock" };
+          }
           if (cartItems.length === 0) {
             setIsDrawerOpen(true);
           }
@@ -887,7 +952,10 @@ export const CartProvider = ({ children }) => {
           return { success: false, message: errorMessage };
         }
 
-        addToCartLocal(product, quantity);
+        const addedLocally = addToCartLocal(product, quantity);
+        if (!addedLocally) {
+          return { success: false, message: "Insufficient stock" };
+        }
         const trackedProductId = resolveProductId(product);
         trackEvent("add_to_cart", {
           productId: String(trackedProductId || ""),
@@ -908,7 +976,10 @@ export const CartProvider = ({ children }) => {
         return { success: false, message: "Combo add failed" };
       }
       if (shouldUseLocalDevFallback()) {
-        addToCartLocal(product, quantity);
+        const addedLocally = addToCartLocal(product, quantity);
+        if (!addedLocally) {
+          return { success: false, message: "Insufficient stock" };
+        }
         if (cartItems.length === 0) {
           setIsDrawerOpen(true);
         }
@@ -918,7 +989,10 @@ export const CartProvider = ({ children }) => {
         toast.error("Unable to add item right now. Please try again.");
         return { success: false, message: "Add to cart failed" };
       }
-      addToCartLocal(product, quantity);
+      const addedLocally = addToCartLocal(product, quantity);
+      if (!addedLocally) {
+        return { success: false, message: "Insufficient stock" };
+      }
       const trackedProductId = resolveProductId(product);
       trackEvent("add_to_cart", {
         productId: String(trackedProductId || ""),
@@ -961,8 +1035,7 @@ export const CartProvider = ({ children }) => {
 
   // Add to cart locally (fallback)
   const addToCartLocal = (product, quantity = 1) => {
-    // Check stock if available in product object
-    const stock = product.stock !== undefined ? product.stock : Infinity;
+    const stock = getLocalCartAvailableQuantity(product);
     const resolvedProductId = resolveProductId(product);
     const resolvedVariantId = resolveVariantId(product);
     const resolvedVariantName = String(
@@ -991,14 +1064,14 @@ export const CartProvider = ({ children }) => {
       const currentQty = cartItems[existingIndex].quantity;
       if (currentQty + quantity > stock) {
         toast.error(`Only ${stock} items available`);
-        return;
+        return false;
       }
       newItems = [...cartItems];
       newItems[existingIndex].quantity += quantity;
     } else {
       if (quantity > stock) {
         toast.error(`Only ${stock} items available`);
-        return;
+        return false;
       }
       newItems = [
         ...cartItems,
@@ -1021,6 +1094,7 @@ export const CartProvider = ({ children }) => {
     setCartItems(newItems);
     calculateTotals(newItems);
     saveToLocalStorage(newItems);
+    return true;
   };
 
   // Update quantity

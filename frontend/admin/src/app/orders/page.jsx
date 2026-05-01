@@ -3,12 +3,13 @@ import { useAdmin } from "@/context/AdminContext";
 import { useAdminRealtime } from "@/hooks/useAdminRealtime";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useLiveRefreshSetting } from "@/hooks/useLiveRefreshSetting";
+import { hasAdminPermission } from "@/utils/adminPermissions";
 import {
   API_BASE_URL,
   deleteData,
   getData,
+  patchData,
   postData,
-  putData,
 } from "@/utils/api";
 import { withAdminBasePath } from "@/utils/basePath";
 import { Button } from "@mui/material";
@@ -51,6 +52,19 @@ const SETTLED_PAYMENT_STATUSES = new Set([
   "success",
   "successful",
 ]);
+const DISPATCHED_ORDER_STATUSES = new Set(["shipped", "out_for_delivery"]);
+
+const ORDER_FILTER_OPTIONS = [
+  { value: "all", label: "All Orders" },
+  { value: "successful", label: "Successful Orders" },
+  { value: "failed", label: "Failed Orders" },
+  { value: "pending", label: "Pending Orders" },
+  { value: "accepted", label: "Accepted Orders" },
+  { value: "dispatched", label: "Dispatched Orders" },
+  { value: "delivered", label: "Delivered Orders" },
+  { value: "completed", label: "Completed Orders" },
+  { value: "cancelled", label: "Cancelled Orders" },
+];
 
 const normalizeOrderStatus = (status) => {
   if (!status) return "pending";
@@ -66,6 +80,56 @@ const formatStatusLabel = (status, fallback = "Pending") => {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+};
+
+const getStatusPresentation = (status) => {
+  const normalized = normalizeOrderStatus(status);
+
+  if (normalized === "cancelled" || normalized === "rto_completed") {
+    return {
+      backgroundColor: "#fef2f2",
+      borderColor: "#fecaca",
+      color: "#b91c1c",
+    };
+  }
+
+  if (normalized === "completed" || normalized === "delivered") {
+    return {
+      backgroundColor: "#f0fdf4",
+      borderColor: "#bbf7d0",
+      color: "#166534",
+    };
+  }
+
+  if (DISPATCHED_ORDER_STATUSES.has(normalized)) {
+    return {
+      backgroundColor: "#dcfce7",
+      borderColor: "#86efac",
+      color: "#166534",
+    };
+  }
+
+  if (normalized === "accepted" || normalized === "confirmed") {
+    return {
+      backgroundColor: "#eff6ff",
+      borderColor: "#bfdbfe",
+      color: "#1d4ed8",
+    };
+  }
+
+  if (normalized === "in_warehouse") {
+    return {
+      backgroundColor: "#fefce8",
+      borderColor: "#fde68a",
+      color: "#a16207",
+    };
+  }
+
+  return {
+    backgroundColor: "#ffffff",
+    borderColor: "rgba(148, 163, 184, 0.6)",
+    color: "#334155",
+  };
 };
 
 const isGatewayMerchantReference = (value) =>
@@ -484,16 +548,15 @@ const resolveTrackingUrl = (order = {}) => {
   }
 };
 
-const OrderRow = ({ order, index, token, onStatusUpdate }) => {
+const OrderRow = ({ order, index, token }) => {
   const [expandIndex, setExpandIndex] = useState(false);
-  const [orderStatus, setOrderStatus] = useState(
-    normalizeOrderStatus(order?.order_status) || "pending",
-  );
-  const [updating, setUpdating] = useState(false);
   const [downloadingInvoice, setDownloadingInvoice] = useState(false);
   const [orderReviews, setOrderReviews] = useState([]);
   const [reviewsLoading, setReviewsLoading] = useState(false);
   const trackingUrl = resolveTrackingUrl(order);
+  const normalizedRowStatus = normalizeOrderStatus(order?.order_status);
+  const rowStatusStyles = getStatusPresentation(normalizedRowStatus);
+  const statusLabel = formatStatusLabel(normalizedRowStatus);
   const paymentSettled = hasSettledPayment(order);
   const upiRrn = paymentSettled ? resolveUpiRrn(order) : "";
   const transactionId = paymentSettled
@@ -681,28 +744,6 @@ const OrderRow = ({ order, index, token, onStatusUpdate }) => {
     }
   };
 
-  const handleChange = async (event) => {
-    const newStatus = event.target.value;
-    setUpdating(true);
-    try {
-      const response = await putData(
-        `/api/orders/${order._id}/status`,
-        { order_status: newStatus },
-        token,
-      );
-      if (response.success) {
-        setOrderStatus(newStatus);
-        toast.success("Order status updated");
-        if (onStatusUpdate) onStatusUpdate();
-      } else {
-        toast.error(response.message || "Failed to update status");
-      }
-    } catch (error) {
-      toast.error("Failed to update status");
-    }
-    setUpdating(false);
-  };
-
   const fetchOrderReviews = async () => {
     if (!token || !order?._id) return;
     setReviewsLoading(true);
@@ -748,6 +789,38 @@ const OrderRow = ({ order, index, token, onStatusUpdate }) => {
     } catch (error) {
       console.error("Failed to delete review:", error);
       toast.error("Failed to delete review");
+    }
+  };
+
+  const handleReviewVisibilityChange = async (reviewId, nextVisibility) => {
+    if (!reviewId) return;
+
+    try {
+      const response = await patchData(
+        `/api/admin/reviews/${reviewId}`,
+        { visibility: nextVisibility },
+        token,
+      );
+      if (response?.success) {
+        setOrderReviews((prev) =>
+          prev.map((review) =>
+            review._id === reviewId
+              ? {
+                  ...review,
+                  visibility: response?.data?.visibility || nextVisibility,
+                }
+              : review,
+          ),
+        );
+        toast.success(
+          nextVisibility === "visible" ? "Review published" : "Review hidden",
+        );
+      } else {
+        toast.error(response?.message || "Failed to update review visibility");
+      }
+    } catch (error) {
+      console.error("Failed to update review visibility:", error);
+      toast.error("Failed to update review visibility");
     }
   };
 
@@ -846,39 +919,17 @@ const OrderRow = ({ order, index, token, onStatusUpdate }) => {
           {order?.user?._id?.slice(-6) || "------"}
         </td>
         <td className="text-[14px] text-gray-600 font-[500] px-4 py-2">
-          <Select
-            value={orderStatus}
-            onChange={handleChange}
-            displayEmpty
-            inputProps={{ "aria-label": "Without label" }}
-            size="small"
-            disabled={updating}
-            fullWidth
-            sx={{
-              "& .MuiSelect-select": {
-                py: "9px",
-                pr: "28px",
-                fontSize: "14px",
-                fontWeight: 500,
-              },
-              borderRadius: "10px",
-              backgroundColor: "#ffffff",
-              "& fieldset": {
-                borderColor: "rgba(148, 163, 184, 0.6)",
-              },
+          <div
+            className="inline-flex min-h-10 w-full items-center justify-center rounded-[10px] border px-3 py-2 text-center text-[14px] font-semibold"
+            title="Order status is updated automatically from payment and shipping events."
+            style={{
+              color: rowStatusStyles.color,
+              backgroundColor: rowStatusStyles.backgroundColor,
+              borderColor: rowStatusStyles.borderColor,
             }}
           >
-            <MenuItem value="pending">Pending</MenuItem>
-            <MenuItem value="pending_payment">Pending Payment</MenuItem>
-            <MenuItem value="accepted">Accepted</MenuItem>
-            <MenuItem value="in_warehouse">In Warehouse</MenuItem>
-            <MenuItem value="shipped">Shipped</MenuItem>
-            <MenuItem value="out_for_delivery">Out for Delivery</MenuItem>
-            <MenuItem value="delivered">Delivered</MenuItem>
-            <MenuItem value="completed">Completed</MenuItem>
-            <MenuItem value="cancelled">Cancelled</MenuItem>
-            <MenuItem value="confirmed">Confirmed (Legacy)</MenuItem>
-          </Select>
+            {statusLabel}
+          </div>
         </td>
         <td className="text-[14px] text-gray-600 font-[500] px-4 py-2">
           <div className="inline-flex items-center gap-1 text-[14px] whitespace-nowrap">
@@ -937,13 +988,46 @@ const OrderRow = ({ order, index, token, onStatusUpdate }) => {
                               {review.userName || "Customer"}{" "}
                               {review.city ? `• ${review.city}` : ""}
                             </span>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteReview(review._id)}
-                              className="text-[11px] font-semibold text-red-600 hover:text-red-700"
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                                review.visibility === "visible"
+                                  ? "bg-emerald-100 text-emerald-700"
+                                  : review.visibility === "hidden"
+                                    ? "bg-slate-200 text-slate-700"
+                                    : "bg-amber-100 text-amber-700"
+                              }`}
                             >
-                              Delete Review
-                            </button>
+                              {review.visibility === "visible"
+                                ? "Visible"
+                                : review.visibility === "hidden"
+                                  ? "Hidden"
+                                  : "Pending"}
+                            </span>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleReviewVisibilityChange(
+                                    review._id,
+                                    review.visibility === "visible"
+                                      ? "hidden"
+                                      : "visible",
+                                  )
+                                }
+                                className="text-[11px] font-semibold text-blue-600 hover:text-blue-700"
+                              >
+                                {review.visibility === "visible"
+                                  ? "Hide Review"
+                                  : "Publish Review"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteReview(review._id)}
+                                className="text-[11px] font-semibold text-red-600 hover:text-red-700"
+                              >
+                                Delete Review
+                              </button>
+                            </div>
                           </div>
                           <div className="text-[12px] text-amber-600 font-semibold">
                             {"★".repeat(
@@ -1171,7 +1255,7 @@ const OrderRow = ({ order, index, token, onStatusUpdate }) => {
   );
 };
 
-const OrdersTable = ({ orders, token, onStatusUpdate }) => (
+const OrdersTable = ({ orders, token }) => (
   <div className="w-full mt-5 border border-gray-200 rounded-xl overflow-x-auto">
     <table className="min-w-[980px] w-full table-fixed">
       <colgroup>
@@ -1221,7 +1305,6 @@ const OrdersTable = ({ orders, token, onStatusUpdate }) => (
             order={order}
             index={index}
             token={token}
-            onStatusUpdate={onStatusUpdate}
           />
         ))}
       </tbody>
@@ -1230,7 +1313,7 @@ const OrdersTable = ({ orders, token, onStatusUpdate }) => (
 );
 
 const Orders = () => {
-  const { token, isAuthenticated, loading } = useAdmin();
+  const { token, isAuthenticated, loading, admin } = useAdmin();
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -1243,7 +1326,10 @@ const Orders = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [backfillingPaymentIds, setBackfillingPaymentIds] = useState(false);
   const [repairingPaidOrders, setRepairingPaidOrders] = useState(false);
-  const [removingPendingOrders, setRemovingPendingOrders] = useState(false);
+  const canRunOrderMaintenanceActions = hasAdminPermission(
+    admin,
+    "manage_shipping",
+  );
   const { intervalMs } = useLiveRefreshSetting();
   const refreshConfig = useMemo(
     () => ({
@@ -1301,9 +1387,12 @@ const Orders = () => {
           const nextOrders = Array.isArray(payload?.orders)
             ? payload.orders
             : [];
-          const visibleOrders = nextOrders.filter(
-            (order) => !isDemoOrTestOrder(order),
-          );
+          const visibleOrders = nextOrders.filter((order) => {
+            if (isDemoOrTestOrder(order)) return false;
+            if (statusFilter === "all" && isPendingQueueOrder(order))
+              return false;
+            return true;
+          });
           const nextTotalPages = Number(payload?.pagination?.totalPages || 1);
           setOrders(visibleOrders);
           setTotalPages(nextTotalPages > 0 ? nextTotalPages : 1);
@@ -1347,7 +1436,7 @@ const Orders = () => {
     const rawStatus = String(
       searchParams?.get("status") || "all",
     ).toLowerCase();
-    const allowed = new Set(["all", "pending", "successful", "failed"]);
+    const allowed = new Set(ORDER_FILTER_OPTIONS.map((option) => option.value));
     const nextStatus = allowed.has(rawStatus) ? rawStatus : "all";
     setStatusFilter(nextStatus);
     setPage(1);
@@ -1358,28 +1447,7 @@ const Orders = () => {
     refreshConfig,
   );
 
-  const pendingOrders = useMemo(
-    () => orders.filter((order) => isPendingQueueOrder(order)),
-    [orders],
-  );
-  const nonPendingOrders = useMemo(
-    () => orders.filter((order) => !isPendingQueueOrder(order)),
-    [orders],
-  );
-  const showPendingQueueSection =
-    statusFilter === "all" && pendingOrders.length > 0;
-  const primaryOrders =
-    statusFilter === "pending"
-      ? pendingOrders
-      : statusFilter === "all"
-        ? nonPendingOrders
-        : orders;
-  const showEmptyPrimaryState =
-    !isLoading &&
-    orders.length > 0 &&
-    statusFilter === "all" &&
-    nonPendingOrders.length === 0 &&
-    pendingOrders.length > 0;
+  const primaryOrders = orders;
 
   const handleOrderUpdate = useCallback(() => {
     triggerOrdersRefresh();
@@ -1484,62 +1552,6 @@ const Orders = () => {
     }
   };
 
-  const handleRemovePendingOrders = async () => {
-    if (!token) {
-      toast.error("Admin session missing");
-      return;
-    }
-
-    const confirmed =
-      typeof window === "undefined"
-        ? true
-        : window.confirm(
-            "Remove all pending orders? This permanently deletes pending, pending payment, and in warehouse orders.",
-          );
-    if (!confirmed) return;
-
-    setRemovingPendingOrders(true);
-    try {
-      const response = await deleteData("/api/orders/admin/pending", token);
-      if (response?.success) {
-        const deletedCount = Number(response?.data?.deletedCount || 0);
-        const skippedCount = Number(response?.data?.skippedCount || 0);
-
-        if (deletedCount > 0) {
-          toast.success(
-            `Removed ${deletedCount} pending order${deletedCount === 1 ? "" : "s"}`,
-          );
-        } else {
-          toast.success("No pending orders found");
-        }
-
-        if (skippedCount > 0) {
-          toast.error(
-            `${skippedCount} pending order${skippedCount === 1 ? " was" : "s were"} skipped. Check server logs.`,
-          );
-        }
-
-        const params = new URLSearchParams(searchParams?.toString() || "");
-        params.delete("status");
-        const query = params.toString();
-
-        setStatusFilter("all");
-        setPage(1);
-        router.replace(query ? `/orders?${query}` : "/orders");
-
-        if (statusFilter === "all") {
-          fetchOrders();
-        }
-      } else {
-        toast.error(response?.message || "Failed to remove pending orders");
-      }
-    } catch {
-      toast.error("Failed to remove pending orders");
-    } finally {
-      setRemovingPendingOrders(false);
-    }
-  };
-
   if (loading || !isAuthenticated) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -1561,75 +1573,47 @@ const Orders = () => {
               <span className="text-primary font-bold">{orders.length}</span>{" "}
               {orders.length === 1 ? "order" : "orders"}
             </p>
-            {statusFilter === "all" ? (
-              <p className="mt-1 text-xs text-gray-500">
-                Pending and payment-hold rows are kept in a separate queue
-                below.
-              </p>
-            ) : null}
+            <p className="mt-1 text-xs text-gray-500">
+              Pending and payment-hold orders are hidden from this view.
+            </p>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
-            <Button
-              variant="outlined"
-              size="small"
-              onClick={handleBackfillSuccessfulPaymentIds}
-              disabled={
-                backfillingPaymentIds ||
-                repairingPaidOrders ||
-                removingPendingOrders
-              }
-              sx={{
-                textTransform: "none",
-                borderRadius: "10px",
-                px: 2,
-                py: 0.8,
-              }}
-            >
-              {backfillingPaymentIds
-                ? "Backfilling Txn IDs..."
-                : "Backfill Successful Txn IDs"}
-            </Button>
-            <Button
-              variant="outlined"
-              size="small"
-              onClick={handleRepairPaidOrders}
-              disabled={
-                backfillingPaymentIds ||
-                repairingPaidOrders ||
-                removingPendingOrders
-              }
-              sx={{
-                textTransform: "none",
-                borderRadius: "10px",
-                px: 2,
-                py: 0.8,
-              }}
-            >
-              {repairingPaidOrders
-                ? "Repairing Paid Orders..."
-                : "Repair Paid Orders"}
-            </Button>
-            <Button
-              variant="contained"
-              color="error"
-              size="small"
-              onClick={handleRemovePendingOrders}
-              disabled={
-                removingPendingOrders ||
-                backfillingPaymentIds ||
-                repairingPaidOrders
-              }
-              sx={{
-                textTransform: "none",
-                borderRadius: "10px",
-                px: 2,
-                py: 0.8,
-              }}
-            >
-              {removingPendingOrders
-                ? "Removing Pending Orders..."
-                : "Remove Pending Orders"}
-            </Button>
+            {canRunOrderMaintenanceActions ? (
+              <>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={handleBackfillSuccessfulPaymentIds}
+                  disabled={backfillingPaymentIds || repairingPaidOrders}
+                  sx={{
+                    textTransform: "none",
+                    borderRadius: "10px",
+                    px: 2,
+                    py: 0.8,
+                  }}
+                >
+                  {backfillingPaymentIds
+                    ? "Backfilling Txn IDs..."
+                    : "Backfill Successful Txn IDs"}
+                </Button>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={handleRepairPaidOrders}
+                  disabled={backfillingPaymentIds || repairingPaidOrders}
+                  sx={{
+                    textTransform: "none",
+                    borderRadius: "10px",
+                    px: 2,
+                    py: 0.8,
+                  }}
+                >
+                  {repairingPaidOrders
+                    ? "Repairing Paid Orders..."
+                    : "Repair Paid Orders"}
+                </Button>
+              </>
+            ) : null}
             <Button
               variant="outlined"
               size="small"
@@ -1651,13 +1635,20 @@ const Orders = () => {
               sx={{
                 minWidth: 180,
                 borderRadius: "10px",
-                backgroundColor: "#f9fafb",
+                backgroundColor:
+                  statusFilter === "dispatched" ? "#dcfce7" : "#f9fafb",
+                "& .MuiSelect-select": {
+                  color:
+                    statusFilter === "dispatched" ? "#166534" : "#111827",
+                  fontWeight: statusFilter === "dispatched" ? 700 : 500,
+                },
               }}
             >
-              <MenuItem value="all">All Orders</MenuItem>
-              <MenuItem value="pending">Pending Orders</MenuItem>
-              <MenuItem value="successful">Successful Orders</MenuItem>
-              <MenuItem value="failed">Failed Orders</MenuItem>
+              {ORDER_FILTER_OPTIONS.map((option) => (
+                <MenuItem key={option.value} value={option.value}>
+                  {option.label}
+                </MenuItem>
+              ))}
             </Select>
             <form onSubmit={handleSearch} className="flex items-center gap-2">
               <div className="relative">
@@ -1702,58 +1693,16 @@ const Orders = () => {
           </div>
         ) : (
           <>
-            {showEmptyPrimaryState ? (
-              <div className="mt-5 rounded-xl border border-dashed border-amber-200 bg-amber-50 px-4 py-5 text-sm text-amber-800">
-                All rows on this page are still in the pending queue. Review
-                them below so payment-hold and not-yet-confirmed orders stay
-                separate from the main order list.
-              </div>
-            ) : primaryOrders.length > 0 ? (
+            {primaryOrders.length > 0 ? (
               <OrdersTable
                 orders={primaryOrders}
                 token={token}
-                onStatusUpdate={fetchOrders}
               />
             ) : (
               <div className="mt-5 rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-8 text-center text-sm text-gray-500">
                 No orders matched this view.
               </div>
             )}
-
-            {showPendingQueueSection ? (
-              <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50/70 p-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <h2 className="text-lg font-semibold text-amber-950">
-                      Pending Queue
-                    </h2>
-                    <p className="mt-1 text-sm text-amber-800">
-                      These rows are waiting on payment confirmation or internal
-                      processing, so they sit apart from the main order list.
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {pendingOrders.slice(0, 3).map((order, index) => (
-                      <span
-                        key={String(order?._id || order?.id || index)}
-                        className="inline-flex rounded-full bg-white px-3 py-1 text-xs font-semibold text-amber-900 shadow-sm"
-                      >
-                        {getPendingQueueReason(order)}
-                      </span>
-                    ))}
-                    <span className="inline-flex rounded-full bg-amber-900 px-3 py-1 text-xs font-semibold text-white">
-                      {pendingOrders.length} queued
-                    </span>
-                  </div>
-                </div>
-
-                <OrdersTable
-                  orders={pendingOrders}
-                  token={token}
-                  onStatusUpdate={fetchOrders}
-                />
-              </div>
-            ) : null}
 
             <div className="flex items-center justify-center py-10">
               <Pagination

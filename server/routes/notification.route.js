@@ -1,5 +1,6 @@
 import express from "express";
 import {
+  createStockNotification,
   getLiveOfferFeed,
   getNotificationStats,
   manualSendOffer,
@@ -36,6 +37,9 @@ router.delete("/unregister", authOptional, unregisterToken);
 
 // Pollable fallback feed for live offer notifications
 router.get("/offers/live-feed", authOptional, getLiveOfferFeed);
+
+// Back-in-stock notifications
+router.post("/stock", authOptional, createStockNotification);
 
 // One-click unsubscribe from promotional emails (email link)
 router.get("/unsubscribe/promotional", unsubscribePromotionalEmail);

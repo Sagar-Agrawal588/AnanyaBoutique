@@ -1,5 +1,6 @@
 "use client";
 import { useAdmin } from "@/context/AdminContext";
+import { useAdminRealtime } from "@/hooks/useAdminRealtime";
 import { withAdminBasePath } from "@/utils/basePath";
 import { deleteData, getData, patchData } from "@/utils/api";
 import { getImageUrl } from "@/utils/imageUtils";
@@ -34,7 +35,7 @@ const columns = [
   { id: "DEMAND", label: "DEMAND STATUS", minWidth: 120 },
   { id: "ACCESS", label: "ACCESS", minWidth: 120 },
   { id: "RATING", label: "RATING", minWidth: 100 },
-  { id: "ACTIONS", label: "ACTIONS", minWidth: 200 },
+  { id: "ACTIONS", label: "ACTIONS", minWidth: 280 },
 ];
 
 const normalizeVariantLabel = (variant) => {
@@ -68,7 +69,82 @@ const getVariantInventoryLines = (product) => {
     id: String(variant?._id || normalizeVariantLabel(variant)),
     label: normalizeVariantLabel(variant),
     stock: Math.max(Number(variant?.stock_quantity ?? variant?.stock ?? 0), 0),
+    reserved: Math.max(Number(variant?.reserved_quantity ?? 0), 0),
+    available: Math.max(
+      Number(
+        variant?.available_quantity ??
+          variant?.available_stock ??
+          Number(variant?.stock_quantity ?? variant?.stock ?? 0) -
+            Number(variant?.reserved_quantity ?? 0),
+      ),
+      0,
+    ),
   }));
+};
+
+const applyStockUpdateToAdminProduct = (product, payload) => {
+  if (!product || !payload) return product;
+
+  const productId = String(payload?.product_id || "").trim();
+  const currentProductId = String(product?._id || product?.id || "").trim();
+  if (!productId || productId !== currentProductId) {
+    return product;
+  }
+
+  const nextAvailable = Math.max(Number(payload?.available_stock ?? 0), 0);
+  const variantId = String(payload?.variant_id || "").trim();
+
+  if (!variantId) {
+    const totalStock = Math.max(
+      Number(product?.stock_quantity ?? product?.stock ?? 0),
+      0,
+    );
+    return {
+      ...product,
+      available_quantity: nextAvailable,
+      reserved_quantity: Math.max(totalStock - nextAvailable, 0),
+    };
+  }
+
+  const variants = Array.isArray(product?.variants) ? product.variants : [];
+  let variantChanged = false;
+  const nextVariants = variants.map((variant) => {
+    const currentVariantId = String(variant?._id || variant?.id || "").trim();
+    if (currentVariantId !== variantId) {
+      return variant;
+    }
+
+    const totalStock = Math.max(
+      Number(variant?.stock_quantity ?? variant?.stock ?? 0),
+      0,
+    );
+    const nextVariantAvailable = Math.max(
+      Number(payload?.variant_available_stock ?? nextAvailable),
+      0,
+    );
+    variantChanged = true;
+    return {
+      ...variant,
+      available_quantity: nextVariantAvailable,
+      reserved_quantity: Math.max(totalStock - nextVariantAvailable, 0),
+    };
+  });
+
+  if (!variantChanged) {
+    return product;
+  }
+
+  const totalReserved = nextVariants.reduce(
+    (sum, variant) => sum + Math.max(Number(variant?.reserved_quantity ?? 0), 0),
+    0,
+  );
+
+  return {
+    ...product,
+    available_quantity: nextAvailable,
+    reserved_quantity: totalReserved,
+    variants: nextVariants,
+  };
 };
 
 const ProductsListContent = () => {
@@ -85,6 +161,18 @@ const ProductsListContent = () => {
   const [totalProducts, setTotalProducts] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [lowStockOnly, setLowStockOnly] = useState(false);
+  const [fetchError, setFetchError] = useState("");
+
+  useAdminRealtime({
+    token,
+    onStockUpdate: (payload) => {
+      setProducts((currentProducts) =>
+        currentProducts.map((product) =>
+          applyStockUpdateToAdminProduct(product, payload),
+        ),
+      );
+    },
+  });
 
   const fetchCategories = useCallback(async () => {
     try {
@@ -99,6 +187,7 @@ const ProductsListContent = () => {
 
   const fetchProducts = useCallback(async () => {
     setIsLoading(true);
+    setFetchError("");
     try {
       let url = `/api/products?page=${page + 1}&limit=${rowsPerPage}`;
       if (category) url += `&category=${category}`;
@@ -110,13 +199,15 @@ const ProductsListContent = () => {
         setProducts(response.data || []);
         setTotalProducts(response.totalProducts || 0);
       } else {
-        setProducts([]);
-        setTotalProducts(0);
+        const message = response?.message || "Failed to fetch products";
+        setFetchError(message);
+        toast.error(message);
       }
     } catch (error) {
       console.error("Failed to fetch products:", error);
-      setProducts([]);
-      setTotalProducts(0);
+      const message = error?.message || "Failed to fetch products";
+      setFetchError(message);
+      toast.error(message);
     }
     setIsLoading(false);
   }, [page, rowsPerPage, category, search, lowStockOnly, token]);
@@ -288,6 +379,10 @@ const ProductsListContent = () => {
           <div className="flex justify-center py-8">
             <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-600"></div>
           </div>
+        ) : fetchError ? (
+          <div className="text-center py-8 text-red-600">
+            <p>{fetchError}</p>
+          </div>
         ) : products.length === 0 ? (
           <div className="text-center py-8 text-gray-500">
             <p>No products found. Add your first product!</p>
@@ -321,18 +416,30 @@ const ProductsListContent = () => {
                       Number(product.stock_quantity ?? product.stock ?? 0),
                       0,
                     );
+                    const fallbackReserved = Math.max(
+                      Number(product.reserved_quantity ?? 0),
+                      0,
+                    );
+                    const fallbackAvailable = Math.max(
+                      Number(
+                        product.available_quantity ??
+                          product.available_stock ??
+                          fallbackStock - fallbackReserved,
+                      ),
+                      0,
+                    );
                     const lowThreshold = Number(
                       product.low_stock_threshold ??
                         product.lowStockThreshold ??
                         5,
                     );
                     const lowStockVariants = variantInventoryLines.filter(
-                      (entry) => entry.stock <= lowThreshold,
+                      (entry) => entry.available <= lowThreshold,
                     );
                     const isLowStock =
                       variantInventoryLines.length > 0
                         ? lowStockVariants.length > 0
-                        : fallbackStock <= lowThreshold;
+                        : fallbackAvailable <= lowThreshold;
                     const shortId = String(product._id || "")
                       .slice(-8)
                       .toUpperCase();
@@ -404,13 +511,13 @@ const ProductsListContent = () => {
                                 key={entry.id}
                                 className="text-xs font-medium text-gray-700"
                               >
-                                {entry.label}: {entry.stock}
+                                {entry.label}: {entry.available} avail / {entry.reserved} reserved / {entry.stock} total
                               </span>
                             ))}
                           </div>
                         ) : (
                           <span className="text-sm font-semibold text-gray-700">
-                            {fallbackStock}
+                            {fallbackAvailable} avail / {fallbackReserved} reserved / {fallbackStock} total
                           </span>
                         )}
                       </TableCell>
@@ -499,6 +606,16 @@ const ProductsListContent = () => {
                           <Link href={`/products-list/${product._id}`}>
                             <Button className="!w-[40px] !h-[40px] !min-w-[20px] !rounded-full !text-gray-900">
                               <IoEyeOutline size={20} />
+                            </Button>
+                          </Link>
+
+                          <Link href={`/products-list/${product._id}#reviews`}>
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              className="!min-w-[78px] !rounded-full"
+                            >
+                              Reviews
                             </Button>
                           </Link>
 

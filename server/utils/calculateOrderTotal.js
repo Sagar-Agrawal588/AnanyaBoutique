@@ -6,8 +6,25 @@ const round2 = (value) =>
 const isGatewayMerchantReference = (value) =>
   /^BOG_/i.test(String(value || "").trim());
 
+const extractUpiRrn = (value) => {
+  const normalized = String(value || "").trim();
+  if (!normalized) return "";
+
+  if (/^\d{12}$/.test(normalized)) {
+    return normalized;
+  }
+
+  const embedded = normalized.match(/(?:^|[^\d])(\d{12})(?:[^\d]|$)/);
+  if (embedded?.[1]) {
+    return embedded[1];
+  }
+
+  return "";
+};
+
 const resolveUpiReferenceNumber = (order = {}) => {
   const directReference = [
+    order?.upiRef,
     order?.upiReferenceNumber,
     order?.phonepeTransactionId,
     order?.paytmTransactionId,
@@ -15,14 +32,17 @@ const resolveUpiReferenceNumber = (order = {}) => {
     order?.utr,
     order?.rrn,
   ]
-    .map((value) => String(value || "").trim())
+    .map(extractUpiRrn)
     .find(Boolean);
 
   if (directReference) return directReference;
 
   const fallbackPaymentId = String(order?.paymentId || "").trim();
   if (fallbackPaymentId && !isGatewayMerchantReference(fallbackPaymentId)) {
-    return fallbackPaymentId;
+    const normalizedFallback = extractUpiRrn(fallbackPaymentId);
+    if (normalizedFallback) {
+      return normalizedFallback;
+    }
   }
 
   return null;
@@ -186,12 +206,14 @@ export const normalizeOrderForResponse = (order) => {
   const invoiceUrl = base.invoiceUrl || base.invoicePath || null;
   const isInvoiceGenerated = Boolean(base.isInvoiceGenerated || invoiceUrl);
   const deliveryDate = base.deliveryDate || null;
+  const upiReferenceNumber = resolveUpiReferenceNumber(base);
 
   return {
     ...base,
     pricing,
     displayOrderId: resolveOrderDisplayId(base),
-    upiReferenceNumber: resolveUpiReferenceNumber(base),
+    upiReferenceNumber,
+    upiRrn: upiReferenceNumber,
     // Keep legacy consumers stable while normalizing values.
     subtotal: pricing.subtotal,
     tax: pricing.tax,

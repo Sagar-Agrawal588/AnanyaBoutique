@@ -1,8 +1,6 @@
 import express from "express";
-import admin from "../middlewares/admin.js";
-import auth from "../middlewares/auth.js";
-import requireAdminPermission from "../middlewares/requireAdminPermission.js";
 import {
+  getDeliveryPreviewController,
   getShippingDisplayMetricsController,
   getShippingQuoteController,
   xpressbeesBookShipment,
@@ -16,12 +14,16 @@ import {
   xpressbeesServiceability,
   xpressbeesTrackShipment,
 } from "../controllers/shipping.controller.js";
+import admin from "../middlewares/admin.js";
+import auth from "../middlewares/auth.js";
+import requireAdminPermission from "../middlewares/requireAdminPermission.js";
 
 const router = express.Router();
 
 // Public shipping endpoints
 router.post("/quote", getShippingQuoteController);
 router.get("/display-metrics", getShippingDisplayMetricsController);
+router.post("/delivery-preview", getDeliveryPreviewController);
 
 // Admin-only shipping operations
 router.use(auth, admin);

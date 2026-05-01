@@ -71,7 +71,9 @@ export default function UserManagement() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogType, setDialogType] = useState(""); // role, status, delete, permissions
   const [selectedRole, setSelectedRole] = useState("User");
-  const [selectedManagerPermissions, setSelectedManagerPermissions] = useState([]);
+  const [selectedManagerPermissions, setSelectedManagerPermissions] = useState(
+    [],
+  );
   const [actionLoading, setActionLoading] = useState(false);
 
   const isAdminUser = String(admin?.role || "").trim() === "Admin";
@@ -351,10 +353,12 @@ export default function UserManagement() {
     return (
       <div className="p-6">
         <div className="bg-white rounded-xl shadow-sm p-6 border border-red-100">
-          <h1 className="text-xl font-bold text-gray-900 mb-2">Access Restricted</h1>
+          <h1 className="text-xl font-bold text-gray-900 mb-2">
+            Access Restricted
+          </h1>
           <p className="text-gray-600">
-            Your account does not have permission to manage users. Ask an Admin to
-            grant the <strong>User management</strong> permission.
+            Your account does not have permission to manage users. Ask an Admin
+            to grant the <strong>User management</strong> permission.
           </p>
         </div>
       </div>
@@ -364,18 +368,24 @@ export default function UserManagement() {
   return (
     <div className="p-6">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-800 mb-2">User Management</h1>
+        <h1 className="text-2xl font-bold text-gray-800 mb-2">
+          User Management
+        </h1>
         <p className="text-gray-600">Manage user roles and permissions</p>
         {isAdminUser ? (
           <p className="text-xs text-gray-500 mt-1">
-            To grant Manager advanced modules, use the <strong>Set Permissions</strong>
+            To grant Manager advanced modules, use the{" "}
+            <strong>Set Permissions</strong>
             button in the <strong>Manager Access</strong> column.
           </p>
         ) : null}
       </div>
 
       <div className="bg-white rounded-xl shadow-sm p-4 mb-6">
-        <form onSubmit={handleSearch} className="flex flex-wrap gap-4 items-end">
+        <form
+          onSubmit={handleSearch}
+          className="flex flex-wrap gap-4 items-end"
+        >
           <div className="flex-1 min-w-[200px]">
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Search
@@ -440,7 +450,11 @@ export default function UserManagement() {
                 </TableRow>
               ) : loadError ? (
                 <TableRow>
-                  <TableCell colSpan={10} align="center" className="py-8 text-red-600">
+                  <TableCell
+                    colSpan={10}
+                    align="center"
+                    className="py-8 text-red-600"
+                  >
                     {loadError}
                   </TableCell>
                 </TableRow>
@@ -491,7 +505,9 @@ export default function UserManagement() {
                           variant="outlined"
                         />
                       </TableCell>
-                      <TableCell>{new Date(user.createdAt).toLocaleDateString()}</TableCell>
+                      <TableCell>
+                        {new Date(user.createdAt).toLocaleDateString()}
+                      </TableCell>
                       <TableCell>
                         {user.role === "Manager" ? (
                           <div className="max-w-[260px]">
@@ -521,10 +537,16 @@ export default function UserManagement() {
                             <Tooltip title="Change Role">
                               <IconButton
                                 size="small"
-                                color={user.role === "Admin" ? "warning" : "primary"}
+                                color={
+                                  user.role === "Admin" ? "warning" : "primary"
+                                }
                                 onClick={() => openDialog(user, "role")}
                               >
-                                {user.role === "Admin" ? <FiUserX /> : <FiShield />}
+                                {user.role === "Admin" ? (
+                                  <FiUserX />
+                                ) : (
+                                  <FiShield />
+                                )}
                               </IconButton>
                             </Tooltip>
                           ) : null}
@@ -532,7 +554,11 @@ export default function UserManagement() {
                             <Tooltip title="Change Status">
                               <IconButton
                                 size="small"
-                                color={user.status === "active" ? "success" : "warning"}
+                                color={
+                                  user.status === "active"
+                                    ? "success"
+                                    : "warning"
+                                }
                                 onClick={() => openDialog(user, "status")}
                               >
                                 <FiUserCheck />
@@ -551,7 +577,7 @@ export default function UserManagement() {
                             </Tooltip>
                           ) : null}
                           {canManageMembership &&
-                          !(["Admin", "Manager"].includes(user.role)) ? (
+                          !["Admin", "Manager"].includes(user.role) ? (
                             <Tooltip title="Convert to Member">
                               <IconButton
                                 size="small"
@@ -622,7 +648,10 @@ export default function UserManagement() {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={dialogOpen && dialogType === "status"} onClose={closeDialog}>
+      <Dialog
+        open={dialogOpen && dialogType === "status"}
+        onClose={closeDialog}
+      >
         <DialogTitle>Change User Status</DialogTitle>
         <DialogContent>
           <p className="mb-4">
@@ -658,7 +687,8 @@ export default function UserManagement() {
         <DialogTitle>Manager Permissions</DialogTitle>
         <DialogContent>
           <p className="mb-4">
-            Select advanced modules <strong>{selectedUser?.name}</strong> can access.
+            Select advanced modules <strong>{selectedUser?.name}</strong> can
+            access.
           </p>
           <FormGroup>
             {MANAGER_PERMISSION_OPTIONS.map((option) => (
@@ -673,7 +703,9 @@ export default function UserManagement() {
                 }
                 label={
                   <span>
-                    <span className="font-medium text-gray-900">{option.label}</span>
+                    <span className="font-medium text-gray-900">
+                      {option.label}
+                    </span>
                     <span className="block text-xs text-gray-600">
                       {option.description}
                     </span>
@@ -698,13 +730,19 @@ export default function UserManagement() {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={dialogOpen && dialogType === "delete"} onClose={closeDialog}>
+      <Dialog
+        open={dialogOpen && dialogType === "delete"}
+        onClose={closeDialog}
+      >
         <DialogTitle>Delete User</DialogTitle>
         <DialogContent>
           <p>
-            Are you sure you want to delete <strong>{selectedUser?.name}</strong>?
+            Are you sure you want to delete{" "}
+            <strong>{selectedUser?.name}</strong>?
           </p>
-          <p className="text-sm text-red-600 mt-2">This action cannot be undone.</p>
+          <p className="text-sm text-red-600 mt-2">
+            This action cannot be undone.
+          </p>
         </DialogContent>
         <DialogActions>
           <Button onClick={closeDialog} disabled={actionLoading}>

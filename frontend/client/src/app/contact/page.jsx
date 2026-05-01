@@ -13,6 +13,7 @@ import { FiClock, FiMail, FiMapPin, FiPhone, FiSend, FiX } from "react-icons/fi"
 import { IoChatboxOutline } from "react-icons/io5";
 import {
   createSupportTicket,
+  fetchSupportOrderContext,
   fetchSupportOrderOptions,
 } from "@/services/supportApi";
 
@@ -45,7 +46,9 @@ const defaultFormState = {
   subject: "",
   message: "",
   orderId: "",
+  invoiceUrl: "",
 };
+const SUPPORT_ORDER_STORAGE_KEY = "supportOrderData";
 
 const createFileId = (file) =>
   `${file.name}-${file.size}-${file.lastModified}-${Math.random().toString(36).slice(2, 8)}`;
@@ -85,6 +88,8 @@ const Contact = () => {
   const [videoFiles, setVideoFiles] = useState([]);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [isPrefilledOrder, setIsPrefilledOrder] = useState(false);
+  const [isInvoiceLoading, setIsInvoiceLoading] = useState(false);
 
   const previewUrlsRef = useRef(new Set());
   const submitInProgressRef = useRef(false);
@@ -124,6 +129,119 @@ const Contact = () => {
       isActive = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const stored = window.sessionStorage.getItem(SUPPORT_ORDER_STORAGE_KEY);
+    if (!stored) return;
+
+    try {
+      const parsed = JSON.parse(stored);
+      const nextOrderId = String(parsed?.orderId || "").trim();
+
+      setFormData((prev) => ({
+        ...prev,
+        name: parsed?.name || "",
+        email: parsed?.email || "",
+        phone: parsed?.phone || "",
+        orderId: nextOrderId,
+        subject: nextOrderId ? `Support for Order #${nextOrderId}` : "",
+        message: nextOrderId
+          ? `Hi, I need help regarding my order #${nextOrderId}.`
+          : "",
+      }));
+      setIsPrefilledOrder(Boolean(nextOrderId));
+    } catch {
+      console.error("Invalid stored support data");
+    }
+  }, []);
+
+  useEffect(() => {
+    const normalizedOrderId = String(formData.orderId || "").trim();
+
+    if (!normalizedOrderId) {
+      setFormData((prev) =>
+        prev.invoiceUrl ? { ...prev, invoiceUrl: "" } : prev,
+      );
+      setIsInvoiceLoading(false);
+      return;
+    }
+
+    let isActive = true;
+
+    const loadOrderContext = async () => {
+      setIsInvoiceLoading(true);
+      try {
+        const response = await fetchSupportOrderContext(normalizedOrderId);
+        if (!isActive || !response?.success || !response?.data) {
+          if (isActive) {
+            setFormData((prev) => ({ ...prev, invoiceUrl: "" }));
+          }
+          return;
+        }
+
+        const order = response.data;
+        const invoiceUrl = String(
+          order?.invoiceUrl || order?.invoicePath || "",
+        ).trim();
+        const displayOrderId = String(
+          order?.displayOrderId ||
+            order?.orderNumber ||
+            order?.order_id ||
+            normalizedOrderId,
+        ).trim();
+
+        if (isActive) {
+          setFormData((prev) => ({
+            ...prev,
+            invoiceUrl,
+            subject:
+              isPrefilledOrder && displayOrderId
+                ? `Support for Order #${displayOrderId}`
+                : prev.subject,
+            message:
+              isPrefilledOrder && displayOrderId
+                ? `Hi, I need help regarding my order #${displayOrderId}.`
+                : prev.message,
+          }));
+
+          setOrders((prev) => {
+            if (
+              prev.some(
+                (entry) => String(entry?.id || "").trim() === normalizedOrderId,
+              )
+            ) {
+              return prev;
+            }
+
+            return [
+              {
+                id: normalizedOrderId,
+                displayId: displayOrderId,
+                createdAt: order?.createdAt || "",
+              },
+              ...prev,
+            ];
+          });
+        }
+      } catch {
+        if (isActive) {
+          setFormData((prev) => ({ ...prev, invoiceUrl: "" }));
+        }
+      } finally {
+        if (isActive) {
+          setIsInvoiceLoading(false);
+        }
+      }
+    };
+
+    loadOrderContext();
+
+    return () => {
+      isActive = false;
+    };
+  }, [formData.orderId, isPrefilledOrder]);
 
   useEffect(
     () => () => {
@@ -165,6 +283,9 @@ const Contact = () => {
     setFormData((prev) => ({ ...prev, [name]: value }));
     setFieldErrors((prev) => ({ ...prev, [name]: "" }));
     setFormError("");
+    if (name === "orderId") {
+      setIsPrefilledOrder(false);
+    }
   };
 
   const removeFile = (type, id) => {
@@ -292,6 +413,7 @@ const Contact = () => {
       subject: formData.subject.trim(),
       message: formData.message.trim(),
       orderId: formData.orderId || "",
+      invoiceUrl: formData.invoiceUrl || "",
       images: imageFiles.map((item) => `${item.file.name}:${item.file.size}`),
       videos: videoFiles.map((item) => `${item.file.name}:${item.file.size}`),
     });
@@ -302,6 +424,8 @@ const Contact = () => {
     setUploadErrors({ images: "", videos: "" });
     setFormError("");
     clearUploads();
+    setIsPrefilledOrder(false);
+    setIsInvoiceLoading(false);
   };
 
   const handleSubmit = async (e) => {
@@ -333,6 +457,9 @@ const Contact = () => {
     payload.append("message", formData.message.trim());
     if (formData.orderId) {
       payload.append("orderId", formData.orderId);
+    }
+    if (formData.invoiceUrl) {
+      payload.append("attachment", formData.invoiceUrl);
     }
 
     imageFiles.forEach((item) => payload.append("images", item.file));
@@ -367,6 +494,9 @@ const Contact = () => {
       lastSubmitRef.current = { signature, submittedAt: Date.now() };
       setSuccess(true);
       toast.success("Support ticket created successfully.");
+      if (typeof window !== "undefined") {
+        window.sessionStorage.removeItem(SUPPORT_ORDER_STORAGE_KEY);
+      }
       resetForm();
       setTimeout(() => setSuccess(false), 5000);
     } catch (error) {
@@ -500,7 +630,7 @@ const Contact = () => {
 
           {/* Contact Form */}
           <div className="lg:col-span-2">
-            <div className="bg-white rounded-xl p-8 shadow-md">
+            <div id="support-form" className="bg-white rounded-xl p-8 shadow-md">
               <h2 className="text-2xl font-bold text-gray-800 mb-2">
                 Send us a Message
               </h2>
@@ -578,6 +708,7 @@ const Contact = () => {
                   name="orderId"
                   value={formData.orderId}
                   onChange={handleChange}
+                  disabled={isPrefilledOrder}
                   fullWidth
                   variant="outlined"
                   error={Boolean(fieldErrors.orderId)}
@@ -600,6 +731,16 @@ const Contact = () => {
                     </MenuItem>
                   ))}
                 </TextField>
+
+                {formData.invoiceUrl ? (
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                    Invoice attached automatically for this support request.
+                  </div>
+                ) : isInvoiceLoading ? (
+                  <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
+                    Fetching invoice attachment...
+                  </div>
+                ) : null}
 
                 <TextField
                   label="Your Message"

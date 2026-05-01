@@ -25,6 +25,7 @@
     "migrate:payment-cleanup": "node migrations/2026-02-payment-provider-cleanup.mjs",
     "repair:order-identity-indexes": "node scripts/repairOrderIdentityIndexes.mjs",
     "cleanup:demo-orders": "node scripts/removeDemoOrders.mjs",
+    "backfill:upi-ref": "node scripts/backfillUpiRef.js",
     "users:ensure-privileged": "node scripts/ensurePrivilegedUsers.mjs",
     "backfill:addresses": "node scripts/backfillAddressStructures.mjs",
     "backfill:crm": "node scripts/backfillCrmContacts.mjs",
@@ -38,6 +39,7 @@
   "dependencies": {
     "@google-cloud/pubsub": "^5.3.0",
     "bcryptjs": "^3.0.3",
+    "bullmq": "^5.76.1",
     "cloudinary": "^2.9.0",
     "compression": "^1.8.0",
     "cookie-parser": "^1.4.7",
@@ -65,6 +67,7 @@
   "devDependencies": {
     "mongodb-memory-server": "^9.2.0",
     "newman": "^6.2.2",
-    "nodemon": "^3.0.0"
+    "nodemon": "^3.0.0",
+    "socket.io-client": "^4.8.3"
   }
 }

@@ -30,15 +30,30 @@ const RESOLVED_COOKIE_DOMAIN =
     ? parsedCookieDomain
     : "";
 
+const parseRememberMe = (value) => {
+  if (value === undefined || value === null) return true;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    return ["true", "1", "yes", "on"].includes(normalized);
+  }
+  return Boolean(value);
+};
+
+const resolveCookieMaxAge = (rememberMe) =>
+  rememberMe ? AUTH_PERSIST_MAX_AGE : undefined;
+
 const buildCookieOptions = (maxAge) => {
   const isProduction = process.env.NODE_ENV === "production";
   const options = {
     httpOnly: true,
     secure: isProduction,
     sameSite: isProduction ? "None" : "Lax",
-    maxAge,
     path: "/",
   };
+
+  if (maxAge !== undefined) {
+    options.maxAge = maxAge;
+  }
 
   if (isProduction && RESOLVED_COOKIE_DOMAIN) {
     options.domain = RESOLVED_COOKIE_DOMAIN;
@@ -210,8 +225,13 @@ export const adminLoginController = async (req, res) => {
       last_login_date: new Date(),
     });
 
-    const accessCookieOptions = buildCookieOptions(ACCESS_TOKEN_MAX_AGE);
-    const refreshCookieOptions = buildCookieOptions(REFRESH_TOKEN_MAX_AGE);
+    const rememberMe = parseRememberMe(req.body?.rememberMe);
+    const accessCookieOptions = buildCookieOptions(
+      resolveCookieMaxAge(rememberMe),
+    );
+    const refreshCookieOptions = buildCookieOptions(
+      resolveCookieMaxAge(rememberMe),
+    );
 
     res.cookie("accessToken", accessToken, accessCookieOptions);
     res.cookie("refreshToken", refreshToken, refreshCookieOptions);
@@ -322,8 +342,13 @@ export const adminGoogleLoginController = async (req, res) => {
       last_login_date: new Date(),
     });
 
-    const accessCookieOptions = buildCookieOptions(ACCESS_TOKEN_MAX_AGE);
-    const refreshCookieOptions = buildCookieOptions(REFRESH_TOKEN_MAX_AGE);
+    const rememberMe = parseRememberMe(req.body?.rememberMe);
+    const accessCookieOptions = buildCookieOptions(
+      resolveCookieMaxAge(rememberMe),
+    );
+    const refreshCookieOptions = buildCookieOptions(
+      resolveCookieMaxAge(rememberMe),
+    );
 
     res.cookie("accessToken", accessToken, accessCookieOptions);
     res.cookie("refreshToken", refreshToken, refreshCookieOptions);

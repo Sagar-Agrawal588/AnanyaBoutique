@@ -4,6 +4,7 @@ import OrderModel from "../models/order.model.js";
 import SupportTicketModel from "../models/supportTicket.model.js";
 import UserModel from "../models/user.model.js";
 import { captureCrmTouchpointSafely } from "../services/crm/crmTracking.service.js";
+import isPrivilegedAdminRole from "../utils/isPrivilegedAdminRole.js";
 
 const shouldApply = process.argv.includes("--apply");
 const limitArg = process.argv.find((arg) =>
@@ -40,7 +41,7 @@ const run = async () => {
   const [users, newsletters, tickets, orders] = await Promise.all([
     queryLimit(
       UserModel.find({})
-        .select("_id name email mobile email_opt_out notificationSettings createdAt")
+        .select("_id name email mobile role email_opt_out notificationSettings createdAt")
         .lean(),
     ),
     queryLimit(
@@ -88,7 +89,11 @@ const run = async () => {
       },
       metadata: {
         source: "backfill_users",
+        role: user?.role || "User",
       },
+      ...(isPrivilegedAdminRole(user?.role)
+        ? {}
+        : { userRole: user?.role || "User" }),
     });
   }
 

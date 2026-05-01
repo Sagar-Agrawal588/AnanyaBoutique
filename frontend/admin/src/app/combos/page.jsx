@@ -1,8 +1,13 @@
 "use client";
 
+import ProductPageSettingsSection from "@/components/ProductPageSettingsSection";
 import UploadBox from "@/components/UploadBox";
 import { useAdmin } from "@/context/AdminContext";
 import { withAdminBasePath } from "@/utils/basePath";
+import {
+  createDefaultProductPageConfig,
+  mergeProductPageConfig,
+} from "@/utils/productPageConfig";
 import {
   deleteData,
   getData,
@@ -396,6 +401,7 @@ export default function ComboManagementPage() {
   const [products, setProducts] = useState([]);
   const [search, setSearch] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const [fetchError, setFetchError] = useState("");
   const [openDialog, setOpenDialog] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
@@ -407,9 +413,16 @@ export default function ComboManagementPage() {
   const [draftsLoading, setDraftsLoading] = useState(false);
   const [draftsError, setDraftsError] = useState("");
   const [editingCombo, setEditingCombo] = useState(null);
+  const [reviewsDialogOpen, setReviewsDialogOpen] = useState(false);
+  const [activeReviewCombo, setActiveReviewCombo] = useState(null);
+  const [comboReviews, setComboReviews] = useState([]);
+  const [comboReviewsLoading, setComboReviewsLoading] = useState(false);
   const [formData, setFormData] = useState(defaultFormData);
   const [comboItems, setComboItems] = useState([defaultItem]);
   const [comboImages, setComboImages] = useState([]);
+  const [productPage, setProductPage] = useState(() =>
+    createDefaultProductPageConfig(),
+  );
 
   const productMap = useMemo(
     () =>
@@ -421,6 +434,7 @@ export default function ComboManagementPage() {
 
   const fetchCombos = useCallback(async () => {
     setIsLoading(true);
+    setFetchError("");
     try {
       const query = search ? `?search=${encodeURIComponent(search)}` : "";
       const response = await getData(`/api/combos/admin/all${query}`, token);
@@ -428,9 +442,11 @@ export default function ComboManagementPage() {
         setCombos(response.data?.items || response.data || []);
       } else {
         setCombos([]);
+        setFetchError(response?.message || "Failed to load combos.");
       }
     } catch (error) {
       setCombos([]);
+      setFetchError(error?.message || "Failed to load combos.");
     } finally {
       setIsLoading(false);
     }
@@ -506,10 +522,10 @@ export default function ComboManagementPage() {
         : computedOriginalTotal;
     let comboPrice = originalTotal;
 
-    if (manualComboPrice > 0) {
-      comboPrice = round2(manualComboPrice);
-    } else if (formData.pricingType === "fixed_price" && pricingValue > 0) {
+    if (formData.pricingType === "fixed_price" && pricingValue > 0) {
       comboPrice = pricingValue;
+    } else if (manualComboPrice > 0) {
+      comboPrice = round2(manualComboPrice);
     } else if (formData.pricingType === "percent_discount") {
       comboPrice = round2(originalTotal * (1 - pricingValue / 100));
     } else if (formData.pricingType === "fixed_discount") {
@@ -596,6 +612,7 @@ export default function ComboManagementPage() {
     setFormData(defaultFormData);
     setComboItems([defaultItem]);
     setComboImages([]);
+    setProductPage(createDefaultProductPageConfig());
     setEditingCombo(null);
   };
 
@@ -661,6 +678,7 @@ export default function ComboManagementPage() {
             }))
           : [defaultItem],
       );
+      setProductPage(mergeProductPageConfig(combo.productPage));
     } else {
       resetForm();
     }
@@ -735,7 +753,10 @@ export default function ComboManagementPage() {
 
   const buildPayload = () => {
     const shouldRoundForAi = isAiComboType(formData.comboType);
-    const rawComboPrice = toSafeNumber(formData.price, 0);
+    const rawComboPrice =
+      formData.pricingType === "fixed_price"
+        ? toSafeNumber(formData.pricingValue, 0)
+        : toSafeNumber(formData.price, 0);
     const normalizedComboPrice = shouldRoundForAi
       ? roundCurrency(rawComboPrice)
       : rawComboPrice;
@@ -793,6 +814,7 @@ export default function ComboManagementPage() {
         Math.min(toSafeNumber(formData.adminStarRating, 0), 5),
         0,
       ),
+      productPage,
       items: comboItems
         .map((item) => ({
           productId: item.productId,
@@ -881,6 +903,56 @@ export default function ComboManagementPage() {
       }
     } catch (error) {
       toast.error("Failed to delete combo");
+    }
+  };
+
+  const handleOpenReviewsDialog = async (combo) => {
+    if (!combo?._id || !token) return;
+    setActiveReviewCombo(combo);
+    setReviewsDialogOpen(true);
+    setComboReviewsLoading(true);
+
+    try {
+      const response = await getData(
+        `/api/admin/reviews?comboId=${encodeURIComponent(String(combo._id))}&limit=100`,
+        token,
+      );
+      if (response?.success && Array.isArray(response?.data)) {
+        setComboReviews(response.data);
+      } else {
+        setComboReviews([]);
+      }
+    } catch {
+      setComboReviews([]);
+    } finally {
+      setComboReviewsLoading(false);
+    }
+  };
+
+  const handleDeleteComboReview = async (reviewId) => {
+    if (!reviewId || !token) return;
+    if (typeof window !== "undefined" && !window.confirm("Delete this review permanently?")) {
+      return;
+    }
+
+    try {
+      const response = await deleteData(`/api/admin/reviews/${reviewId}`, token);
+      if (!response?.success) {
+        throw new Error(response?.message || "Failed to delete review.");
+      }
+      setComboReviews((current) => current.filter((review) => review._id !== reviewId));
+      setCombos((current) =>
+        current.map((entry) =>
+          String(entry?._id || "") === String(activeReviewCombo?._id || "")
+            ? {
+                ...entry,
+                reviewCount: Math.max(Number(entry?.reviewCount || 0) - 1, 0),
+              }
+            : entry,
+        ),
+      );
+    } catch (error) {
+      toast.error(error?.message || "Failed to delete review.");
     }
   };
 
@@ -1218,6 +1290,17 @@ export default function ComboManagementPage() {
                         </Button>
                       </span>
                     </Tooltip>
+                    <Tooltip title="View combo reviews">
+                      <span>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          onClick={() => handleOpenReviewsDialog(combo)}
+                        >
+                          Reviews
+                        </Button>
+                      </span>
+                    </Tooltip>
                     <Tooltip title="Delete combo">
                       <span>
                         <Button
@@ -1237,13 +1320,89 @@ export default function ComboManagementPage() {
             {combos.length === 0 && !isLoading && (
               <TableRow>
                 <TableCell colSpan={6} className="text-center text-gray-500">
-                  No combos found.
+                  {fetchError || "No combos found."}
                 </TableCell>
               </TableRow>
             )}
           </TableBody>
         </Table>
       </TableContainer>
+
+      <Dialog
+        open={reviewsDialogOpen}
+        onClose={() => {
+          setReviewsDialogOpen(false);
+          setActiveReviewCombo(null);
+          setComboReviews([]);
+        }}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          {activeReviewCombo?.name
+            ? `${activeReviewCombo.name} Reviews`
+            : "Combo Reviews"}
+        </DialogTitle>
+        <DialogContent dividers>
+          {comboReviewsLoading ? (
+            <div className="flex justify-center py-10">
+              <CircularProgress size={28} />
+            </div>
+          ) : comboReviews.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-6 text-sm text-gray-500">
+              No reviews have been submitted for this combo yet.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {comboReviews.map((review) => (
+                <div
+                  key={review._id}
+                  className="rounded-xl border border-gray-200 bg-gray-50 p-4"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-3">
+                        <p className="font-semibold text-gray-900">
+                          {review.userName || "Customer"}
+                        </p>
+                        <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
+                          {Number(review.rating || 0).toFixed(1)} / 5
+                        </span>
+                        <span className="rounded-full bg-slate-200 px-2.5 py-1 text-xs font-medium text-slate-700 capitalize">
+                          {review.visibility || "visible"}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-sm text-gray-500">
+                        {[review.userEmail, review.city].filter(Boolean).join(" • ") || "No extra identity"}
+                      </p>
+                      <p className="mt-2 text-sm text-gray-700">{review.comment}</p>
+                    </div>
+                    <Button
+                      size="small"
+                      color="error"
+                      variant="outlined"
+                      onClick={() => handleDeleteComboReview(review._id)}
+                    >
+                      Delete
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              setReviewsDialogOpen(false);
+              setActiveReviewCombo(null);
+              setComboReviews([]);
+            }}
+          >
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog
         open={openDialog}
@@ -1665,6 +1824,15 @@ export default function ComboManagementPage() {
               fullWidth
             />
           </div>
+
+          <ProductPageSettingsSection
+            productPage={productPage}
+            setProductPage={setProductPage}
+            pageTitle="Storefront Combo Page"
+            storefrontPath="/combo/[id]"
+            entityLabel="combo"
+            lowerSectionLabel="combo"
+          />
 
           <div className="flex flex-col gap-2 mt-2">
             <h3 className="text-sm font-semibold text-gray-700">

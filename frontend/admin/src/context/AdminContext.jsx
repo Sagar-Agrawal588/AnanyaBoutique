@@ -1,9 +1,14 @@
 "use client";
-import { getData, postData } from "@/utils/api";
 import {
   hasAdminPermission,
   normalizeManagerPermissions,
 } from "@/utils/adminPermissions";
+import { getData, postData } from "@/utils/api";
+import {
+  clearAdminSession,
+  persistAdminSession,
+  readStoredAdminSession,
+} from "@/utils/authSession";
 import { useRouter } from "next/navigation";
 import {
   createContext,
@@ -30,7 +35,11 @@ const debugWarn = (...args) => {
 
 const PRIVILEGED_ADMIN_ROLES = new Set(["admin", "manager"]);
 const isPrivilegedAdminRole = (role) =>
-  PRIVILEGED_ADMIN_ROLES.has(String(role || "").trim().toLowerCase());
+  PRIVILEGED_ADMIN_ROLES.has(
+    String(role || "")
+      .trim()
+      .toLowerCase(),
+  );
 
 const normalizeAdminPayload = (input) => {
   if (!input || typeof input !== "object") return null;
@@ -68,8 +77,7 @@ export const AdminProvider = ({ children }) => {
   }, []);
 
   const logout = useCallback(() => {
-    localStorage.removeItem("adminToken");
-    localStorage.removeItem("adminUser");
+    clearAdminSession();
     setAdmin(null);
     setToken(null);
     router.push("/login");
@@ -77,8 +85,9 @@ export const AdminProvider = ({ children }) => {
 
   const checkAdminSession = useCallback(async () => {
     try {
-      const storedToken = localStorage.getItem("adminToken");
-      const storedAdmin = localStorage.getItem("adminUser");
+      const storedSession = readStoredAdminSession();
+      const storedToken = storedSession?.token;
+      const storedAdmin = storedSession?.admin;
 
       debugLog("AdminContext checkAdminSession:", {
         hasStoredToken: !!storedToken,
@@ -86,71 +95,95 @@ export const AdminProvider = ({ children }) => {
         tokenLength: storedToken ? storedToken.length : 0,
       });
 
-      if (storedToken && storedAdmin) {
+      if (!storedToken && !storedAdmin) {
+        return;
+      }
+
+      let adminData = null;
+      if (storedAdmin) {
         try {
-          const adminData = normalizeAdminPayload(JSON.parse(storedAdmin));
-          if (!adminData) {
-            logout();
-            return;
-          }
-
-          // ALWAYS set token and admin from localStorage
-          // Don't wait for verification - token should be immediately available
-          setToken(storedToken);
-          setAdmin(adminData);
-
-          debugLog("Token and admin set from localStorage:", {
-            tokenLength: storedToken.length,
-            hasAdmin: !!adminData,
-          });
-
-          // Verify token is still valid, but don't clear it if verification fails
-          // (verification might fail due to network issues or server problems)
-          try {
-            const response = await getData(
-              "/api/user/user-details",
-              storedToken,
-            );
-            if (
-              response.error === false &&
-              isPrivilegedAdminRole(response.data?.role)
-            ) {
-              const mergedProfile = normalizeAdminPayload({
-                ...adminData,
-                _id: response.data?._id || adminData?._id,
-                userId: response.data?._id || adminData?.userId,
-                name: response.data?.name || adminData?.name,
-                email: response.data?.email || adminData?.email,
-                userEmail: response.data?.email || adminData?.userEmail,
-                role: response.data?.role || adminData?.role,
-                avatar: response.data?.avatar || adminData?.avatar,
-                managerPermissions:
-                  response.data?.managerPermissions ||
-                  adminData?.managerPermissions,
-              });
-
-              if (mergedProfile) {
-                setAdmin(mergedProfile);
-                localStorage.setItem("adminUser", JSON.stringify(mergedProfile));
-              }
-
-              debugLog("Token verified successfully with server");
-            } else {
-              debugWarn(
-                "Token verification returned error, but keeping token available",
-              );
-            }
-          } catch (verifyError) {
-            // Log error but don't logout - network might be temporarily down
-            debugWarn(
-              "Token verification failed, but keeping token available:",
-              verifyError.message,
-            );
-          }
+          adminData = normalizeAdminPayload(JSON.parse(storedAdmin));
         } catch (parseError) {
           console.error("Error parsing admin data:", parseError);
           logout();
+          return;
         }
+      }
+
+      if (adminData) {
+        setAdmin(adminData);
+      }
+
+      if (storedToken) {
+        setToken(storedToken);
+        setLoading(false);
+
+        debugLog("Token and admin restored from localStorage:", {
+          tokenLength: storedToken.length,
+          hasAdmin: !!adminData,
+        });
+
+        try {
+          const response = await getData("/api/user/user-details", storedToken);
+          if (
+            response.error === false &&
+            isPrivilegedAdminRole(response.data?.role) &&
+            adminData
+          ) {
+            const mergedProfile = normalizeAdminPayload({
+              ...adminData,
+              _id: response.data?._id || adminData?._id,
+              userId: response.data?._id || adminData?.userId,
+              name: response.data?.name || adminData?.name,
+              email: response.data?.email || adminData?.email,
+              userEmail: response.data?.email || adminData?.userEmail,
+              role: response.data?.role || adminData?.role,
+              avatar: response.data?.avatar || adminData?.avatar,
+              managerPermissions:
+                response.data?.managerPermissions ||
+                adminData?.managerPermissions,
+            });
+
+            if (mergedProfile) {
+              setAdmin(mergedProfile);
+              localStorage.setItem("adminUser", JSON.stringify(mergedProfile));
+            }
+
+            debugLog("Token verified successfully with server");
+          } else {
+            debugWarn(
+              "Token verification returned error, but keeping token available",
+            );
+          }
+        } catch (verifyError) {
+          debugWarn(
+            "Token verification failed, but keeping token available:",
+            verifyError.message,
+          );
+        }
+        return;
+      }
+
+      if (adminData) {
+        setLoading(false);
+        try {
+          const response = await postData("/api/user/refresh-token", {});
+          const refreshedToken = response?.data?.accessToken || null;
+          if (refreshedToken) {
+            setToken(refreshedToken);
+            localStorage.setItem("adminToken", refreshedToken);
+            debugLog("Refreshed missing admin token from existing session");
+            return;
+          }
+        } catch (refreshError) {
+          debugWarn(
+            "Could not refresh admin token from session:",
+            refreshError?.message,
+          );
+        }
+
+        debugWarn("Admin profile exists but no valid token could be restored.");
+        return;
       }
     } catch (error) {
       console.error("Session check error:", error);
@@ -179,9 +212,14 @@ export const AdminProvider = ({ children }) => {
       window.removeEventListener("adminTokenRefreshed", handleTokenRefreshed);
   }, []);
 
-  const login = useCallback(async (email, password) => {
+  const login = useCallback(async (email, password, options = {}) => {
     try {
-      const response = await postData("/api/admin/login", { email, password });
+      const rememberMe = options?.rememberMe !== false;
+      const response = await postData("/api/admin/login", {
+        email,
+        password,
+        rememberMe,
+      });
 
       if (response.error === false) {
         const { data } = response;
@@ -215,8 +253,11 @@ export const AdminProvider = ({ children }) => {
           });
         }
 
-        localStorage.setItem("adminToken", accessToken);
-        localStorage.setItem("adminUser", JSON.stringify(normalizedAdmin));
+        persistAdminSession({
+          accessToken,
+          admin: normalizedAdmin,
+          rememberMe,
+        });
 
         setAdmin(normalizedAdmin);
         setToken(accessToken);

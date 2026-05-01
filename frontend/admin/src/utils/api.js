@@ -6,6 +6,15 @@ const HEALTHY_ONE_GRAM_HOSTS = new Set([
 ]);
 
 const LOCAL_API_FALLBACK = "http://localhost:8000";
+const REQUEST_TIMEOUT_MS = 12000;
+const LOCAL_API_FALLBACKS = [
+  "http://localhost:8000",
+  "http://localhost:8001",
+  "http://localhost:8002",
+  "http://127.0.0.1:8000",
+  "http://127.0.0.1:8001",
+  "http://127.0.0.1:8002",
+];
 
 const sanitizeBaseUrl = (value) =>
   String(value || "")
@@ -14,6 +23,21 @@ const sanitizeBaseUrl = (value) =>
     .replace(/\/+$/, "");
 
 const isHttpUrl = (value) => /^https?:\/\//i.test(String(value || ""));
+
+const resolveConfiguredEnvBaseUrl = () => {
+  const localDevBaseUrl = sanitizeBaseUrl(
+    process.env.NEXT_PUBLIC_LOCAL_API_URL,
+  );
+  const envCandidates = [
+    localDevBaseUrl,
+    process.env.NEXT_PUBLIC_APP_API_URL,
+    process.env.NEXT_PUBLIC_API_URL,
+  ]
+    .map(sanitizeBaseUrl)
+    .filter(Boolean);
+
+  return envCandidates.find(isHttpUrl) || "";
+};
 
 const isNetworkLevelError = (error) => {
   if (error?.response) return false;
@@ -27,35 +51,65 @@ const isNetworkLevelError = (error) => {
   );
 };
 
-const resolveAlternateLocalhostBaseUrl = (value) => {
-  try {
-    const parsed = new URL(String(value || ""));
-    const host = String(parsed.hostname || "").toLowerCase();
-    if (host !== "localhost" && host !== "127.0.0.1") return "";
-    if (parsed.port === "8000") {
-      parsed.port = "8001";
-      return parsed.toString().replace(/\/+$/, "");
+const isRouteNotFoundError = (error) => {
+  const status = Number(error?.response?.status || 0);
+  if (status !== 404) return false;
+
+  const message = String(
+    error?.response?.data?.message || error?.message || "",
+  ).toLowerCase();
+
+  return message.includes("route ") && message.includes(" not found");
+};
+
+const shouldRetryOnAlternateBase = (error) =>
+  isNetworkLevelError(error) || isRouteNotFoundError(error);
+
+const hasApiSuffix = (baseUrl) => /\/api$/i.test(String(baseUrl || ""));
+
+const getCurrentBrowserOriginBaseUrl = () => {
+  if (typeof window === "undefined") return "";
+  return sanitizeBaseUrl(window.location.origin);
+};
+
+const getAlternateApiBaseUrls = () => {
+  const candidates = [];
+  const pushCandidate = (value) => {
+    const normalized = sanitizeBaseUrl(value);
+    if (!isHttpUrl(normalized)) return;
+    if (candidates.includes(normalized)) return;
+    if (normalized === sanitizeBaseUrl(API_BASE_URL)) return;
+    candidates.push(normalized);
+  };
+
+  const envBaseUrl = resolveConfiguredEnvBaseUrl();
+  const browserOriginBaseUrl = getCurrentBrowserOriginBaseUrl();
+
+  if (typeof window !== "undefined") {
+    const hostname = String(window.location.hostname || "").toLowerCase();
+    const isLocalhost = hostname === "localhost" || hostname === "127.0.0.1";
+
+    if (isLocalhost) {
+      pushCandidate(envBaseUrl);
+      LOCAL_API_FALLBACKS.forEach(pushCandidate);
+      return candidates;
     }
-    if (parsed.port === "8001") {
-      parsed.port = "8000";
-      return parsed.toString().replace(/\/+$/, "");
-    }
-    return "";
-  } catch {
-    return "";
+
+    // On live deployments we may have either:
+    // 1. a same-domain `/api` proxy, or
+    // 2. a dedicated backend host from NEXT_PUBLIC_API_URL.
+    // Try whichever wasn't selected as the primary base.
+    pushCandidate(envBaseUrl);
+    pushCandidate(browserOriginBaseUrl);
+    return candidates;
   }
+
+  pushCandidate(envBaseUrl);
+  return candidates;
 };
 
 const resolveApiBaseUrl = () => {
-  const localDevBaseUrl = sanitizeBaseUrl(process.env.NEXT_PUBLIC_LOCAL_API_URL);
-  const envCandidates = [
-    localDevBaseUrl,
-    process.env.NEXT_PUBLIC_APP_API_URL,
-    process.env.NEXT_PUBLIC_API_URL,
-  ]
-    .map(sanitizeBaseUrl)
-    .filter(Boolean);
-  const envBaseUrl = envCandidates.find(isHttpUrl) || "";
+  const envBaseUrl = resolveConfiguredEnvBaseUrl();
 
   if (typeof window !== "undefined") {
     const hostname = String(window.location.hostname || "").toLowerCase();
@@ -71,12 +125,16 @@ const resolveApiBaseUrl = () => {
       return LOCAL_API_FALLBACK;
     }
 
-    if (HEALTHY_ONE_GRAM_HOSTS.has(hostname)) {
-      return origin;
-    }
-
+    // In deployed admin, an explicit backend URL must win. Falling back to the
+    // current origin on healthyonegram.com can hit the Next.js app itself,
+    // which produces `/api/... route not found` errors instead of reaching the
+    // Express backend.
     if (isHttpUrl(envBaseUrl)) {
       return envBaseUrl;
+    }
+
+    if (HEALTHY_ONE_GRAM_HOSTS.has(hostname)) {
+      return origin;
     }
 
     return origin || LOCAL_API_FALLBACK;
@@ -98,16 +156,15 @@ export const API_BASE_URL = resolveApiBaseUrl();
 export const axiosClient = axios.create({
   baseURL: API_BASE_URL,
   withCredentials: true,
+  timeout: REQUEST_TIMEOUT_MS,
   headers: {
     "Content-Type": "application/json",
   },
 });
 
-const BASE_HAS_API_SUFFIX = /\/api$/i.test(String(API_BASE_URL || ""));
-
-const normalizePath = (url) => {
+const normalizePath = (url, baseUrl = API_BASE_URL) => {
   const normalized = url?.startsWith("/") ? url : `/${url}`;
-  if (!BASE_HAS_API_SUFFIX) return normalized;
+  if (!hasApiSuffix(baseUrl)) return normalized;
   if (/^\/api(\/|$)/i.test(normalized)) {
     return normalized.replace(/^\/api/i, "");
   }
@@ -118,14 +175,21 @@ let refreshPromise = null;
 
 const getStoredAdminToken = () => {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem("adminToken");
+  return (
+    localStorage.getItem("adminToken") ||
+    sessionStorage.getItem("adminToken") ||
+    null
+  );
 };
 
 const setStoredAdminToken = (token) => {
   if (typeof window === "undefined") return;
 
   if (typeof token === "string" && token.trim()) {
-    localStorage.setItem("adminToken", token);
+    const targetStorage = sessionStorage.getItem("adminToken")
+      ? sessionStorage
+      : localStorage;
+    targetStorage.setItem("adminToken", token);
     window.dispatchEvent(
       new CustomEvent("adminTokenRefreshed", { detail: token }),
     );
@@ -133,6 +197,7 @@ const setStoredAdminToken = (token) => {
   }
 
   localStorage.removeItem("adminToken");
+  sessionStorage.removeItem("adminToken");
   window.dispatchEvent(
     new CustomEvent("adminTokenRefreshed", { detail: null }),
   );
@@ -153,7 +218,6 @@ const refreshAdminToken = async () => {
       setStoredAdminToken(token);
       return token;
     } catch (error) {
-      setStoredAdminToken(null);
       return null;
     } finally {
       refreshPromise = null;
@@ -169,6 +233,44 @@ const buildHeaders = (token, extraHeaders = {}) => {
     ...extraHeaders,
     ...(resolvedToken ? { Authorization: `Bearer ${resolvedToken}` } : {}),
   };
+};
+
+const executeRequestAcrossBaseUrls = async ({
+  method,
+  url,
+  data,
+  token = null,
+  headers = {},
+  responseType,
+  includeStoredToken = true,
+}) => {
+  const candidateBaseUrls = [
+    sanitizeBaseUrl(API_BASE_URL),
+    ...getAlternateApiBaseUrls(),
+  ].filter(Boolean);
+
+  let lastError = null;
+
+  for (const baseURL of candidateBaseUrls) {
+    try {
+      return await axiosClient.request({
+        method,
+        url: normalizePath(url, baseURL),
+        data,
+        timeout: REQUEST_TIMEOUT_MS,
+        headers: includeStoredToken ? buildHeaders(token, headers) : headers,
+        ...(responseType ? { responseType } : {}),
+        ...(baseURL !== sanitizeBaseUrl(API_BASE_URL) ? { baseURL } : {}),
+      });
+    } catch (error) {
+      lastError = error;
+      if (!shouldRetryOnAlternateBase(error)) {
+        throw error;
+      }
+    }
+  }
+
+  throw lastError || new Error("Request failed");
 };
 
 const toErrorPayload = (error, fallbackMessage) => {
@@ -191,63 +293,42 @@ const requestWithRetry = async ({
   headers = {},
   fallbackMessage = "Request failed",
 }) => {
-  const requestConfig = {
-    method,
-    url: normalizePath(url),
-    data,
-    headers: buildHeaders(token, headers),
-  };
-
   const requestWithoutAuthHeader = async () => {
     const cookieOnlyHeaders = { ...headers };
     delete cookieOnlyHeaders.Authorization;
-
-    const cookieRetryConfig = {
-      ...requestConfig,
+    const response = await executeRequestAcrossBaseUrls({
+      method,
+      url,
+      data,
       headers: cookieOnlyHeaders,
-    };
-
-    const response = await axiosClient.request(cookieRetryConfig);
+      includeStoredToken: false,
+    });
     return response.data;
-  };
-
-  const retryOnAlternateLocalhost = async () => {
-    const alternateBaseUrl = resolveAlternateLocalhostBaseUrl(API_BASE_URL);
-    if (!alternateBaseUrl) return null;
-    try {
-      const response = await axiosClient.request({
-        ...requestConfig,
-        baseURL: alternateBaseUrl,
-      });
-      return response.data;
-    } catch {
-      return null;
-    }
   };
 
   try {
-    const response = await axiosClient.request(requestConfig);
+    const response = await executeRequestAcrossBaseUrls({
+      method,
+      url,
+      data,
+      token,
+      headers,
+    });
     return response.data;
   } catch (error) {
-    if (isNetworkLevelError(error)) {
-      const fallbackResponse = await retryOnAlternateLocalhost();
-      if (fallbackResponse) return fallbackResponse;
-    }
-
-    if (error?.response?.status === 401 && !requestConfig._retry) {
-      requestConfig._retry = true;
+    if (error?.response?.status === 401) {
       const newToken = await refreshAdminToken();
       if (newToken) {
-        requestConfig.headers = buildHeaders(newToken, headers);
         try {
-          const retryResponse = await axiosClient.request(requestConfig);
+          const retryResponse = await executeRequestAcrossBaseUrls({
+            method,
+            url,
+            data,
+            token: newToken,
+            headers,
+          });
           return retryResponse.data;
         } catch (retryError) {
-          if (isNetworkLevelError(retryError)) {
-            const fallbackResponse = await retryOnAlternateLocalhost();
-            if (fallbackResponse) return fallbackResponse;
-          }
-
           if (retryError?.response?.status !== 401) {
             return toErrorPayload(retryError, fallbackMessage);
           }
@@ -256,7 +337,6 @@ const requestWithRetry = async ({
 
       // Fallback to cookie-only auth when local token is stale or refresh fails.
       try {
-        setStoredAdminToken(null);
         return await requestWithoutAuthHeader();
       } catch (cookieRetryError) {
         return toErrorPayload(cookieRetryError, fallbackMessage);
@@ -282,6 +362,47 @@ export const getData = async (url, token = null) =>
     token,
     fallbackMessage: "Failed to fetch data",
   });
+
+export const getBlobData = async (url, token = null) => {
+  try {
+    const response = await executeRequestAcrossBaseUrls({
+      method: "get",
+      url,
+      token,
+      responseType: "blob",
+    });
+    return {
+      success: true,
+      error: false,
+      blob: response.data,
+      headers: response.headers || {},
+    };
+  } catch (error) {
+    if (error?.response?.status === 401) {
+      const newToken = await refreshAdminToken();
+      if (newToken) {
+        try {
+          const retryResponse = await executeRequestAcrossBaseUrls({
+            method: "get",
+            url,
+            token: newToken,
+            responseType: "blob",
+          });
+          return {
+            success: true,
+            error: false,
+            blob: retryResponse.data,
+            headers: retryResponse.headers || {},
+          };
+        } catch (retryError) {
+          return toErrorPayload(retryError, "Failed to download file");
+        }
+      }
+    }
+
+    return toErrorPayload(error, "Failed to download file");
+  }
+};
 
 export const putData = async (url, formData, token = null) =>
   requestWithRetry({

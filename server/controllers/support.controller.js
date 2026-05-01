@@ -76,6 +76,38 @@ const isValidPhone = (phone) => /^[0-9+\-() ]{7,20}$/.test(phone);
 const normalizeFiles = (req, fieldName) =>
   Array.isArray(req.files?.[fieldName]) ? req.files[fieldName] : [];
 
+const normalizeAttachmentValue = (req, value) => {
+  const normalized = sanitizeText(value || "", { maxLength: 1200 });
+  if (!normalized) return "";
+
+  if (/^https?:\/\//i.test(normalized)) {
+    return normalized;
+  }
+
+  const relativePath = normalized.replace(/^\/+/, "");
+  return `${req.protocol}://${req.get("host")}/${relativePath}`;
+};
+
+const normalizeAttachmentInputs = (req) => {
+  const rawValues = [];
+  const attachment = req.body?.attachment;
+  const attachments = req.body?.attachments;
+
+  if (Array.isArray(attachment)) rawValues.push(...attachment);
+  else if (attachment) rawValues.push(attachment);
+
+  if (Array.isArray(attachments)) rawValues.push(...attachments);
+  else if (attachments) rawValues.push(attachments);
+
+  return Array.from(
+    new Set(
+      rawValues
+        .map((value) => normalizeAttachmentValue(req, value))
+        .filter(Boolean),
+    ),
+  );
+};
+
 const cleanupUploadedFiles = async (files = []) => {
   await Promise.all(
     files.map(async (file) => {
@@ -385,6 +417,7 @@ const buildTicketSummary = (ticket) => {
 const SUPPORT_STORE_URL =
   String(process.env.CLIENT_URL || "https://healthyonegram.com").trim() ||
   "https://healthyonegram.com";
+const SUPPORT_CONTACT_PAGE_URL = "https://healthyonegram.com/contact";
 const SUPPORT_ADMIN_EMAIL = String(
   process.env.SUPPORT_ADMIN_EMAIL ||
     process.env.SUPPORT_EMAIL ||
@@ -609,6 +642,7 @@ const sendTicketUpdateEmail = async (ticket) => {
     `Status: ${status}`,
     `Updated At: ${updatedAt}`,
     `Admin Reply: ${safeReply}`,
+    `Contact us: ${SUPPORT_CONTACT_PAGE_URL}`,
     "Thanks,",
     "HealthyOneGram Customer Care",
   ].join("\n");
@@ -623,8 +657,8 @@ const sendTicketUpdateEmail = async (ticket) => {
       status,
       updated_at: updatedAt,
       admin_reply: safeReply,
-      support_contact: SUPPORT_ADMIN_EMAIL || "support@healthyonegram.com",
-      support_url: `${SUPPORT_STORE_URL}/contact`,
+      support_contact: SUPPORT_CONTACT_PAGE_URL,
+      support_url: SUPPORT_CONTACT_PAGE_URL,
       year: getIstYear(),
     },
     text,
@@ -697,6 +731,7 @@ export const createSupportTicket = async (req, res) => {
     const rawOrderId = sanitizeText(req.body?.orderId || "", {
       maxLength: 120,
     });
+    const externalAttachments = normalizeAttachmentInputs(req);
 
     const fieldErrors = {};
 
@@ -750,6 +785,21 @@ export const createSupportTicket = async (req, res) => {
 
     const images = imageFiles.map((file) => toPublicFileUrl(req, file.path));
     const videos = videoFiles.map((file) => toPublicFileUrl(req, file.path));
+    const linkedOrder =
+      orderId && mongoose.Types.ObjectId.isValid(String(orderId))
+        ? await OrderModel.findById(orderId)
+            .select("_id invoiceUrl invoicePath")
+            .lean()
+        : null;
+    const orderInvoiceAttachment = normalizeAttachmentValue(
+      req,
+      linkedOrder?.invoiceUrl || linkedOrder?.invoicePath || "",
+    );
+    const attachments = Array.from(
+      new Set(
+        [...externalAttachments, orderInvoiceAttachment].filter(Boolean),
+      ),
+    );
 
     const createdTicket = await SupportTicketModel.create({
       userId: userId || null,
@@ -761,6 +811,7 @@ export const createSupportTicket = async (req, res) => {
       message,
       images,
       videos,
+      attachments,
       status: "OPEN",
     });
 
@@ -838,6 +889,7 @@ export const createSupportTicket = async (req, res) => {
       {
         ticketId: createdTicket.ticketId,
         status: createdTicket.status,
+        attachments: createdTicket.attachments || [],
         created_at: getTicketTimestamp(createdTicket, "created_at"),
         updated_at: getTicketTimestamp(createdTicket, "updated_at"),
         emailNotification: {

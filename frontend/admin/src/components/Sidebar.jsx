@@ -32,9 +32,19 @@ import { RiCoupon2Line, RiVipCrownLine } from "react-icons/ri";
 import { RxDashboard } from "react-icons/rx";
 import { TbBrandProducthunt, TbShare, TbUsers } from "react-icons/tb";
 
+const stripAdminBasePath = (pathname) => {
+  const normalized = String(pathname || "").trim();
+  if (!normalized) return "/";
+  if (normalized === "/admin") return "/";
+  if (normalized.startsWith("/admin/")) {
+    return normalized.slice("/admin".length) || "/";
+  }
+  return normalized;
+};
+
 const Sidebar = ({ isOpen = false, onClose }) => {
   const { logout, admin, token } = useAdmin();
-  const pathname = usePathname();
+  const pathname = stripAdminBasePath(usePathname());
   const router = useRouter();
   const [openTicketCount, setOpenTicketCount] = useState(0);
 
@@ -139,16 +149,18 @@ const Sidebar = ({ isOpen = false, onClose }) => {
       requiredPermission: "manage_crm",
     },
     {
-      name: "CRM",
+      name: "WhatsApp CRM",
       icon: <MdOutlineHub size={22} />,
       href: "/crm",
       requiredPermission: "manage_crm",
-    },
-    {
-      name: "CRM",
-      icon: <MdOutlineHub size={22} />,
-      href: "/crm",
-      requiredPermission: "manage_crm",
+      children: [
+        { name: "Workspace", href: "/crm" },
+        {
+          name: "WhatsApp Config",
+          href: "/crm/whatsapp-config",
+          requiredPermission: "manage_settings",
+        },
+      ],
     },
     {
       name: "Coupons",
@@ -242,6 +254,12 @@ const Sidebar = ({ isOpen = false, onClose }) => {
       name: "About Us",
       icon: <MdInfoOutline size={22} />,
       href: "/about-page",
+      requiredPermission: "manage_settings",
+    },
+    {
+      name: "SEO Pages",
+      icon: <MdOutlineArticle size={22} />,
+      href: "/seo-pages",
       requiredPermission: "manage_settings",
     },
     {
@@ -340,7 +358,7 @@ const Sidebar = ({ isOpen = false, onClose }) => {
           const tabActive = isActive(tab.href) || childActive;
 
           return (
-            <div key={tab.name}>
+            <div key={tab.href || tab.name}>
               <Link
                 href={tab.href}
                 onClick={handleNavClick}

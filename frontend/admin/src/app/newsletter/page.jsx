@@ -458,6 +458,14 @@ const NewsletterPage = () => {
     simpleTemplate.heroImageUrl,
     `${previewSiteUrl}/logo-header.png`,
   );
+  const stockNotificationEmailCount =
+    Array.isArray(emailLogSummary?.byType)
+      ? Number(
+          emailLogSummary.byType.find(
+            (item) => item?._id === "stock_back_in_stock",
+          )?.total || 0,
+        )
+      : 0;
 
   const handleHeroImageUpload = async (event) => {
     const file = event?.target?.files?.[0];
@@ -1390,7 +1398,7 @@ const NewsletterPage = () => {
           </div>
           <Button variant="outlined" onClick={fetchEmailLogs}>Refresh Logs</Button>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
           <div className="rounded border border-green-200 bg-green-50 p-3 text-sm text-green-800">
             Sent: {emailLogSummary?.totals?.sent || 0}
           </div>
@@ -1399,6 +1407,9 @@ const NewsletterPage = () => {
           </div>
           <div className="rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
             Skipped: {emailLogSummary?.totals?.skipped || 0}
+          </div>
+          <div className="rounded border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
+            Back In Stock: {stockNotificationEmailCount}
           </div>
         </div>
         {emailLogsLoading ? (
@@ -1413,6 +1424,7 @@ const NewsletterPage = () => {
               <thead className="bg-gray-100">
                 <tr>
                   <th className="text-left px-3 py-2">Type</th>
+                  <th className="text-left px-3 py-2">Product</th>
                   <th className="text-left px-3 py-2">Email</th>
                   <th className="text-left px-3 py-2">Status</th>
                   <th className="text-left px-3 py-2">Subject</th>
@@ -1422,9 +1434,23 @@ const NewsletterPage = () => {
               <tbody>
                 {emailLogs.map((logItem) => (
                   <tr key={logItem._id} className="border-b">
-                    <td className="px-3 py-2">{logItem.email_type}</td>
+                    <td className="px-3 py-2">
+                      {logItem.email_type === "stock_back_in_stock"
+                        ? "back_in_stock"
+                        : logItem.email_type}
+                    </td>
+                    <td className="px-3 py-2">
+                      {logItem.metadata?.productName || "-"}
+                    </td>
                     <td className="px-3 py-2">{logItem.to_email}</td>
-                    <td className="px-3 py-2">{logItem.status}</td>
+                    <td className="px-3 py-2">
+                      <div className="capitalize">{logItem.status}</div>
+                      {logItem.error_message ? (
+                        <div className="text-xs text-red-500 mt-1">
+                          {logItem.error_message}
+                        </div>
+                      ) : null}
+                    </td>
                     <td className="px-3 py-2">{logItem.subject}</td>
                     <td className="px-3 py-2">
                       {logItem.sent_at ? new Date(logItem.sent_at).toLocaleString() : "-"}

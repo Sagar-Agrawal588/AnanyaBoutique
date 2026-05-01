@@ -1,9 +1,11 @@
 import mongoose from "mongoose";
 import PDFDocument from "pdfkit";
+import { checkExclusiveAccess } from "../middlewares/membershipGuard.js";
 import AddressModel from "../models/address.model.js";
 import OrderModel from "../models/order.model.js";
 import ProductModel from "../models/product.model.js";
 import PurchaseOrderModel from "../models/purchaseOrder.model.js";
+import UserModel from "../models/user.model.js";
 import {
   applyPurchaseOrderInventory,
   logInventoryAudit,
@@ -12,10 +14,9 @@ import {
   reserveInventory,
   syncParentStockFromVariants,
 } from "../services/inventory.service.js";
-import UserModel from "../models/user.model.js";
 import { validateIndianPincode } from "../services/shippingRate.service.js";
+import { syncActiveStockReservations } from "../services/stockReservation.service.js";
 import { splitGstInclusiveAmount } from "../services/tax.service.js";
-import { checkExclusiveAccess } from "../middlewares/membershipGuard.js";
 import isPrivilegedAdminRole from "../utils/isPrivilegedAdminRole.js";
 
 const round2 = (value) =>
@@ -80,18 +81,24 @@ const ensureExclusiveAccessForProducts = async ({
     .select("_id isExclusive isActive")
     .lean();
 
-  const productMap = new Map(products.map((product) => [String(product._id), product]));
+  const productMap = new Map(
+    products.map((product) => [String(product._id), product]),
+  );
   const missingIds = productIds.filter((id) => !productMap.has(String(id)));
   if (missingIds.length > 0) {
     throw new Error(`Product not found for ID: ${missingIds[0]}`);
   }
 
-  const inactiveProduct = products.find((product) => product.isActive === false);
+  const inactiveProduct = products.find(
+    (product) => product.isActive === false,
+  );
   if (inactiveProduct) {
     throw new Error("Product is not available");
   }
 
-  const hasExclusiveProducts = products.some((product) => product.isExclusive === true);
+  const hasExclusiveProducts = products.some(
+    (product) => product.isExclusive === true,
+  );
   if (!hasExclusiveProducts) {
     return;
   }
@@ -102,7 +109,9 @@ const ensureExclusiveAccessForProducts = async ({
 
   const hasExclusiveAccess = await canUserAccessExclusiveProducts(userId);
   if (!hasExclusiveAccess) {
-    const accessError = new Error("Active membership required for exclusive products.");
+    const accessError = new Error(
+      "Active membership required for exclusive products.",
+    );
     accessError.statusCode = 403;
     throw accessError;
   }
@@ -115,10 +124,18 @@ const normalizeUnitForPacking = (unit) => {
   if (!normalized) return "";
   if (["g", "gm", "gram", "grams"].includes(normalized)) return "g";
   if (["kg", "kgs", "kilogram", "kilograms"].includes(normalized)) return "kg";
-  if (["ml", "millilitre", "milliliter", "millilitres", "milliliters"].includes(normalized)) {
+  if (
+    ["ml", "millilitre", "milliliter", "millilitres", "milliliters"].includes(
+      normalized,
+    )
+  ) {
     return "ml";
   }
-  if (["l", "lt", "ltr", "liter", "litre", "liters", "litres"].includes(normalized)) {
+  if (
+    ["l", "lt", "ltr", "liter", "litre", "liters", "litres"].includes(
+      normalized,
+    )
+  ) {
     return "l";
   }
   return normalized;
@@ -181,7 +198,9 @@ const resolveVariantForPacking = ({
       const variantWeightKey = normalizePackingKey(
         buildPackingFromWeightAndUnit(variant?.weight, variant?.unit),
       );
-      return candidateKeys.has(variantNameKey) || candidateKeys.has(variantWeightKey);
+      return (
+        candidateKeys.has(variantNameKey) || candidateKeys.has(variantWeightKey)
+      );
     }) || null
   );
 };
@@ -225,8 +244,10 @@ const resolvePackingFromProduct = (item, product) => {
   });
   if (resolvedVariant) {
     return (
-      buildPackingFromWeightAndUnit(resolvedVariant?.weight, resolvedVariant?.unit) ||
-      String(resolvedVariant?.name || "")
+      buildPackingFromWeightAndUnit(
+        resolvedVariant?.weight,
+        resolvedVariant?.unit,
+      ) || String(resolvedVariant?.name || "")
     );
   }
 
@@ -271,7 +292,9 @@ const normalizeGuestDetails = (guestDetails = {}) => ({
   address: String(guestDetails.address || "").trim(),
   pincode: String(guestDetails.pincode || "").trim(),
   state: String(guestDetails.state || "").trim(),
-  email: String(guestDetails.email || "").trim().toLowerCase(),
+  email: String(guestDetails.email || "")
+    .trim()
+    .toLowerCase(),
   gst: String(guestDetails.gst || "").trim(),
 });
 
@@ -304,7 +327,11 @@ const validateGuestCheckoutDetails = (details) => {
   return null;
 };
 
-const resolveDeliveryInfo = async ({ userId, deliveryAddressId, guestDetails }) => {
+const resolveDeliveryInfo = async ({
+  userId,
+  deliveryAddressId,
+  guestDetails,
+}) => {
   if (deliveryAddressId) {
     const address = await AddressModel.findById(deliveryAddressId).lean();
     if (!address) {
@@ -316,10 +343,14 @@ const resolveDeliveryInfo = async ({ userId, deliveryAddressId, guestDetails }) 
       guest: {
         fullName: String(address.name || guestDetails?.fullName || "").trim(),
         phone: String(address.mobile || guestDetails?.phone || "").trim(),
-        address: String(address.address_line1 || guestDetails?.address || "").trim(),
+        address: String(
+          address.address_line1 || guestDetails?.address || "",
+        ).trim(),
         pincode: String(address.pincode || "").trim(),
         state: String(address.state || "").trim(),
-        email: String(guestDetails?.email || "").trim().toLowerCase(),
+        email: String(guestDetails?.email || "")
+          .trim()
+          .toLowerCase(),
         gst: String(guestDetails?.gst || "").trim(),
       },
     };
@@ -347,7 +378,9 @@ const validateAndNormalizeItems = async (itemsInput = []) => {
 
   const uniqueIds = extractPurchaseOrderProductIds(itemsInput);
   const products = await ProductModel.find({ _id: { $in: uniqueIds } })
-    .select("_id name price images hasVariants variants._id variants.name variants.weight variants.unit weight unit")
+    .select(
+      "_id name price images hasVariants variants._id variants.name variants.weight variants.unit weight unit",
+    )
     .lean();
   const productMap = new Map(products.map((p) => [String(p._id), p]));
 
@@ -430,7 +463,11 @@ const computePurchaseOrderTotals = ({
   state = "",
 } = {}) => {
   const grossInclusiveSubtotal = sumGrossInclusiveItems(items);
-  const taxData = splitGstInclusiveAmount(grossInclusiveSubtotal, gstRate, state);
+  const taxData = splitGstInclusiveAmount(
+    grossInclusiveSubtotal,
+    gstRate,
+    state,
+  );
   const shipping = 0;
   const total = round2(grossInclusiveSubtotal + shipping);
 
@@ -455,7 +492,9 @@ const normalizePurchaseOrderTotals = (purchaseOrder) => {
   const computed = computePurchaseOrderTotals({
     items: purchaseOrder.items,
     gstRate: Number(purchaseOrder?.gst?.rate || 5),
-    state: String(purchaseOrder?.gst?.state || purchaseOrder?.guestDetails?.state || ""),
+    state: String(
+      purchaseOrder?.gst?.state || purchaseOrder?.guestDetails?.state || "",
+    ),
   });
 
   return {
@@ -548,31 +587,42 @@ const buildPdfBuffer = (purchaseOrder) =>
         maximumFractionDigits: 2,
       })}`;
     const totalQuantityKg = calculateTotalQuantityKg(purchaseOrder.items);
-    const poNumber = String(purchaseOrder.poNumber || purchaseOrder._id || "").trim();
+    const poNumber = String(
+      purchaseOrder.poNumber || purchaseOrder._id || "",
+    ).trim();
     const vendorName = String(
       purchaseOrder.guestDetails?.fullName || "N/A",
     ).trim();
 
     doc.fillColor("#111111");
-    doc.font("Helvetica-Bold").fontSize(16).text(PO_COMPANY_NAME, margin, doc.y, {
-      width: contentWidth,
-      align: "center",
-    });
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(16)
+      .text(PO_COMPANY_NAME, margin, doc.y, {
+        width: contentWidth,
+        align: "center",
+      });
     doc.moveDown(0.2);
-    doc.font("Helvetica").fontSize(9.5).text(PO_COMPANY_ADDRESS, margin, doc.y, {
-      width: contentWidth,
-      align: "center",
-    });
+    doc
+      .font("Helvetica")
+      .fontSize(9.5)
+      .text(PO_COMPANY_ADDRESS, margin, doc.y, {
+        width: contentWidth,
+        align: "center",
+      });
     doc.moveDown(0.15);
     doc.font("Helvetica").fontSize(9.5).text(PO_COMPANY_GST, margin, doc.y, {
       width: contentWidth,
       align: "center",
     });
     doc.moveDown(0.65);
-    doc.font("Helvetica-Bold").fontSize(15).text("Purchase Order", margin, doc.y, {
-      width: contentWidth,
-      align: "center",
-    });
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(15)
+      .text("Purchase Order", margin, doc.y, {
+        width: contentWidth,
+        align: "center",
+      });
     doc.moveDown(0.9);
 
     const metaRowY = doc.y;
@@ -581,16 +631,24 @@ const buildPdfBuffer = (purchaseOrder) =>
       width: halfWidth,
       align: "left",
     });
-    doc.text(`Date: ${formatPdfDate(purchaseOrder.createdAt)}`, margin + halfWidth, metaRowY, {
-      width: halfWidth,
-      align: "right",
-    });
+    doc.text(
+      `Date: ${formatPdfDate(purchaseOrder.createdAt)}`,
+      margin + halfWidth,
+      metaRowY,
+      {
+        width: halfWidth,
+        align: "right",
+      },
+    );
 
     doc.y = metaRowY + 24;
-    doc.font("Helvetica-Bold").fontSize(10.5).text(`Vendor: ${vendorName}`, margin, doc.y, {
-      width: contentWidth,
-      align: "left",
-    });
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(10.5)
+      .text(`Vendor: ${vendorName}`, margin, doc.y, {
+        width: contentWidth,
+        align: "left",
+      });
     doc.moveDown(0.9);
 
     const tableStartX = margin;
@@ -611,11 +669,7 @@ const buildPdfBuffer = (purchaseOrder) =>
       .fill();
     doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(9.2);
     doc.text("Product", tableStartX + 6, tableY + 6);
-    doc.text(
-      "Quantity",
-      tableStartX + colWidths.product + 6,
-      tableY + 6,
-    );
+    doc.text("Quantity", tableStartX + colWidths.product + 6, tableY + 6);
     doc.text(
       "Packing",
       tableStartX + colWidths.product + colWidths.qty + 6,
@@ -623,11 +677,7 @@ const buildPdfBuffer = (purchaseOrder) =>
     );
     doc.text(
       "Rate (per kg)",
-      tableStartX +
-        colWidths.product +
-        colWidths.qty +
-        colWidths.packing +
-        6,
+      tableStartX + colWidths.product + colWidths.qty + colWidths.packing + 6,
       tableY + 6,
     );
     doc.text(
@@ -649,12 +699,10 @@ const buildPdfBuffer = (purchaseOrder) =>
       const packing = item.packing || "-";
       const lineTotalQuantityKg = calculateLineTotalQuantityKg(item);
 
-      doc.text(
-        productText,
-        tableStartX + 6,
-        tableY + 6,
-        { width: colWidths.product - 12, align: "left" },
-      );
+      doc.text(productText, tableStartX + 6, tableY + 6, {
+        width: colWidths.product - 12,
+        align: "left",
+      });
       doc.text(
         String(item.quantity || 0),
         tableStartX + colWidths.product + 6,
@@ -669,11 +717,7 @@ const buildPdfBuffer = (purchaseOrder) =>
       );
       doc.text(
         formatMoney(item.price),
-        tableStartX +
-          colWidths.product +
-          colWidths.qty +
-          colWidths.packing +
-          6,
+        tableStartX + colWidths.product + colWidths.qty + colWidths.packing + 6,
         tableY + 6,
         { width: colWidths.rate - 12, align: "right" },
       );
@@ -759,8 +803,11 @@ export const createPurchaseOrder = async (req, res) => {
       guestDetails,
     } = req.body || {};
 
-    const normalizedItems = await validateAndNormalizeItems(items || products || []);
-    const normalizedProductIds = extractPurchaseOrderProductIds(normalizedItems);
+    const normalizedItems = await validateAndNormalizeItems(
+      items || products || [],
+    );
+    const normalizedProductIds =
+      extractPurchaseOrderProductIds(normalizedItems);
     await ensureExclusiveAccessForProducts({
       productIds: normalizedProductIds,
       userId,
@@ -851,8 +898,13 @@ export const getPurchaseOrderById = async (req, res) => {
       }
 
       if (!po.userId) {
-        const email = String(req.query.email || "").trim().toLowerCase();
-        if (!email || email !== String(po.guestDetails?.email || "").toLowerCase()) {
+        const email = String(req.query.email || "")
+          .trim()
+          .toLowerCase();
+        if (
+          !email ||
+          email !== String(po.guestDetails?.email || "").toLowerCase()
+        ) {
           return res.status(403).json({
             error: true,
             success: false,
@@ -923,7 +975,9 @@ export const downloadPurchaseOrderPdf = async (req, res) => {
     const requesterId = req.user || null;
     let isAdmin = false;
     if (requesterId) {
-      const requester = await UserModel.findById(requesterId).select("role").lean();
+      const requester = await UserModel.findById(requesterId)
+        .select("role")
+        .lean();
       isAdmin = isPrivilegedAdminRole(requester?.role);
     }
 
@@ -937,8 +991,13 @@ export const downloadPurchaseOrderPdf = async (req, res) => {
           });
         }
       } else {
-        const email = String(req.query.email || "").trim().toLowerCase();
-        if (!email || email !== String(po.guestDetails?.email || "").toLowerCase()) {
+        const email = String(req.query.email || "")
+          .trim()
+          .toLowerCase();
+        if (
+          !email ||
+          email !== String(po.guestDetails?.email || "").toLowerCase()
+        ) {
           return res.status(403).json({
             error: true,
             success: false,
@@ -1044,13 +1103,17 @@ export const updatePurchaseOrderReceipt = async (req, res) => {
         const consumedLineIndexes = new Set();
 
         normalizedItems.forEach((item, payloadIndex) => {
-          const productId = String(item.productId || item._id || item.id || "").trim();
+          const productId = String(
+            item.productId || item._id || item.id || "",
+          ).trim();
           if (!productId) return;
           const receivedNow = Math.max(Number(item.receivedQuantity || 0), 0);
           if (!receivedNow) return;
 
           const requestedLineIndex = Number(item.lineIndex);
-          const payloadPacking = normalizePackingKey(item.packing || item.packSize || "");
+          const payloadPacking = normalizePackingKey(
+            item.packing || item.packSize || "",
+          );
           const payloadVariantId = String(item.variantId || "").trim();
           let matchedIndex = -1;
           let line = null;
@@ -1061,7 +1124,10 @@ export const updatePurchaseOrderReceipt = async (req, res) => {
             requestedLineIndex < po.items.length
           ) {
             const requestedLine = po.items[requestedLineIndex];
-            if (requestedLine && String(requestedLine.productId || "") === productId) {
+            if (
+              requestedLine &&
+              String(requestedLine.productId || "") === productId
+            ) {
               matchedIndex = requestedLineIndex;
               line = requestedLine;
             }
@@ -1094,8 +1160,14 @@ export const updatePurchaseOrderReceipt = async (req, res) => {
           consumedLineIndexes.add(matchedIndex);
 
           const orderedQty = Math.max(Number(line.quantity || 0), 0);
-          const currentReceived = Math.max(Number(line.receivedQuantity || 0), 0);
-          const nextReceived = Math.min(orderedQty, currentReceived + receivedNow);
+          const currentReceived = Math.max(
+            Number(line.receivedQuantity || 0),
+            0,
+          );
+          const nextReceived = Math.min(
+            orderedQty,
+            currentReceived + receivedNow,
+          );
           const incrementBy = Math.max(nextReceived - currentReceived, 0);
           line.receivedQuantity = nextReceived;
           line.qty_received = nextReceived;
@@ -1106,8 +1178,11 @@ export const updatePurchaseOrderReceipt = async (req, res) => {
               lineIndex: matchedIndex,
               payloadIndex,
               packing: String(line.packing || item.packing || "").trim(),
-              variantId: String(line.variantId || item.variantId || "").trim() || null,
-              variantName: String(line.variantName || item.variantName || "").trim(),
+              variantId:
+                String(line.variantId || item.variantId || "").trim() || null,
+              variantName: String(
+                line.variantName || item.variantName || "",
+              ).trim(),
             });
           }
         });
@@ -1124,7 +1199,9 @@ export const updatePurchaseOrderReceipt = async (req, res) => {
         }
 
         const hasReceiptUpdate =
-          normalizedItems.some((item) => Number(item.receivedQuantity || 0) > 0) ||
+          normalizedItems.some(
+            (item) => Number(item.receivedQuantity || 0) > 0,
+          ) ||
           invoiceNumber ||
           vehicleNumber ||
           notes;
@@ -1313,7 +1390,9 @@ export const updatePurchaseOrderReceipt = async (req, res) => {
             previousStock: Number(
               auditBefore?.stock_quantity ?? auditBefore?.stock ?? 0,
             ),
-            newStock: Number(auditAfter?.stock_quantity ?? auditAfter?.stock ?? 0),
+            newStock: Number(
+              auditAfter?.stock_quantity ?? auditAfter?.stock ?? 0,
+            ),
             session,
           });
         }
@@ -1340,7 +1419,9 @@ export const updatePurchaseOrderReceipt = async (req, res) => {
                 },
                 {
                   $inc: {
-                    "variants.$.stock_quantity": -Number(adjustment.quantity || 0),
+                    "variants.$.stock_quantity": -Number(
+                      adjustment.quantity || 0,
+                    ),
                     "variants.$.stock": -Number(adjustment.quantity || 0),
                   },
                 },
@@ -1420,8 +1501,13 @@ export const convertPurchaseOrderToOrder = async (req, res) => {
         });
       }
     } else if (!isAdmin) {
-      const email = String(req.query.email || "").trim().toLowerCase();
-      if (!email || email !== String(po.guestDetails?.email || "").toLowerCase()) {
+      const email = String(req.query.email || "")
+        .trim()
+        .toLowerCase();
+      if (
+        !email ||
+        email !== String(po.guestDetails?.email || "").toLowerCase()
+      ) {
         return res.status(403).json({
           error: true,
           success: false,
@@ -1462,8 +1548,12 @@ export const convertPurchaseOrderToOrder = async (req, res) => {
       shipping: round2(computedPoTotals.shipping),
       gst: {
         rate: Number(computedPoTotals.gst?.rate || 5),
-        state: String(computedPoTotals.gst?.state || po.guestDetails?.state || ""),
-        taxableAmount: round2(computedPoTotals.gst?.taxableAmount ?? computedPoTotals.subtotal),
+        state: String(
+          computedPoTotals.gst?.state || po.guestDetails?.state || "",
+        ),
+        taxableAmount: round2(
+          computedPoTotals.gst?.taxableAmount ?? computedPoTotals.subtotal,
+        ),
         cgst: round2(computedPoTotals.gst?.cgst ?? 0),
         sgst: round2(computedPoTotals.gst?.sgst ?? 0),
         igst: round2(computedPoTotals.gst?.igst ?? computedPoTotals.tax),
@@ -1488,6 +1578,7 @@ export const convertPurchaseOrderToOrder = async (req, res) => {
     try {
       await reserveInventory(order, "PO_CONVERT");
       await order.save();
+      await syncActiveStockReservations(order, { source: "PO_CONVERT" });
     } catch (inventoryError) {
       if (order.inventoryStatus === "reserved") {
         try {

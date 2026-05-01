@@ -393,6 +393,35 @@ const orderSchema = new mongoose.Schema(
       index: true,
     },
 
+    // Canonical UPI bank reference (RRN/UTR) when available.
+    upiRef: {
+      type: String,
+      default: null,
+      index: true,
+    },
+
+    // Backward-compatible aliases used by legacy consumers.
+    upiReferenceNumber: {
+      type: String,
+      default: null,
+      index: true,
+    },
+
+    upiReferenceNo: {
+      type: String,
+      default: null,
+    },
+
+    rrn: {
+      type: String,
+      default: null,
+    },
+
+    utr: {
+      type: String,
+      default: null,
+    },
+
     // Status Tracking
     payment_status: {
       type: String,
@@ -408,7 +437,7 @@ const orderSchema = new mongoose.Schema(
 
     paymentReminderEmailFailureKind: {
       type: String,
-      enum: ["", "failed", "cancelled"],
+      enum: ["", "failed", "cancelled", "expired"],
       default: "",
     },
 
@@ -962,6 +991,12 @@ const orderSchema = new mongoose.Schema(
 // Index for common queries
 orderSchema.index({ user: 1, createdAt: -1 });
 orderSchema.index({ payment_status: 1, order_status: 1 });
+orderSchema.index({
+  inventoryStatus: 1,
+  reservationExpiresAt: 1,
+  payment_status: 1,
+  order_status: 1,
+});
 orderSchema.index({ paymentId: 1 });
 orderSchema.index({ orderNumber: 1 }, { sparse: true });
 orderSchema.index({ displayOrderId: 1 }, { sparse: true });

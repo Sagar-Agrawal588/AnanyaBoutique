@@ -5,7 +5,7 @@
 
 import { useCallback, useState } from "react";
 import cookies from "js-cookie";
-import { API_BASE_URL } from "@/utils/api";
+import { API_BASE_URL, invalidatePublicGetCache } from "@/utils/api";
 
 const API_URL = API_BASE_URL;
 
@@ -86,6 +86,7 @@ export const usePayment = () => {
       }
 
       const data = await response.json();
+      invalidatePublicGetCache();
       return data.data;
     },
     [],
@@ -202,6 +203,7 @@ export const usePayment = () => {
         }
 
         const data = await response.json();
+        invalidatePublicGetCache();
         setPaymentStatus("saved");
         return {
           success: true,

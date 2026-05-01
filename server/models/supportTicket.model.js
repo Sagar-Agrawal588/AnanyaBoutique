@@ -70,6 +70,10 @@ const supportTicketSchema = new mongoose.Schema(
       type: [String],
       default: [],
     },
+    attachments: {
+      type: [String],
+      default: [],
+    },
     status: {
       type: String,
       enum: SUPPORT_STATUS,
