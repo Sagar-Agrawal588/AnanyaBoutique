@@ -7,6 +7,9 @@
 
 const BASE_URL =
   process.env.NEXT_PUBLIC_SITE_URL || "https://healthyonegram.com";
+const SITEMAP_REVALIDATE_SECONDS = 3600;
+
+export const revalidate = 3600;
 
 export default async function sitemap() {
   // Static pages
@@ -65,9 +68,8 @@ export default async function sitemap() {
   try {
     const apiBase = process.env.NEXT_PUBLIC_API_URL || BASE_URL;
     const resp = await fetch(`${apiBase}/api/settings/public`, {
-      // Ensure server-side fetch uses same origin where applicable
       headers: { "content-type": "application/json" },
-      cache: "no-store",
+      next: { revalidate: SITEMAP_REVALIDATE_SECONDS },
     });
 
     if (resp.ok) {

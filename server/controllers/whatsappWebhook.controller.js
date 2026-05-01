@@ -3,24 +3,34 @@ import {
   ingestWhatsappWebhookPayload,
   verifyWhatsappWebhookSubscription,
 } from "../services/whatsapp/whatsappWebhook.service.js";
+import { getWhatsappRuntimeConfig } from "../services/whatsapp/whatsappConfig.service.js";
 
 export const verifyWhatsappMetaWebhook = async (req, res) => {
-  const verification = verifyWhatsappWebhookSubscription({
-    mode: req.query?.["hub.mode"] || "",
-    verifyToken: req.query?.["hub.verify_token"] || "",
-    challenge: req.query?.["hub.challenge"] || "",
-    expectedVerifyToken: process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN || "",
-  });
+  try {
+    const config = await getWhatsappRuntimeConfig();
+    const verification = verifyWhatsappWebhookSubscription({
+      mode: req.query?.["hub.mode"] || "",
+      verifyToken: req.query?.["hub.verify_token"] || "",
+      challenge: req.query?.["hub.challenge"] || "",
+      expectedVerifyToken: config.webhookVerifyToken || "",
+    });
 
-  if (!verification.ok) {
-    return res.status(verification.statusCode).json({
+    if (!verification.ok) {
+      return res.status(verification.statusCode).json({
+        error: true,
+        success: false,
+        message: verification.message,
+      });
+    }
+
+    return res.status(200).send(verification.challenge);
+  } catch (error) {
+    return res.status(500).json({
       error: true,
       success: false,
-      message: verification.message,
+      message: "Failed to verify WhatsApp webhook subscription.",
     });
   }
-
-  return res.status(200).send(verification.challenge);
 };
 
 export const handleWhatsappMetaWebhook = async (req, res) => {

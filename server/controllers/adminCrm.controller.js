@@ -11,6 +11,14 @@ import {
   sendWhatsappCampaign,
   sendWhatsappMessageToContact,
 } from "../services/whatsapp/whatsappAdmin.service.js";
+import {
+  getWhatsappMessagingConfigSummary,
+  getWhatsappMessagingHealthSnapshot,
+} from "../services/whatsapp/whatsappMessaging.service.js";
+import {
+  getWhatsappRuntimeConfigSnapshot,
+  saveWhatsappRuntimeConfig,
+} from "../services/whatsapp/whatsappConfig.service.js";
 
 const buildErrorResponse = (res, error) => {
   const statusCode =
@@ -99,6 +107,54 @@ export const getAdminCrmWhatsappTemplates = async (_req, res) => {
       error: false,
       success: true,
       data,
+    });
+  } catch (error) {
+    return buildErrorResponse(res, error);
+  }
+};
+
+export const getAdminCrmWhatsappConfig = async (_req, res) => {
+  try {
+    const [config, summary, health] = await Promise.all([
+      getWhatsappRuntimeConfigSnapshot(),
+      getWhatsappMessagingConfigSummary(),
+      getWhatsappMessagingHealthSnapshot(),
+    ]);
+
+    return res.status(200).json({
+      error: false,
+      success: true,
+      data: {
+        config,
+        summary,
+        health,
+      },
+    });
+  } catch (error) {
+    return buildErrorResponse(res, error);
+  }
+};
+
+export const putAdminCrmWhatsappConfig = async (req, res) => {
+  try {
+    const config = await saveWhatsappRuntimeConfig(
+      req.body,
+      req.user?.id || req.user?._id || req.user || null,
+    );
+    const [summary, health] = await Promise.all([
+      getWhatsappMessagingConfigSummary(),
+      getWhatsappMessagingHealthSnapshot(),
+    ]);
+
+    return res.status(200).json({
+      error: false,
+      success: true,
+      message: "WhatsApp runtime configuration updated successfully.",
+      data: {
+        config,
+        summary,
+        health,
+      },
     });
   } catch (error) {
     return buildErrorResponse(res, error);

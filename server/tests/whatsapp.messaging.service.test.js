@@ -11,6 +11,7 @@ import {
 } from "../services/whatsapp/whatsappAdmin.service.js";
 import {
   getWhatsappMessagingHealth,
+  getWhatsappMessagingHealthSnapshot,
   sendWhatsappMessage,
 } from "../services/whatsapp/whatsappMessaging.service.js";
 
@@ -53,7 +54,7 @@ test.afterEach(async () => {
   await Promise.all([CrmContact.deleteMany({}), CrmInteraction.deleteMany({})]);
 });
 
-test("getWhatsappAudiencePreview only returns consented contacts with phone", async () => {
+test("getWhatsappAudiencePreview includes default-approved customers and dedupes phone variants", async () => {
   const lead = await recordCrmTouchpoint({
     channel: "whatsapp",
     eventType: "chat_message",
@@ -82,7 +83,36 @@ test("getWhatsappAudiencePreview only returns consented contacts with phone", as
   );
 
   await CrmContact.create({
-    name: "No Consent",
+    name: "Implicit Customer",
+    phone: "919876540004",
+    lifecycleStage: "customer",
+    status: "converted",
+    consent: {
+      whatsapp: null,
+    },
+  });
+
+  await CrmContact.create({
+    name: "Duplicate Customer Older",
+    phone: "919876540005",
+    lifecycleStage: "customer",
+    status: "converted",
+    consent: {
+      whatsapp: null,
+    },
+  });
+  await CrmContact.create({
+    name: "Duplicate Customer Latest",
+    phone: "+919876540005",
+    lifecycleStage: "customer",
+    status: "converted",
+    consent: {
+      whatsapp: true,
+    },
+  });
+
+  await CrmContact.create({
+    name: "Blocked Contact",
     phone: "919876540003",
     lifecycleStage: "customer",
     status: "open",
@@ -91,16 +121,31 @@ test("getWhatsappAudiencePreview only returns consented contacts with phone", as
     },
   });
 
+  const previewAll = await getWhatsappAudiencePreview({
+    segment: "all",
+    inactiveDays: 45,
+  });
   const preview = await getWhatsappAudiencePreview({
     segment: "customers",
     inactiveDays: 45,
   });
 
+  assert.equal(previewAll.count, 4);
   assert.equal(preview.segment, "customers");
-  assert.equal(preview.count, 1);
-  assert.equal(preview.sample.length, 1);
-  assert.equal(preview.sample[0].name, "Customer Contact");
-  assert.equal(preview.sample[0].consent.whatsapp, true);
+  assert.equal(preview.count, 3);
+  assert.equal(preview.sample.length, 3);
+  assert.equal(
+    preview.sample.some((entry) => entry.name === "Implicit Customer"),
+    true,
+  );
+  assert.equal(
+    preview.sample.some((entry) => entry.name === "Duplicate Customer Latest"),
+    true,
+  );
+  assert.equal(
+    preview.sample.some((entry) => entry.name === "Blocked Contact"),
+    false,
+  );
 });
 
 test("getWhatsappMessagingHealth reports not_configured when required env keys are missing", async () => {
@@ -210,6 +255,23 @@ test("getWhatsappMessagingHealth reports sender_warning when sender setup can bl
   assert.equal(health.codeVerificationStatus, "expired");
   assert.equal(health.nameStatus, "declined");
   assert.match(health.message, /block reliable delivery/i);
+});
+
+test("getWhatsappMessagingHealthSnapshot falls back quickly when live verification stalls", async () => {
+  process.env.WHATSAPP_ACCESS_TOKEN = "test-token";
+  process.env.WHATSAPP_PHONE_NUMBER_ID = "123456789";
+  process.env.WHATSAPP_GRAPH_API_VERSION = "v22.0";
+
+  const startedAt = Date.now();
+  const health = await getWhatsappMessagingHealthSnapshot({
+    fetchImpl: async () => new Promise(() => {}),
+    timeoutMs: 25,
+  });
+
+  assert.equal(health.ok, false);
+  assert.equal(health.state, "health_check_timeout");
+  assert.equal(health.timedOut, true);
+  assert.ok(Date.now() - startedAt < 500);
 });
 
 test("sendWhatsappMessage sends text message for active conversation and stores outbound CRM event", async () => {
@@ -535,7 +597,7 @@ test("sendWhatsappMessage sends template with image header media parameter", asy
   );
 });
 
-test("sendWhatsappCampaign sends approved template messages to a consented audience", async () => {
+test("sendWhatsappCampaign sends approved template messages to the deduped campaign-ready audience", async () => {
   process.env.WHATSAPP_ACCESS_TOKEN = "test-token";
   process.env.WHATSAPP_PHONE_NUMBER_ID = "123456789";
   process.env.WHATSAPP_GRAPH_API_VERSION = "v22.0";
@@ -546,12 +608,19 @@ test("sendWhatsappCampaign sends approved template messages to a consented audie
       phone: "919876540050",
       lifecycleStage: "customer",
       status: "converted",
-      consent: { whatsapp: true },
+      consent: { whatsapp: null },
     }),
     CrmContact.create({
       name: "Campaign Customer Two",
       phone: "919876540051",
       lifecycleStage: "repeat_customer",
+      status: "converted",
+      consent: { whatsapp: true },
+    }),
+    CrmContact.create({
+      name: "Campaign Customer One Duplicate",
+      phone: "+919876540050",
+      lifecycleStage: "customer",
       status: "converted",
       consent: { whatsapp: true },
     }),

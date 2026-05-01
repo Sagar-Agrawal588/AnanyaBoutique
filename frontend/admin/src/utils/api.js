@@ -23,6 +23,21 @@ const sanitizeBaseUrl = (value) =>
 
 const isHttpUrl = (value) => /^https?:\/\//i.test(String(value || ""));
 
+const resolveConfiguredEnvBaseUrl = () => {
+  const localDevBaseUrl = sanitizeBaseUrl(
+    process.env.NEXT_PUBLIC_LOCAL_API_URL,
+  );
+  const envCandidates = [
+    localDevBaseUrl,
+    process.env.NEXT_PUBLIC_APP_API_URL,
+    process.env.NEXT_PUBLIC_API_URL,
+  ]
+    .map(sanitizeBaseUrl)
+    .filter(Boolean);
+
+  return envCandidates.find(isHttpUrl) || "";
+};
+
 const isNetworkLevelError = (error) => {
   if (error?.response) return false;
   const message = String(error?.message || "").toLowerCase();
@@ -35,30 +50,65 @@ const isNetworkLevelError = (error) => {
   );
 };
 
-const resolveAlternateLocalhostBaseUrls = (value) => {
-  try {
-    const parsed = new URL(String(value || ""));
-    const host = String(parsed.hostname || "").toLowerCase();
-    if (host !== "localhost" && host !== "127.0.0.1") return [];
-    const current = parsed.toString().replace(/\/+$/, "");
-    return LOCAL_API_FALLBACKS.filter((candidate) => candidate !== current);
-  } catch {
-    return [];
+const isRouteNotFoundError = (error) => {
+  const status = Number(error?.response?.status || 0);
+  if (status !== 404) return false;
+
+  const message = String(
+    error?.response?.data?.message || error?.message || "",
+  ).toLowerCase();
+
+  return message.includes("route ") && message.includes(" not found");
+};
+
+const shouldRetryOnAlternateBase = (error) =>
+  isNetworkLevelError(error) || isRouteNotFoundError(error);
+
+const hasApiSuffix = (baseUrl) => /\/api$/i.test(String(baseUrl || ""));
+
+const getCurrentBrowserOriginBaseUrl = () => {
+  if (typeof window === "undefined") return "";
+  return sanitizeBaseUrl(window.location.origin);
+};
+
+const getAlternateApiBaseUrls = () => {
+  const candidates = [];
+  const pushCandidate = (value) => {
+    const normalized = sanitizeBaseUrl(value);
+    if (!isHttpUrl(normalized)) return;
+    if (candidates.includes(normalized)) return;
+    if (normalized === sanitizeBaseUrl(API_BASE_URL)) return;
+    candidates.push(normalized);
+  };
+
+  const envBaseUrl = resolveConfiguredEnvBaseUrl();
+  const browserOriginBaseUrl = getCurrentBrowserOriginBaseUrl();
+
+  if (typeof window !== "undefined") {
+    const hostname = String(window.location.hostname || "").toLowerCase();
+    const isLocalhost = hostname === "localhost" || hostname === "127.0.0.1";
+
+    if (isLocalhost) {
+      pushCandidate(envBaseUrl);
+      LOCAL_API_FALLBACKS.forEach(pushCandidate);
+      return candidates;
+    }
+
+    // On live deployments we may have either:
+    // 1. a same-domain `/api` proxy, or
+    // 2. a dedicated backend host from NEXT_PUBLIC_API_URL.
+    // Try whichever wasn't selected as the primary base.
+    pushCandidate(envBaseUrl);
+    pushCandidate(browserOriginBaseUrl);
+    return candidates;
   }
+
+  pushCandidate(envBaseUrl);
+  return candidates;
 };
 
 const resolveApiBaseUrl = () => {
-  const localDevBaseUrl = sanitizeBaseUrl(
-    process.env.NEXT_PUBLIC_LOCAL_API_URL,
-  );
-  const envCandidates = [
-    localDevBaseUrl,
-    process.env.NEXT_PUBLIC_APP_API_URL,
-    process.env.NEXT_PUBLIC_API_URL,
-  ]
-    .map(sanitizeBaseUrl)
-    .filter(Boolean);
-  const envBaseUrl = envCandidates.find(isHttpUrl) || "";
+  const envBaseUrl = resolveConfiguredEnvBaseUrl();
 
   if (typeof window !== "undefined") {
     const hostname = String(window.location.hostname || "").toLowerCase();
@@ -74,12 +124,16 @@ const resolveApiBaseUrl = () => {
       return LOCAL_API_FALLBACK;
     }
 
-    if (HEALTHY_ONE_GRAM_HOSTS.has(hostname)) {
-      return origin;
-    }
-
+    // In deployed admin, an explicit backend URL must win. Falling back to the
+    // current origin on healthyonegram.com can hit the Next.js app itself,
+    // which produces `/api/... route not found` errors instead of reaching the
+    // Express backend.
     if (isHttpUrl(envBaseUrl)) {
       return envBaseUrl;
+    }
+
+    if (HEALTHY_ONE_GRAM_HOSTS.has(hostname)) {
+      return origin;
     }
 
     return origin || LOCAL_API_FALLBACK;
@@ -106,11 +160,9 @@ export const axiosClient = axios.create({
   },
 });
 
-const BASE_HAS_API_SUFFIX = /\/api$/i.test(String(API_BASE_URL || ""));
-
-const normalizePath = (url) => {
+const normalizePath = (url, baseUrl = API_BASE_URL) => {
   const normalized = url?.startsWith("/") ? url : `/${url}`;
-  if (!BASE_HAS_API_SUFFIX) return normalized;
+  if (!hasApiSuffix(baseUrl)) return normalized;
   if (/^\/api(\/|$)/i.test(normalized)) {
     return normalized.replace(/^\/api/i, "");
   }
@@ -174,6 +226,43 @@ const buildHeaders = (token, extraHeaders = {}) => {
   };
 };
 
+const executeRequestAcrossBaseUrls = async ({
+  method,
+  url,
+  data,
+  token = null,
+  headers = {},
+  responseType,
+  includeStoredToken = true,
+}) => {
+  const candidateBaseUrls = [
+    sanitizeBaseUrl(API_BASE_URL),
+    ...getAlternateApiBaseUrls(),
+  ].filter(Boolean);
+
+  let lastError = null;
+
+  for (const baseURL of candidateBaseUrls) {
+    try {
+      return await axiosClient.request({
+        method,
+        url: normalizePath(url, baseURL),
+        data,
+        headers: includeStoredToken ? buildHeaders(token, headers) : headers,
+        ...(responseType ? { responseType } : {}),
+        ...(baseURL !== sanitizeBaseUrl(API_BASE_URL) ? { baseURL } : {}),
+      });
+    } catch (error) {
+      lastError = error;
+      if (!shouldRetryOnAlternateBase(error)) {
+        throw error;
+      }
+    }
+  }
+
+  throw lastError || new Error("Request failed");
+};
+
 const toErrorPayload = (error, fallbackMessage) => {
   const details = error?.response?.data?.details || null;
   const message =
@@ -194,66 +283,42 @@ const requestWithRetry = async ({
   headers = {},
   fallbackMessage = "Request failed",
 }) => {
-  const requestConfig = {
-    method,
-    url: normalizePath(url),
-    data,
-    headers: buildHeaders(token, headers),
-  };
-
   const requestWithoutAuthHeader = async () => {
     const cookieOnlyHeaders = { ...headers };
     delete cookieOnlyHeaders.Authorization;
-
-    const cookieRetryConfig = {
-      ...requestConfig,
+    const response = await executeRequestAcrossBaseUrls({
+      method,
+      url,
+      data,
       headers: cookieOnlyHeaders,
-    };
-
-    const response = await axiosClient.request(cookieRetryConfig);
+      includeStoredToken: false,
+    });
     return response.data;
-  };
-
-  const retryOnAlternateLocalhost = async () => {
-    const alternateBaseUrls = resolveAlternateLocalhostBaseUrls(API_BASE_URL);
-    if (!alternateBaseUrls.length) return null;
-    for (const baseURL of alternateBaseUrls) {
-      try {
-        const response = await axiosClient.request({
-          ...requestConfig,
-          baseURL,
-        });
-        return response.data;
-      } catch {
-        // Try the next local port candidate.
-      }
-    }
-    return null;
   };
 
   try {
-    const response = await axiosClient.request(requestConfig);
+    const response = await executeRequestAcrossBaseUrls({
+      method,
+      url,
+      data,
+      token,
+      headers,
+    });
     return response.data;
   } catch (error) {
-    if (isNetworkLevelError(error)) {
-      const fallbackResponse = await retryOnAlternateLocalhost();
-      if (fallbackResponse) return fallbackResponse;
-    }
-
-    if (error?.response?.status === 401 && !requestConfig._retry) {
-      requestConfig._retry = true;
+    if (error?.response?.status === 401) {
       const newToken = await refreshAdminToken();
       if (newToken) {
-        requestConfig.headers = buildHeaders(newToken, headers);
         try {
-          const retryResponse = await axiosClient.request(requestConfig);
+          const retryResponse = await executeRequestAcrossBaseUrls({
+            method,
+            url,
+            data,
+            token: newToken,
+            headers,
+          });
           return retryResponse.data;
         } catch (retryError) {
-          if (isNetworkLevelError(retryError)) {
-            const fallbackResponse = await retryOnAlternateLocalhost();
-            if (fallbackResponse) return fallbackResponse;
-          }
-
           if (retryError?.response?.status !== 401) {
             return toErrorPayload(retryError, fallbackMessage);
           }
@@ -290,37 +355,13 @@ export const getData = async (url, token = null) =>
   });
 
 export const getBlobData = async (url, token = null) => {
-  const requestConfig = {
-    method: "get",
-    url: normalizePath(url),
-    headers: buildHeaders(token),
-    responseType: "blob",
-  };
-
-  const retryOnAlternateLocalhost = async () => {
-    const alternateBaseUrls = resolveAlternateLocalhostBaseUrls(API_BASE_URL);
-    if (!alternateBaseUrls.length) return null;
-    for (const baseURL of alternateBaseUrls) {
-      try {
-        const response = await axiosClient.request({
-          ...requestConfig,
-          baseURL,
-        });
-        return {
-          success: true,
-          error: false,
-          blob: response.data,
-          headers: response.headers || {},
-        };
-      } catch {
-        // Try the next local port candidate.
-      }
-    }
-    return null;
-  };
-
   try {
-    const response = await axiosClient.request(requestConfig);
+    const response = await executeRequestAcrossBaseUrls({
+      method: "get",
+      url,
+      token,
+      responseType: "blob",
+    });
     return {
       success: true,
       error: false,
@@ -328,18 +369,16 @@ export const getBlobData = async (url, token = null) => {
       headers: response.headers || {},
     };
   } catch (error) {
-    if (isNetworkLevelError(error)) {
-      const fallbackResponse = await retryOnAlternateLocalhost();
-      if (fallbackResponse) return fallbackResponse;
-    }
-
-    if (error?.response?.status === 401 && !requestConfig._retry) {
-      requestConfig._retry = true;
+    if (error?.response?.status === 401) {
       const newToken = await refreshAdminToken();
       if (newToken) {
-        requestConfig.headers = buildHeaders(newToken);
         try {
-          const retryResponse = await axiosClient.request(requestConfig);
+          const retryResponse = await executeRequestAcrossBaseUrls({
+            method: "get",
+            url,
+            token: newToken,
+            responseType: "blob",
+          });
           return {
             success: true,
             error: false,
@@ -347,10 +386,6 @@ export const getBlobData = async (url, token = null) => {
             headers: retryResponse.headers || {},
           };
         } catch (retryError) {
-          if (isNetworkLevelError(retryError)) {
-            const fallbackResponse = await retryOnAlternateLocalhost();
-            if (fallbackResponse) return fallbackResponse;
-          }
           return toErrorPayload(retryError, "Failed to download file");
         }
       }

@@ -1,5 +1,6 @@
 import express from "express";
 import auth from "../middlewares/auth.js";
+import optionalAuth from "../middlewares/optionalAuth.js";
 import {
   getMyReviews,
   getProductReviews,
@@ -9,7 +10,7 @@ import {
 const router = express.Router();
 
 // Customer actions
-router.post("/", auth, submitReview);
+router.post("/", optionalAuth, submitReview);
 router.get("/my", auth, getMyReviews);
 
 // Public product reviews

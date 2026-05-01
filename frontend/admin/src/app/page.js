@@ -18,7 +18,7 @@ import {
   FiUsers,
   FiXCircle,
 } from "react-icons/fi";
-import { MdOutlineSlideshow } from "react-icons/md";
+import { MdOutlineHub, MdOutlineSlideshow } from "react-icons/md";
 import { RiVipCrownLine } from "react-icons/ri";
 
 const AdminDashboardComponent = dynamic(
@@ -255,6 +255,13 @@ export default function AdminDashboard() {
       href: "/notifications",
       color: "bg-indigo-500",
       description: "Send offer notifications",
+    },
+    {
+      name: "WhatsApp CRM",
+      icon: MdOutlineHub,
+      href: "/crm",
+      color: "bg-teal-500",
+      description: "Open CRM contacts and WhatsApp workspace",
     },
     {
       name: "Newsletter",

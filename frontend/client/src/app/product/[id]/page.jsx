@@ -64,6 +64,19 @@ const DEFAULT_TABS = [
   { id: "shipping", label: "Shipping & Trust" },
 ];
 const FALLBACK_POLL_INTERVAL_MS = 30000;
+const DEFAULT_REVIEW_SETTINGS = {
+  allowPublicSubmissions: true,
+  autoPublishPublicReviews: false,
+  showPublicReviewForm: true,
+  showOrderReviewActions: true,
+};
+
+const normalizePublicReviewSettings = (value = {}) => ({
+  allowPublicSubmissions: value?.allowPublicSubmissions !== false,
+  autoPublishPublicReviews: value?.autoPublishPublicReviews === true,
+  showPublicReviewForm: value?.showPublicReviewForm !== false,
+  showOrderReviewActions: value?.showOrderReviewActions !== false,
+});
 
 const isExclusiveProduct = (value) => {
   const product = value?.product || value;
@@ -393,6 +406,14 @@ const ProductDetailPage = () => {
   const [product, setProduct] = useState(null);
   const [customerReviews, setCustomerReviews] = useState([]);
   const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [reviewSettings, setReviewSettings] = useState(DEFAULT_REVIEW_SETTINGS);
+  const [publicReviewForm, setPublicReviewForm] = useState({
+    userName: "",
+    city: "",
+    rating: 5,
+    comment: "",
+  });
+  const [submittingPublicReview, setSubmittingPublicReview] = useState(false);
   const [relatedProducts, setRelatedProducts] = useState([]);
   const [frequentlyBought, setFrequentlyBought] = useState([]);
   const [fbtLoading, setFbtLoading] = useState(false);
@@ -579,6 +600,11 @@ const ProductDetailPage = () => {
   const showHeroDeliveryPreview =
     pageConfig?.hero?.showDeliveryPreview !== false;
   const showReviewsSection = pageConfig?.reviewsSection?.show !== false;
+  const showPublicReviewForm =
+    !isDemoPreview &&
+    showReviewsSection &&
+    reviewSettings.allowPublicSubmissions !== false &&
+    reviewSettings.showPublicReviewForm !== false;
   const showFrequentlyBoughtSection =
     !isDemoPreview && pageConfig?.frequentlyBoughtSection?.show !== false;
   const showRecommendedCombosSection =
@@ -591,6 +617,21 @@ const ProductDetailPage = () => {
   const imageStageClassName = showHeroStoryCard
     ? "product-image-stage relative flex min-h-[480px] items-center justify-center overflow-hidden rounded-[30px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.92)_0%,rgba(244,236,229,0.88)_100%)] p-6 lg:h-full lg:min-h-[540px]"
     : "product-image-stage relative mx-auto flex min-h-[420px] max-w-[840px] items-center justify-center overflow-hidden rounded-[30px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.92)_0%,rgba(244,236,229,0.88)_100%)] p-6 sm:p-10";
+
+  const fetchReviewSettings = useCallback(async () => {
+    try {
+      const response = await fetchDataFromApi("/api/settings/public/reviewSettings");
+      if (response?.success) {
+        const nextValue = response?.data?.value || response?.data || {};
+        setReviewSettings(normalizePublicReviewSettings(nextValue));
+        return;
+      }
+    } catch (error) {
+      console.error("Error fetching review settings:", error);
+    }
+
+    setReviewSettings(DEFAULT_REVIEW_SETTINGS);
+  }, []);
 
   const fetchProductReviews = async (productValueId) => {
     if (!productValueId) {
@@ -611,6 +652,93 @@ const ProductDetailPage = () => {
       setCustomerReviews([]);
     } finally {
       setReviewsLoading(false);
+    }
+  };
+
+  const handleSubmitPublicReview = async () => {
+    const activeProductId = getResolvedProductId(product);
+    const userName = String(publicReviewForm.userName || "").trim();
+    const comment = String(publicReviewForm.comment || "").trim();
+    const city = String(publicReviewForm.city || "").trim();
+    const rating = Number(publicReviewForm.rating || 0);
+
+    if (!activeProductId) {
+      setSnackbar({
+        open: true,
+        message: "Product context missing. Please refresh and try again.",
+        severity: "error",
+      });
+      return;
+    }
+
+    if (!userName) {
+      setSnackbar({
+        open: true,
+        message: "Please enter your name before submitting a review.",
+        severity: "error",
+      });
+      return;
+    }
+
+    if (!comment) {
+      setSnackbar({
+        open: true,
+        message: "Please write a short review comment.",
+        severity: "error",
+      });
+      return;
+    }
+
+    if (!rating || rating < 1 || rating > 5) {
+      setSnackbar({
+        open: true,
+        message: "Please select a rating between 1 and 5.",
+        severity: "error",
+      });
+      return;
+    }
+
+    setSubmittingPublicReview(true);
+    try {
+      const response = await postData("/api/reviews", {
+        productId: activeProductId,
+        userName,
+        city,
+        rating,
+        comment,
+      });
+
+      if (!response?.success) {
+        throw new Error(response?.message || "Failed to submit review.");
+      }
+
+      const nextReview = response?.data || null;
+      if (nextReview?.visibility === "visible") {
+        setCustomerReviews((current) => [nextReview, ...current]);
+      }
+
+      setPublicReviewForm({
+        userName: "",
+        city: "",
+        rating: 5,
+        comment: "",
+      });
+      setSnackbar({
+        open: true,
+        message:
+          nextReview?.visibility === "visible"
+            ? "Review submitted successfully."
+            : "Review submitted and sent for admin approval.",
+        severity: "success",
+      });
+    } catch (error) {
+      setSnackbar({
+        open: true,
+        message: error?.message || "Failed to submit review.",
+        severity: "error",
+      });
+    } finally {
+      setSubmittingPublicReview(false);
     }
   };
 
@@ -830,6 +958,15 @@ const ProductDetailPage = () => {
     void fetchProduct();
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, [fetchProduct, routeId, isDemoPreview]);
+
+  useEffect(() => {
+    if (isDemoPreview) {
+      setReviewSettings(DEFAULT_REVIEW_SETTINGS);
+      return;
+    }
+
+    void fetchReviewSettings();
+  }, [fetchReviewSettings, isDemoPreview, routeId]);
 
   useEffect(() => {
     if (!product?.hasVariants || !Array.isArray(product?.variants)) return;
@@ -2279,6 +2416,119 @@ const ProductDetailPage = () => {
                 </div>
               )}
             </div>
+
+            {showPublicReviewForm ? (
+              <div className="mt-8 rounded-[28px] border border-[#eaded5] bg-[#f8f2eb] p-6">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7b6355]">
+                      Share Feedback
+                    </p>
+                    <h3 className="mt-2 text-2xl font-semibold text-[#24150f]">
+                      Add your own review
+                    </h3>
+                    <p className="mt-2 max-w-2xl text-sm leading-6 text-[#5c473d]">
+                      Anyone can submit product feedback here.{" "}
+                      {reviewSettings.autoPublishPublicReviews
+                        ? "New reviews publish immediately."
+                        : "New reviews stay hidden until the admin team approves them."}
+                    </p>
+                  </div>
+                  <span className="rounded-full border border-[#dbc9bd] bg-white px-3 py-1 text-xs font-semibold text-[#6d584a]">
+                    {reviewSettings.autoPublishPublicReviews
+                      ? "Instant publish"
+                      : "Admin approval"}
+                  </span>
+                </div>
+
+                <div className="mt-5 grid gap-4 md:grid-cols-2">
+                  <label className="text-sm text-[#4b392f]">
+                    <span className="mb-2 block font-semibold">Your Name</span>
+                    <input
+                      type="text"
+                      value={publicReviewForm.userName}
+                      onChange={(event) =>
+                        setPublicReviewForm((current) => ({
+                          ...current,
+                          userName: event.target.value,
+                        }))
+                      }
+                      placeholder="Enter your name"
+                      className="w-full rounded-2xl border border-[#d8c6bb] bg-white px-4 py-3 outline-none transition focus:border-[#b18062]"
+                    />
+                  </label>
+
+                  <label className="text-sm text-[#4b392f]">
+                    <span className="mb-2 block font-semibold">City</span>
+                    <input
+                      type="text"
+                      value={publicReviewForm.city}
+                      onChange={(event) =>
+                        setPublicReviewForm((current) => ({
+                          ...current,
+                          city: event.target.value,
+                        }))
+                      }
+                      placeholder="Jaipur, Delhi, Mumbai"
+                      className="w-full rounded-2xl border border-[#d8c6bb] bg-white px-4 py-3 outline-none transition focus:border-[#b18062]"
+                    />
+                  </label>
+
+                  <div className="md:col-span-2">
+                    <p className="text-sm font-semibold text-[#4b392f]">
+                      Your Rating
+                    </p>
+                    <div className="mt-3 flex flex-wrap items-center gap-3">
+                      <Rating
+                        value={publicReviewForm.rating}
+                        onChange={(_event, value) =>
+                          setPublicReviewForm((current) => ({
+                            ...current,
+                            rating: value || 1,
+                          }))
+                        }
+                      />
+                      <span className="text-sm text-[#6d584a]">
+                        {Number(publicReviewForm.rating || 0).toFixed(1)} / 5
+                      </span>
+                    </div>
+                  </div>
+
+                  <label className="text-sm text-[#4b392f] md:col-span-2">
+                    <span className="mb-2 block font-semibold">
+                      Review Comment
+                    </span>
+                    <textarea
+                      value={publicReviewForm.comment}
+                      onChange={(event) =>
+                        setPublicReviewForm((current) => ({
+                          ...current,
+                          comment: event.target.value,
+                        }))
+                      }
+                      placeholder="Tell other customers what stood out for you"
+                      rows={5}
+                      className="w-full rounded-[24px] border border-[#d8c6bb] bg-white px-4 py-3 outline-none transition focus:border-[#b18062]"
+                    />
+                  </label>
+                </div>
+
+                <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-xs leading-5 text-[#6d584a]">
+                    Public reviews can be hidden or removed later from the admin
+                    review queue.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleSubmitPublicReview}
+                    disabled={submittingPublicReview}
+                    className="rounded-full bg-[#2f1b12] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#1f120d] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {submittingPublicReview ? "Submitting..." : "Submit Review"}
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </div>
         ) : null}
 

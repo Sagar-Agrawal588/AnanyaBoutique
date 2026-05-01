@@ -263,6 +263,20 @@ const ORDER_FILTER_OPTIONS = [
   { id: "failed", label: "Failed Orders" },
 ];
 
+const DEFAULT_REVIEW_SETTINGS = {
+  allowPublicSubmissions: true,
+  autoPublishPublicReviews: false,
+  showPublicReviewForm: true,
+  showOrderReviewActions: true,
+};
+
+const normalizePublicReviewSettings = (value = {}) => ({
+  allowPublicSubmissions: value?.allowPublicSubmissions !== false,
+  autoPublishPublicReviews: value?.autoPublishPublicReviews === true,
+  showPublicReviewForm: value?.showPublicReviewForm !== false,
+  showOrderReviewActions: value?.showOrderReviewActions !== false,
+});
+
 const Orders = () => {
   const router = useRouter();
   const [orders, setOrders] = useState([]);
@@ -280,6 +294,7 @@ const Orders = () => {
     rating: 5,
     comment: "",
   });
+  const [reviewSettings, setReviewSettings] = useState(DEFAULT_REVIEW_SETTINGS);
   const [submittingReview, setSubmittingReview] = useState(false);
   const { metrics: shippingMetrics } = useShippingDisplayCharge();
 
@@ -296,6 +311,35 @@ const Orders = () => {
           setError("Please log in to view your orders");
           setTimeout(() => router.push("/login?redirect=/my-orders"), 2000);
           return;
+        }
+
+        try {
+          const reviewSettingsResponse = await fetchWithApiFallback(
+            "/settings/public/reviewSettings",
+            {
+              method: "GET",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              credentials: "include",
+            },
+          );
+          const reviewSettingsPayload = await reviewSettingsResponse
+            .json()
+            .catch(() => null);
+
+          if (reviewSettingsResponse.ok && reviewSettingsPayload?.success) {
+            const reviewSettingsValue =
+              reviewSettingsPayload?.data?.value ||
+              reviewSettingsPayload?.data ||
+              {};
+            setReviewSettings(normalizePublicReviewSettings(reviewSettingsValue));
+          } else {
+            setReviewSettings(DEFAULT_REVIEW_SETTINGS);
+          }
+        } catch (reviewSettingsError) {
+          console.error("Error fetching review settings:", reviewSettingsError);
+          setReviewSettings(DEFAULT_REVIEW_SETTINGS);
         }
 
         // Fetch orders from API
@@ -617,6 +661,7 @@ const Orders = () => {
   const filteredOrders = orders.filter((order) =>
     matchesOrderFilter(order, activeFilter),
   );
+  const showOrderReviewActions = reviewSettings.showOrderReviewActions !== false;
   const activeFilterLabel =
     ORDER_FILTER_OPTIONS.find((filter) => filter.id === activeFilter)?.label ||
     "orders";
@@ -995,7 +1040,8 @@ const Orders = () => {
                                     minimumFractionDigits: 2,
                                   })}
                                 </p>
-                                {canReviewOrder(order.order_status) &&
+                                {showOrderReviewActions &&
+                                  canReviewOrder(order.order_status) &&
                                   (hasReviewed(order._id, item.productId) ? (
                                     <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5">
                                       Reviewed

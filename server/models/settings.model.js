@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { DEFAULT_REVIEW_SETTINGS } from "../constants/reviewSettings.js";
 
 const DEFAULT_FLAVOUR_BUTTON_SETTINGS = [
   {
@@ -489,6 +490,15 @@ settingsSchema.statics.defaultSettings = [
     },
     description: "SEO page metadata and image alt-text rules",
     category: "general",
+  },
+  {
+    key: "reviewSettings",
+    value: {
+      ...DEFAULT_REVIEW_SETTINGS,
+    },
+    description:
+      "Storefront review submission and review-action visibility controls",
+    category: "display",
   },
 ];
 

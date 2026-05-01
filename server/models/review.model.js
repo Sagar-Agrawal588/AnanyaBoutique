@@ -26,6 +26,12 @@ const reviewSchema = new mongoose.Schema(
       trim: true,
       maxLength: 120,
     },
+    userEmail: {
+      type: String,
+      default: "",
+      trim: true,
+      maxLength: 160,
+    },
     city: {
       type: String,
       default: "",
@@ -44,6 +50,32 @@ const reviewSchema = new mongoose.Schema(
       trim: true,
       maxLength: 2000,
     },
+    source: {
+      type: String,
+      enum: ["order", "public", "admin"],
+      default: "order",
+      index: true,
+    },
+    visibility: {
+      type: String,
+      enum: ["visible", "hidden", "pending"],
+      default: "visible",
+      index: true,
+    },
+    isVerifiedPurchase: {
+      type: Boolean,
+      default: true,
+      index: true,
+    },
+    moderatedAt: {
+      type: Date,
+      default: null,
+    },
+    moderatedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
   },
   {
     timestamps: true,
@@ -51,8 +83,11 @@ const reviewSchema = new mongoose.Schema(
 );
 
 reviewSchema.index({ orderId: 1, productId: 1, userId: 1 }, { unique: true });
+reviewSchema.index({ createdAt: -1 });
 reviewSchema.index({ productId: 1, createdAt: -1 });
 reviewSchema.index({ orderId: 1, createdAt: -1 });
+reviewSchema.index({ productId: 1, visibility: 1, createdAt: -1 });
+reviewSchema.index({ source: 1, visibility: 1, createdAt: -1 });
 
 const ReviewModel = mongoose.model("Review", reviewSchema);
 

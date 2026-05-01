@@ -32,11 +32,22 @@ import { RiCoupon2Line, RiVipCrownLine } from "react-icons/ri";
 import { RxDashboard } from "react-icons/rx";
 import { TbBrandProducthunt, TbShare, TbUsers } from "react-icons/tb";
 
+const stripAdminBasePath = (pathname) => {
+  const normalized = String(pathname || "").trim();
+  if (!normalized) return "/";
+  if (normalized === "/admin") return "/";
+  if (normalized.startsWith("/admin/")) {
+    return normalized.slice("/admin".length) || "/";
+  }
+  return normalized;
+};
+
 const Sidebar = ({ isOpen = false, onClose }) => {
   const { logout, admin, token } = useAdmin();
-  const pathname = usePathname();
+  const pathname = stripAdminBasePath(usePathname());
   const router = useRouter();
   const [openTicketCount, setOpenTicketCount] = useState(0);
+  const canAccessCrm = hasAdminPermission(admin, "manage_crm");
 
   useEffect(() => {
     let active = true;
@@ -139,10 +150,19 @@ const Sidebar = ({ isOpen = false, onClose }) => {
       requiredPermission: "manage_crm",
     },
     {
-      name: "CRM",
+      name: "WhatsApp CRM",
       icon: <MdOutlineHub size={22} />,
       href: "/crm",
       requiredPermission: "manage_crm",
+      children: [
+        { name: "Workspace", href: "/crm" },
+        {
+          name: "WhatsApp Config",
+          href: "/crm/whatsapp-config",
+          requiredPermission: "manage_settings",
+        },
+        { name: "Review Queue", href: "/crm/reviews" },
+      ],
     },
     {
       name: "Coupons",
@@ -323,6 +343,30 @@ const Sidebar = ({ isOpen = false, onClose }) => {
         </p>
         <p className="text-xs text-gray-500 truncate">{admin?.email || ""}</p>
       </div>
+
+      {canAccessCrm ? (
+        <div className="px-3 pt-4">
+          <Link
+            href="/crm"
+            onClick={handleNavClick}
+            className={`flex items-center gap-3 rounded-xl border px-4 py-3 transition-all ${
+              isActive("/crm")
+                ? "border-teal-200 bg-teal-50 text-teal-700"
+                : "border-teal-100 bg-gradient-to-r from-teal-50 to-cyan-50 text-teal-700 hover:border-teal-200"
+            }`}
+          >
+            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-teal-600 text-white">
+              <MdOutlineHub size={20} />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-sm font-semibold">WhatsApp CRM</span>
+              <span className="block text-xs text-teal-700/80">
+                Contacts, chat history, campaigns
+              </span>
+            </span>
+          </Link>
+        </div>
+      ) : null}
 
       {/* Navigation */}
       <div className="flex flex-col gap-1 mt-4 px-3 flex-1 overflow-y-auto">

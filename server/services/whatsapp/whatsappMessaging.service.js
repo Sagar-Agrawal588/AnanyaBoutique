@@ -9,9 +9,14 @@ import {
   sanitizeText,
 } from "../crm/channelResolver.service.js";
 import { captureCrmTouchpointSafely } from "../crm/crmTracking.service.js";
+import { getWhatsappRuntimeConfig } from "./whatsappConfig.service.js";
 
-const DEFAULT_GRAPH_API_VERSION = "v25.0";
 const DEFAULT_TIMEOUT_MS = 15000;
+const DEFAULT_HEALTH_CHECK_TIMEOUT_MS = Math.max(
+  Number.parseInt(process.env.WHATSAPP_HEALTH_CHECK_TIMEOUT_MS || "3500", 10) ||
+    3500,
+  500,
+);
 const WHATSAPP_PROVIDER = "meta_cloud_api";
 const WHATSAPP_SOURCE = "whatsapp_admin_api";
 
@@ -45,29 +50,11 @@ const buildWhatsAppServiceError = (
   return error;
 };
 
-const resolveWhatsappConfig = () => {
-  const accessToken = String(process.env.WHATSAPP_ACCESS_TOKEN || "").trim();
-  const phoneNumberId = String(
-    process.env.WHATSAPP_PHONE_NUMBER_ID || "",
-  ).trim();
-  const businessAccountId = String(
-    process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || "",
-  ).trim();
-  const graphApiVersion =
-    sanitizeText(process.env.WHATSAPP_GRAPH_API_VERSION || "", {
-      maxLength: 16,
-    }) || DEFAULT_GRAPH_API_VERSION;
+const resolveWhatsappConfig = async ({ forceFresh = false } = {}) =>
+  getWhatsappRuntimeConfig({ forceFresh });
 
-  return {
-    accessToken,
-    phoneNumberId,
-    businessAccountId,
-    graphApiVersion,
-  };
-};
-
-const ensureWhatsappMessagingConfig = () => {
-  const config = resolveWhatsappConfig();
+const ensureWhatsappMessagingConfig = async () => {
+  const config = await resolveWhatsappConfig();
   const missing = [];
 
   if (!config.accessToken) missing.push("WHATSAPP_ACCESS_TOKEN");
@@ -406,7 +393,7 @@ const executeWhatsappRequest = async ({
     );
   }
 
-  const config = resolveWhatsappConfig();
+  const config = await resolveWhatsappConfig();
   const missing = [];
   if (!config.accessToken) missing.push("WHATSAPP_ACCESS_TOKEN");
   if (requirePhoneNumberId && !config.phoneNumberId) {
@@ -596,17 +583,20 @@ const recordFailedWhatsappAttempt = async ({
   });
 };
 
-export const getWhatsappMessagingConfigSummary = () => {
-  const config = resolveWhatsappConfig();
+export const getWhatsappMessagingConfigSummary = async () => {
+  const config = await resolveWhatsappConfig();
   const missing = [];
 
   if (!config.accessToken) missing.push("WHATSAPP_ACCESS_TOKEN");
   if (!config.phoneNumberId) missing.push("WHATSAPP_PHONE_NUMBER_ID");
   if (!config.businessAccountId) missing.push("WHATSAPP_BUSINESS_ACCOUNT_ID");
+  if (!config.webhookVerifyToken) missing.push("WHATSAPP_WEBHOOK_VERIFY_TOKEN");
+  if (!config.appSecret) missing.push("WHATSAPP_APP_SECRET");
 
   return {
     messagingReady: Boolean(config.accessToken && config.phoneNumberId),
     templateSyncReady: Boolean(config.accessToken && config.businessAccountId),
+    webhookReady: Boolean(config.webhookVerifyToken && config.appSecret),
     graphApiVersion: config.graphApiVersion,
     missing,
   };
@@ -614,8 +604,9 @@ export const getWhatsappMessagingConfigSummary = () => {
 
 export const getWhatsappMessagingHealth = async ({
   fetchImpl = globalThis.fetch,
+  timeoutMs = DEFAULT_TIMEOUT_MS,
 } = {}) => {
-  const configSummary = getWhatsappMessagingConfigSummary();
+  const configSummary = await getWhatsappMessagingConfigSummary();
   const requiredMessagingKeys = [
     "WHATSAPP_ACCESS_TOKEN",
     "WHATSAPP_PHONE_NUMBER_ID",
@@ -635,7 +626,7 @@ export const getWhatsappMessagingHealth = async ({
     };
   }
 
-  const config = resolveWhatsappConfig();
+  const config = await resolveWhatsappConfig();
 
   try {
     const data = await executeWhatsappRequest({
@@ -643,6 +634,7 @@ export const getWhatsappMessagingHealth = async ({
         `${config.phoneNumberId}` +
         "?fields=id,display_phone_number,verified_name,quality_rating,code_verification_status,name_status,status,platform_type,throughput",
       fetchImpl,
+      timeoutMs,
     });
 
     const phoneNumberId = sanitizeText(data?.id || config.phoneNumberId || "", {
@@ -722,12 +714,62 @@ export const getWhatsappMessagingHealth = async ({
   }
 };
 
+const buildWhatsappHealthFallback = ({
+  state = "health_check_failed",
+  message = "Unable to validate WhatsApp API credentials right now.",
+  timedOut = false,
+} = {}) => ({
+  ok: false,
+  state,
+  message,
+  ...(timedOut ? { timedOut: true } : {}),
+});
+
+export const getWhatsappMessagingHealthSnapshot = async ({
+  fetchImpl = globalThis.fetch,
+  timeoutMs = DEFAULT_HEALTH_CHECK_TIMEOUT_MS,
+} = {}) => {
+  const normalizedTimeoutMs = Math.max(Number(timeoutMs || 0), 0);
+  const healthPromise = getWhatsappMessagingHealth({
+    fetchImpl,
+    ...(normalizedTimeoutMs > 0 ? { timeoutMs: normalizedTimeoutMs } : {}),
+  }).catch(() => buildWhatsappHealthFallback());
+
+  if (!normalizedTimeoutMs) {
+    return healthPromise;
+  }
+
+  let timeoutId = null;
+
+  try {
+    return await Promise.race([
+      healthPromise,
+      new Promise((resolve) => {
+        timeoutId = setTimeout(() => {
+          resolve(
+            buildWhatsappHealthFallback({
+              state: "health_check_timeout",
+              message:
+                "Live WhatsApp verification is taking longer than expected. Try refreshing in a few seconds.",
+              timedOut: true,
+            }),
+          );
+        }, normalizedTimeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
+};
+
 export const getWhatsappMessageStatus = async ({
   messageId = "",
   fetchImpl = globalThis.fetch,
 } = {}) => {
   if (!messageId) throw buildWhatsAppServiceError("messageId is required", 400);
-  const config = ensureWhatsappMessagingConfig();
+  const config = await ensureWhatsappMessagingConfig();
   try {
     // Attempt to fetch the message node directly; Graph may support GET /{messageId}
     const data = await executeWhatsappRequest({
@@ -755,7 +797,7 @@ export const getWhatsappMessageStatus = async ({
 export const listApprovedWhatsappTemplates = async ({
   fetchImpl = globalThis.fetch,
 } = {}) => {
-  const config = resolveWhatsappConfig();
+  const config = await resolveWhatsappConfig();
   if (!config.accessToken || !config.businessAccountId) {
     return {
       configured: false,
@@ -1001,7 +1043,7 @@ export const sendWhatsappMessage = async ({
   }
 
   try {
-    const config = ensureWhatsappMessagingConfig();
+    const config = await ensureWhatsappMessagingConfig();
     const data = await executeWhatsappRequest({
       endpoint: `${config.phoneNumberId}/messages`,
       method: "POST",

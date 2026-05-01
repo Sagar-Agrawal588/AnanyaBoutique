@@ -8,6 +8,7 @@ import {
   API_BASE_URL,
   deleteData,
   getData,
+  patchData,
   postData,
 } from "@/utils/api";
 import { withAdminBasePath } from "@/utils/basePath";
@@ -791,6 +792,38 @@ const OrderRow = ({ order, index, token }) => {
     }
   };
 
+  const handleReviewVisibilityChange = async (reviewId, nextVisibility) => {
+    if (!reviewId) return;
+
+    try {
+      const response = await patchData(
+        `/api/admin/reviews/${reviewId}`,
+        { visibility: nextVisibility },
+        token,
+      );
+      if (response?.success) {
+        setOrderReviews((prev) =>
+          prev.map((review) =>
+            review._id === reviewId
+              ? {
+                  ...review,
+                  visibility: response?.data?.visibility || nextVisibility,
+                }
+              : review,
+          ),
+        );
+        toast.success(
+          nextVisibility === "visible" ? "Review published" : "Review hidden",
+        );
+      } else {
+        toast.error(response?.message || "Failed to update review visibility");
+      }
+    } catch (error) {
+      console.error("Failed to update review visibility:", error);
+      toast.error("Failed to update review visibility");
+    }
+  };
+
   const getNormalizedId = (value) => {
     if (!value) return "";
     if (typeof value === "object") {
@@ -955,13 +988,46 @@ const OrderRow = ({ order, index, token }) => {
                               {review.userName || "Customer"}{" "}
                               {review.city ? `• ${review.city}` : ""}
                             </span>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteReview(review._id)}
-                              className="text-[11px] font-semibold text-red-600 hover:text-red-700"
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                                review.visibility === "visible"
+                                  ? "bg-emerald-100 text-emerald-700"
+                                  : review.visibility === "hidden"
+                                    ? "bg-slate-200 text-slate-700"
+                                    : "bg-amber-100 text-amber-700"
+                              }`}
                             >
-                              Delete Review
-                            </button>
+                              {review.visibility === "visible"
+                                ? "Visible"
+                                : review.visibility === "hidden"
+                                  ? "Hidden"
+                                  : "Pending"}
+                            </span>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleReviewVisibilityChange(
+                                    review._id,
+                                    review.visibility === "visible"
+                                      ? "hidden"
+                                      : "visible",
+                                  )
+                                }
+                                className="text-[11px] font-semibold text-blue-600 hover:text-blue-700"
+                              >
+                                {review.visibility === "visible"
+                                  ? "Hide Review"
+                                  : "Publish Review"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteReview(review._id)}
+                                className="text-[11px] font-semibold text-red-600 hover:text-red-700"
+                              >
+                                Delete Review
+                              </button>
+                            </div>
                           </div>
                           <div className="text-[12px] text-amber-600 font-semibold">
                             {"★".repeat(

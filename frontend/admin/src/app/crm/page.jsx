@@ -60,7 +60,7 @@ const STATUS_OPTIONS = [
 ];
 
 const WHATSAPP_SEGMENT_OPTIONS = [
-  { value: "all", label: "All Consented Contacts" },
+  { value: "all", label: "All Campaign Ready Contacts" },
   { value: "leads", label: "Leads & Prospects" },
   { value: "customers", label: "Customers" },
   { value: "repeat_customers", label: "Repeat Customers" },
@@ -83,6 +83,23 @@ const DEFAULT_CONFIRMATION_DIALOG = {
   warning: "",
   highlights: [],
   payload: null,
+};
+
+const DEFAULT_CONTACT_FILTERS = {
+  q: "",
+  channel: "",
+  lifecycleStage: "",
+  status: "",
+};
+
+const DEFAULT_CAMPAIGN_FORM = {
+  segment: "all",
+  inactiveDays: "45",
+  templateName: "",
+  languageCode: "en",
+  bodyVariables: "",
+  headerVariables: "",
+  campaignName: "WhatsApp promotional campaign",
 };
 
 const prettifyValue = (value = "") =>
@@ -292,6 +309,8 @@ const CrmPage = () => {
     count: 0,
     sample: [],
   });
+  const [audiencePreviewLoading, setAudiencePreviewLoading] = useState(false);
+  const [audiencePreviewSignature, setAudiencePreviewSignature] = useState("");
   const [timelineLoading, setTimelineLoading] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [whatsappLoading, setWhatsappLoading] = useState(true);
@@ -299,14 +318,11 @@ const CrmPage = () => {
   const [sendingPersonalWhatsapp, setSendingPersonalWhatsapp] = useState(false);
   const [sendingCampaignWhatsapp, setSendingCampaignWhatsapp] = useState(false);
   const [uploadingWhatsappMedia, setUploadingWhatsappMedia] = useState(false);
+  const [workspaceRefreshing, setWorkspaceRefreshing] = useState(false);
+  const [lastWorkspaceRefreshAt, setLastWorkspaceRefreshAt] = useState(null);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [filters, setFilters] = useState({
-    q: "",
-    channel: "",
-    lifecycleStage: "",
-    status: "",
-  });
+  const [filters, setFilters] = useState(() => ({ ...DEFAULT_CONTACT_FILTERS }));
   const [draft, setDraft] = useState({
     lifecycleStage: "lead",
     status: "open",
@@ -328,20 +344,16 @@ const CrmPage = () => {
     mediaFilename: "",
     campaignName: "",
   });
-  const [campaignForm, setCampaignForm] = useState({
-    segment: "all",
-    inactiveDays: "45",
-    templateName: "",
-    languageCode: "en",
-    bodyVariables: "",
-    headerVariables: "",
-    campaignName: "WhatsApp promotional campaign",
-  });
+  const [campaignForm, setCampaignForm] = useState(() => ({
+    ...DEFAULT_CAMPAIGN_FORM,
+  }));
   const [confirmationDialog, setConfirmationDialog] = useState(
     DEFAULT_CONFIRMATION_DIALOG,
   );
   const [lastWhatsappSubmission, setLastWhatsappSubmission] = useState(null);
   const selectedContactIdRef = useRef("");
+  const audiencePreviewRequestRef = useRef(0);
+  const initializationRef = useRef(false);
 
   const applySelectedContact = useCallback((contact) => {
     selectedContactIdRef.current = String(contact?.id || "");
@@ -402,14 +414,17 @@ const CrmPage = () => {
   }, [token]);
 
   const loadContacts = useCallback(
-    async ({ overridePage } = {}) => {
+    async ({
+      pageValue = 1,
+      filtersValue = DEFAULT_CONTACT_FILTERS,
+    } = {}) => {
       setIsLoading(true);
       try {
         const response = await fetchCrmContacts(
           {
-            page: overridePage || page,
+            page: pageValue,
             limit: 20,
-            filters,
+            filters: filtersValue,
           },
           token,
         );
@@ -432,8 +447,7 @@ const CrmPage = () => {
 
         if (
           totalPagesValue > 0 &&
-          Number(nextPagination.page || overridePage || page || 1) >
-            totalPagesValue
+          Number(nextPagination.page || pageValue || 1) > totalPagesValue
         ) {
           setPage(totalPagesValue);
           return;
@@ -458,7 +472,7 @@ const CrmPage = () => {
         setIsLoading(false);
       }
     },
-    [applySelectedContact, filters, page, token],
+    [applySelectedContact, token],
   );
 
   const loadTimeline = useCallback(async () => {
@@ -561,24 +575,43 @@ const CrmPage = () => {
     }
   }, [token]);
 
-  const loadAudiencePreview = useCallback(async () => {
-    if (!token) return;
-    const response = await fetchCrmWhatsappAudiencePreview(
-      {
-        segment: campaignForm.segment,
-        inactiveDays: campaignForm.inactiveDays,
-      },
-      token,
-    );
+  const loadAudiencePreview = useCallback(
+    async ({
+      segment = DEFAULT_CAMPAIGN_FORM.segment,
+      inactiveDays = DEFAULT_CAMPAIGN_FORM.inactiveDays,
+    } = {}) => {
+      if (!token) return;
+      const requestId = audiencePreviewRequestRef.current + 1;
+      audiencePreviewRequestRef.current = requestId;
+      setAudiencePreviewLoading(true);
 
-    if (!response?.success) {
-      throw new Error(
-        response?.message || "Failed to preview WhatsApp audience.",
-      );
-    }
+      try {
+        const response = await fetchCrmWhatsappAudiencePreview(
+          {
+            segment,
+            inactiveDays,
+          },
+          token,
+        );
 
-    setAudiencePreview(response.data || { count: 0, sample: [] });
-  }, [campaignForm.inactiveDays, campaignForm.segment, token]);
+        if (!response?.success) {
+          throw new Error(
+            response?.message || "Failed to preview WhatsApp audience.",
+          );
+        }
+
+        if (requestId === audiencePreviewRequestRef.current) {
+          setAudiencePreview(response.data || { count: 0, sample: [] });
+          setAudiencePreviewSignature(`${segment}::${inactiveDays}`);
+        }
+      } finally {
+        if (requestId === audiencePreviewRequestRef.current) {
+          setAudiencePreviewLoading(false);
+        }
+      }
+    },
+    [token],
+  );
 
   useEffect(() => {
     if (!loading && !isAuthenticated) {
@@ -586,37 +619,52 @@ const CrmPage = () => {
     }
   }, [isAuthenticated, loading, router]);
 
+  // Initialize workspace on mount with proper dependency handling
   useEffect(() => {
     if (!isAuthenticated || !token) return;
 
-    Promise.all([
-      loadOverview(),
-      loadContacts(),
-      loadWhatsappWorkspace(),
-    ]).catch((error) => {
-      toast.error(error?.message || "Failed to load CRM dashboard.");
-    });
-  }, [
-    isAuthenticated,
-    token,
-    loadContacts,
-    loadOverview,
-    loadWhatsappWorkspace,
-  ]);
+    if (initializationRef.current) return;
+    initializationRef.current = true;
+
+    (async () => {
+      try {
+        await Promise.all([
+          loadOverview(),
+          loadWhatsappWorkspace(),
+          loadAudiencePreview({
+            segment: DEFAULT_CAMPAIGN_FORM.segment,
+            inactiveDays: DEFAULT_CAMPAIGN_FORM.inactiveDays,
+          }),
+        ]);
+        setLastWorkspaceRefreshAt(new Date().toISOString());
+      } catch (error) {
+        toast.error(error?.message || "Failed to load CRM dashboard.");
+      }
+    })();
+    // Intentionally omit callbacks from deps to prevent infinite loops
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated, token]);
 
   useEffect(() => {
     if (!isAuthenticated || !token) return;
 
-    loadAudiencePreview().catch((error) => {
-      toast.error(error?.message || "Failed to preview WhatsApp audience.");
+    loadContacts({
+      pageValue: page,
+      filtersValue: filters,
+    }).catch((error) => {
+      toast.error(error?.message || "Failed to load CRM contacts.");
     });
-  }, [isAuthenticated, token, loadAudiencePreview]);
+    // Intentionally omit loadContacts from deps to prevent infinite loops
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters, page, isAuthenticated, token]);
 
   useEffect(() => {
-    if (isAuthenticated && token && selectedContactId) {
-      loadTimeline();
-    }
-  }, [isAuthenticated, token, selectedContactId, loadTimeline]);
+    if (!isAuthenticated || !token || !selectedContactId) return;
+
+    loadTimeline();
+    // Intentionally omit loadTimeline from deps to prevent infinite loops
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated, token, selectedContactId]);
 
   useEffect(() => {
     selectedContactIdRef.current = String(selectedContactId || "");
@@ -633,28 +681,46 @@ const CrmPage = () => {
 
   const clearFilters = () => {
     setPage(1);
-    setFilters({
-      q: "",
-      channel: "",
-      lifecycleStage: "",
-      status: "",
-    });
+    setFilters({ ...DEFAULT_CONTACT_FILTERS });
   };
 
   const handleRefreshContacts = async () => {
     if (!token) return;
-    setPage(1);
-    await loadContacts({ overridePage: 1 });
+    await loadContacts({
+      pageValue: page,
+      filtersValue: filters,
+    });
   };
 
   const refreshAdminCrmData = async () => {
     await Promise.all([
       loadOverview(),
-      loadContacts(),
       loadTimeline(),
       loadWhatsappWorkspace(),
-      loadAudiencePreview(),
+      loadContacts({
+        pageValue: page,
+        filtersValue: filters,
+      }),
+      loadAudiencePreview({
+        segment: campaignForm.segment,
+        inactiveDays: campaignForm.inactiveDays,
+      }),
     ]);
+    setLastWorkspaceRefreshAt(new Date().toISOString());
+  };
+
+  const handleRefreshWorkspace = async () => {
+    if (!token || workspaceRefreshing) return;
+
+    setWorkspaceRefreshing(true);
+    try {
+      await refreshAdminCrmData();
+      toast.success("CRM workspace refreshed.");
+    } catch (error) {
+      toast.error(error?.message || "Failed to refresh CRM workspace.");
+    } finally {
+      setWorkspaceRefreshing(false);
+    }
   };
 
   const handleSaveContact = async () => {
@@ -683,7 +749,14 @@ const CrmPage = () => {
       }
 
       toast.success("CRM contact updated.");
-      await Promise.all([loadOverview(), loadContacts(), loadTimeline()]);
+      await Promise.all([
+        loadOverview(),
+        loadContacts({
+          pageValue: page,
+          filtersValue: filters,
+        }),
+        loadTimeline(),
+      ]);
     } catch (error) {
       toast.error(error?.message || "Failed to update CRM contact.");
     } finally {
@@ -961,6 +1034,12 @@ const CrmPage = () => {
       throw new Error("Select an approved template for the WhatsApp campaign.");
     }
 
+    if (audiencePreviewDirty) {
+      throw new Error(
+        "Refresh the audience preview after changing segment or inactive days.",
+      );
+    }
+
     if (audienceCount <= 0) {
       throw new Error(
         "Campaign audience preview is empty. Refresh the preview first.",
@@ -1023,7 +1102,7 @@ const CrmPage = () => {
         action: "campaign",
         title: "Confirm WhatsApp Campaign",
         description:
-          "This will submit a template campaign to the previewed consented CRM audience.",
+          "This will submit a template campaign to the previewed campaign-ready CRM audience.",
         confirmLabel: "Send Campaign",
         warning: whatsappDeliveryReady
           ? ""
@@ -1125,6 +1204,12 @@ const CrmPage = () => {
     whatsappHealth?.deliveryReady !== undefined
       ? Boolean(whatsappHealth.deliveryReady)
       : whatsappHealthState === "ready";
+  const audiencePreviewDirty =
+    audiencePreviewSignature !==
+    `${campaignForm.segment}::${campaignForm.inactiveDays}`;
+  const lastWorkspaceRefreshLabel = lastWorkspaceRefreshAt
+    ? formatDateTime(lastWorkspaceRefreshAt)
+    : "Not refreshed yet";
 
   return (
     <section className="w-full p-5 space-y-5">
@@ -1157,28 +1242,60 @@ const CrmPage = () => {
               record.
             </p>
           </div>
-          <div className="grid min-w-[260px] grid-cols-2 gap-3">
-            <div className="rounded-2xl bg-white/10 p-4 backdrop-blur">
-              <p className="text-xs uppercase tracking-[0.18em] text-white/70">
-                WhatsApp Reachable
+          <div className="min-w-[260px] space-y-3">
+            <div className="flex flex-wrap items-center justify-end gap-3">
+              <p className="text-right text-xs text-white/70">
+                Manual refresh only
+                <span className="block">
+                  Last workspace sync: {lastWorkspaceRefreshLabel}
+                </span>
               </p>
-              <p className="mt-2 text-2xl font-semibold">
-                {Number(
-                  whatsappOverview?.summary?.totalWhatsappReachableContacts ||
-                    0,
-                )}
-              </p>
+              <Button
+                variant="outlined"
+                size="small"
+                disabled={workspaceRefreshing}
+                onClick={handleRefreshWorkspace}
+                sx={{
+                  textTransform: "none",
+                  borderColor: "rgba(255,255,255,0.35)",
+                  color: "#fff",
+                  "&:hover": {
+                    borderColor: "rgba(255,255,255,0.6)",
+                    backgroundColor: "rgba(255,255,255,0.08)",
+                  },
+                  "&.Mui-disabled": {
+                    borderColor: "rgba(255,255,255,0.2)",
+                    color: "rgba(255,255,255,0.55)",
+                  },
+                }}
+              >
+                {workspaceRefreshing ? "Refreshing..." : "Refresh Workspace"}
+              </Button>
             </div>
-            <div className="rounded-2xl bg-white/10 p-4 backdrop-blur">
-              <p className="text-xs uppercase tracking-[0.18em] text-white/70">
-                Consented
-              </p>
-              <p className="mt-2 text-2xl font-semibold">
-                {Number(
-                  whatsappOverview?.summary?.totalConsentedWhatsappContacts ||
-                    0,
-                )}
-              </p>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-2xl bg-white/10 p-4 backdrop-blur">
+                <p className="text-xs uppercase tracking-[0.18em] text-white/70">
+                  WhatsApp Reachable
+                </p>
+                <p className="mt-2 text-2xl font-semibold">
+                  {Number(
+                    whatsappOverview?.summary?.totalWhatsappReachableContacts ||
+                      0,
+                  )}
+                </p>
+              </div>
+              <div className="rounded-2xl bg-white/10 p-4 backdrop-blur">
+                <p className="text-xs uppercase tracking-[0.18em] text-white/70">
+                  Campaign Ready
+                </p>
+                <p className="mt-2 text-2xl font-semibold">
+                  {Number(
+                    whatsappOverview?.summary?.totalConsentedWhatsappContacts ||
+                      0,
+                  )}
+                </p>
+              </div>
             </div>
           </div>
         </div>
@@ -1200,9 +1317,10 @@ const CrmPage = () => {
               variant="outlined"
               size="small"
               sx={{ textTransform: "none" }}
+              disabled={isLoading}
               onClick={handleRefreshContacts}
             >
-              Refresh Contacts
+              {isLoading ? "Refreshing..." : "Refresh Contacts"}
             </Button>
             <Button
               variant="outlined"
@@ -1989,7 +2107,7 @@ const CrmPage = () => {
                   WhatsApp Campaigns
                 </h3>
                 <p className="text-sm text-slate-500">
-                  Broadcast approved templates to consented CRM segments, not
+                  Broadcast approved templates to campaign-ready CRM segments, not
                   just raw phone lists.
                 </p>
               </div>
@@ -2134,19 +2252,29 @@ const CrmPage = () => {
                 <div>
                   <p className="text-sm font-semibold text-slate-900">
                     Audience preview: {Number(audiencePreview?.count || 0)}{" "}
-                    consented contacts
+                    campaign-ready contacts
                   </p>
                   <p className="text-xs text-slate-500 mt-1">
-                    Only CRM contacts with phone numbers and WhatsApp consent
-                    are included in campaign send.
+                    Customers with a phone number are approved by default unless
+                    WhatsApp consent is blocked. Leads and prospects still need
+                    explicit WhatsApp consent.
                   </p>
+                  {audiencePreviewDirty ? (
+                    <p className="mt-1 text-xs font-medium text-amber-600">
+                      Preview is outdated. Refresh it before sending.
+                    </p>
+                  ) : null}
                 </div>
                 <Button
                   variant="outlined"
                   size="small"
                   sx={{ textTransform: "none" }}
+                  disabled={audiencePreviewLoading}
                   onClick={() => {
-                    loadAudiencePreview().catch((error) => {
+                    loadAudiencePreview({
+                      segment: campaignForm.segment,
+                      inactiveDays: campaignForm.inactiveDays,
+                    }).catch((error) => {
                       toast.error(
                         error?.message ||
                           "Failed to refresh WhatsApp audience preview.",
@@ -2154,7 +2282,7 @@ const CrmPage = () => {
                     });
                   }}
                 >
-                  Refresh Preview
+                  {audiencePreviewLoading ? "Refreshing..." : "Refresh Preview"}
                 </Button>
               </div>
               <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -2198,6 +2326,7 @@ const CrmPage = () => {
                 sx={{ textTransform: "none" }}
                 disabled={
                   sendingCampaignWhatsapp ||
+                  audiencePreviewDirty ||
                   Number(audiencePreview?.count || 0) === 0 ||
                   !whatsappApiReady
                 }

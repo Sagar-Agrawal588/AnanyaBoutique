@@ -78,10 +78,35 @@ test("syncUserIdentityToCrmSafely creates one CRM contact and dedupes repeat syn
   assert.equal(interactions.length, 1);
   assert.equal(String(contacts[0].user), String(userId));
   assert.equal(contacts[0].email, "lead.user@example.com");
-  assert.equal(contacts[0].lifecycleStage, "lead");
+  assert.equal(contacts[0].lifecycleStage, "customer");
   assert.equal(contacts[0].status, "open");
   assert.equal(contacts[0].consent.email, true);
   assert.equal(contacts[0].consent.push, true);
+});
+
+test("syncUserIdentityToCrmSafely keeps privileged admins out of default customer stage", async () => {
+  const userId = new mongoose.Types.ObjectId();
+
+  await syncUserIdentityToCrmSafely({
+    user: {
+      _id: userId,
+      name: "Admin User",
+      email: "admin.user@example.com",
+      provider: "local",
+      role: "Admin",
+      verifyEmail: true,
+      email_opt_out: false,
+      createdAt: new Date("2026-04-28T09:00:00.000Z"),
+    },
+    source: "admin_create",
+    pageUrl: "/admin",
+  });
+
+  const contact = await CrmContact.findOne({ user: userId }).lean();
+
+  assert.ok(contact);
+  assert.equal(contact.lifecycleStage, "lead");
+  assert.equal(contact.status, "open");
 });
 
 test("syncOrderContactToCrmSafely creates CRM contact for phone-only guest orders", async () => {
@@ -106,6 +131,7 @@ test("syncOrderContactToCrmSafely creates CRM contact for phone-only guest order
   assert.equal(contact.name, "Guest Buyer");
   assert.equal(contact.lifecycleStage, "customer");
   assert.equal(contact.status, "qualified");
+  assert.equal(contact.consent?.whatsapp, true);
   assert.ok(interaction);
   assert.equal(interaction.eventType, "order_created");
 });

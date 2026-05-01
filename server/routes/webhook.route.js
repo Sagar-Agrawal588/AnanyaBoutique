@@ -4,6 +4,7 @@ import {
   handleWhatsappMetaWebhook,
   verifyWhatsappMetaWebhook,
 } from "../controllers/whatsappWebhook.controller.js";
+import { getWhatsappRuntimeConfig } from "../services/whatsapp/whatsappConfig.service.js";
 import { verifyExpressbeesWebhookAuth } from "../utils/expressbeesWebhookSignature.js";
 import { verifyWhatsappWebhookSignature } from "../utils/whatsappWebhookSignature.js";
 
@@ -44,37 +45,46 @@ const verifyExpressbeesSecret = (req, res, next) => {
   return next();
 };
 
-const verifyWhatsappMetaSignature = (req, res, next) => {
-  const configuredSecret = String(process.env.WHATSAPP_APP_SECRET || "").trim();
-  const isProduction = process.env.NODE_ENV === "production";
+const verifyWhatsappMetaSignature = async (req, res, next) => {
+  try {
+    const runtimeConfig = await getWhatsappRuntimeConfig();
+    const configuredSecret = String(runtimeConfig.appSecret || "").trim();
+    const isProduction = process.env.NODE_ENV === "production";
 
-  if (!configuredSecret) {
-    if (isProduction) {
-      return res.status(503).json({
+    if (!configuredSecret) {
+      if (isProduction) {
+        return res.status(503).json({
+          error: true,
+          success: false,
+          message: "WhatsApp app secret not configured",
+        });
+      }
+      return next();
+    }
+
+    const verification = verifyWhatsappWebhookSignature({
+      headers: req.headers,
+      rawBody: req.rawBody,
+      appSecret: configuredSecret,
+    });
+
+    if (!verification.ok) {
+      return res.status(401).json({
         error: true,
         success: false,
-        message: "WhatsApp app secret not configured",
+        message: "Unauthorized WhatsApp webhook",
       });
     }
+
+    req.whatsappAuthMode = verification.mode || "unknown";
     return next();
-  }
-
-  const verification = verifyWhatsappWebhookSignature({
-    headers: req.headers,
-    rawBody: req.rawBody,
-    appSecret: configuredSecret,
-  });
-
-  if (!verification.ok) {
-    return res.status(401).json({
+  } catch {
+    return res.status(500).json({
       error: true,
       success: false,
-      message: "Unauthorized WhatsApp webhook",
+      message: "Failed to validate WhatsApp webhook signature",
     });
   }
-
-  req.whatsappAuthMode = verification.mode || "unknown";
-  return next();
 };
 
 // If Expressbees cannot send headers, enforce an IP allowlist at the edge (WAF/NGINX).

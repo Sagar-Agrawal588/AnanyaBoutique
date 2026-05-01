@@ -7,12 +7,13 @@ import {
 } from "../crm/channelResolver.service.js";
 import {
   getWhatsappMessagingConfigSummary,
-  getWhatsappMessagingHealth,
+  getWhatsappMessagingHealthSnapshot,
   listApprovedWhatsappTemplates,
   sendWhatsappMessage,
 } from "./whatsappMessaging.service.js";
 
 const MAX_CAMPAIGN_RECIPIENTS = 200;
+const CUSTOMER_WHATSAPP_STAGES = ["customer", "repeat_customer"];
 
 const normalizePositiveInteger = (value, fallback, max) => {
   const parsed = Number.parseInt(String(value || "").trim(), 10);
@@ -51,6 +52,16 @@ const buildPhonePresentFilter = () => ({
   },
 });
 
+const buildWhatsappCampaignEligibilityFilter = () => ({
+  $or: [
+    { "consent.whatsapp": true },
+    {
+      "consent.whatsapp": null,
+      lifecycleStage: { $in: CUSTOMER_WHATSAPP_STAGES },
+    },
+  ],
+});
+
 const buildWhatsappAudienceFilter = ({
   segment = "all",
   inactiveDays = 45,
@@ -61,37 +72,64 @@ const buildWhatsappAudienceFilter = ({
       normalizePositiveInteger(inactiveDays, 45, 365) * 24 * 60 * 60 * 1000,
   );
 
-  const filter = {
-    ...buildPhonePresentFilter(),
-    "consent.whatsapp": true,
-    status: { $ne: "lost" },
-  };
+  const clauses = [
+    buildPhonePresentFilter(),
+    buildWhatsappCampaignEligibilityFilter(),
+    { status: { $ne: "lost" } },
+  ];
 
   if (normalizedSegment === "leads") {
-    filter.lifecycleStage = { $in: ["lead", "prospect"] };
+    clauses.push({ lifecycleStage: { $in: ["lead", "prospect"] } });
   }
 
   if (normalizedSegment === "customers") {
-    filter.lifecycleStage = { $in: ["customer", "repeat_customer"] };
+    clauses.push({ lifecycleStage: { $in: CUSTOMER_WHATSAPP_STAGES } });
   }
 
   if (normalizedSegment === "repeat_customers") {
-    filter.lifecycleStage = "repeat_customer";
+    clauses.push({ lifecycleStage: "repeat_customer" });
   }
 
   if (normalizedSegment === "inactive") {
-    filter.$or = [
-      { lastInteractionAt: { $lt: cutoff } },
-      { lastInteractionAt: null },
-    ];
+    clauses.push({
+      $or: [
+        { lastInteractionAt: { $lt: cutoff } },
+        { lastInteractionAt: null },
+      ],
+    });
   }
 
   if (normalizedSegment === "vip") {
-    filter.tags = "vip";
+    clauses.push({ tags: "vip" });
   }
 
-  return filter;
+  return { $and: clauses };
 };
+
+const normalizeAudiencePhoneKey = (value) => {
+  const digits = String(value || "").replace(/\D/g, "");
+  if (!digits) return "";
+  return digits.length > 10 ? digits.slice(-10) : digits;
+};
+
+const dedupeWhatsappAudienceContacts = (contacts = []) => {
+  const seenPhoneKeys = new Set();
+  const dedupedContacts = [];
+
+  for (const contact of contacts) {
+    const phoneKey = normalizeAudiencePhoneKey(contact?.phone);
+    if (!phoneKey || seenPhoneKeys.has(phoneKey)) continue;
+    seenPhoneKeys.add(phoneKey);
+    dedupedContacts.push(contact);
+  }
+
+  return dedupedContacts;
+};
+
+const fetchSortedCrmContacts = async (filter = {}) =>
+  CrmContact.find(filter)
+    .sort({ lastInteractionAt: -1, updatedAt: -1, createdAt: -1 })
+    .lean();
 
 const toPlainAudienceContact = (contact = {}) => ({
   id: String(contact?._id || ""),
@@ -128,29 +166,43 @@ const toPlainWhatsappEvent = (interaction = {}) => ({
   metadata: interaction?.metadata || {},
 });
 
+const countWhatsappAudienceContacts = async (options = {}) => {
+  const contacts = await fetchSortedCrmContacts(
+    buildWhatsappAudienceFilter(options),
+  );
+  return dedupeWhatsappAudienceContacts(contacts).length;
+};
+
+const countUniquePhoneContacts = async (filter = {}) => {
+  const contacts = await fetchSortedCrmContacts(filter);
+  return dedupeWhatsappAudienceContacts(contacts).length;
+};
+
 const getWhatsappAudienceContacts = async ({
   segment = "all",
   inactiveDays = 45,
   limit = 100,
 } = {}) => {
-  const filter = buildWhatsappAudienceFilter({ segment, inactiveDays });
+  const contacts = await fetchSortedCrmContacts(
+    buildWhatsappAudienceFilter({ segment, inactiveDays }),
+  );
 
-  return CrmContact.find(filter)
-    .sort({ lastInteractionAt: -1, updatedAt: -1 })
-    .limit(normalizePositiveInteger(limit, 100, MAX_CAMPAIGN_RECIPIENTS))
-    .lean();
+  return dedupeWhatsappAudienceContacts(contacts).slice(
+    0,
+    normalizePositiveInteger(limit, 100, MAX_CAMPAIGN_RECIPIENTS),
+  );
 };
 
 export const getWhatsappAudiencePreview = async (query = {}) => {
   const segment = normalizeWhatsappSegment(query.segment || "all");
   const inactiveDays = normalizePositiveInteger(query.inactiveDays, 45, 365);
-  const filter = buildWhatsappAudienceFilter({ segment, inactiveDays });
   const [count, sample] = await Promise.all([
-    CrmContact.countDocuments(filter),
-    CrmContact.find(filter)
-      .sort({ lastInteractionAt: -1, updatedAt: -1 })
-      .limit(8)
-      .lean(),
+    countWhatsappAudienceContacts({ segment, inactiveDays }),
+    getWhatsappAudienceContacts({
+      segment,
+      inactiveDays,
+      limit: 8,
+    }),
   ]);
 
   return {
@@ -163,9 +215,10 @@ export const getWhatsappAudiencePreview = async (query = {}) => {
 
 export const getWhatsappAdminOverview = async () => {
   const last30Days = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-  const config = getWhatsappMessagingConfigSummary();
+  const configPromise = getWhatsappMessagingConfigSummary();
 
   const [
+    config,
     totalWhatsappReachableContacts,
     totalConsentedWhatsappContacts,
     inboundLast30Days,
@@ -175,10 +228,10 @@ export const getWhatsappAdminOverview = async () => {
     templateResult,
     messagingHealth,
   ] = await Promise.all([
-    CrmContact.countDocuments(buildPhonePresentFilter()),
-    CrmContact.countDocuments({
-      ...buildPhonePresentFilter(),
-      "consent.whatsapp": true,
+    configPromise,
+    countUniquePhoneContacts(buildPhonePresentFilter()),
+    countWhatsappAudienceContacts({
+      segment: "all",
     }),
     CrmInteraction.countDocuments({
       channel: "whatsapp",
@@ -217,11 +270,7 @@ export const getWhatsappAdminOverview = async () => {
       configured: false,
       templates: [],
     })),
-    getWhatsappMessagingHealth().catch(() => ({
-      ok: false,
-      state: "health_check_failed",
-      message: "Unable to validate WhatsApp API credentials right now.",
-    })),
+    getWhatsappMessagingHealthSnapshot(),
   ]);
 
   const templates = Array.isArray(templateResult?.templates)
@@ -261,18 +310,15 @@ export const getWhatsappAdminOverview = async () => {
 };
 
 export const getWhatsappTemplateCatalog = async () => {
-  const [result, messagingHealth] = await Promise.all([
+  const [config, result, messagingHealth] = await Promise.all([
+    getWhatsappMessagingConfigSummary(),
     listApprovedWhatsappTemplates(),
-    getWhatsappMessagingHealth().catch(() => ({
-      ok: false,
-      state: "health_check_failed",
-      message: "Unable to validate WhatsApp API credentials right now.",
-    })),
+    getWhatsappMessagingHealthSnapshot(),
   ]);
 
   return {
     configuration: {
-      ...getWhatsappMessagingConfigSummary(),
+      ...config,
       health: messagingHealth,
     },
     templates: Array.isArray(result?.templates) ? result.templates : [],
