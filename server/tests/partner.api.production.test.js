@@ -466,7 +466,10 @@ test("logging and monitoring: requests are stored and surfaced in admin APIs", a
     await wait(150);
   }
 
-  assert.ok(dbLogs.length >= 3, `expected >=3 partner logs, got ${dbLogs.length}`);
+  assert.ok(
+    dbLogs.length >= 3,
+    `expected >=3 partner logs, got ${dbLogs.length}`,
+  );
 
   const overview = await adminRequest("/api/v1/partner/admin/overview");
   assert.equal(overview.response.status, 200);

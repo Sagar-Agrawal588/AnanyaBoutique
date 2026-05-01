@@ -2,6 +2,7 @@ import { io } from "socket.io-client";
 import { API_BASE_URL } from "@/utils/api";
 
 const SOCKET_TRANSPORTS = ["websocket", "polling"];
+const LOCAL_SOCKET_FALLBACK = "http://localhost:8000";
 
 const sanitizeBaseUrl = (value) =>
   String(value || "")
@@ -9,11 +10,15 @@ const sanitizeBaseUrl = (value) =>
     .replace(/^['"]|['"]$/g, "")
     .replace(/\/+$/, "");
 
-const resolveSocketBaseUrl = () => {
-  const baseUrl = sanitizeBaseUrl(API_BASE_URL);
-  const normalizedBaseUrl = baseUrl.endsWith("/api")
-    ? baseUrl.slice(0, -4)
-    : baseUrl;
+const isHttpUrl = (value) => /^https?:\/\//i.test(String(value || ""));
+
+const stripApiSuffix = (value) => {
+  const baseUrl = sanitizeBaseUrl(value);
+  return baseUrl.endsWith("/api") ? baseUrl.slice(0, -4) : baseUrl;
+};
+
+const normalizeSocketBaseUrl = (value) => {
+  const normalizedBaseUrl = stripApiSuffix(value);
 
   try {
     const parsed = new URL(normalizedBaseUrl);
@@ -33,13 +38,36 @@ const resolveSocketBaseUrl = () => {
   }
 };
 
-const SOCKET_URL = resolveSocketBaseUrl();
+const resolveSocketBaseUrls = () => {
+  const candidates = [];
+  const pushCandidate = (value) => {
+    const normalized = normalizeSocketBaseUrl(value);
+    if (!isHttpUrl(normalized) || candidates.includes(normalized)) return;
+    candidates.push(normalized);
+  };
+
+  pushCandidate(API_BASE_URL);
+  pushCandidate(process.env.NEXT_PUBLIC_APP_API_URL);
+  pushCandidate(process.env.NEXT_PUBLIC_API_URL);
+
+  if (typeof window !== "undefined") {
+    pushCandidate(window.location.origin);
+  }
+
+  if (candidates.length === 0) {
+    pushCandidate(LOCAL_SOCKET_FALLBACK);
+  }
+
+  return candidates;
+};
 
 let socketInstance = null;
 let activeToken = null;
+let socketBaseUrls = [];
+let socketUrlIndex = 0;
 
-const createSocket = () =>
-  io(SOCKET_URL, {
+const createSocket = (socketUrl) =>
+  io(socketUrl, {
     autoConnect: false,
     transports: SOCKET_TRANSPORTS,
     withCredentials: true,
@@ -47,11 +75,25 @@ const createSocket = () =>
     reconnection: true,
   });
 
+const createManagedSocket = () => {
+  socketBaseUrls = resolveSocketBaseUrls();
+  socketUrlIndex = 0;
+  const socket = createSocket(socketBaseUrls[socketUrlIndex]);
+
+  socket.on("connect_error", () => {
+    if (socketBaseUrls.length <= 1) return;
+    socketUrlIndex = (socketUrlIndex + 1) % socketBaseUrls.length;
+    socket.io.uri = socketBaseUrls[socketUrlIndex];
+  });
+
+  return socket;
+};
+
 export const getAdminSocket = (token) => {
   if (typeof window === "undefined") return null;
 
   if (!socketInstance) {
-    socketInstance = createSocket();
+    socketInstance = createManagedSocket();
   }
 
   const resolvedToken = typeof token === "string" ? token : null;

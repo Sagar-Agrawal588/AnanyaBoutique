@@ -7,6 +7,10 @@ on:
       - master
     paths:
       - "server/**"
+      - "frontend/admin/src/app/crm/**"
+      - "frontend/admin/src/services/crmApi.js"
+      - "frontend/admin/src/utils/api.js"
+      - "frontend/admin/src/utils/realtime.js"
       - ".github/workflows/deploy-backend.yml"
   workflow_dispatch:
 

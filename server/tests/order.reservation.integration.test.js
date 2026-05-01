@@ -1,11 +1,11 @@
-import assert from "node:assert/strict";
-import crypto from "node:crypto";
-import test from "node:test";
 import cookieParser from "cookie-parser";
 import express from "express";
 import jwt from "jsonwebtoken";
-import mongoose from "mongoose";
 import { MongoMemoryServer } from "mongodb-memory-server";
+import mongoose from "mongoose";
+import assert from "node:assert/strict";
+import crypto from "node:crypto";
+import test from "node:test";
 import { io as createSocketClient } from "socket.io-client";
 import OrderModel from "../models/order.model.js";
 import ProductModel from "../models/product.model.js";
@@ -287,13 +287,15 @@ test.before(async () => {
 
   ({ default: orderRouter } = await import("../routes/order.route.js"));
   ({ default: productRouter } = await import("../routes/product.route.js"));
-  ({ default: notificationRouter } = await import("../routes/notification.route.js"));
+  ({ default: notificationRouter } =
+    await import("../routes/notification.route.js"));
   ({ initSocket } = await import("../realtime/socket.js"));
-  ({ releaseExpiredReservations } = await import(
-    "../services/inventoryReservationExpiry.service.js"
-  ));
-  ({ __setStockNotificationEmailSenderForTests: setStockNotificationEmailSenderForTests } =
-    await import("../services/stockNotification.service.js"));
+  ({ releaseExpiredReservations } =
+    await import("../services/inventoryReservationExpiry.service.js"));
+  ({
+    __setStockNotificationEmailSenderForTests:
+      setStockNotificationEmailSenderForTests,
+  } = await import("../services/stockNotification.service.js"));
   ({
     __drainStockNotificationQueueForTests: drainStockNotificationQueueForTests,
     __resetStockNotificationQueueForTests: resetStockNotificationQueueForTests,
@@ -601,9 +603,15 @@ test("successful payment keeps customer name, phone, and address details on the 
   const savedOrder = await OrderModel.findById(orderId).lean();
   assert.equal(String(savedOrder?.payment_status || ""), "paid");
   assert.ok(savedOrder?.paymentCompletedAt);
-  assert.equal(String(savedOrder?.billingDetails?.fullName || ""), "Reservation Tester");
+  assert.equal(
+    String(savedOrder?.billingDetails?.fullName || ""),
+    "Reservation Tester",
+  );
   assert.equal(String(savedOrder?.billingDetails?.phone || ""), "9876543210");
-  assert.equal(String(savedOrder?.guestDetails?.fullName || ""), "Reservation Tester");
+  assert.equal(
+    String(savedOrder?.guestDetails?.fullName || ""),
+    "Reservation Tester",
+  );
   assert.equal(String(savedOrder?.guestDetails?.phone || ""), "9876543210");
   assert.match(
     String(
@@ -730,7 +738,10 @@ test("POST /api/notifications/stock dedupes guest requests and sends a back-in-s
   }).lean();
   assert.equal(sentNotification?.notified, true);
   assert.equal(sentStockEmails.length, 1);
-  assert.equal(String(sentStockEmails[0]?.to || ""), "guest-notify@example.com");
+  assert.equal(
+    String(sentStockEmails[0]?.to || ""),
+    "guest-notify@example.com",
+  );
 
   const productDetail = await requestJson(`/api/products/${product._id}`);
   assert.equal(productDetail.payload?.data?.available_quantity, 1);
@@ -789,11 +800,11 @@ test("logged-in stock notification requests are saved against the user and refle
   });
 
   assert.equal(productDetail.response.status, 200);
-  assert.equal(Boolean(productDetail.payload?.data?.stockNotificationRequested), true);
   assert.equal(
-    productDetail.payload?.data?.available_quantity,
-    0,
+    Boolean(productDetail.payload?.data?.stockNotificationRequested),
+    true,
   );
+  assert.equal(productDetail.payload?.data?.available_quantity, 0);
 
   const listResult = await requestJson("/api/products?limit=10", {
     headers: {
@@ -892,16 +903,19 @@ test("admin stock updates emit stock_update to connected clients in real time", 
         Number(payload?.available_stock) === 4,
     );
 
-    const updateResult = await requestJson(`/api/products/${product._id}/stock`, {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${adminToken}`,
+    const updateResult = await requestJson(
+      `/api/products/${product._id}/stock`,
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${adminToken}`,
+        },
+        body: JSON.stringify({
+          stock: 4,
+        }),
       },
-      body: JSON.stringify({
-        stock: 4,
-      }),
-    });
+    );
 
     assert.equal(updateResult.response.status, 200);
     const stockEvent = await stockEventPromise;
