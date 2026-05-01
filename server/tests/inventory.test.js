@@ -736,12 +736,10 @@ test("concurrent reservations allow only one buyer for the last unit", async () 
     reserveInventory(order2, "TEST_RESERVE_2"),
   ]);
 
-  const successCount = results.filter(
-    (result) => result.status === "fulfilled",
-  ).length;
-  const failedCount = results.filter(
-    (result) => result.status === "rejected",
-  ).length;
+  const successCount = results.filter((result) => result.status === "fulfilled")
+    .length;
+  const failedCount = results.filter((result) => result.status === "rejected")
+    .length;
 
   assert.equal(successCount, 1);
   assert.equal(failedCount, 1);
@@ -750,8 +748,7 @@ test("concurrent reservations allow only one buyer for the last unit", async () 
   assert.equal(Number(updated.stock_quantity || 0), 1);
   assert.equal(Number(updated.reserved_quantity || 0), 1);
   assert.equal(
-    Number(updated.stock_quantity || 0) -
-      Number(updated.reserved_quantity || 0),
+    Number(updated.stock_quantity || 0) - Number(updated.reserved_quantity || 0),
     0,
   );
 });

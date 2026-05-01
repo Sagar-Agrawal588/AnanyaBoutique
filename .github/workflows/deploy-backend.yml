@@ -199,12 +199,12 @@ jobs:
                   "CLOUDINARY_API_KEY",
                   "CLOUDINARY_API_SECRET",
               ],
-              "Firebase Admin": [
+                "Firebase Admin": [
                   "FIREBASE_PROJECT_ID",
                   "FIREBASE_CLIENT_EMAIL",
                   "FIREBASE_PRIVATE_KEY",
-              ],
-              "Paytm Credentials": [
+                ],
+                "Paytm Credentials": [
                   "PAYTM_MERCHANT_ID",
                   "PAYTM_MERCHANT_KEY",
               ],
