@@ -31,6 +31,7 @@ let initSocket;
 const TEST_SECRET = "reservation_integration_secret_1234567890";
 const SOCKET_CONNECT_TIMEOUT_MS = process.env.CI ? 15000 : 8000;
 const SOCKET_EVENT_TIMEOUT_MS = process.env.CI ? 12000 : 5000;
+const MONGO_SELECTION_TIMEOUT_MS = process.env.CI ? 15000 : 5000;
 
 const startServer = async (app) =>
   new Promise((resolve) => {
@@ -45,11 +46,20 @@ const connectMongo = async () => {
   const uri = mongoServer.getUri();
   await mongoose.connect(uri, {
     dbName: "bogEcom-reservation-integration",
-    serverSelectionTimeoutMS: 5000,
+    serverSelectionTimeoutMS: MONGO_SELECTION_TIMEOUT_MS,
   });
 };
 
 const ensureMongoConnection = async () => {
+  if (mongoose.connection.readyState === 2) {
+    try {
+      await mongoose.connection.asPromise();
+      return;
+    } catch {
+      // Fall through to reconnect.
+    }
+  }
+
   if (mongoose.connection.readyState === 1) {
     try {
       await mongoose.connection.db.admin().ping();
@@ -335,6 +345,10 @@ test.afterEach(async () => {
     StockNotificationModel.deleteMany({}),
     UserModel.deleteMany({}),
   ]);
+});
+
+test.beforeEach(async () => {
+  await ensureMongoConnection();
 });
 
 test.after(async () => {
