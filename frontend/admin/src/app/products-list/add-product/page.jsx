@@ -4,9 +4,9 @@ import UploadBox from "@/components/UploadBox";
 import { useAdmin } from "@/context/AdminContext";
 import { getData, postData, uploadFile } from "@/utils/api";
 import { createDefaultProductPageConfig } from "@/utils/productPageConfig";
+import { normalizeVariantWeight } from "@/utils/weightNormalization";
 import { Button } from "@mui/material";
 import MenuItem from "@mui/material/MenuItem";
-import Rating from "@mui/material/Rating";
 import Select from "@mui/material/Select";
 import Switch from "@mui/material/Switch";
 import { useRouter } from "next/navigation";
@@ -22,20 +22,12 @@ const AddProduct = () => {
   const [description, setDescription] = useState("");
   const [shortDescription, setShortDescription] = useState("");
   const [categoryVal, setCategoryVal] = useState("");
-  const [price, setPrice] = useState("");
-  const [oldPrice, setOldPrice] = useState("");
-  const [isFeatured, setIsFeatured] = useState(false);
   const [isNewArrival, setIsNewArrival] = useState(false);
   const [isBestSeller, setIsBestSeller] = useState(false);
   const [isExclusive, setIsExclusive] = useState(false);
   const [demandStatus, setDemandStatus] = useState("NORMAL");
-  const [stock, setStock] = useState("");
   const [brand, setBrand] = useState("");
   const [hsnCode, setHsnCode] = useState("");
-  const [discount, setDiscount] = useState("");
-  const [rating, setRating] = useState(4);
-  const [weight, setWeight] = useState("");
-  const [unit, setUnit] = useState("g");
   const [tags, setTags] = useState("");
   const [images, setImages] = useState([]); // { file, preview }
   const [categories, setCategories] = useState([]);
@@ -45,8 +37,19 @@ const AddProduct = () => {
   );
 
   // Variants
-  const [hasVariants, setHasVariants] = useState(false);
-  const [variants, setVariants] = useState([]);
+  const hasVariants = true;
+  const [variants, setVariants] = useState([
+    {
+      name: "",
+      price: "",
+      originalPrice: "",
+      stock: "",
+      sku: "",
+      weight: "",
+      unit: "g",
+      isDefault: true,
+    },
+  ]);
 
   const addVariant = () => {
     setVariants([
@@ -72,10 +75,16 @@ const AddProduct = () => {
       const w = field === "weight" ? value : updated[index].weight;
       const u = field === "unit" ? value : updated[index].unit;
       if (w) {
-        const normalizedWeight =
-          Number(w) >= 1000 && u === "g" ? `${Number(w) / 1000}kg` : `${w}${u}`;
+        let normalizedWeight = "";
+        try {
+          normalizedWeight = normalizeVariantWeight({ weight: w, unit: u }).label;
+        } catch {
+          normalizedWeight = `${w}${u}`;
+        }
         const rawName = String(updated[index].name || "").trim();
-        const baseName = rawName.replace(/\s*-\s*[\d.]+\s*(kg|g|ml|l|pcs)$/i, "").trim();
+        const baseName = rawName
+          .replace(/\s*-\s*[\d.]+\s*(kg|g)$/i, "")
+          .trim();
         updated[index].name = baseName
           ? `${baseName} - ${normalizedWeight}`
           : normalizedWeight;
@@ -155,14 +164,47 @@ const AddProduct = () => {
       toast.error("Please select a category");
       return;
     }
-    if (!price || price <= 0) {
-      toast.error("Please enter a valid price");
-      return;
-    }
     if (images.length === 0) {
       toast.error("Please upload at least one image");
       return;
     }
+
+    let variantData = [];
+    try {
+      variantData = variants
+        .filter((v) => v.price)
+        .map((v, i) => {
+        const normalizedWeight = normalizeVariantWeight(v);
+        const variantPrice = Math.round(Number(v.price));
+        const variantOriginalPrice = v.originalPrice
+          ? Math.round(Number(v.originalPrice))
+          : undefined;
+        return {
+          name: v.name || normalizedWeight.label,
+          label: normalizedWeight.label,
+          sku:
+            v.sku || `${productName.substring(0, 3).toUpperCase()}-V${i + 1}`,
+          price: variantPrice,
+          originalPrice: variantOriginalPrice,
+          weight: Number(v.weight),
+          unit: String(v.unit || "g").toLowerCase() === "kg" ? "kg" : "g",
+          isDefault: !!v.isDefault,
+          stock: v.stock ? Number(v.stock) : 0,
+          stock_quantity: v.stock ? Number(v.stock) : 0,
+        };
+      });
+    } catch (error) {
+      toast.error(error.message || "Invalid weight format");
+      return;
+    }
+
+    if (variantData.length === 0 || variantData.some((v) => !v.price || v.price <= 0)) {
+      toast.error("Please add at least one variant with a valid price");
+      return;
+    }
+
+    const defaultVariant =
+      variantData.find((variant) => variant.isDefault) || variantData[0];
 
     setIsSubmitting(true);
 
@@ -184,62 +226,25 @@ const AddProduct = () => {
         }
       }
 
-      // Build variants array
-      const variantData = hasVariants
-        ? variants
-            .filter((v) => v.price)
-            .map((v, i) => {
-              const variantPrice = Math.round(Number(v.price));
-              const variantOriginalPrice = v.originalPrice
-                ? Math.round(Number(v.originalPrice))
-                : undefined;
-              return {
-                name: v.name || `${v.weight}${v.unit || "g"}`,
-                sku:
-                  v.sku ||
-                  `${productName.substring(0, 3).toUpperCase()}-V${i + 1}`,
-                price: variantPrice,
-                originalPrice: variantOriginalPrice,
-                discountPercent:
-                  variantOriginalPrice && variantOriginalPrice > variantPrice
-                    ? Math.round(
-                        ((variantOriginalPrice - variantPrice) /
-                          variantOriginalPrice) *
-                          100,
-                      )
-                    : 0,
-                weight: Number(v.weight) || 0,
-                unit: v.unit || "g",
-                isDefault: !!v.isDefault,
-                stock: v.stock ? Number(v.stock) : 0,
-                stock_quantity: v.stock ? Number(v.stock) : 0,
-              };
-            })
-        : [];
-
-      // Create product with uploaded image URLs
-      const normalizedPrice = Math.round(Number(price));
-      const normalizedOldPrice = oldPrice ? Math.round(Number(oldPrice)) : undefined;
-
       const productData = {
         name: productName,
         description,
         shortDescription,
         category: categoryVal,
-        price: normalizedPrice,
-        originalPrice: normalizedOldPrice,
-        isFeatured,
+        price: defaultVariant.price,
+        originalPrice: defaultVariant.originalPrice,
         isNewArrival,
         isBestSeller,
         isExclusive,
         demandStatus,
-        stock: stock ? Number(stock) : 0,
+        stock: variantData.reduce(
+          (sum, variant) => sum + Number(variant.stock || 0),
+          0,
+        ),
         brand,
         hsnCode: String(hsnCode || "").trim(),
-        discount: discount ? Number(discount) : 0,
-        rating,
-        weight: weight ? Number(weight) : undefined,
-        unit,
+        weight: defaultVariant.weight || undefined,
+        unit: defaultVariant.unit || "g",
         tags: tags ? tags.split(",").map((t) => t.trim()) : [],
         images: uploadedImageUrls,
         thumbnail: uploadedImageUrls[0] || "",
@@ -351,53 +356,10 @@ const AddProduct = () => {
               </Select>
             </div>
 
-            <div className="col flex flex-col gap-1">
-              <span className="text-[15px] text-gray-800 font-medium">
-                Price (₹) *
-              </span>
-              <input
-                type="number"
-                value={price}
-                onChange={(e) => setPrice(e.target.value)}
-                placeholder="0"
-                min="0"
-                step="1"
-                className="w-full h-[40px] border border-[rgba(0,0,0,0.2)] outline-none rounded-md focus:border-blue-500 px-3 text-[14px]"
-              />
-            </div>
-
-            <div className="col flex flex-col gap-1">
-              <span className="text-[15px] text-gray-800 font-medium">
-                Original Price (₹)
-              </span>
-              <input
-                type="number"
-                value={oldPrice}
-                onChange={(e) => setOldPrice(e.target.value)}
-                placeholder="0 (for strikethrough)"
-                min="0"
-                step="1"
-                className="w-full h-[40px] border border-[rgba(0,0,0,0.2)] outline-none rounded-md focus:border-blue-500 px-3 text-[14px]"
-              />
-            </div>
           </div>
 
           {/* Stock & Details */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-5">
-            <div className="col flex flex-col gap-1">
-              <span className="text-[15px] text-gray-800 font-medium">
-                Stock Quantity
-              </span>
-              <input
-                type="number"
-                value={stock}
-                onChange={(e) => setStock(e.target.value)}
-                placeholder="0"
-                min="0"
-                className="w-full h-[40px] border border-[rgba(0,0,0,0.2)] outline-none rounded-md focus:border-blue-500 px-3 text-[14px]"
-              />
-            </div>
-
             <div className="col flex flex-col gap-1">
               <span className="text-[15px] text-gray-800 font-medium">
                 Brand
@@ -427,64 +389,10 @@ const AddProduct = () => {
               />
             </div>
 
-            <div className="col flex flex-col gap-1">
-              <span className="text-[15px] text-gray-800 font-medium">
-                Discount (%)
-              </span>
-              <input
-                type="number"
-                value={discount}
-                onChange={(e) => setDiscount(e.target.value)}
-                placeholder="0"
-                min="0"
-                max="100"
-                className="w-full h-[40px] border border-[rgba(0,0,0,0.2)] outline-none rounded-md focus:border-blue-500 px-3 text-[14px]"
-              />
-            </div>
-
-            <div className="col flex flex-col gap-1">
-              <span className="text-[15px] text-gray-800 font-medium">
-                Rating
-              </span>
-              <Rating
-                name="product-rating"
-                value={rating}
-                onChange={(event, newValue) => setRating(newValue)}
-                size="large"
-              />
-            </div>
           </div>
 
           {/* Weight & Tags */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-5">
-            <div className="col flex flex-col gap-1">
-              <span className="text-[15px] text-gray-800 font-medium">
-                Weight
-              </span>
-              <div className="flex gap-2">
-                <input
-                  type="number"
-                  value={weight}
-                  onChange={(e) => setWeight(e.target.value)}
-                  placeholder="0"
-                  min="0"
-                  className="flex-1 h-[40px] border border-[rgba(0,0,0,0.2)] outline-none rounded-md focus:border-blue-500 px-3 text-[14px]"
-                />
-                <Select
-                  value={unit}
-                  onChange={(e) => setUnit(e.target.value)}
-                  size="small"
-                  className="w-20"
-                >
-                  <MenuItem value="g">g</MenuItem>
-                  <MenuItem value="kg">kg</MenuItem>
-                  <MenuItem value="ml">ml</MenuItem>
-                  <MenuItem value="L">L</MenuItem>
-                  <MenuItem value="pcs">pcs</MenuItem>
-                </Select>
-              </div>
-            </div>
-
             <div className="col flex flex-col gap-1">
               <span className="text-[15px] text-gray-800 font-medium">
                 Tags
@@ -496,22 +404,6 @@ const AddProduct = () => {
                 placeholder="organic, healthy, natural (comma separated)"
                 className="w-full h-[40px] border border-[rgba(0,0,0,0.2)] outline-none rounded-md focus:border-blue-500 px-3 text-[14px]"
               />
-            </div>
-
-            <div className="col flex flex-col gap-1">
-              <span className="text-[15px] text-gray-800 font-medium">
-                Featured Product
-              </span>
-              <div className="flex items-center gap-2">
-                <Switch
-                  checked={isFeatured}
-                  onChange={(e) => setIsFeatured(e.target.checked)}
-                  color="primary"
-                />
-                <span className="text-sm text-gray-600">
-                  {isFeatured ? "Yes" : "No"}
-                </span>
-              </div>
             </div>
 
             <div className="col flex flex-col gap-1">
@@ -592,32 +484,20 @@ const AddProduct = () => {
                 <span className="text-[15px] text-gray-800 font-semibold">
                   📦 Size / Weight Variants
                 </span>
-                <Switch
-                  checked={hasVariants}
-                  onChange={(e) => {
-                    setHasVariants(e.target.checked);
-                    if (!e.target.checked) setVariants([]);
-                  }}
-                  color="primary"
-                  size="small"
-                />
                 <span className="text-sm text-gray-500">
-                  {hasVariants ? "Enabled" : "Disabled"}
+                  Required
                 </span>
               </div>
-              {hasVariants && (
-                <Button
-                  type="button"
-                  onClick={addVariant}
-                  className="!bg-blue-50 !text-blue-600 !text-sm !px-4 !py-1.5 hover:!bg-blue-100 !font-medium !normal-case"
-                >
-                  + Add Size
-                </Button>
-              )}
+              <Button
+                type="button"
+                onClick={addVariant}
+                className="!bg-blue-50 !text-blue-600 !text-sm !px-4 !py-1.5 hover:!bg-blue-100 !font-medium !normal-case"
+              >
+                + Add Size
+              </Button>
             </div>
 
-            {hasVariants && (
-              <>
+            <>
                 <p className="text-xs text-gray-500 mb-4">
                   Add different sizes/weights for this product (e.g., 500g, 1
                   Kg). Each variant has its own price & stock.
@@ -656,6 +536,7 @@ const AddProduct = () => {
                             }
                             placeholder="500"
                             min="0"
+                            step="0.01"
                             className="flex-1 min-w-0 h-[36px] border border-gray-300 rounded-md px-2 text-sm focus:border-blue-500 outline-none"
                           />
                           <select
@@ -667,9 +548,6 @@ const AddProduct = () => {
                           >
                             <option value="g">g</option>
                             <option value="kg">kg</option>
-                            <option value="ml">ml</option>
-                            <option value="L">L</option>
-                            <option value="pcs">pcs</option>
                           </select>
                         </div>
                       </div>
@@ -765,13 +643,13 @@ const AddProduct = () => {
                     </div>
                   ))}
                 </div>
-              </>
-            )}
+            </>
           </div>
 
           <ProductPageSettingsSection
             productPage={productPage}
             setProductPage={setProductPage}
+            token={token}
           />
 
           {/* Images */}

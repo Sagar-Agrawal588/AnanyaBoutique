@@ -7,7 +7,7 @@ import { motion } from "framer-motion";
 import Image from "next/image";
 import Link from "next/link";
 import { useContext, useEffect, useRef, useState } from "react";
-import { FiVolume2, FiVolumeX } from "react-icons/fi";
+import { FiChevronLeft, FiChevronRight, FiVolume2, FiVolumeX } from "react-icons/fi";
 import useSeoAlt from "@/hooks/useSeoAlt";
 
 const BannerMedia = ({ banner, onMuteToggle, isMuted }) => {
@@ -109,6 +109,8 @@ const Banners = ({ initialBanners = [] }) => {
   const [banners, setBanners] = useState(initialBanners);
   const [loading, setLoading] = useState(initialBanners.length === 0);
   const [activeAudioBannerId, setActiveAudioBannerId] = useState(null);
+  const [activeBannerIndex, setActiveBannerIndex] = useState(0);
+  const scrollerRef = useRef(null);
   const context = useContext(MyContext);
   const flavor = context?.flavor || FLAVORS.creamy;
 
@@ -135,10 +137,62 @@ const Banners = ({ initialBanners = [] }) => {
   if (loading) return null;
   if (banners.length === 0) return null;
 
+  const scrollToBanner = (nextIndex) => {
+    const scroller = scrollerRef.current;
+    if (!scroller || banners.length === 0) return;
+
+    const normalizedIndex = (nextIndex + banners.length) % banners.length;
+    const target = scroller.children[normalizedIndex];
+    if (!target) return;
+
+    target.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest",
+      inline: "center",
+    });
+    setActiveBannerIndex(normalizedIndex);
+  };
+
+  const handleBannerScroll = () => {
+    const scroller = scrollerRef.current;
+    if (!scroller) return;
+
+    const slideWidth = scroller.firstElementChild?.clientWidth || scroller.clientWidth;
+    const gap = 16;
+    const nextIndex = Math.round(scroller.scrollLeft / Math.max(slideWidth + gap, 1));
+    setActiveBannerIndex(Math.min(Math.max(nextIndex, 0), banners.length - 1));
+  };
+
   return (
     <section className="py-8 sm:py-12 bg-white">
       <div className="max-w-7xl mx-auto px-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="relative">
+          {banners.length > 1 ? (
+            <>
+              <button
+                type="button"
+                onClick={() => scrollToBanner(activeBannerIndex - 1)}
+                className="slider-nav absolute left-2 top-1/2 -translate-y-1/2 transition hover:bg-white"
+                aria-label="Previous banner"
+              >
+                <FiChevronLeft size={22} />
+              </button>
+              <button
+                type="button"
+                onClick={() => scrollToBanner(activeBannerIndex + 1)}
+                className="slider-nav absolute right-2 top-1/2 -translate-y-1/2 transition hover:bg-white"
+                aria-label="Next banner"
+              >
+                <FiChevronRight size={22} />
+              </button>
+            </>
+          ) : null}
+
+          <div
+            ref={scrollerRef}
+            onScroll={handleBannerScroll}
+            className="flex snap-x snap-mandatory gap-4 overflow-x-auto scroll-smooth pb-3 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+          >
           {banners.map((banner, index) => {
             const bannerLink =
               banner.title?.includes("Subscribe") ||
@@ -164,11 +218,12 @@ const Banners = ({ initialBanners = [] }) => {
 
             return (
               <motion.div
-                key={banner._id}
+                key={banner._id || `banner-${index}`}
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.5, delay: index * 0.1 }}
+                className="min-w-full snap-center md:min-w-[calc(50%_-_8px)]"
               >
                 <div className="relative">
                   <Link
@@ -186,7 +241,7 @@ const Banners = ({ initialBanners = [] }) => {
                     <motion.div
                       whileHover={{ y: -5, scale: 1.02 }}
                       transition={{ duration: 0.3 }}
-                      className="relative overflow-hidden rounded-3xl shadow-sm hover:shadow-xl"
+                      className="banner-image-container relative overflow-hidden rounded-3xl shadow-none"
                     >
                       <BannerMedia
                         banner={banner}
@@ -228,32 +283,54 @@ const Banners = ({ initialBanners = [] }) => {
 
                   {/* Mute/Unmute Button - OUTSIDE Link to prevent navigation */}
                   {isVideo && (
-                    <button
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setActiveAudioBannerId((prev) =>
-                          prev === banner._id ? null : banner._id,
-                        );
-                      }}
-                      className="absolute bottom-20 right-4 z-20 rounded-full bg-black/50 p-2 text-white backdrop-blur-md hover:bg-black/70 transition-colors"
-                      aria-label={
-                        activeAudioBannerId !== banner._id
-                          ? "Unmute video"
-                          : "Mute video"
-                      }
-                    >
-                      {activeAudioBannerId !== banner._id ? (
-                        <FiVolumeX size={16} />
-                      ) : (
-                        <FiVolume2 size={16} />
-                      )}
-                    </button>
+                    <div className="banner-controls">
+                      <button
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setActiveAudioBannerId((prev) =>
+                            prev === banner._id ? null : banner._id,
+                          );
+                        }}
+                        className="banner-audio rounded-full bg-black/50 p-2 text-white backdrop-blur-md transition-colors hover:bg-black/70"
+                        aria-label={
+                          activeAudioBannerId !== banner._id
+                            ? "Unmute video"
+                            : "Mute video"
+                        }
+                      >
+                        {activeAudioBannerId !== banner._id ? (
+                          <FiVolumeX size={16} />
+                        ) : (
+                          <FiVolume2 size={16} />
+                        )}
+                      </button>
+                    </div>
                   )}
                 </div>
               </motion.div>
             );
           })}
+          </div>
+
+          {banners.length > 1 ? (
+            <div className="mt-3 flex items-center justify-center gap-2">
+              {banners.map((banner, index) => (
+                <button
+                  key={`${banner?._id || "banner"}-dot-${index}`}
+                  type="button"
+                  onClick={() => scrollToBanner(index)}
+                  className={`h-2.5 rounded-full transition-all ${
+                    activeBannerIndex === index
+                      ? "w-7 bg-primary"
+                      : "w-2.5 bg-gray-300 hover:bg-gray-400"
+                  }`}
+                  aria-label={`Show banner ${index + 1}`}
+                  aria-current={activeBannerIndex === index ? "true" : undefined}
+                />
+              ))}
+            </div>
+          ) : null}
         </div>
       </div>
     </section>

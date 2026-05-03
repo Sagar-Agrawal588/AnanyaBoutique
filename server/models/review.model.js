@@ -8,6 +8,11 @@ const reviewSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    variantId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+      index: true,
+    },
     comboId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Combo",
@@ -88,9 +93,13 @@ const reviewSchema = new mongoose.Schema(
   },
 );
 
-reviewSchema.index({ orderId: 1, productId: 1, userId: 1 }, { unique: true });
+reviewSchema.index(
+  { orderId: 1, productId: 1, variantId: 1, userId: 1 },
+  { unique: true },
+);
 reviewSchema.index({ createdAt: -1 });
 reviewSchema.index({ productId: 1, createdAt: -1 });
+reviewSchema.index({ productId: 1, variantId: 1, visibility: 1, createdAt: -1 });
 reviewSchema.index({ comboId: 1, createdAt: -1 });
 reviewSchema.index({ orderId: 1, createdAt: -1 });
 reviewSchema.index({ productId: 1, visibility: 1, createdAt: -1 });

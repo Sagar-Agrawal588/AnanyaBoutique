@@ -1,7 +1,9 @@
 import express from "express";
+import admin from "../middlewares/admin.js";
 import auth from "../middlewares/auth.js";
 import optionalAuth from "../middlewares/optionalAuth.js";
 import {
+  deleteAdminReview,
   getComboReviews,
   getMyReviews,
   getProductReviews,
@@ -12,6 +14,7 @@ const router = express.Router();
 
 // Customer actions
 router.post("/", optionalAuth, submitReview);
+router.delete("/:id", auth, admin, deleteAdminReview);
 router.get("/my", auth, getMyReviews);
 
 // Public product reviews

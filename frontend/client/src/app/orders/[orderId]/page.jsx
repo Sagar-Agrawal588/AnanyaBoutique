@@ -1057,30 +1057,38 @@ const OrderDetailsPage = () => {
     ),
     coupon: couponDiscount,
   };
-  const visibleDiscountTotal = round2(discountBreakdown.coupon);
-  const discountedSubtotalRaw = sanitizeMoney(
-    orderTotals.discountedSubtotal,
-    sanitizeMoney(
-      Number(orderTotals.subtotal || 0) - Number(discountBreakdown.combo || 0),
-      0,
-    ),
+  const displaySubtotal = sanitizeMoney(
+    pricingFromServer?.originalPrice ?? order?.originalPrice,
+    sanitizeMoney(orderTotals.subtotal + orderTotals.totalDiscount, 0),
   );
-  const displayTotal = Math.max(Math.round(Number(orderTotals.total || 0)), 0);
-  const gstRatePercent = resolveOrderGstRatePercent({
-    order,
-    subtotal: discountedSubtotalRaw,
-    tax: orderTotals.tax,
-  });
-  const displaySubtotal =
-    displayTotal > 0
-      ? round2(displayTotal / (1 + gstRatePercent / 100))
-      : round2(discountedSubtotalRaw);
-  const displayTax =
-    displayTotal > 0
-      ? round2(displayTotal - displaySubtotal)
-      : round2(orderTotals.tax);
-  const displaySummarySubtotal = round2(displaySubtotal + visibleDiscountTotal);
-  const hasVisibleDiscount = visibleDiscountTotal > 0.009;
+  const displayDiscount = sanitizeMoney(
+    pricingFromServer?.discount ?? order?.discount,
+    sanitizeMoney(orderTotals.totalDiscount, 0),
+  );
+  const displayTaxableAmount = sanitizeMoney(
+    pricingFromServer?.discountedPrice ?? orderTotals.discountedSubtotal,
+    sanitizeMoney(orderTotals.discountedSubtotal, 0),
+  );
+  const displayTax = sanitizeMoney(
+    pricingFromServer?.gst ?? orderTotals.tax,
+    sanitizeMoney(orderTotals.tax, 0),
+  );
+  const displayTotal = Math.max(
+    Math.round(
+      Number(
+        pricingFromServer?.roundedTotal ??
+          order?.roundedAmount ??
+          orderTotals.total ??
+          0,
+      ),
+    ),
+    0,
+  );
+  const displayRoundOff = sanitizeMoney(
+    pricingFromServer?.roundOff ?? order?.roundOff,
+    round2(displayTotal - (displayTaxableAmount + displayTax)),
+  );
+  const hasVisibleDiscount = displayDiscount > 0.009;
   const normalizedOrderStatus = normalizeStatus(order?.order_status);
   const hasDeliveredTimelineStatus = Array.isArray(order?.statusTimeline)
     ? order.statusTimeline.some((entry) => {
@@ -1720,20 +1728,18 @@ const OrderDetailsPage = () => {
             <div className="space-y-3 text-base">
               <div className="flex justify-between text-gray-600">
                 <span>Subtotal</span>
-                <span>₹{displaySummarySubtotal.toFixed(2)}</span>
+                <span>₹{displaySubtotal.toFixed(2)}</span>
               </div>
-              {discountBreakdown.coupon > 0 && (
+              {hasVisibleDiscount && (
                 <div className="flex justify-between text-primary">
-                  <span>
-                    Coupon {order?.couponCode ? `(${order.couponCode})` : ""}
-                  </span>
-                  <span>-₹{discountBreakdown.coupon.toFixed(2)}</span>
+                  <span>Discount</span>
+                  <span>-₹{displayDiscount.toFixed(2)}</span>
                 </div>
               )}
               {hasVisibleDiscount && (
                 <div className="flex justify-between text-gray-600 border-t border-gray-100 pt-2">
-                  <span>Discounted Subtotal</span>
-                  <span>₹{displaySubtotal.toFixed(2)}</span>
+                  <span>Taxable Amount</span>
+                  <span>₹{displayTaxableAmount.toFixed(2)}</span>
                 </div>
               )}
               {orderTotals.coinRedemptionAmount > 0 && (
@@ -1748,6 +1754,12 @@ const OrderDetailsPage = () => {
               <div className="flex justify-between text-gray-600">
                 <span>GST</span>
                 <span>₹{displayTax.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-gray-600">
+                <span>Round Off</span>
+                <span>
+                  {displayRoundOff >= 0 ? "+" : "-"}₹{Math.abs(displayRoundOff).toFixed(2)}
+                </span>
               </div>
               <div className="flex justify-between text-gray-600">
                 <span className="flex items-center gap-2">
@@ -1768,9 +1780,9 @@ const OrderDetailsPage = () => {
                 )}
               </div>
               <div className="border-t border-gray-200 pt-3 flex justify-between font-bold text-gray-800">
-                <span className="text-lg">Total</span>
+                <span className="text-lg">Final Payable</span>
                 <span className="text-xl text-orange-600">
-                  ₹{displayTotal.toFixed(2)}
+                  ₹{displayTotal.toFixed(0)}
                 </span>
               </div>
             </div>

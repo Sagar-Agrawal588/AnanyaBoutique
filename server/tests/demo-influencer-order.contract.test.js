@@ -22,7 +22,10 @@ test("demo influencer order contract keeps shipping suppressed and exposes invoi
 
   assert.match(source, /const shippingSuppressed = true;/);
   assert.match(source, /isDemoOrder:\s*true/);
+  assert.match(source, /shippingStatus:\s*"manual"/);
   assert.match(source, /ensureOrderInvoice\(testOrder\)/);
+  assert.match(source, /sendOrderConfirmationEmail\(testOrder\)/);
+  assert.match(source, /couponCode:\s*couponCode \|\| null/);
   assert.match(source, /updateInfluencerStats\(/);
   assert.match(source, /xpressbeesPosted:\s*false/);
   assert.match(source, /influencerCommission/);

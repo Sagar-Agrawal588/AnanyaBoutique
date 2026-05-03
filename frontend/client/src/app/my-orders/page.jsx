@@ -198,6 +198,43 @@ const resolveOrderGstRatePercent = ({ order, subtotal, tax }) => {
 const buildOrderDisplayTotals = (order = {}, orderTotals = {}) => {
   const pricing =
     order?.pricing && typeof order.pricing === "object" ? order.pricing : null;
+  if (pricing) {
+    const subtotal = sanitizeMoney(
+      pricing.originalPrice ?? order?.originalPrice,
+      sanitizeMoney(orderTotals?.subtotal, 0),
+    );
+    const discount = sanitizeMoney(
+      pricing.discount ?? order?.discount,
+      sanitizeMoney(orderTotals?.totalDiscount, 0),
+    );
+    const discountedSubtotal = sanitizeMoney(
+      pricing.discountedPrice ?? orderTotals?.discountedSubtotal,
+      sanitizeMoney(orderTotals?.discountedSubtotal, 0),
+    );
+    const tax = sanitizeMoney(
+      pricing.gst ?? orderTotals?.tax,
+      sanitizeMoney(orderTotals?.tax, 0),
+    );
+    const total = sanitizeMoney(
+      pricing.roundedTotal ??
+        order?.roundedAmount ??
+        order?.finalAmount ??
+        orderTotals?.total,
+      0,
+    );
+
+    return {
+      summarySubtotal: subtotal,
+      discountedSubtotal,
+      tax,
+      couponDiscount: sanitizeMoney(order?.discountAmount, 0),
+      visibleDiscountTotal: discount,
+      hasVisibleDiscount: discount > 0.009,
+      coinRedemptionAmount: sanitizeMoney(order?.coinRedemption?.amount, 0),
+      totalRaw: total,
+      totalRounded: total,
+    };
+  }
   const couponCode = String(
     order?.couponCode || pricing?.couponCode || "",
   ).trim();

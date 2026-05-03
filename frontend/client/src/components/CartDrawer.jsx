@@ -2,7 +2,7 @@
 
 import { useCart } from "@/context/CartContext";
 import { useShippingDisplayCharge } from "@/hooks/useShippingDisplayCharge";
-import { postData } from "@/utils/api";
+import { fetchDataFromApi } from "@/utils/api";
 import { round2 } from "@/utils/gst";
 import { getImageUrl } from "@/utils/imageUtils";
 import Link from "next/link";
@@ -31,7 +31,7 @@ const CartDrawer = () => {
   const router = useRouter();
   const [upsellLoading, setUpsellLoading] = useState(false);
   const [upsellCombo, setUpsellCombo] = useState(null);
-  const [upsellProduct, setUpsellProduct] = useState(null);
+  const [upsellProducts, setUpsellProducts] = useState([]);
   const COMBO_FALLBACK_IMAGE = "/product_1.png";
 
   const subtotal = round2(cartSubTotalAmount || 0);
@@ -279,51 +279,42 @@ const CartDrawer = () => {
   useEffect(() => {
     let active = true;
     const fetchUpsells = async () => {
-      if (!isDrawerOpen || upsellRequestItems.length === 0) {
+      if (!isDrawerOpen || upsellRequestItems.length < 2) {
         setUpsellCombo(null);
-        setUpsellProduct(null);
+        setUpsellProducts([]);
         setUpsellLoading(false);
         return;
       }
 
       setUpsellLoading(true);
       try {
-        const response = await postData("/api/combos/cart-upsell", {
-          items: upsellRequestItems,
+        const response = await fetchDataFromApi("/api/cart/recommendations", {
+          skipCache: true,
+          dedupe: false,
         });
         if (!active) return;
 
         if (response?.success) {
-          const suggestions = Array.isArray(response?.data?.suggestions)
-            ? response.data.suggestions
-            : [];
-          const normalizedCombo = normalizeUpsellCombo(suggestions[0] || null);
-          let normalizedProduct = normalizeUpsellProduct(
-            response?.data?.productSuggestion || response?.data?.recommendation,
+          const normalizedCombo = normalizeUpsellCombo(
+            response?.data?.combo || null,
           );
-
-          if (!normalizedProduct) {
-            const productResponse = await postData("/api/products/upsell", {
-              items: upsellRequestItems,
-            });
-            if (!active) return;
-            if (productResponse?.success) {
-              normalizedProduct = normalizeUpsellProduct(
-                productResponse?.data || null,
-              );
-            }
-          }
+          const normalizedProducts = Array.isArray(response?.data?.products)
+            ? response.data.products
+                .map((entry) => normalizeUpsellProduct(entry))
+                .filter(Boolean)
+                .slice(0, 2)
+            : [];
 
           setUpsellCombo(normalizedCombo);
-          setUpsellProduct(normalizedProduct);
+          setUpsellProducts(normalizedProducts);
         } else {
           setUpsellCombo(null);
-          setUpsellProduct(null);
+          setUpsellProducts([]);
         }
       } catch {
         if (!active) return;
         setUpsellCombo(null);
-        setUpsellProduct(null);
+        setUpsellProducts([]);
       } finally {
         if (active) setUpsellLoading(false);
       }
@@ -348,31 +339,12 @@ const CartDrawer = () => {
   const upsellComboTitle = String(
     upsellComboData?.name || upsellComboData?.comboName || "",
   ).trim();
-  const upsellProductData = upsellProduct?.recommendation || null;
-  const upsellProductEntity =
-    upsellProductData?.product || upsellProduct?.product || null;
-  const upsellProductPrice = Number(upsellProductData?.price || 0);
-  const upsellProductOriginal = Number(
-    upsellProductData?.originalPrice || upsellProductPrice,
-  );
-  const upsellProductSavings = round2(
-    Math.max(upsellProductOriginal - upsellProductPrice, 0),
-  );
   const displayUpsellComboPrice = Math.max(Math.round(upsellComboPrice), 0);
   const displayUpsellComboOriginal = Math.max(
     Math.round(upsellComboOriginal),
     0,
   );
-  const displayUpsellProductPrice = Math.max(Math.round(upsellProductPrice), 0);
-  const displayUpsellProductOriginal = Math.max(
-    Math.round(upsellProductOriginal),
-    0,
-  );
   const displayUpsellComboSavings = Math.max(Math.round(upsellComboSavings), 0);
-  const displayUpsellProductSavings = Math.max(
-    Math.round(upsellProductSavings),
-    0,
-  );
 
   return (
     <>
@@ -537,7 +509,7 @@ const CartDrawer = () => {
 
               <div className="my-6 border-t border-gray-200" />
 
-              {(upsellLoading || upsellComboData || upsellProductEntity) && (
+              {cartItems.length >= 2 && (
                 <section className="mb-6 rounded-2xl border border-amber-200 bg-amber-50/70 p-4">
                   <div className="flex items-center justify-between gap-2 mb-2">
                     <p className="text-sm font-bold uppercase tracking-[0.12em] text-gray-900 flex items-center gap-1">
@@ -560,7 +532,7 @@ const CartDrawer = () => {
 
                   {upsellLoading &&
                     !upsellComboData &&
-                    !upsellProductEntity && (
+                    upsellProducts.length === 0 && (
                       <p className="text-sm text-gray-500">
                         Loading bundle suggestions...
                       </p>
@@ -614,8 +586,44 @@ const CartDrawer = () => {
                       </div>
                     )}
 
-                    {upsellProductEntity && (
-                      <div className="rounded-xl bg-white border border-amber-100 p-3">
+                    {upsellProducts.map((upsellProduct, index) => {
+                      const upsellProductData =
+                        upsellProduct?.recommendation || null;
+                      const upsellProductEntity =
+                        upsellProductData?.product ||
+                        upsellProduct?.product ||
+                        null;
+                      if (!upsellProductEntity) return null;
+
+                      const upsellProductPrice = Number(
+                        upsellProductData?.price || 0,
+                      );
+                      const upsellProductOriginal = Number(
+                        upsellProductData?.originalPrice || upsellProductPrice,
+                      );
+                      const displayUpsellProductPrice = Math.max(
+                        Math.round(upsellProductPrice),
+                        0,
+                      );
+                      const displayUpsellProductOriginal = Math.max(
+                        Math.round(upsellProductOriginal),
+                        0,
+                      );
+                      const displayUpsellProductSavings = Math.max(
+                        Math.round(
+                          Math.max(
+                            upsellProductOriginal - upsellProductPrice,
+                            0,
+                          ),
+                        ),
+                        0,
+                      );
+
+                      return (
+                      <div
+                        key={`${String(upsellProductEntity?._id || upsellProductEntity?.id || "addon")}-${String(upsellProductData?.variant?._id || "base")}-${index}`}
+                        className="rounded-xl bg-white border border-amber-100 p-3"
+                      >
                         <div className="flex items-center gap-3">
                           <img
                             src={getImageUrl(
@@ -667,7 +675,8 @@ const CartDrawer = () => {
                           </button>
                         </div>
                       </div>
-                    )}
+                      );
+                    })}
                   </div>
                 </section>
               )}

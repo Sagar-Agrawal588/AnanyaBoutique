@@ -153,8 +153,11 @@ const isLikelyUpiRrn = (value) => /^\d{12}$/.test(String(value || ""));
 
 const resolveUpiRrn = (order = {}) => {
   const rrnCandidatePaths = [
+    "utrNumber",
     "rrn",
     "utr",
+    "upiRefId",
+    "upiRef",
     "upi_ref",
     "bank_ref",
     "upiReferenceNo",
@@ -188,9 +191,12 @@ const resolveTransactionId = (order = {}, rrnValue = "") => {
     "transactionId",
     "txnId",
     "gatewayTxnId",
+    "paymentAppTxnId",
     "phonepeTransactionId",
     "paytmTransactionId",
     "providerReferenceId",
+    "upiRefId",
+    "upiRef",
     "upiReferenceNumber",
     "payment.transactionId",
     "payment.txnId",
@@ -211,6 +217,7 @@ const resolveTransactionId = (order = {}, rrnValue = "") => {
     order?.transactionId,
     order?.txnId,
     order?.gatewayTxnId,
+    order?.paymentAppTxnId,
   ]
     .map((value) => normalizePaymentFieldValue(value))
     .find((value) => Boolean(value) && value !== rrnValue);
@@ -568,6 +575,8 @@ const OrderRow = ({ order, index, token }) => {
       transactionId ||
       "Pending / Not issued yet"
     : "Pending / Not issued yet";
+  const directUtrNumber = String(order?.utrNumber || "").trim();
+  const directPaymentAppTxnId = String(order?.paymentAppTxnId || "").trim();
   const paymentProviderLabel = resolvePaymentProviderLabel(order);
   const merchantReference = resolveMerchantReference(order);
   const gatewayOrderReference = String(order?.phonepeOrderId || "").trim();
@@ -892,7 +901,9 @@ const OrderRow = ({ order, index, token }) => {
         </td>
         <td className="text-[14px] text-gray-600 font-[500] px-4 py-2">
           <div className="min-w-0">
-            <div className="break-all">{paymentReference}</div>
+            <div className="break-all">
+              {directPaymentAppTxnId || "N/A"}
+            </div>
             <div className="mt-1 text-[11px] uppercase tracking-wide text-gray-400">
               {paymentProviderLabel}
             </div>
@@ -935,8 +946,12 @@ const OrderRow = ({ order, index, token }) => {
           <div className="inline-flex items-center gap-1 text-[14px] whitespace-nowrap">
             <MdDateRange size={18} />
             {order?.createdAt
-              ? new Date(order.createdAt).toLocaleDateString()
-              : new Date().toLocaleDateString()}
+              ? new Date(order.createdAt).toLocaleDateString("en-IN", {
+                  timeZone: "Asia/Kolkata",
+                })
+              : new Date().toLocaleDateString("en-IN", {
+                  timeZone: "Asia/Kolkata",
+                })}
           </div>
         </td>
       </tr>
@@ -1042,7 +1057,9 @@ const OrderRow = ({ order, index, token }) => {
                           </p>
                           <p className="text-[11px] text-gray-400">
                             {review.createdAt
-                              ? new Date(review.createdAt).toLocaleDateString()
+                              ? new Date(review.createdAt).toLocaleDateString("en-IN", {
+                                  timeZone: "Asia/Kolkata",
+                                })
                               : ""}
                           </p>
                         </div>
@@ -1074,10 +1091,16 @@ const OrderRow = ({ order, index, token }) => {
                 </div>
                 <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
                   <span className="font-semibold text-gray-700">
-                    Payment App Txn ID:
+                    Payment ID:
                   </span>{" "}
                   <span className="text-gray-800 break-all">
-                    {paymentReference}
+                    {directPaymentAppTxnId || "N/A"}
+                  </span>
+                </div>
+                <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+                  <span className="font-semibold text-gray-700">UTR:</span>{" "}
+                  <span className="text-gray-800 break-all">
+                    {directUtrNumber || "N/A"}
                   </span>
                 </div>
                 {upiRrn ? (
@@ -1087,14 +1110,14 @@ const OrderRow = ({ order, index, token }) => {
                         className="font-semibold text-gray-700"
                         title="RRN is a bank-level reference used for tracking UPI payments"
                       >
-                        UPI RRN:
+                        UTR Number:
                       </span>{" "}
                       <span className="text-gray-800 break-all">{upiRrn}</span>
                     </div>
                     <Button
                       size="small"
                       variant="outlined"
-                      onClick={() => copyToClipboard(upiRrn, "UPI RRN")}
+                      onClick={() => copyToClipboard(upiRrn, "UTR Number")}
                     >
                       Copy
                     </Button>
@@ -1104,7 +1127,7 @@ const OrderRow = ({ order, index, token }) => {
                   <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 flex items-center justify-between gap-2">
                     <div className="min-w-0">
                       <span className="font-semibold text-gray-700">
-                        Transaction ID:
+                        UPI Ref ID:
                       </span>{" "}
                       <span className="text-gray-800 break-all">
                         {transactionId}
@@ -1114,7 +1137,7 @@ const OrderRow = ({ order, index, token }) => {
                       size="small"
                       variant="outlined"
                       onClick={() =>
-                        copyToClipboard(transactionId, "Transaction ID")
+                        copyToClipboard(transactionId, "UPI Ref ID")
                       }
                     >
                       Copy
@@ -1165,10 +1188,10 @@ const OrderRow = ({ order, index, token }) => {
                 </div>
                 <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
                   <span className="font-semibold text-gray-700">
-                    Gateway Txn Ref:
+                    Payment App Txn ID:
                   </span>{" "}
                   <span className="text-gray-800 break-all">
-                    {gatewayTransactionReference || "Pending / Not issued yet"}
+                    {paymentReference}
                   </span>
                 </div>
               </div>
@@ -1389,8 +1412,6 @@ const Orders = () => {
             : [];
           const visibleOrders = nextOrders.filter((order) => {
             if (isDemoOrTestOrder(order)) return false;
-            if (statusFilter === "all" && isPendingQueueOrder(order))
-              return false;
             return true;
           });
           const nextTotalPages = Number(payload?.pagination?.totalPages || 1);
@@ -1574,7 +1595,7 @@ const Orders = () => {
               {orders.length === 1 ? "order" : "orders"}
             </p>
             <p className="mt-1 text-xs text-gray-500">
-              Pending and payment-hold orders are hidden from this view.
+              All regular orders are shown in this view.
             </p>
           </div>
           <div className="flex items-center gap-3 flex-wrap">

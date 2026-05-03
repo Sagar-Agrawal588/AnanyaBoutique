@@ -3,6 +3,7 @@ import {
   addToCart,
   clearCart,
   getCart,
+  getCartRecommendations,
   mergeCart,
   removeFromCart,
   updateCartItem,
@@ -20,6 +21,9 @@ const router = express.Router();
 
 // Get cart (works for both auth users and guests with session ID)
 router.get("/", optionalAuth, getCart);
+
+// Get cart-level recommendations (works for both auth users and guests)
+router.get("/recommendations", optionalAuth, getCartRecommendations);
 
 // Add to cart
 router.post("/add", optionalAuth, addToCart);

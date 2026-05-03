@@ -27,6 +27,17 @@ const roundUpPercent = (value) => {
   return Math.ceil(parsed);
 };
 
+const isNewArrivalProduct = (product) =>
+  Boolean(product?.newArrival ?? product?.isNewArrival);
+
+const prioritizeNewArrivals = (products = []) =>
+  [...products].sort((a, b) => {
+    const aNewArrival = isNewArrivalProduct(a);
+    const bNewArrival = isNewArrivalProduct(b);
+    if (aNewArrival === bNewArrival) return 0;
+    return aNewArrival ? -1 : 1;
+  });
+
 const resolveComboImage = (combo) =>
   combo?.thumbnail ||
   combo?.comboThumbnail ||
@@ -71,7 +82,6 @@ const toComboCardPayload = (combo) => {
 const ProductSlider = ({
   title,
   categorySlug,
-  isFeatured,
   limit = 10,
   includeCombos = false,
   productLimit = 5,
@@ -96,7 +106,6 @@ const ProductSlider = ({
         const params = [];
         if (categorySlug)
           params.push(`category=${encodeURIComponent(categorySlug)}`);
-        if (isFeatured) params.push("featured=true");
         params.push(
           `sortBy=${encodeURIComponent(String(sortBy || "createdAt"))}`,
         );
@@ -128,9 +137,10 @@ const ProductSlider = ({
                   String(product?.itemType || "product") !== "combo",
               )
             : [];
+        const prioritizedProducts = prioritizeNewArrivals(fetchedProducts);
 
         if (!includeCombos) {
-          setProducts(fetchedProducts);
+          setProducts(prioritizedProducts);
           return;
         }
         const comboItemsRaw =
@@ -180,7 +190,7 @@ const ProductSlider = ({
           );
         });
 
-        const topProducts = fetchedProducts.slice(
+        const topProducts = prioritizedProducts.slice(
           0,
           Math.max(Number(productLimit) || 0, 0),
         );
@@ -199,7 +209,6 @@ const ProductSlider = ({
     fetchProducts();
   }, [
     categorySlug,
-    isFeatured,
     limit,
     includeCombos,
     productLimit,

@@ -72,6 +72,13 @@ const mapComboToProductCard = (combo) => {
   const id = combo?._id || combo?.id || "";
   const name = String(combo?.name || "").trim() || "Untitled Combo";
   const shortDescription = String(combo?.shortDescription || "").trim();
+  const includedItems = (Array.isArray(combo?.items) ? combo.items : [])
+    .map((item) =>
+      String(item?.productTitle || item?.name || item?.title || "").trim(),
+    )
+    .filter(Boolean)
+    .slice(0, 3)
+    .join(" + ");
   const normalizedName = name.toLowerCase();
   const normalizedDescription = shortDescription.toLowerCase();
   const finalPrice = toNumber(
@@ -96,7 +103,7 @@ const mapComboToProductCard = (combo) => {
     shortDescription:
       normalizedDescription && normalizedDescription !== normalizedName
         ? shortDescription
-        : "",
+        : includedItems,
     isBestSeller: Boolean(combo?.isBestSeller),
     isFeatured: Boolean(combo?.isFeatured),
     isHighDemand:

@@ -1,6 +1,8 @@
 "use client";
 
+import { uploadFile } from "@/utils/api";
 import Switch from "@mui/material/Switch";
+import { useState } from "react";
 
 const sectionCardClass = "rounded-xl border border-gray-200 bg-gray-50 p-5";
 const inputClass =
@@ -59,11 +61,14 @@ const fromLines = (value) =>
 export default function ProductPageSettingsSection({
   productPage,
   setProductPage,
+  token = null,
   pageTitle = "Storefront Product Page",
   storefrontPath = "/product/[id]",
   entityLabel = "product",
   lowerSectionLabel = "product",
 }) {
+  const [bannerUploading, setBannerUploading] = useState(false);
+
   const updateSectionField = (section, field, nextValue) => {
     setProductPage((current) => ({
       ...current,
@@ -74,22 +79,29 @@ export default function ProductPageSettingsSection({
     }));
   };
 
-  const updateCardField = (index, field, nextValue) => {
-    setProductPage((current) => {
-      const nextCards = [...current.detailsSection.cards];
-      nextCards[index] = {
-        ...nextCards[index],
-        [field]: nextValue,
-      };
-
-      return {
-        ...current,
-        detailsSection: {
-          ...current.detailsSection,
-          cards: nextCards,
-        },
-      };
-    });
+  const handleBannerUpload = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      alert("Image size should be less than 5MB");
+      return;
+    }
+    setBannerUploading(true);
+    try {
+      const result = await uploadFile(file, token);
+      if (result?.success && result?.data?.url) {
+        updateSectionField(
+          "descriptionSection",
+          "featuredBannerImage",
+          result.data.url,
+        );
+      } else {
+        alert(result?.message || "Failed to upload banner image");
+      }
+    } finally {
+      setBannerUploading(false);
+      event.target.value = "";
+    }
   };
 
   return (
@@ -99,8 +111,8 @@ export default function ProductPageSettingsSection({
           {pageTitle}
         </h3>
         <p className="mt-1 text-sm text-gray-500">
-          Control the copy and visibility of the live `{storefrontPath}` page
-          from admin. Empty fields keep the default storefront behavior.
+          Control section visibility and supporting copy for the live
+          `{storefrontPath}` page from admin.
         </p>
       </div>
 
@@ -298,7 +310,7 @@ export default function ProductPageSettingsSection({
           </div>
         </div>
 
-        <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-3">
+        <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-4">
           <ToggleField
             label="Show Description Section"
             checked={productPage.descriptionSection.show}
@@ -327,6 +339,20 @@ export default function ProductPageSettingsSection({
                 nextValue,
               )
             }
+          />
+          <ToggleField
+            label="Show Featured Image"
+            checked={
+              productPage.descriptionSection.showFeaturedBannerImage !== false
+            }
+            onChange={(nextValue) =>
+              updateSectionField(
+                "descriptionSection",
+                "showFeaturedBannerImage",
+                nextValue,
+              )
+            }
+            hint="Turn off to remove the image area from Featured Overview."
           />
         </div>
 
@@ -370,6 +396,39 @@ export default function ProductPageSettingsSection({
           />
         </div>
 
+        <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_220px]">
+          <TextField
+            label="Featured Banner Image URL"
+            value={productPage.descriptionSection.featuredBannerImage || ""}
+            onChange={(nextValue) =>
+              updateSectionField(
+                "descriptionSection",
+                "featuredBannerImage",
+                nextValue,
+              )
+            }
+          />
+          <label className="flex h-full min-h-[40px] cursor-pointer items-center justify-center rounded-md border border-blue-200 bg-blue-50 px-4 text-sm font-semibold text-blue-700">
+            {bannerUploading ? "Uploading..." : "Upload Image"}
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleBannerUpload}
+              disabled={bannerUploading}
+            />
+          </label>
+        </div>
+        {productPage.descriptionSection.featuredBannerImage ? (
+          <div className="mt-3 w-full max-w-sm rounded-lg border border-gray-200 bg-white p-2">
+            <img
+              src={productPage.descriptionSection.featuredBannerImage}
+              alt="Featured banner preview"
+              className="max-h-40 w-full rounded-md object-contain"
+            />
+          </div>
+        ) : null}
+
         <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
           <TextField
             label="Description Flow Eyebrow"
@@ -404,12 +463,12 @@ export default function ProductPageSettingsSection({
             Details And Shipping
           </h4>
           <p className="text-sm text-gray-500">
-            Adjust cards, snapshot bullets, shipping points, and the supporting
-            explanation panel.
+            Toggle the live details cards. Card labels and values are always
+            generated from product and selected variant data.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <ToggleField
             label="Show Details Section"
             checked={productPage.detailsSection.show}
@@ -423,77 +482,6 @@ export default function ProductPageSettingsSection({
             onChange={(nextValue) =>
               updateSectionField("detailsSection", "showCards", nextValue)
             }
-          />
-          <ToggleField
-            label="Show Snapshot Panel"
-            checked={productPage.detailsSection.showSnapshot}
-            onChange={(nextValue) =>
-              updateSectionField("detailsSection", "showSnapshot", nextValue)
-            }
-          />
-        </div>
-
-        <div className="mt-5">
-          <TextField
-            label="Snapshot Eyebrow"
-            value={productPage.detailsSection.snapshotEyebrow}
-            onChange={(nextValue) =>
-              updateSectionField("detailsSection", "snapshotEyebrow", nextValue)
-            }
-          />
-        </div>
-
-        <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-2">
-          <div className="space-y-3">
-            {productPage.detailsSection.cards.map((card, index) => (
-              <div
-                key={`detail-card-${index}`}
-                className="rounded-lg border border-gray-200 bg-white p-4"
-              >
-                <p className="text-sm font-semibold text-gray-800">
-                  Detail Card {index + 1}
-                </p>
-                <div className="mt-3 grid grid-cols-1 gap-3">
-                  <TextField
-                    label="Label"
-                    value={card.label}
-                    onChange={(nextValue) =>
-                      updateCardField(index, "label", nextValue)
-                    }
-                  />
-                  <TextField
-                    label="Value Override"
-                    value={card.value}
-                    onChange={(nextValue) =>
-                      updateCardField(index, "value", nextValue)
-                    }
-                    placeholder="Leave blank to use live product data"
-                  />
-                  <TextAreaField
-                    label="Helper Text"
-                    value={card.helper}
-                    onChange={(nextValue) =>
-                      updateCardField(index, "helper", nextValue)
-                    }
-                    rows={2}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <TextAreaField
-            label="Snapshot Items"
-            value={toLines(productPage.detailsSection.snapshotItems)}
-            onChange={(nextValue) =>
-              updateSectionField(
-                "detailsSection",
-                "snapshotItems",
-                fromLines(nextValue),
-              )
-            }
-            rows={12}
-            hint="One bullet per line. Leave blank to use the default snapshot list."
           />
         </div>
 
@@ -580,8 +568,8 @@ export default function ProductPageSettingsSection({
             Reviews And Recommendation Sections
           </h4>
           <p className="text-sm text-gray-500">
-            Choose which lower sections are visible and adjust their headings,
-            empty states, and action labels.
+            Choose which lower product sections are visible. Storefront text is
+            fixed by the design system.
           </p>
         </div>
 
@@ -593,28 +581,6 @@ export default function ProductPageSettingsSection({
               onChange={(nextValue) =>
                 updateSectionField("reviewsSection", "show", nextValue)
               }
-            />
-            <TextField
-              label="Reviews Eyebrow"
-              value={productPage.reviewsSection.eyebrow}
-              onChange={(nextValue) =>
-                updateSectionField("reviewsSection", "eyebrow", nextValue)
-              }
-            />
-            <TextField
-              label="Reviews Title"
-              value={productPage.reviewsSection.title}
-              onChange={(nextValue) =>
-                updateSectionField("reviewsSection", "title", nextValue)
-              }
-            />
-            <TextAreaField
-              label="Reviews Empty State"
-              value={productPage.reviewsSection.emptyState}
-              onChange={(nextValue) =>
-                updateSectionField("reviewsSection", "emptyState", nextValue)
-              }
-              rows={3}
             />
           </div>
 
@@ -630,51 +596,6 @@ export default function ProductPageSettingsSection({
                 )
               }
             />
-            <TextField
-              label="FBT Eyebrow"
-              value={productPage.frequentlyBoughtSection.eyebrow}
-              onChange={(nextValue) =>
-                updateSectionField(
-                  "frequentlyBoughtSection",
-                  "eyebrow",
-                  nextValue,
-                )
-              }
-            />
-            <TextField
-              label="FBT Title"
-              value={productPage.frequentlyBoughtSection.title}
-              onChange={(nextValue) =>
-                updateSectionField(
-                  "frequentlyBoughtSection",
-                  "title",
-                  nextValue,
-                )
-              }
-            />
-            <TextField
-              label="FBT Button Text"
-              value={productPage.frequentlyBoughtSection.buttonText}
-              onChange={(nextValue) =>
-                updateSectionField(
-                  "frequentlyBoughtSection",
-                  "buttonText",
-                  nextValue,
-                )
-              }
-            />
-            <TextAreaField
-              label="FBT Empty State"
-              value={productPage.frequentlyBoughtSection.emptyState}
-              onChange={(nextValue) =>
-                updateSectionField(
-                  "frequentlyBoughtSection",
-                  "emptyState",
-                  nextValue,
-                )
-              }
-              rows={3}
-            />
           </div>
 
           <div className="space-y-4 rounded-lg border border-gray-200 bg-white p-4">
@@ -688,99 +609,6 @@ export default function ProductPageSettingsSection({
                   nextValue,
                 )
               }
-            />
-            <TextField
-              label="Combos Eyebrow"
-              value={productPage.recommendedCombosSection.eyebrow}
-              onChange={(nextValue) =>
-                updateSectionField(
-                  "recommendedCombosSection",
-                  "eyebrow",
-                  nextValue,
-                )
-              }
-            />
-            <TextField
-              label="Combos Title"
-              value={productPage.recommendedCombosSection.title}
-              onChange={(nextValue) =>
-                updateSectionField(
-                  "recommendedCombosSection",
-                  "title",
-                  nextValue,
-                )
-              }
-            />
-            <TextField
-              label="Combos Link Text"
-              value={productPage.recommendedCombosSection.linkText}
-              onChange={(nextValue) =>
-                updateSectionField(
-                  "recommendedCombosSection",
-                  "linkText",
-                  nextValue,
-                )
-              }
-            />
-            <TextAreaField
-              label="Combos Empty State"
-              value={productPage.recommendedCombosSection.emptyState}
-              onChange={(nextValue) =>
-                updateSectionField(
-                  "recommendedCombosSection",
-                  "emptyState",
-                  nextValue,
-                )
-              }
-              rows={3}
-            />
-          </div>
-
-          <div className="space-y-4 rounded-lg border border-gray-200 bg-white p-4">
-            <ToggleField
-              label="Show Related Products"
-              checked={productPage.relatedProductsSection.show}
-              onChange={(nextValue) =>
-                updateSectionField(
-                  "relatedProductsSection",
-                  "show",
-                  nextValue,
-                )
-              }
-            />
-            <TextField
-              label="Related Eyebrow"
-              value={productPage.relatedProductsSection.eyebrow}
-              onChange={(nextValue) =>
-                updateSectionField(
-                  "relatedProductsSection",
-                  "eyebrow",
-                  nextValue,
-                )
-              }
-            />
-            <TextField
-              label="Related Title"
-              value={productPage.relatedProductsSection.title}
-              onChange={(nextValue) =>
-                updateSectionField(
-                  "relatedProductsSection",
-                  "title",
-                  nextValue,
-                )
-              }
-            />
-            <TextAreaField
-              label="Related Empty State"
-              value={productPage.relatedProductsSection.emptyState}
-              onChange={(nextValue) =>
-                updateSectionField(
-                  "relatedProductsSection",
-                  "emptyState",
-                  nextValue,
-                )
-              }
-              rows={3}
             />
           </div>
         </div>

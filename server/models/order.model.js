@@ -325,6 +325,18 @@ const orderSchema = new mongoose.Schema(
       // Note: index is defined in compound indexes below
     },
 
+    paymentAppTxnId: {
+      type: String,
+      default: "",
+      index: true,
+    },
+
+    paymentProvider: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
     paymentCompletedAt: {
       type: Date,
       default: null,
@@ -420,6 +432,18 @@ const orderSchema = new mongoose.Schema(
     utr: {
       type: String,
       default: null,
+    },
+
+    utrNumber: {
+      type: String,
+      default: null,
+      index: true,
+    },
+
+    upiRefId: {
+      type: String,
+      default: null,
+      index: true,
     },
 
     // Status Tracking
@@ -530,8 +554,26 @@ const orderSchema = new mongoose.Schema(
       min: 0,
     },
 
+    total: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
     // Optional Fields
+    basePrice: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
     discount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    discountedPrice: {
       type: Number,
       default: 0,
       min: 0,
@@ -678,6 +720,28 @@ const orderSchema = new mongoose.Schema(
       min: 0,
     },
 
+    roundedAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    roundedTotal: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    pricing: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+
+    roundOff: {
+      type: Number,
+      default: 0,
+    },
+
     // Affiliate/Referral tracking
     affiliateCode: {
       type: String,
@@ -812,6 +876,13 @@ const orderSchema = new mongoose.Schema(
     shipping_label_local_path: {
       type: String,
       default: null,
+    },
+
+    shippingStatus: {
+      type: String,
+      enum: ["auto", "manual"],
+      default: "auto",
+      index: true,
     },
 
     shipping_manifest: {

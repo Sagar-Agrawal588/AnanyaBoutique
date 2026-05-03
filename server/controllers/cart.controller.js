@@ -10,6 +10,7 @@ import {
   resolveComboUnitOriginalTotal,
   resolveEffectiveComboUnitPrice,
 } from "../services/combos/combo.service.js";
+import { getCartRecommendations as getCartRecommendationsForItems } from "../services/combos/comboRecommendation.service.js";
 
 const getAvailableQuantity = (product, variantId = null) => {
   if (!product) return 0;
@@ -287,6 +288,75 @@ export const getCart = async (req, res) => {
       error: true,
       success: false,
       message: "Failed to fetch cart",
+    });
+  }
+};
+
+/**
+ * Get cart-level recommendations
+ * @route GET /api/cart/recommendations
+ */
+export const getCartRecommendations = async (req, res) => {
+  try {
+    const { userId, sessionId } = getActorIdentifiers(req);
+
+    let cart = null;
+    if (userId) {
+      cart = await CartModel.findOne({ user: userId }).lean();
+    } else if (sessionId) {
+      cart = await CartModel.findOne({ sessionId }).lean();
+    }
+
+    const cartItems = Array.isArray(cart?.items) ? cart.items : [];
+    if (!cartItems.length) {
+      return res.status(200).json({
+        error: false,
+        success: true,
+        data: null,
+      });
+    }
+
+    const normalizedItems = cartItems
+      .filter((item) => !isComboCartItem(item))
+      .map((item) => ({
+        productId: String(item?.product || "").trim(),
+        variantId: String(item?.variant || "").trim(),
+        variantName: String(item?.variantName || "").trim(),
+      }))
+      .filter((item) => item.productId);
+
+    const comboItems = cartItems
+      .filter((item) => isComboCartItem(item))
+      .flatMap((item) => {
+        const snapshotItems = Array.isArray(item?.comboSnapshot?.items)
+          ? item.comboSnapshot.items
+          : [];
+        return snapshotItems.map((snapshotItem) => ({
+          productId: String(snapshotItem?.productId || "").trim(),
+          variantId: String(snapshotItem?.variantId || "").trim(),
+          variantName: String(snapshotItem?.variantName || "").trim(),
+        }));
+      })
+      .filter((item) => item.productId);
+
+    const recommendationItems = [...normalizedItems, ...comboItems];
+    const recommendations = await getCartRecommendationsForItems(
+      recommendationItems.length
+        ? recommendationItems
+        : [{ productId: "__cart_has_items__" }],
+    );
+
+    return res.status(200).json({
+      error: false,
+      success: true,
+      data: recommendations,
+    });
+  } catch (error) {
+    console.error("Error fetching cart recommendations:", error);
+    res.status(500).json({
+      error: true,
+      success: false,
+      message: "Failed to fetch cart recommendations",
     });
   }
 };
@@ -1307,6 +1377,7 @@ export const mergeCart = async (req, res) => {
 
 export default {
   getCart,
+  getCartRecommendations,
   addToCart,
   updateCartItem,
   removeFromCart,

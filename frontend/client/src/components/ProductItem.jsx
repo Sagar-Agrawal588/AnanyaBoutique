@@ -2,20 +2,25 @@
 
 import ProductCardBadges from "@/components/productCard/ProductCardBadges";
 import ProductCardPriceBlock from "@/components/productCard/ProductCardPriceBlock";
+import ProductImage from "@/components/ProductImage";
 import { subscribeToStockUpdates } from "@/realtime/stockSocket";
 import ShareButton from "@/components/ShareButton";
 import StockNotificationButton from "@/components/StockNotificationButton";
 import { useCart } from "@/context/CartContext";
 import { applyStockUpdateToProduct } from "@/utils/stockRealtime";
 import { useWishlist } from "@/context/WishlistContext";
-import { getProductCardImageUrl } from "@/utils/imageUtils";
-import Image from "next/image";
+import {
+  formatWeight,
+  getWeightInGrams,
+  replaceWeightRange,
+} from "@/utils/weightDisplay";
 import Link from "next/link";
 import useSeoAlt from "@/hooks/useSeoAlt";
 import { startTransition, useEffect, useState } from "react";
 import {
   IoIosStar,
   IoIosStarHalf,
+  IoIosStarOutline,
   IoMdCart,
   IoMdHeart,
   IoMdHeartEmpty,
@@ -127,14 +132,14 @@ const ProductItem = (props) => {
     price: price || 349,
     originalPrice: originalPrice || 499,
     images: [image || "/product_1.png"],
-    rating: rating || 4.5,
+    rating: rating || 0,
     discount: discount || 30,
   };
 
   // Derive display values from default variant when hasVariants
   const defaultVariant =
     productData.hasVariants && productData.variants?.length > 0
-      ? productData.variants.find((v) => v.isDefault) || productData.variants[0]
+      ? productData.variants[0]
       : null;
   const isVariantCard = Boolean(productVariantId || productData?.variantId);
   const availability = isComboItem
@@ -150,30 +155,34 @@ const ProductItem = (props) => {
   const displayOriginalPrice = defaultVariant
     ? defaultVariant.originalPrice || 0
     : productData.originalPrice;
-  const displayDiscount = defaultVariant
-    ? defaultVariant.discountPercent ||
-      (defaultVariant.originalPrice &&
-      defaultVariant.originalPrice > defaultVariant.price
-        ? Math.round(
-            ((defaultVariant.originalPrice - defaultVariant.price) /
-              defaultVariant.originalPrice) *
-              100,
-          )
-        : 0)
-    : productData.discount;
+  const displayDiscount =
+    displayOriginalPrice && displayOriginalPrice > displayPrice
+      ? Math.round(
+          ((displayOriginalPrice - displayPrice) / displayOriginalPrice) * 100,
+        )
+      : 0;
   const normalizedDisplayDiscount = isComboItem
     ? Math.ceil(Number(displayDiscount || 0))
     : Number(displayDiscount || 0);
+  const displayWeightInGrams = defaultVariant
+    ? getWeightInGrams(defaultVariant)
+    : getWeightInGrams(productData);
+  const displayWeightLabel = formatWeight(
+    displayWeightInGrams,
+    defaultVariant?.unit || productData?.unit || "g",
+  );
+  const displayProductName = replaceWeightRange(
+    productData.name,
+    displayWeightLabel,
+  );
+  const isNewArrival = Boolean(
+    productData.newArrival ?? productData.isNewArrival,
+  );
+  const isBestSeller = Boolean(productData.bestSeller ?? productData.isBestSeller);
+  const isHighDemand = Boolean(productData.highDemand) ||
+    String(productData.demandStatus || "").toUpperCase() === "HIGH";
   const showDiscountBadge =
-    Number(normalizedDisplayDiscount) > 0 && !productData.isBestSeller;
-  const displayWeight = defaultVariant
-    ? defaultVariant.weight
-    : productData.weight;
-  const displayUnit = defaultVariant
-    ? defaultVariant.unit || "g"
-    : productData.unit && productData.unit !== "piece"
-      ? productData.unit
-      : "g";
+    Number(normalizedDisplayDiscount) > 0 && !isNewArrival && !isBestSeller;
   const isExclusiveProduct = Boolean(productData?.isExclusive);
   const wishlistVariantId = defaultVariant?._id || null;
   const wishlistItemType = isComboItem ? "combo" : "product";
@@ -220,7 +229,10 @@ const ProductItem = (props) => {
     });
   };
 
-  const imgAlt = useSeoAlt(productData.images?.[0] || productData.name, productData.name);
+  const imgAlt = useSeoAlt(
+    productData.images?.[0] || displayProductName || productData.name,
+    displayProductName || productData.name,
+  );
 
   const handleAddToCart = async (e) => {
     e.preventDefault();
@@ -258,6 +270,8 @@ const ProductItem = (props) => {
                   name: defaultVariant.name,
                   sku: defaultVariant.sku,
                   price: defaultVariant.price,
+                  weightInGrams: defaultVariant.weightInGrams,
+                  label: defaultVariant.label,
                   weight: defaultVariant.weight,
                   unit: defaultVariant.unit,
                 },
@@ -277,19 +291,38 @@ const ProductItem = (props) => {
     }
   };
 
+  const reviewStatsSource =
+    !isComboItem && productData.hasVariants
+      ? (productVariantId ? productData : defaultVariant) || productData
+      : productData;
+  const displayReviewCount = Number(
+    reviewStatsSource?.totalReviews ??
+      reviewStatsSource?.reviewCount ??
+      reviewStatsSource?.numReviews ??
+      0,
+  );
+  const displayRating =
+    displayReviewCount > 0
+      ? Number(reviewStatsSource?.avgRating ?? reviewStatsSource?.rating ?? 0)
+      : 0;
+
   const renderStars = () => {
     const stars = [];
-    const fullStars = Math.floor(productData.rating);
-    const hasHalfStar = productData.rating % 1 >= 0.5;
-    for (let i = 0; i < fullStars; i++) {
-      stars.push(<IoIosStar key={`f-${i}`} className="text-amber-400" />);
-    }
-    if (hasHalfStar) {
-      stars.push(<IoIosStarHalf key="h" className="text-amber-400" />);
+    const fullStars = Math.floor(displayRating);
+    const hasHalfStar = displayRating % 1 >= 0.5;
+    for (let index = 0; index < 5; index += 1) {
+      if (index < fullStars) {
+        stars.push(<IoIosStar key={`f-${index}`} className="text-amber-400" />);
+      } else if (index === fullStars && hasHalfStar) {
+        stars.push(<IoIosStarHalf key="h" className="text-amber-400" />);
+      } else {
+        stars.push(
+          <IoIosStarOutline key={`e-${index}`} className="text-gray-300" />,
+        );
+      }
     }
     return stars;
   };
-  const displayReviewCount = Number(productData.reviewCount || 0);
 
   return (
     <Link
@@ -301,12 +334,25 @@ const ProductItem = (props) => {
       }`}
     >
       {/* Image Container */}
-      <div className="relative mb-3 flex h-32 w-full items-center justify-center overflow-hidden rounded-2xl bg-gray-50 sm:h-40">
+      <ProductImage
+        src={productData.images?.[0]}
+        alt={imgAlt}
+        cardImage
+        aspect="aspect-square"
+        className="mb-3 h-32 w-full sm:h-40"
+        imgClassName={`p-2 mix-blend-multiply transition-all duration-300 ${
+          isOutOfStock
+            ? "grayscale-[0.45] saturate-50 opacity-70"
+            : "group-hover:scale-105"
+        }`}
+      >
         <ProductCardBadges
-          isBestSeller={Boolean(productData.isBestSeller)}
+          isNewArrival={isNewArrival}
+          isBestSeller={isBestSeller}
           showDiscountBadge={showDiscountBadge}
           discountLabel={`${normalizedDisplayDiscount}% OFF`}
           isExclusive={isExclusiveProduct}
+          isHighDemand={isHighDemand}
         />
 
         {/* Wishlist Button */}
@@ -328,24 +374,13 @@ const ProductItem = (props) => {
         >
           <ShareButton
             productId={productCardId}
-            productName={productData.name}
+            productName={displayProductName || productData.name}
             variant="icon"
             iconSizeClass="h-8 w-8"
             iconGlyphClass="h-4 w-4"
           />
         </div>
 
-        <Image
-          src={getProductCardImageUrl(productData.images?.[0])}
-          alt={imgAlt}
-          fill
-          sizes="(max-width: 640px) 45vw, (max-width: 1024px) 25vw, 220px"
-          className={`object-contain p-3 mix-blend-multiply transition-all duration-300 sm:p-4 ${
-            isOutOfStock
-              ? "grayscale-[0.45] saturate-50 opacity-70"
-              : "group-hover:scale-110"
-          }`}
-        />
         {isOutOfStock ? (
           <>
             <div className="absolute inset-0 bg-black/18" />
@@ -359,7 +394,7 @@ const ProductItem = (props) => {
             </div>
           </>
         ) : null}
-      </div>
+      </ProductImage>
 
       {/* Content */}
       <div className="flex flex-1 flex-col px-1">
@@ -367,7 +402,7 @@ const ProductItem = (props) => {
           {productData.brand}
         </p>
         <h3 className="min-h-11 line-clamp-2 text-sm font-bold text-gray-900 transition-colors group-hover:text-primary sm:min-h-10">
-          {productData.name}
+          {displayProductName || productData.name}
         </h3>
         <div className="mt-1 min-h-7 sm:min-h-8">
           {productData.shortDescription ? (
@@ -378,11 +413,9 @@ const ProductItem = (props) => {
         </div>
 
         {/* Weight */}
-        {displayWeight > 0 && (
+        {displayWeightLabel && (
           <span className="inline-block mt-1 text-[11px] font-semibold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
-            {Number(displayWeight) >= 1000 && displayUnit === "g"
-              ? `${Number(displayWeight) / 1000} kg`
-              : `${displayWeight}${displayUnit}`}
+            {displayWeightLabel}
             {productData.hasVariants && productData.variants?.length > 1 && (
               <span className="text-gray-400 ml-1">
                 +{productData.variants.length - 1} more
@@ -394,9 +427,7 @@ const ProductItem = (props) => {
         {/* Rating */}
         <div className="mt-1 flex items-center gap-1">
           <div className="flex text-xs">{renderStars()}</div>
-          <span className="text-[10px] text-gray-400">
-            ({displayReviewCount > 0 ? displayReviewCount : productData.rating})
-          </span>
+          <span className="text-[10px] text-gray-400">({displayReviewCount})</span>
         </div>
 
         {/* Price & Cart */}
@@ -414,7 +445,7 @@ const ProductItem = (props) => {
             {showNotifyAction ? (
               <StockNotificationButton
                 productId={productCardId}
-                productName={productData.name}
+                productName={displayProductName || productData.name}
                 variantId={notifyVariantId}
                 variantName={notifyVariantName}
                 initialRequested={notifyRequested}
@@ -426,10 +457,10 @@ const ProductItem = (props) => {
                 onClick={handleAddToCart}
                 aria-label={
                   alreadyInCart
-                    ? `Remove ${productData.name} from cart`
+                    ? `Remove ${displayProductName || productData.name} from cart`
                     : isOutOfStock
-                      ? `${productData.name} is unavailable`
-                      : `Add ${productData.name} to cart`
+                      ? `${displayProductName || productData.name} is unavailable`
+                      : `Add ${displayProductName || productData.name} to cart`
                 }
                 disabled={isAddingToCart || (!alreadyInCart && isOutOfStock)}
                 className={`inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-70 ${

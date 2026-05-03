@@ -68,7 +68,7 @@ const PopularProducts = () => {
               className="text-3xl sm:text-4xl md:text-5xl font-black tracking-tight transition-colors duration-500"
               style={{ color: "var(--color-primary)" }}
             >
-              Popular Products
+              Fresh & Popular Products
             </h2>
 
             <p className="text-sm sm:text-base text-gray-500 font-medium leading-relaxed max-w-md">
@@ -107,7 +107,7 @@ const PopularProducts = () => {
           {isVisible ? (
             <ProductSlider
               limit={120}
-              sortBy="soldCount"
+              sortBy="popular"
               order="desc"
               includeCombos={true}
               productLimit={10}

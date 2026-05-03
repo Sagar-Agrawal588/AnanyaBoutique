@@ -3,6 +3,7 @@ import { checkExclusiveAccess } from "../middlewares/membershipGuard.js";
 import CategoryModel from "../models/category.model.js";
 import ComboModel from "../models/combo.model.js";
 import ProductModel from "../models/product.model.js";
+import ReviewModel from "../models/review.model.js";
 import { attachComboAvailability } from "../services/combos/combo.service.js";
 import {
   getCartUpsellProductSuggestion,
@@ -15,6 +16,10 @@ import {
 import { triggerBackInStockNotificationsIfRecovered } from "../services/inventory.service.js";
 import { getPendingStockNotificationKeySet } from "../services/stockNotification.service.js";
 import { normalizeProductPageConfig } from "../utils/productPageConfig.js";
+import {
+  formatWeight,
+  normalizeVariantWeight,
+} from "../utils/weightNormalization.js";
 
 const isProduction = process.env.NODE_ENV === "production";
 // Debug-only logging to keep production output clean
@@ -162,6 +167,13 @@ const attachAvailabilityToProduct = (product) => {
 
   return {
     ...plainProduct,
+    newArrival: Boolean(plainProduct?.newArrival ?? plainProduct?.isNewArrival),
+    bestSeller: Boolean(plainProduct?.bestSeller ?? plainProduct?.isBestSeller),
+    showLimitedTimeOffer: true,
+    highDemand:
+      Boolean(plainProduct?.highDemand) ||
+      String(plainProduct?.demandStatus || "").toUpperCase() === "HIGH",
+    productPage: normalizeProductPageConfig(plainProduct?.productPage || {}),
     stock: productStockQuantity,
     stock_quantity: productStockQuantity,
     reserved_quantity: reservedQuantity,
@@ -205,6 +217,184 @@ const markNotificationPreferenceOnProduct = (product, notificationKeySet) => {
   };
 };
 
+const visibleReviewFilter = {
+  $or: [
+    { visibility: "visible" },
+    { visibility: { $exists: false } },
+    { visibility: null },
+  ],
+};
+
+const buildVariantReviewStatsMap = async (productIds = []) => {
+  const ids = Array.from(
+    new Set(
+      (Array.isArray(productIds) ? productIds : [])
+        .map((id) => String(id || "").trim())
+        .filter((id) => mongoose.Types.ObjectId.isValid(id)),
+    ),
+  );
+  if (!ids.length) return new Map();
+
+  const rows = await ReviewModel.aggregate([
+    {
+      $match: {
+        productId: {
+          $in: ids.map((id) => new mongoose.Types.ObjectId(id)),
+        },
+        variantId: { $ne: null },
+        $and: [
+          { $or: [{ comboId: null }, { comboId: { $exists: false } }] },
+          visibleReviewFilter,
+        ],
+      },
+    },
+    {
+      $group: {
+        _id: { productId: "$productId", variantId: "$variantId" },
+        rating: { $avg: "$rating" },
+        reviewCount: { $sum: 1 },
+      },
+    },
+  ]);
+
+  const statsMap = new Map();
+  for (const row of rows) {
+    const productId = String(row?._id?.productId || "");
+    const variantId = String(row?._id?.variantId || "");
+    if (!productId || !variantId) continue;
+    statsMap.set(`${productId}:${variantId}`, {
+      rating: Number(Number(row.rating || 0).toFixed(1)),
+      reviewCount: Number(row.reviewCount || 0),
+    });
+  }
+  return statsMap;
+};
+
+const buildProductReviewStatsMap = async (productIds = []) => {
+  const ids = Array.from(
+    new Set(
+      (Array.isArray(productIds) ? productIds : [])
+        .map((id) => String(id || "").trim())
+        .filter((id) => mongoose.Types.ObjectId.isValid(id)),
+    ),
+  );
+  if (!ids.length) return new Map();
+
+  const rows = await ReviewModel.aggregate([
+    {
+      $match: {
+        productId: {
+          $in: ids.map((id) => new mongoose.Types.ObjectId(id)),
+        },
+        $and: [
+          { $or: [{ comboId: null }, { comboId: { $exists: false } }] },
+          visibleReviewFilter,
+        ],
+      },
+    },
+    {
+      $group: {
+        _id: "$productId",
+        avgRating: { $avg: "$rating" },
+        totalReviews: { $sum: 1 },
+      },
+    },
+  ]);
+
+  const statsMap = new Map();
+  for (const row of rows) {
+    const productId = String(row?._id || "");
+    if (!productId) continue;
+    const totalReviews = Number(row?.totalReviews || 0);
+    statsMap.set(productId, {
+      avgRating: totalReviews ? Number(row.avgRating || 0) : 0,
+      totalReviews,
+    });
+  }
+  return statsMap;
+};
+
+const attachVariantReviewStatsToProduct = (product, statsMap = new Map()) => {
+  const plainProduct = toPlainObject(product) || {};
+  const productId = String(
+    plainProduct?.parentProductId || plainProduct?._id || plainProduct?.id || "",
+  ).trim();
+  const variants = Array.isArray(plainProduct?.variants)
+    ? plainProduct.variants.map((variant) => {
+        const variantId = String(variant?._id || variant?.id || "").trim();
+        const stats = statsMap.get(`${productId}:${variantId}`) || null;
+        return {
+          ...variant,
+          rating: Number(stats?.rating || 0),
+          reviewCount: Number(stats?.reviewCount || 0),
+        };
+      })
+    : [];
+
+  const selectedVariantId = String(plainProduct?.variantId || "").trim();
+  if (selectedVariantId) {
+    const stats = statsMap.get(`${productId}:${selectedVariantId}`) || null;
+    return {
+      ...plainProduct,
+      rating: Number(stats?.rating || 0),
+      reviewCount: Number(stats?.reviewCount || 0),
+      variants,
+    };
+  }
+
+  return {
+    ...plainProduct,
+    variants,
+  };
+};
+
+const attachVariantReviewStatsToProducts = async (products = []) => {
+  const safeProducts = Array.isArray(products) ? products : [];
+  const productIds = safeProducts.map(
+    (product) => product?.parentProductId || product?._id || product?.id,
+  );
+  const [variantStatsMap, productStatsMap] = await Promise.all([
+    buildVariantReviewStatsMap(productIds),
+    buildProductReviewStatsMap(productIds),
+  ]);
+  return safeProducts.map((product) => {
+    const productWithVariantStats = attachVariantReviewStatsToProduct(
+      product,
+      variantStatsMap,
+    );
+    const productId = String(
+      productWithVariantStats?.parentProductId ||
+        productWithVariantStats?._id ||
+        productWithVariantStats?.id ||
+        "",
+    ).trim();
+    const selectedVariantId = String(
+      productWithVariantStats?.variantId || "",
+    ).trim();
+    const variantStats = selectedVariantId
+      ? variantStatsMap.get(`${productId}:${selectedVariantId}`) || null
+      : null;
+    const productStats = productStatsMap.get(productId) || {
+      avgRating: 0,
+      totalReviews: 0,
+    };
+    const avgRating = variantStats
+      ? Number(variantStats.rating || 0)
+      : Number(productStats.avgRating || 0);
+    const totalReviews = variantStats
+      ? Number(variantStats.reviewCount || 0)
+      : Number(productStats.totalReviews || 0);
+    return {
+      ...productWithVariantStats,
+      avgRating,
+      totalReviews,
+      rating: avgRating,
+      reviewCount: totalReviews,
+      numReviews: totalReviews,
+    };
+  });
+};
+
 const attachNotificationPreferenceToProducts = async (products, userId) => {
   if (!Array.isArray(products) || !products.length || !userId) {
     return products;
@@ -237,12 +427,57 @@ const buildVariantInventoryTotals = (variants = []) => ({
 
 const formatVariantWeightLabel = (variant = {}) => {
   const weight = Number(variant?.weight || 0);
-  const unit = String(variant?.unit || "").trim();
-  if (!weight || !unit) return "";
-  if (unit.toLowerCase() === "g" && weight >= 1000) {
-    return `${Number((weight / 1000).toFixed(2))}kg`;
+  const unit = String(variant?.unit || "").trim().toLowerCase();
+  if (Number.isFinite(weight) && weight > 0 && (unit === "kg" || unit === "g")) {
+    return `${weight}${unit}`;
   }
-  return `${weight}${unit}`;
+  const weightInGrams = Number(variant?.weightInGrams || 0);
+  if (!Number.isFinite(weightInGrams) || weightInGrams <= 0) return "";
+  return formatWeight(weightInGrams);
+};
+
+const stripWeightRangeFromLabel = (value) =>
+  String(value || "")
+    .replace(
+      /\b\d+(?:\.\d+)?\s*(?:kg|g)\s*[-–]\s*\d+(?:\.\d+)?\s*(?:kg|g)\b/gi,
+      "",
+    )
+    .replace(/\s*-\s*$/g, "")
+    .trim();
+
+const normalizeVariantPayload = (variant = {}, fallbackStock = 0) => {
+  const normalizedWeight = normalizeVariantWeight(variant);
+  const variantPrice = roundWholeNumber(variant.price);
+  const variantOriginalPrice =
+    variant.originalPrice === undefined || variant.originalPrice === null
+      ? undefined
+      : roundWholeNumber(variant.originalPrice);
+  const variantStock = normalizeStockValue(
+    variant.stock ?? variant.stock_quantity,
+    fallbackStock,
+  );
+  const cleanedName = stripWeightRangeFromLabel(variant.name);
+  const submittedWeight = Number(variant.weight);
+  const submittedUnit = String(variant.unit || "g").trim().toLowerCase();
+  const displayWeight =
+    Number.isFinite(submittedWeight) && submittedWeight > 0
+      ? submittedWeight
+      : normalizedWeight.weight;
+  const displayUnit = submittedUnit === "kg" ? "kg" : "g";
+  const displayLabel = `${displayWeight}${displayUnit}`;
+
+  return {
+    ...variant,
+    name: cleanedName || displayLabel,
+    label: displayLabel,
+    weight: displayWeight,
+    unit: displayUnit,
+    price: variantPrice ?? 0,
+    originalPrice: variantOriginalPrice,
+    stock: variantStock,
+    stock_quantity: variantStock,
+    reserved_quantity: normalizeStockValue(variant.reserved_quantity, 0),
+  };
 };
 
 const resolveComboCardImage = (combo = {}) =>
@@ -286,6 +521,7 @@ export const getProducts = async (req, res) => {
       sortBy = "createdAt",
       order = "desc",
       featured,
+      newArrival,
       newArrivals,
       bestSeller,
       priceDrop,
@@ -413,14 +649,12 @@ export const getProducts = async (req, res) => {
       if (maxPrice) filter.price.$lte = Number(maxPrice);
     }
 
-    // Rating filter
-    if (rating) {
-      filter.rating = { $gte: Number(rating) };
-    }
+    // Ratings are computed from ReviewModel at read time, not stored on Product.
 
     // Boolean filters
-    if (featured === "true") filter.isFeatured = true;
-    if (newArrivals === "true") filter.isNewArrival = true;
+    if (newArrival === "true" || newArrivals === "true") {
+      filter.isNewArrival = true;
+    }
     if (bestSeller === "true") filter.isBestSeller = true;
     if (onSale === "true") filter.isOnSale = true;
     if (priceDrop === "true") {
@@ -432,30 +666,25 @@ export const getProducts = async (req, res) => {
       exprFilters.push({
         $gte: [
           {
-            $max: [
-              { $ifNull: ["$discount", 0] },
+            $cond: [
               {
-                $cond: [
-                  {
-                    $and: [
-                      { $gt: ["$originalPrice", 0] },
-                      { $gt: ["$originalPrice", "$price"] },
-                    ],
-                  },
-                  {
-                    $multiply: [
-                      {
-                        $divide: [
-                          { $subtract: ["$originalPrice", "$price"] },
-                          "$originalPrice",
-                        ],
-                      },
-                      100,
-                    ],
-                  },
-                  0,
+                $and: [
+                  { $gt: ["$originalPrice", 0] },
+                  { $gt: ["$originalPrice", "$price"] },
                 ],
               },
+              {
+                $multiply: [
+                  {
+                    $divide: [
+                      { $subtract: ["$originalPrice", "$price"] },
+                      "$originalPrice",
+                    ],
+                  },
+                  100,
+                ],
+              },
+              0,
             ],
           },
           minDiscountPercent,
@@ -547,9 +776,17 @@ export const getProducts = async (req, res) => {
         exprFilters.length === 1 ? exprFilters[0] : { $and: exprFilters };
     }
 
-    // Build sort object
-    const sortOptions = {};
-    sortOptions[sortBy] = order === "asc" ? 1 : -1;
+    // Build sort object. `popular` keeps popular items first, then newest first.
+    const sortOptions =
+      String(sortBy || "").trim() === "popular"
+        ? {
+            isNewArrival: -1,
+            isPopular: -1,
+            isBestSeller: -1,
+            soldCount: -1,
+            createdAt: -1,
+          }
+        : { [sortBy]: order === "asc" ? 1 : -1 };
 
     const safePage = Math.max(Number(page) || 1, 1);
     const safeLimit = Math.min(Math.max(Number(limit) || 15, 1), 200);
@@ -596,8 +833,11 @@ export const getProducts = async (req, res) => {
                 discount: Number(
                   variant?.discountPercent ?? product?.discount ?? 0,
                 ),
+                label:
+                  String(variant?.label || "").trim() ||
+                  formatVariantWeightLabel(variant),
                 weight: Number(variant?.weight ?? product?.weight ?? 0),
-                unit: String(variant?.unit || product?.unit || "g"),
+                unit: variant?.unit || product?.unit || "g",
                 sku: String(variant?.sku || product?.sku || ""),
                 stock: Number(
                   variant?.stock_quantity ??
@@ -626,8 +866,13 @@ export const getProducts = async (req, res) => {
         }
       }
 
+      const productsWithReviewStats =
+        await attachVariantReviewStatsToProducts(expandedProducts);
       const productsWithNotificationState =
-        await attachNotificationPreferenceToProducts(expandedProducts, req?.user);
+        await attachNotificationPreferenceToProducts(
+          productsWithReviewStats,
+          req?.user,
+        );
 
       let comboCards = [];
       if (shouldIncludeCombos) {
@@ -753,13 +998,19 @@ export const getProducts = async (req, res) => {
 
     const totalPages = Math.ceil(totalProducts / Number(limit));
 
+    const productsWithReviewStats = await attachVariantReviewStatsToProducts(
+      products.map(attachAvailabilityToProduct),
+    );
     const productsWithNotificationState =
-      await attachNotificationPreferenceToProducts(products, req?.user);
+      await attachNotificationPreferenceToProducts(
+        productsWithReviewStats,
+        req?.user,
+      );
 
     res.status(200).json({
       error: false,
       success: true,
-      data: productsWithNotificationState.map(attachAvailabilityToProduct),
+      data: productsWithNotificationState,
       totalProducts,
       totalPages,
       currentPage: Number(page),
@@ -817,10 +1068,14 @@ export const getProductById = async (req, res) => {
       { $inc: { viewCount: 1 } },
     );
 
-    const [productWithNotificationState] = await attachNotificationPreferenceToProducts(
-      [attachAvailabilityToProduct(product)],
-      req?.user,
-    );
+    const [productWithReviewStats] = await attachVariantReviewStatsToProducts([
+      attachAvailabilityToProduct(product),
+    ]);
+    const [productWithNotificationState] =
+      await attachNotificationPreferenceToProducts(
+        [productWithReviewStats],
+        req?.user,
+      );
 
     res.status(200).json({
       error: false,
@@ -839,7 +1094,7 @@ export const getProductById = async (req, res) => {
 };
 
 /**
- * Get featured products
+ * Get highlighted products
  * @route GET /api/products/featured
  */
 export const getFeaturedProducts = async (req, res) => {
@@ -849,24 +1104,30 @@ export const getFeaturedProducts = async (req, res) => {
 
     const filter = {
       isActive: { $ne: false },
-      isFeatured: true,
+      isBestSeller: true,
       ...(canViewExclusive ? {} : { isExclusive: { $ne: true } }),
     };
 
     const products = await ProductModel.find(filter)
       .populate("category", "name slug")
       .select("-reviews -description")
-      .sort({ sortOrder: 1, createdAt: -1 })
+      .sort({ isPopular: -1, createdAt: -1 })
       .limit(Number(limit))
       .lean();
 
+    const productsWithReviewStats = await attachVariantReviewStatsToProducts(
+      products.map(attachAvailabilityToProduct),
+    );
     const productsWithNotificationState =
-      await attachNotificationPreferenceToProducts(products, req?.user);
+      await attachNotificationPreferenceToProducts(
+        productsWithReviewStats,
+        req?.user,
+      );
 
     res.status(200).json({
       error: false,
       success: true,
-      data: productsWithNotificationState.map(attachAvailabilityToProduct),
+      data: productsWithNotificationState,
     });
   } catch (error) {
     res.status(500).json({
@@ -927,13 +1188,19 @@ export const getExclusiveProducts = async (req, res) => {
 
     const totalPages = Math.ceil(totalProducts / safeLimit) || 1;
 
+    const productsWithReviewStats = await attachVariantReviewStatsToProducts(
+      products.map(attachAvailabilityToProduct),
+    );
     const productsWithNotificationState =
-      await attachNotificationPreferenceToProducts(products, req?.user);
+      await attachNotificationPreferenceToProducts(
+        productsWithReviewStats,
+        req?.user,
+      );
 
     res.status(200).json({
       error: false,
       success: true,
-      data: productsWithNotificationState.map(attachAvailabilityToProduct),
+      data: productsWithNotificationState,
       totalProducts,
       totalPages,
       currentPage: safePage,
@@ -976,19 +1243,50 @@ export const getRelatedProducts = async (req, res) => {
       isActive: { $ne: false },
       ...(canViewExclusive ? {} : { isExclusive: { $ne: true } }),
     };
+    if (Array.isArray(product.tags) && product.tags.length > 0) {
+      relatedFilter.tags = { $in: product.tags };
+    }
 
-    const relatedProducts = await ProductModel.find(relatedFilter)
+    let relatedProducts = await ProductModel.find(relatedFilter)
       .select("-reviews -description")
+      .sort({ soldCount: -1, createdAt: -1 })
       .limit(Number(limit))
       .lean();
 
+    if (relatedProducts.length === 0 && relatedFilter.tags) {
+      delete relatedFilter.tags;
+      relatedProducts = await ProductModel.find(relatedFilter)
+        .select("-reviews -description")
+        .sort({ soldCount: -1, createdAt: -1 })
+        .limit(Number(limit))
+        .lean();
+    }
+
+    if (relatedProducts.length === 0) {
+      relatedProducts = await ProductModel.find({
+        _id: { $ne: id },
+        isActive: { $ne: false },
+        ...(canViewExclusive ? {} : { isExclusive: { $ne: true } }),
+      })
+        .select("-reviews -description")
+        .sort({ isBestSeller: -1, soldCount: -1, createdAt: -1 })
+        .limit(Number(limit))
+        .lean();
+    }
+
+    const productsWithReviewStats = await attachVariantReviewStatsToProducts(
+      relatedProducts.map(attachAvailabilityToProduct),
+    );
     const productsWithNotificationState =
-      await attachNotificationPreferenceToProducts(relatedProducts, req?.user);
+      await attachNotificationPreferenceToProducts(
+        productsWithReviewStats,
+        req?.user,
+      );
 
     res.status(200).json({
       error: false,
       success: true,
-      data: productsWithNotificationState.map(attachAvailabilityToProduct),
+      data: productsWithNotificationState,
     });
   } catch (error) {
     res.status(500).json({
@@ -1091,7 +1389,7 @@ export const createProduct = async (req, res) => {
       unit,
       hsnCode,
       tags,
-      isFeatured,
+      newArrival,
       isNewArrival,
       isBestSeller,
       isExclusive,
@@ -1102,17 +1400,15 @@ export const createProduct = async (req, res) => {
       metaTitle,
       metaDescription,
       metaKeywords,
-      discount,
-      rating,
       productPage,
     } = req.body;
 
     // Validate required fields
-    if (!name || price === undefined || price === null || !category) {
+    if (!name || !category) {
       return res.status(400).json({
         error: true,
         success: false,
-        message: "Name, price, and category are required",
+        message: "Name and category are required",
       });
     }
 
@@ -1132,12 +1428,17 @@ export const createProduct = async (req, res) => {
       });
     }
 
-    const normalizedPrice = Number(price);
+    const submittedVariants = Array.isArray(variants) ? variants : [];
+    const submittedDefaultVariant =
+      submittedVariants.find((variant) => variant?.isDefault) ||
+      submittedVariants[0] ||
+      null;
+    const normalizedPrice = Number(price ?? submittedDefaultVariant?.price);
     if (!Number.isFinite(normalizedPrice) || normalizedPrice <= 0) {
       return res.status(400).json({
         error: true,
         success: false,
-        message: "Please enter a valid price",
+        message: "Please enter at least one variant with a valid price",
       });
     }
     const roundedPrice = Math.round(normalizedPrice);
@@ -1176,53 +1477,37 @@ export const createProduct = async (req, res) => {
           : true;
 
     // Validate variants if present
-    let processedVariants = variants || [];
+    let processedVariants = submittedVariants;
     if (
       hasVariants &&
       Array.isArray(processedVariants) &&
       processedVariants.length > 0
     ) {
-      // Check for duplicate weights
-      const weightKeys = processedVariants.map(
-        (v) => `${v.weight || 0}-${v.unit || "g"}`,
+      let normalizedWeightEntries = [];
+      try {
+        normalizedWeightEntries = processedVariants.map((variant) =>
+          normalizeVariantWeight(variant),
+        );
+      } catch (error) {
+        return res.status(400).json({
+          error: true,
+          success: false,
+          message: error.message || "Invalid weight format",
+        });
+      }
+      const uniqueWeights = new Set(
+        normalizedWeightEntries.map((entry) => `${entry.weight}${entry.unit}`),
       );
-      const uniqueWeights = new Set(weightKeys);
-      if (uniqueWeights.size !== weightKeys.length) {
+      if (uniqueWeights.size !== normalizedWeightEntries.length) {
         return res.status(400).json({
           error: true,
           success: false,
           message: "Duplicate variant weights are not allowed",
         });
       }
-      processedVariants = processedVariants.map((variant) => {
-        const variantPrice = roundWholeNumber(variant.price);
-        const variantOriginalPrice =
-          variant.originalPrice === undefined || variant.originalPrice === null
-            ? undefined
-            : roundWholeNumber(variant.originalPrice);
-        const variantStock = normalizeStockValue(
-          variant.stock ?? variant.stock_quantity,
-          0,
-        );
-        const discountPercent =
-          variantOriginalPrice &&
-          variantPrice !== null &&
-          variantOriginalPrice > variantPrice
-            ? Math.round(
-                ((variantOriginalPrice - variantPrice) / variantOriginalPrice) *
-                  100,
-              )
-            : 0;
-        return {
-          ...variant,
-          price: variantPrice ?? 0,
-          originalPrice: variantOriginalPrice,
-          discountPercent,
-          stock: variantStock,
-          stock_quantity: variantStock,
-          reserved_quantity: normalizeStockValue(variant.reserved_quantity, 0),
-        };
-      });
+      processedVariants = processedVariants.map((variant) =>
+        normalizeVariantPayload(variant, 0),
+      );
       // Ensure exactly one default
       const defaults = processedVariants.filter((v) => v.isDefault);
       if (defaults.length === 0) {
@@ -1238,15 +1523,25 @@ export const createProduct = async (req, res) => {
       hasVariants && processedVariants.length > 0
         ? buildVariantInventoryTotals(processedVariants)
         : null;
+    const defaultVariant =
+      processedVariants.find((variant) => variant?.isDefault) ||
+      processedVariants[0] ||
+      null;
+    const derivedPrice =
+      defaultVariant?.price !== undefined ? defaultVariant.price : roundedPrice;
+    const derivedOriginalPrice =
+      defaultVariant?.originalPrice !== undefined
+        ? defaultVariant.originalPrice
+        : roundedOriginalPrice;
 
     const product = new ProductModel({
       name: String(name || "").trim(),
       description,
       shortDescription,
       brand,
-      price: roundedPrice,
+      price: derivedPrice,
       originalPrice:
-        roundedOriginalPrice === null ? undefined : roundedOriginalPrice,
+        derivedOriginalPrice === null ? undefined : derivedOriginalPrice,
       images: images || [],
       thumbnail,
       category,
@@ -1261,12 +1556,11 @@ export const createProduct = async (req, res) => {
       hasVariants: hasVariants || false,
       variants: processedVariants,
       variantType,
-      weight,
-      unit,
+      weight: defaultVariant?.weight ?? weight,
+      unit: defaultVariant?.unit || unit || "g",
       hsnCode: normalizeHsnCode(hsnCode),
       tags: tags || [],
-      isFeatured: isFeatured || false,
-      isNewArrival: isNewArrival || false,
+      isNewArrival: toBoolean(newArrival ?? isNewArrival),
       isBestSeller: toBoolean(isBestSeller),
       isExclusive: toBoolean(isExclusive),
       demandStatus: demandStatus || "NORMAL",
@@ -1276,10 +1570,6 @@ export const createProduct = async (req, res) => {
       metaTitle,
       metaDescription,
       metaKeywords,
-      discount: discount ? Number(discount) : 0,
-      rating: rating === undefined || rating === null ? undefined : rating,
-      adminStarRating:
-        rating === undefined || rating === null ? undefined : Number(rating),
       productPage: normalizeProductPageConfig(productPage),
     });
 
@@ -1294,7 +1584,10 @@ export const createProduct = async (req, res) => {
       error: false,
       success: true,
       message: "Product created successfully",
-      data: product,
+      data: {
+        ...(product.toObject ? product.toObject() : product),
+        newArrival: Boolean(product?.isNewArrival),
+      },
     });
   } catch (error) {
     console.error("Error creating product:", error);
@@ -1356,18 +1649,23 @@ export const updateProduct = async (req, res) => {
     if ("track_inventory" in updateData && !("trackInventory" in updateData)) {
       updateData.trackInventory = updateData.track_inventory;
     }
-    if ("adminStarRating" in updateData && !("rating" in updateData)) {
-      updateData.rating = updateData.adminStarRating;
-    }
-    if ("rating" in updateData && !("adminStarRating" in updateData)) {
-      updateData.adminStarRating = updateData.rating;
-    }
+    delete updateData.adminStarRating;
+    delete updateData.rating;
     if ("isExclusive" in updateData) {
       updateData.isExclusive = toBoolean(updateData.isExclusive);
     }
     if ("isBestSeller" in updateData) {
       updateData.isBestSeller = toBoolean(updateData.isBestSeller);
     }
+    if ("newArrival" in updateData && !("isNewArrival" in updateData)) {
+      updateData.isNewArrival = updateData.newArrival;
+    }
+    if ("isNewArrival" in updateData) {
+      updateData.isNewArrival = toBoolean(updateData.isNewArrival);
+    }
+    delete updateData.newArrival;
+    delete updateData.isFeatured;
+    delete updateData.discount;
     if ("price" in updateData) {
       const rounded = roundWholeNumber(updateData.price);
       if (rounded !== null) {
@@ -1406,12 +1704,22 @@ export const updateProduct = async (req, res) => {
       Array.isArray(updateData.variants) &&
       updateData.variants.length > 0
     ) {
-      // Check for duplicate weights
-      const weightKeys = updateData.variants.map(
-        (v) => `${v.weight || 0}-${v.unit || "g"}`,
+      let normalizedWeightEntries = [];
+      try {
+        normalizedWeightEntries = updateData.variants.map((variant) =>
+          normalizeVariantWeight(variant),
+        );
+      } catch (error) {
+        return res.status(400).json({
+          error: true,
+          success: false,
+          message: error.message || "Invalid weight format",
+        });
+      }
+      const uniqueWeights = new Set(
+        normalizedWeightEntries.map((entry) => `${entry.weight}${entry.unit}`),
       );
-      const uniqueWeights = new Set(weightKeys);
-      if (uniqueWeights.size !== weightKeys.length) {
+      if (uniqueWeights.size !== normalizedWeightEntries.length) {
         return res.status(400).json({
           error: true,
           success: false,
@@ -1425,34 +1733,15 @@ export const updateProduct = async (req, res) => {
         ]),
       );
       updateData.variants = updateData.variants.map((variant) => {
-        const variantPrice = roundWholeNumber(variant.price);
-        const variantOriginalPrice =
-          variant.originalPrice === undefined || variant.originalPrice === null
-            ? undefined
-            : roundWholeNumber(variant.originalPrice);
         const existingVariant = existingVariantMap.get(
           String(variant?._id || ""),
         );
-        const variantStock = normalizeStockValue(
-          variant.stock ?? variant.stock_quantity,
+        const normalizedVariant = normalizeVariantPayload(
+          variant,
           existingVariant?.stock_quantity ?? existingVariant?.stock ?? 0,
         );
-        const discountPercent =
-          variantOriginalPrice &&
-          variantPrice !== null &&
-          variantOriginalPrice > variantPrice
-            ? Math.round(
-                ((variantOriginalPrice - variantPrice) / variantOriginalPrice) *
-                  100,
-              )
-            : 0;
         return {
-          ...variant,
-          price: variantPrice ?? variant.price,
-          originalPrice: variantOriginalPrice,
-          discountPercent,
-          stock: variantStock,
-          stock_quantity: variantStock,
+          ...normalizedVariant,
           reserved_quantity: normalizeStockValue(
             variant.reserved_quantity,
             existingVariant?.reserved_quantity ?? 0,
@@ -1481,6 +1770,15 @@ export const updateProduct = async (req, res) => {
       updateData.stock = variantInventoryTotals.stock;
       updateData.stock_quantity = variantInventoryTotals.stock;
       updateData.reserved_quantity = variantInventoryTotals.reserved;
+      const defaultVariant =
+        updateData.variants.find((variant) => variant?.isDefault) ||
+        updateData.variants[0];
+      if (defaultVariant) {
+        updateData.price = defaultVariant.price;
+        updateData.originalPrice = defaultVariant.originalPrice;
+        updateData.weight = defaultVariant.weight;
+        updateData.unit = defaultVariant.unit || "g";
+      }
     }
 
     // If category is being changed, update product counts
@@ -1541,7 +1839,10 @@ export const updateProduct = async (req, res) => {
       error: false,
       success: true,
       message: "Product updated successfully",
-      data: updatedProduct,
+      data: {
+        ...(updatedProduct?.toObject ? updatedProduct.toObject() : updatedProduct),
+        newArrival: Boolean(updatedProduct?.isNewArrival),
+      },
     });
   } catch (error) {
     console.error("Error updating product:", error);
@@ -1625,12 +1926,8 @@ export const bulkUpdateProducts = async (req, res) => {
     if ("track_inventory" in updateData && !("trackInventory" in updateData)) {
       updateData.trackInventory = updateData.track_inventory;
     }
-    if ("adminStarRating" in updateData && !("rating" in updateData)) {
-      updateData.rating = updateData.adminStarRating;
-    }
-    if ("rating" in updateData && !("adminStarRating" in updateData)) {
-      updateData.adminStarRating = updateData.rating;
-    }
+    delete updateData.adminStarRating;
+    delete updateData.rating;
 
     const stockSensitiveUpdate = [
       "stock",
@@ -1812,7 +2109,7 @@ export const addReview = async (req, res) => {
       images: images || [],
     });
 
-    await product.calculateAverageRating();
+    await product.save();
 
     res.status(201).json({
       error: false,
@@ -1867,7 +2164,7 @@ export const deleteReview = async (req, res) => {
     }
 
     product.reviews.pull(reviewId);
-    await product.calculateAverageRating();
+    await product.save();
 
     res.status(200).json({
       error: false,

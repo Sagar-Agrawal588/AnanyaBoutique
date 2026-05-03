@@ -570,8 +570,15 @@ const Checkout = () => {
   });
   const localTotal = finalTotals.totalPayable;
   const total = round2(Number(previewPricing?.finalAmount ?? localTotal));
+  const roundOff = round2(
+    Number(previewPricing?.roundOff ?? Math.round(total) - total),
+  );
   const displayTotal = round2(
-    Number(previewPricing?.gatewayPayableAmount ?? total),
+    Number(
+      previewPricing?.roundedAmount ??
+        previewPricing?.gatewayPayableAmount ??
+        Math.round(total),
+    ),
   );
   const displaySubtotal = subtotal;
   const displayTax = tax;
@@ -1160,22 +1167,21 @@ const Checkout = () => {
 
       try {
         const token = getStoredAccessToken();
-        const response = await fetch(`${API_URL}/api/coupons/validate`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(token && { Authorization: `Bearer ${token}` }),
-          },
-          body: JSON.stringify({
+        const data = await postData(
+          "/api/coupons/validate",
+          {
             code: normalizedCode,
             // Backend validates coupon against the GST-exclusive base amount
             // (after membership/referral, before coupon/shipping).
             orderAmount: baseBeforeCoupon,
             influencerCode: activeInfluencerCode || null,
-          }),
-        });
-
-        const data = await response.json();
+          },
+          {
+            headers: {
+              ...(token && { Authorization: `Bearer ${token}` }),
+            },
+          },
+        );
 
         if (data.success) {
           setAppliedCoupon(data.data);
@@ -1204,7 +1210,6 @@ const Checkout = () => {
 
         const validationMessage = String(data?.message || "").toLowerCase();
         const looksLikeUnknownCoupon =
-          response.status === 404 ||
           /invalid coupon|coupon code is invalid|coupon not found|coupon does not exist/.test(
             validationMessage,
           );
@@ -2641,13 +2646,20 @@ const Checkout = () => {
                       )}
                     </div>
 
+                    <div className="flex justify-between text-gray-400 font-bold uppercase tracking-widest text-xs">
+                      <span>Round Off</span>
+                      <span className="text-white">
+                        {roundOff >= 0 ? "+" : "-"}₹{Math.abs(roundOff).toFixed(2)}
+                      </span>
+                    </div>
+
                     <div className="pt-6 border-t border-gray-700 flex justify-between items-end">
                       <div>
                         <p className="text-gray-400 font-bold uppercase tracking-widest text-[10px] mb-1">
                           Total Payable
                         </p>
                         <p className="text-3xl font-black text-white tracking-tight">
-                          ₹{displayTotal.toFixed(2)}
+                          ₹{displayTotal.toFixed(0)}
                         </p>
                       </div>
                     </div>

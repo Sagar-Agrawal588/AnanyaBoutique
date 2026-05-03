@@ -130,6 +130,70 @@ test("public reviews publish immediately", async () => {
   assert.equal(publicListResponse.payload?.data?.[0]?.visibility, "visible");
 });
 
+test("product reviews can be scoped by variant", async () => {
+  const variantAId = new mongoose.Types.ObjectId();
+  const variantBId = new mongoose.Types.ObjectId();
+  const product = await ProductModel.create({
+    name: "Variant Review Product",
+    slug: `variant-review-product-${Date.now()}`,
+    category: new mongoose.Types.ObjectId(),
+    price: 399,
+    hasVariants: true,
+    variants: [
+      {
+        _id: variantAId,
+        name: "500g",
+        sku: `VRP-500-${Date.now()}`,
+        price: 399,
+        weight: 500,
+        unit: "g",
+        stock: 10,
+        stock_quantity: 10,
+        isDefault: true,
+      },
+      {
+        _id: variantBId,
+        name: "1kg",
+        sku: `VRP-1KG-${Date.now()}`,
+        price: 699,
+        weight: 1,
+        unit: "kg",
+        stock: 10,
+        stock_quantity: 10,
+      },
+    ],
+  });
+
+  for (const [variantId, userName] of [
+    [variantAId, "Variant A Reviewer"],
+    [variantBId, "Variant B Reviewer"],
+  ]) {
+    const createResponse = await requestJson("/api/reviews", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        productId: product._id.toString(),
+        variantId: variantId.toString(),
+        userName,
+        rating: 5,
+        comment: `${userName} comment`,
+      }),
+    });
+    assert.equal(createResponse.response.status, 201);
+    assert.equal(createResponse.payload?.data?.variantId, variantId.toString());
+  }
+
+  const variantAReviews = await requestJson(
+    `/api/reviews/${product._id}?variantId=${variantAId}`,
+  );
+  assert.equal(variantAReviews.response.status, 200);
+  assert.equal(variantAReviews.payload?.total, 1);
+  assert.equal(
+    variantAReviews.payload?.data?.[0]?.userName,
+    "Variant A Reviewer",
+  );
+});
+
 test("combo reviews publish immediately and are listed separately", async () => {
   const combo = await ComboModel.create({
     name: "Reviewable Combo",
