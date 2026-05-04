@@ -6,7 +6,6 @@ import { deleteData, getData, patchData } from "@/utils/api";
 import { getImageUrl } from "@/utils/imageUtils";
 import { Button, Chip } from "@mui/material";
 import MenuItem from "@mui/material/MenuItem";
-import Rating from "@mui/material/Rating";
 import Select from "@mui/material/Select";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
@@ -45,15 +44,7 @@ const normalizeVariantLabel = (variant) => {
     .toLowerCase();
 
   if (Number.isFinite(weight) && weight > 0) {
-    if (rawUnit === "g") {
-      return weight >= 1000 ? `${weight / 1000}kg` : `${weight}g`;
-    }
-    if (rawUnit === "kg" || rawUnit === "ml" || rawUnit === "l" || rawUnit === "pcs") {
-      return `${weight}${rawUnit}`;
-    }
-    if (rawUnit) {
-      return `${weight}${rawUnit}`;
-    }
+    return `${weight}${rawUnit || "g"}`;
   }
 
   return String(variant?.name || "Variant")
@@ -587,12 +578,9 @@ const ProductsListContent = () => {
                       </TableCell>
 
                       <TableCell>
-                        <Rating
-                          name="read-only"
-                          value={product.rating || 0}
-                          readOnly
-                          size="small"
-                        />
+                        {Number(product.totalReviews ?? product.reviewCount ?? product.numReviews ?? 0) > 0
+                          ? `${Number(product.avgRating ?? product.rating ?? 0).toFixed(1)} (${Number(product.totalReviews ?? product.reviewCount ?? product.numReviews ?? 0)})`
+                          : "0.0 (0)"}
                       </TableCell>
 
                       <TableCell>

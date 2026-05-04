@@ -155,6 +155,8 @@ const buildProductRecommendation = (product) => {
           originalPrice: Number(
             variant.originalPrice ?? product?.originalPrice ?? price,
           ),
+          weightInGrams: Number(variant.weightInGrams ?? variant.weight ?? 0),
+          label: variant.label || "",
           weight: variant.weight,
           unit: variant.unit,
           image: variant.image || image,
@@ -169,6 +171,185 @@ const buildProductRecommendation = (product) => {
 
 const filterAvailableCombos = (combos = []) =>
   combos.filter((combo) => Number(combo?.availableStock ?? 0) > 0);
+
+const getAvailableCombos = async ({ limit = 6, sort = null } = {}) => {
+  const safeLimit = Math.max(Number(limit || 6), 1);
+  const combos = await ComboModel.find(buildActiveComboFilter())
+    .sort(sort || { priority: -1, totalSavings: -1, createdAt: -1 })
+    .limit(Math.max(safeLimit * 4, safeLimit))
+    .lean();
+
+  const withAvailability = await attachAvailability(combos);
+  return filterAvailableCombos(withAvailability).slice(0, safeLimit);
+};
+
+const getTopCombo = async () => {
+  const tagged = await getAvailableCombos({
+    limit: 1,
+    sort: {
+      priority: -1,
+      totalSavings: -1,
+      discountPercentage: -1,
+      createdAt: -1,
+    },
+  });
+  return tagged[0] || null;
+};
+
+const getAnyActiveCombo = async () => {
+  const combos = await getAvailableCombos({
+    limit: 1,
+    sort: { createdAt: -1 },
+  });
+  return combos[0] || null;
+};
+
+const getTrendingProductRecommendations = async ({
+  excludeProductIds = [],
+  limit = 2,
+  allowCartProducts = false,
+} = {}) => {
+  const safeLimit = Math.max(Number(limit || 2), 1);
+  const excluded = Array.from(
+    new Set((Array.isArray(excludeProductIds) ? excludeProductIds : []).map(String)),
+  ).filter(Boolean);
+  const filter = {
+    isActive: true,
+    isExclusive: { $ne: true },
+  };
+  if (!allowCartProducts && excluded.length > 0) {
+    filter._id = { $nin: excluded };
+  }
+
+  const products = await ProductModel.find(filter)
+    .select(
+      "_id name price originalPrice images thumbnail category hasVariants variants stock stock_quantity reserved_quantity track_inventory trackInventory isExclusive",
+    )
+    .sort({ isBestSeller: -1, soldCount: -1, createdAt: -1 })
+    .limit(Math.max(safeLimit * 8, 8))
+    .lean();
+
+  const recommendations = [];
+  const seen = new Set();
+  for (const product of products) {
+    const recommendation = buildProductRecommendation(product);
+    if (!recommendation) continue;
+    const key = String(recommendation.product?._id || "");
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    recommendations.push({ recommendation });
+    if (recommendations.length >= safeLimit) break;
+  }
+  return recommendations;
+};
+
+const getTopAddOns = async (cartItems = [], { limit = 2 } = {}) => {
+  const safeLimit = Math.max(Number(limit || 2), 1);
+  const normalizedItems = Array.isArray(cartItems)
+    ? cartItems
+        .map((item) => ({
+          productId: String(item?.productId || item?.product || "").trim(),
+        }))
+        .filter((item) => item.productId)
+    : [];
+  if (normalizedItems.length === 0) return [];
+
+  const cartProductIds = Array.from(
+    new Set(normalizedItems.map((item) => String(item.productId))),
+  );
+  const pairs = await ProductPairingModel.find({
+    productAId: { $in: cartProductIds },
+    productBId: { $nin: cartProductIds },
+  })
+    .sort({ pairCount: -1, confidenceScore: -1 })
+    .limit(Math.max(safeLimit * 12, 12))
+    .lean();
+
+  const relatedIds = Array.from(
+    new Set(pairs.map((pair) => String(pair.productBId || ""))),
+  ).filter(Boolean);
+  const products = relatedIds.length
+    ? await ProductModel.find({ _id: { $in: relatedIds }, isActive: true })
+        .select(
+          "_id name price originalPrice images thumbnail category hasVariants variants stock stock_quantity reserved_quantity track_inventory trackInventory isExclusive",
+        )
+        .lean()
+    : [];
+  const productMap = new Map(
+    products.map((product) => [String(product._id), product]),
+  );
+
+  const output = [];
+  const seen = new Set();
+  for (const pair of pairs) {
+    const product = productMap.get(String(pair.productBId || ""));
+    const recommendation = buildProductRecommendation(product);
+    if (!recommendation) continue;
+    const key = String(recommendation.product?._id || "");
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    output.push({ ...pair, recommendation });
+    if (output.length >= safeLimit) break;
+  }
+  return output;
+};
+
+export const getCartRecommendations = async (cartItems = []) => {
+  const normalizedItems = Array.isArray(cartItems)
+    ? cartItems
+        .map((item) => ({
+          productId: String(item?.productId || item?.product || "").trim(),
+          variantId: String(item?.variantId || item?.variant || "").trim(),
+          variantName: String(item?.variantName || "").trim(),
+        }))
+        .filter((item) => item.productId)
+    : [];
+
+  if (!normalizedItems.length) return null;
+
+  const cartProductIds = normalizedItems.map((item) => item.productId);
+  let [combo, products] = await Promise.all([
+    getTopCombo(),
+    getTopAddOns(normalizedItems, { limit: 2 }),
+  ]);
+
+  if (!combo) {
+    combo = await getAnyActiveCombo();
+  }
+
+  if (products.length < 2) {
+    const fallbackProducts = await getTrendingProductRecommendations({
+      excludeProductIds: cartProductIds,
+      limit: 2 - products.length,
+    });
+    products = [...products, ...fallbackProducts];
+  }
+
+  if (products.length < 2) {
+    const fallbackProducts = await getTrendingProductRecommendations({
+      excludeProductIds: [],
+      limit: 2 - products.length,
+      allowCartProducts: true,
+    });
+    const seen = new Set(
+      products
+        .map((entry) => String(entry?.recommendation?.product?._id || ""))
+        .filter(Boolean),
+    );
+    for (const entry of fallbackProducts) {
+      const productId = String(entry?.recommendation?.product?._id || "");
+      if (!productId || seen.has(productId)) continue;
+      seen.add(productId);
+      products.push(entry);
+      if (products.length >= 2) break;
+    }
+  }
+
+  return {
+    combo,
+    products: products.slice(0, 2),
+  };
+};
 
 export const getCombosForProduct = async (productId, { limit = 6 } = {}) => {
   if (!productId) return [];
@@ -204,8 +385,8 @@ export const getFrequentlyBoughtTogether = async (
     .limit(Math.max(Number(limit || 4), 1))
     .lean();
 
-  const relatedIds = pairs.map((pair) => pair.productBId);
-  const products = relatedIds.length
+  let relatedIds = pairs.map((pair) => pair.productBId);
+  let products = relatedIds.length
     ? await ProductModel.find({ _id: { $in: relatedIds }, isActive: true })
         .select(
           "_id name price originalPrice images thumbnail category hasVariants variants stock stock_quantity reserved_quantity track_inventory trackInventory isExclusive",
@@ -213,10 +394,71 @@ export const getFrequentlyBoughtTogether = async (
         .lean()
     : [];
 
+  if (products.length === 0) {
+    const sourceProduct = await ProductModel.findById(productId)
+      .select("category tags")
+      .lean();
+    const fallbackFilter = {
+      _id: { $ne: productId },
+      isActive: true,
+      isExclusive: { $ne: true },
+    };
+    if (sourceProduct?.category) {
+      fallbackFilter.category = sourceProduct.category;
+    }
+    if (Array.isArray(sourceProduct?.tags) && sourceProduct.tags.length > 0) {
+      fallbackFilter.tags = { $in: sourceProduct.tags };
+    }
+
+    products = await ProductModel.find(fallbackFilter)
+      .select(
+        "_id name price originalPrice images thumbnail category hasVariants variants stock stock_quantity reserved_quantity track_inventory trackInventory isExclusive",
+      )
+      .sort({ soldCount: -1, rating: -1, createdAt: -1 })
+      .limit(Math.max(Number(limit || 4), 1))
+      .lean();
+
+    if (products.length === 0 && fallbackFilter.tags) {
+      delete fallbackFilter.tags;
+      products = await ProductModel.find(fallbackFilter)
+        .select(
+          "_id name price originalPrice images thumbnail category hasVariants variants stock stock_quantity reserved_quantity track_inventory trackInventory isExclusive",
+        )
+        .sort({ soldCount: -1, rating: -1, createdAt: -1 })
+        .limit(Math.max(Number(limit || 4), 1))
+        .lean();
+    }
+
+    if (products.length === 0) {
+      products = await ProductModel.find({
+        _id: { $ne: productId },
+        isActive: true,
+        isExclusive: { $ne: true },
+      })
+        .select(
+          "_id name price originalPrice images thumbnail category hasVariants variants stock stock_quantity reserved_quantity track_inventory trackInventory isExclusive",
+        )
+        .sort({ isBestSeller: -1, soldCount: -1, createdAt: -1 })
+        .limit(Math.max(Number(limit || 4), 1))
+        .lean();
+    }
+    relatedIds = products.map((product) => product._id);
+  }
+
   const productMap = new Map(
     products.map((product) => [String(product._id), product]),
   );
-  const result = pairs
+  const sourcePairs =
+    pairs.length > 0
+      ? pairs
+      : products.map((product) => ({
+          productAId: productId,
+          productBId: product._id,
+          pairCount: 0,
+          confidenceScore: 0,
+        }));
+
+  const result = sourcePairs
     .map((pair) => ({
       ...pair,
       product: productMap.get(String(pair.productBId)) || null,
@@ -408,16 +650,27 @@ export const getRecommendedCombosForProduct = async (
   productId,
   { limit = 4 } = {},
 ) => {
-  const combos = await ComboModel.find({
+  const safeLimit = Math.max(Number(limit || 6), 1);
+  let combos = await ComboModel.find({
     ...buildActiveComboFilter(),
     "items.productId": productId,
   })
     .sort({ priority: -1, totalSavings: -1 })
-    .limit(Math.max(Number(limit || 4), 1))
+    .limit(safeLimit)
     .lean();
 
-  const withAvailability = await attachAvailability(combos);
-  return filterAvailableCombos(withAvailability);
+  let withAvailability = await attachAvailability(combos);
+  let available = filterAvailableCombos(withAvailability);
+  if (available.length > 0) return available.slice(0, safeLimit);
+
+  combos = await ComboModel.find(buildActiveComboFilter())
+    .sort({ priority: -1, totalSavings: -1, createdAt: -1 })
+    .limit(safeLimit)
+    .lean();
+
+  withAvailability = await attachAvailability(combos);
+  available = filterAvailableCombos(withAvailability);
+  return available.slice(0, safeLimit);
 };
 
 export const getCompleteSetCombos = async (productId, { limit = 4 } = {}) => {
@@ -445,7 +698,7 @@ export const getComboSectionsForProduct = async (productId) => {
     getFrequentlyBoughtTogether(productId, { limit: 4 }),
     getCombosForProduct(productId, { limit: 4 }),
     getCompleteSetCombos(productId, { limit: 4 }),
-    getRecommendedCombosForProduct(productId, { limit: 4 }),
+    getRecommendedCombosForProduct(productId, { limit: 6 }),
   ]);
 
   return {

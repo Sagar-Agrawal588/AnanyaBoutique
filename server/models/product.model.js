@@ -9,7 +9,7 @@ import mongoose from "mongoose";
  * - Inventory management
  * - Reviews and ratings
  * - SEO optimization
- * - Discounts and pricing
+ * - Variant-driven pricing
  */
 
 // Review sub-schema
@@ -82,15 +82,18 @@ const variantSchema = new mongoose.Schema({
   originalPrice: {
     type: Number,
   },
-  discountPercent: {
-    type: Number,
-    default: 0,
-    min: 0,
-    max: 100,
-  },
   weight: {
     type: Number, // in grams (e.g. 500, 1000)
     default: 0,
+  },
+  weightInGrams: {
+    type: Number,
+    min: [50, "Weight too small (possible typo like 5g instead of 500g)"],
+  },
+  label: {
+    type: String,
+    default: "",
+    trim: true,
   },
   unit: {
     type: String,
@@ -171,12 +174,6 @@ const productSchema = new mongoose.Schema(
     originalPrice: {
       type: Number,
       default: 0,
-    },
-    discount: {
-      type: Number,
-      default: 0,
-      min: 0,
-      max: 100,
     },
 
     // Images
@@ -319,11 +316,6 @@ const productSchema = new mongoose.Schema(
       default: true,
       index: true,
     },
-    isFeatured: {
-      type: Boolean,
-      default: false,
-      index: true,
-    },
     isNewArrival: {
       type: Boolean,
       default: false,
@@ -347,25 +339,6 @@ const productSchema = new mongoose.Schema(
       type: [reviewSchema],
       default: [],
     },
-    rating: {
-      type: Number,
-      default: 0,
-      min: 0,
-      max: 5,
-    },
-    adminStarRating: {
-      type: Number,
-      default: function () {
-        return typeof this.rating === "number" ? this.rating : 0;
-      },
-      min: 0,
-      max: 5,
-    },
-    numReviews: {
-      type: Number,
-      default: 0,
-    },
-
     // Tags for search
     tags: {
       type: [String],
@@ -492,7 +465,7 @@ productSchema.virtual("discountPercentage").get(function () {
       ((this.originalPrice - this.price) / this.originalPrice) * 100,
     );
   }
-  return this.discount || 0;
+  return 0;
 });
 
 // Virtual for main image
@@ -520,12 +493,11 @@ productSchema.pre("validate", function () {
 
 // Pre-save middleware
 productSchema.pre("save", async function () {
-  // Calculate discount if original price exists
+  // Keep sale flag derived from pricing. Discount percentages are computed at read time.
   if (this.originalPrice && this.originalPrice > this.price) {
-    this.discount = Math.round(
-      ((this.originalPrice - this.price) / this.originalPrice) * 100,
-    );
     this.isOnSale = true;
+  } else {
+    this.isOnSale = false;
   }
 
   // Set thumbnail if not provided
@@ -562,26 +534,6 @@ productSchema.pre("save", async function () {
       typeof this.track_inventory === "boolean" ? this.track_inventory : true;
   }
 
-  // Keep legacy `rating` and explicit `adminStarRating` in sync.
-  if (
-    this.isModified("adminStarRating") &&
-    typeof this.adminStarRating === "number"
-  ) {
-    this.rating = this.adminStarRating;
-  } else if (this.isModified("rating") && typeof this.rating === "number") {
-    this.adminStarRating = this.rating;
-  } else if (
-    typeof this.adminStarRating !== "number" &&
-    typeof this.rating === "number"
-  ) {
-    this.adminStarRating = this.rating;
-  } else if (
-    typeof this.rating !== "number" &&
-    typeof this.adminStarRating === "number"
-  ) {
-    this.rating = this.adminStarRating;
-  }
-
   if (Array.isArray(this.variants) && this.variants.length > 0) {
     let hasDefault = false;
     for (const variant of this.variants) {
@@ -597,13 +549,6 @@ productSchema.pre("save", async function () {
       }
       if (variant.reserved_quantity == null) {
         variant.reserved_quantity = 0;
-      }
-      // Auto-calculate discountPercent
-      if (variant.originalPrice && variant.originalPrice > variant.price) {
-        variant.discountPercent = Math.round(
-          ((variant.originalPrice - variant.price) / variant.originalPrice) *
-            100,
-        );
       }
       if (variant.isDefault) hasDefault = true;
     }
@@ -629,19 +574,6 @@ productSchema.pre("save", async function () {
   }
 });
 
-// Calculate average rating
-productSchema.methods.calculateAverageRating = function () {
-  if (this.reviews.length === 0) {
-    this.rating = 0;
-    this.numReviews = 0;
-  } else {
-    const sum = this.reviews.reduce((acc, review) => acc + review.rating, 0);
-    this.rating = Math.round((sum / this.reviews.length) * 10) / 10;
-    this.numReviews = this.reviews.length;
-  }
-  return this.save();
-};
-
 // Text search index
 productSchema.index({
   name: "text",
@@ -652,14 +584,12 @@ productSchema.index({
 
 // Compound indexes for common queries
 productSchema.index({ category: 1, isActive: 1, price: 1 });
-productSchema.index({ isFeatured: 1, isActive: 1 });
 productSchema.index({ isActive: 1, updatedAt: -1 });
 productSchema.index({ isActive: 1, sku: 1, updatedAt: -1 });
 productSchema.index({ isActive: 1, slug: 1, updatedAt: -1 });
 productSchema.index({ isActive: 1, tags: 1, updatedAt: -1 });
 productSchema.index({ createdAt: -1 });
 productSchema.index({ soldCount: -1 });
-productSchema.index({ rating: -1 });
 productSchema.index({ stock_quantity: 1, reserved_quantity: 1 });
 productSchema.index({ track_inventory: 1 });
 

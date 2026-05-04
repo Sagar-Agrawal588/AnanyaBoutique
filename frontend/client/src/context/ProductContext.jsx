@@ -71,13 +71,15 @@ export const ProductProvider = ({ children }) => {
 
   const fetchFeaturedProducts = useCallback(async () => {
     try {
-      const response = await fetchDataFromApi("/api/products?featured=true");
+      const response = await fetchDataFromApi(
+        "/api/products?bestSeller=true&sortBy=createdAt&order=desc",
+      );
       if (response?.error !== true) {
         setFeaturedProducts(response?.data || []);
       }
       return response;
     } catch (err) {
-      console.error("Error fetching featured products:", err);
+      console.error("Error fetching highlighted products:", err);
       return { error: true, data: [] };
     }
   }, []);

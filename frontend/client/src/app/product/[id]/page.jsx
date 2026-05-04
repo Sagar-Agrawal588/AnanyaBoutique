@@ -3,7 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import ComboCard from "@/components/ComboCard";
-import ProductItem from "@/components/ProductItem";
+import ProductImage from "@/components/ProductImage";
 import ShareButton from "@/components/ShareButton";
 import StockNotificationButton from "@/components/StockNotificationButton";
 import {
@@ -12,7 +12,7 @@ import {
   buildDemoReviews,
 } from "@/components/productDetail/demoLiveData";
 import {
-  mergeCardsWithDefaults,
+  mergeCardCopyWithDefaults,
   mergeListWithDefaults,
   mergeTextOverride,
   normalizeProductPageConfig,
@@ -31,9 +31,14 @@ import { getImageUrl } from "@/utils/imageUtils";
 import { sanitizeHTML } from "@/utils/sanitize";
 import {
   applyStockUpdateToProduct,
-  applyStockUpdateToProductCollection,
   getResolvedAvailableStock,
 } from "@/utils/stockRealtime";
+import {
+  formatWeight,
+  getVariantWeightLabel,
+  getWeightInGrams,
+  stripWeightRange,
+} from "@/utils/weightDisplay";
 import { Alert, CircularProgress, Rating, Snackbar } from "@mui/material";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -149,20 +154,11 @@ const isPossibleIndianPincode = (value) => /^[1-9][0-9]{5}$/.test(value);
 const getResolvedProductId = (product) => product?._id || product?.id || "";
 
 const formatVariantWeight = (variant = {}) => {
-  const weight = Number(variant?.weight || 0);
-  const unit = String(variant?.unit || "").trim();
-  if (!weight || !unit) return "";
-
-  if (unit.toLowerCase() === "g" && weight >= 1000) {
-    const kg = Number((weight / 1000).toFixed(2));
-    return `${kg} kg`;
-  }
-
-  return `${weight} ${unit}`;
+  return getVariantWeightLabel(variant);
 };
 
 const formatVariantLabel = (variant = {}) => {
-  const baseName = String(variant?.name || "").trim();
+  const baseName = stripWeightRange(variant?.name);
   const weightLabel = formatVariantWeight(variant);
   const skuLabel = String(variant?.sku || "").trim();
 
@@ -174,6 +170,16 @@ const formatVariantLabel = (variant = {}) => {
 
   const baseToken = normalizeToken(baseName);
   const weightToken = normalizeToken(weightLabel);
+  const looksLikeBadRange =
+    baseName &&
+    weightLabel &&
+    /\b\d+(?:\.\d+)?\s*(?:mg|g|kg|ml|l|pcs?)\s*-\s*\d+(?:\.\d+)?\s*(?:mg|g|kg|ml|l|pcs?)\b/i.test(
+      baseName,
+    );
+
+  if (looksLikeBadRange) {
+    return weightLabel;
+  }
 
   if (baseName && weightLabel && baseToken && weightToken) {
     if (baseToken.includes(weightToken) || weightToken.includes(baseToken)) {
@@ -198,6 +204,16 @@ const stripHtml = (value) =>
     .replace(/\s+/g, " ")
     .trim();
 
+const splitTextParagraphs = (value) =>
+  String(value || "")
+    .replace(/\r\n/g, "\n")
+    .split(/\n{2,}|\n/)
+    .map((part) => stripHtml(part))
+    .filter(Boolean);
+
+const normalizeComparableText = (value) =>
+  stripHtml(value).toLowerCase().replace(/\s+/g, " ").trim();
+
 const getAvailabilityLabel = (availableQty, demandStatus) => {
   if (availableQty > 0) {
     return String(demandStatus || "")
@@ -221,6 +237,7 @@ const getAvailabilityLabel = (availableQty, demandStatus) => {
 const getHeroStatusLabel = (product, reviewCount) => {
   if (product?.isBestSeller) return "Best seller";
   if (product?.isNewArrival) return "New arrival";
+  if (product?.highDemand) return "High Demand";
   if (
     String(product?.demandStatus || "")
       .trim()
@@ -265,13 +282,26 @@ const buildDetailCards = ({
   product,
   selectedVariant,
   availableQty,
+  avgRating,
   reviewCount,
 }) => {
   const categoryLabel =
-    product?.category?.name || product?.categoryName || "Storefront product";
+    product?.category?.name || product?.categoryName || "";
   const selectedLabel = selectedVariant
-    ? formatVariantLabel(selectedVariant)
+    ? getVariantWeightLabel(selectedVariant)
     : formatVariantWeight(product);
+  const normalizedReviewCount = Math.max(Number(reviewCount || 0), 0);
+  const ratingText =
+    normalizedReviewCount === 0
+      ? "No reviews yet"
+      : `${Number(avgRating || 0).toFixed(1)} (${normalizedReviewCount})`;
+  const selectedStock = Number(
+    selectedVariant?.stock_quantity ??
+      selectedVariant?.stock ??
+      selectedVariant?.available_quantity ??
+      availableQty ??
+      0,
+  );
 
   return [
     {
@@ -281,52 +311,20 @@ const buildDetailCards = ({
     },
     {
       label: "Selected Pack",
-      value: selectedLabel || "Default option",
+      value: selectedLabel,
       helper: "Variant-aware display",
     },
     {
       label: "Customer Reviews",
-      value: `${Math.max(Number(reviewCount || 0), 0)}`,
+      value: ratingText,
       helper: "Visible social proof",
     },
     {
       label: "Availability",
-      value: getAvailabilityLabel(availableQty, product?.demandStatus),
+      value: selectedStock > 0 ? "In stock" : "Out of stock",
       helper: "Real-time stock signal",
     },
   ];
-};
-
-const buildSnapshotItems = ({
-  product,
-  selectedVariant,
-  displaySku,
-  availableQty,
-  productRating,
-  reviewCount,
-}) => {
-  const items = [];
-  const categoryLabel =
-    product?.category?.name || product?.categoryName || "General catalog";
-  const brandLabel = String(product?.brand || "Healthy One Gram").trim();
-  const selectedLabel = selectedVariant
-    ? formatVariantLabel(selectedVariant)
-    : formatVariantWeight(product);
-
-  items.push(`Category: ${categoryLabel}`);
-  items.push(`Brand: ${brandLabel}`);
-  if (displaySku) items.push(`SKU: ${displaySku}`);
-  if (selectedLabel) items.push(`Selected pack: ${selectedLabel}`);
-  items.push(
-    `Availability: ${getAvailabilityLabel(availableQty, product?.demandStatus)}`,
-  );
-  if (Number(productRating) > 0) {
-    items.push(
-      `Rating: ${Number(productRating).toFixed(1)} / 5 from ${Math.max(Number(reviewCount || 0), 0)} review${Number(reviewCount || 0) === 1 ? "" : "s"}`,
-    );
-  }
-
-  return items;
 };
 
 const buildShippingPoints = () => [
@@ -336,11 +334,12 @@ const buildShippingPoints = () => [
 ];
 
 const resolveVariantLabel = (variant, baseProduct) => {
-  if (variant?.name) return variant.name;
-  const weight = variant?.weight || baseProduct?.weight;
-  const unit = variant?.unit || baseProduct?.unit;
-  if (!weight || !unit) return "";
-  return formatVariantWeight({ weight, unit });
+  const weightLabel = getVariantWeightLabel(variant);
+  if (weightLabel) return weightLabel;
+  const fallbackWeight = getWeightInGrams(baseProduct);
+  return fallbackWeight > 0
+    ? formatWeight(fallbackWeight, baseProduct?.unit || "g")
+    : "";
 };
 
 const resolveProductImages = (
@@ -395,6 +394,48 @@ const getReviewInitials = (review) => {
     .join("");
 };
 
+const ReviewCard = ({ review, compact = false }) => (
+  <article className="product-review-card h-full rounded-[28px] border border-[#e7dad1] bg-[#fbf7f2] p-6 shadow-[0_24px_50px_-42px_rgba(42,28,20,0.28)]">
+    <div className="flex items-center gap-4">
+      {review?.avatar ? (
+        <img
+          src={getImageUrl(review.avatar)}
+          alt={review?.userName || "Customer"}
+          className="h-14 w-14 rounded-2xl object-cover"
+        />
+      ) : (
+        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#2f1b12] text-base font-semibold text-white">
+          {getReviewInitials(review)}
+        </div>
+      )}
+      <div className="min-w-0">
+        <p className="font-semibold text-[#24150f]">
+          {review?.userName || "Customer"}
+        </p>
+        <p className="text-sm text-[#6d584a]">
+          {[review?.city, formatReviewDate(review?.createdAt)]
+            .filter(Boolean)
+            .join(" - ")}
+        </p>
+      </div>
+    </div>
+    <div className="mt-4">
+      <Rating
+        value={Math.max(Number(review?.rating || 0), 0)}
+        readOnly
+        size="small"
+      />
+    </div>
+    <p
+      className={`mt-4 text-sm leading-7 text-[#4b392f] ${
+        compact ? "line-clamp-4" : ""
+      }`}
+    >
+      {review?.comment || "No written comment available."}
+    </p>
+  </article>
+);
+
 const ProductDetailPage = () => {
   const { id } = useParams();
   const router = useRouter();
@@ -406,6 +447,10 @@ const ProductDetailPage = () => {
   const [product, setProduct] = useState(null);
   const [customerReviews, setCustomerReviews] = useState([]);
   const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [showAllReviewsModal, setShowAllReviewsModal] = useState(false);
+  const [reviewPage, setReviewPage] = useState(1);
+  const [reviewVariantFilter, setReviewVariantFilter] = useState("");
+  const [reviewSort, setReviewSort] = useState("highest");
   const [reviewSettings, setReviewSettings] = useState(DEFAULT_REVIEW_SETTINGS);
   const [publicReviewForm, setPublicReviewForm] = useState({
     userName: "",
@@ -414,7 +459,6 @@ const ProductDetailPage = () => {
     comment: "",
   });
   const [submittingPublicReview, setSubmittingPublicReview] = useState(false);
-  const [relatedProducts, setRelatedProducts] = useState([]);
   const [frequentlyBought, setFrequentlyBought] = useState([]);
   const [fbtLoading, setFbtLoading] = useState(false);
   const [recommendedCombos, setRecommendedCombos] = useState([]);
@@ -439,6 +483,8 @@ const ProductDetailPage = () => {
     severity: "success",
   });
   const fallbackPollRef = useRef(null);
+  const reviewScrollerRef = useRef(null);
+  const galleryTouchStartXRef = useRef(null);
   const { lookupPincode } = useIndiaPincodeLookup();
 
   const defaultVariant =
@@ -465,6 +511,14 @@ const ProductDetailPage = () => {
   const activeOriginalPrice = resolvedSelectedVariant
     ? resolvedSelectedVariant.originalPrice
     : product?.originalPrice;
+  const activeDiscountPercent =
+    toNumber(activeOriginalPrice, 0) > toNumber(activePrice, 0)
+      ? Math.round(
+          ((toNumber(activeOriginalPrice, 0) - toNumber(activePrice, 0)) /
+            toNumber(activeOriginalPrice, 0)) *
+            100,
+        )
+      : 0;
   const demoReviewFallback = isDemoPreview ? buildDemoReviews() : [];
   const pageConfig = normalizeProductPageConfig(product?.productPage);
   const activeStock = resolvedSelectedVariant
@@ -488,16 +542,54 @@ const ProductDetailPage = () => {
   const productId = getResolvedProductId(product);
   const currentVariantInCart =
     productId && isInCart(productId, selectedVariantId);
-  const productRating =
-    customerReviews.length > 0
-      ? averageReviewRating(customerReviews)
-      : Number(product?.adminStarRating ?? product?.rating ?? 0);
-  const displayReviews =
-    customerReviews.length > 0 ? customerReviews : demoReviewFallback;
-  const displayReviewCount = Math.max(
-    customerReviews.length || Number(product?.reviewCount || 0),
-    demoReviewFallback.length,
+  const effectiveReviewVariantId = product?.hasVariants
+    ? reviewVariantFilter || selectedVariantId || defaultVariant?._id || defaultVariant?.id || ""
+    : "";
+  const variantFilteredReviews = (
+    customerReviews.length > 0 ? customerReviews : demoReviewFallback
+  ).filter((review) => {
+    if (!product?.hasVariants) return true;
+    return (
+      String(review?.variantId || "") === String(effectiveReviewVariantId || "")
+    );
+  });
+  const variantReviewCount = variantFilteredReviews.length;
+  const variantAverageRating =
+    variantReviewCount > 0
+      ? variantFilteredReviews.reduce(
+          (sum, review) => sum + Math.max(Number(review?.rating || 0), 0),
+          0,
+        ) / variantReviewCount
+      : 0;
+  const displayReviews = variantFilteredReviews.slice().sort((a, b) => {
+    if (reviewSort === "latest") {
+      return (
+        new Date(b?.createdAt || 0).getTime() -
+        new Date(a?.createdAt || 0).getTime()
+      );
+    }
+    const ratingDelta =
+      reviewSort === "lowest"
+        ? Number(a?.rating || 0) - Number(b?.rating || 0)
+        : Number(b?.rating || 0) - Number(a?.rating || 0);
+    if (ratingDelta !== 0) return ratingDelta;
+    return (
+      new Date(b?.createdAt || 0).getTime() -
+      new Date(a?.createdAt || 0).getTime()
+    );
+  });
+  const productRating = variantReviewCount > 0 ? variantAverageRating : 0;
+  const reviewCarouselItems = displayReviews.slice(0, 10);
+  const allReviewsPageSize = 6;
+  const allReviewsTotalPages = Math.max(
+    1,
+    Math.ceil(displayReviews.length / allReviewsPageSize),
   );
+  const paginatedReviews = displayReviews.slice(
+    (reviewPage - 1) * allReviewsPageSize,
+    reviewPage * allReviewsPageSize,
+  );
+  const displayReviewCount = variantReviewCount;
   const tabs = [
     pageConfig?.tabs?.showDescription !== false
       ? {
@@ -527,32 +619,48 @@ const ProductDetailPage = () => {
         }
       : null,
   ].filter(Boolean);
-  const defaultDescriptionParagraphs = buildDescriptionParagraphs(product);
+  const productDescriptionParagraphs = splitTextParagraphs(
+    product?.description || "",
+  );
+  const fallbackDescriptionParagraphs =
+    productDescriptionParagraphs.length > 0
+      ? []
+      : buildDescriptionParagraphs(product);
+  const editorialDescriptionText =
+    pageConfig?.descriptionSection?.editorialDescription || "";
   const descriptionParagraphs = mergeListWithDefaults(
     pageConfig?.descriptionSection?.extraParagraphs || [],
-    defaultDescriptionParagraphs,
-  );
+    fallbackDescriptionParagraphs,
+  ).filter((paragraph, index, allParagraphs) => {
+    const normalized = normalizeComparableText(paragraph);
+    if (!normalized) return false;
+    if (normalized === normalizeComparableText(editorialDescriptionText)) {
+      return false;
+    }
+    if (
+      productDescriptionParagraphs.some(
+        (productParagraph) =>
+          normalizeComparableText(productParagraph) === normalized,
+      )
+    ) {
+      return false;
+    }
+    return (
+      allParagraphs.findIndex(
+        (item) => normalizeComparableText(item) === normalized,
+      ) === index
+    );
+  });
   const defaultDetailCards = buildDetailCards({
     product,
-    selectedVariant,
+    selectedVariant: resolvedSelectedVariant,
     availableQty,
+    avgRating: productRating,
     reviewCount: displayReviewCount,
   });
-  const detailCards = mergeCardsWithDefaults(
+  const detailCards = mergeCardCopyWithDefaults(
     defaultDetailCards,
     pageConfig?.detailsSection?.cards || [],
-  );
-  const defaultSnapshotItems = buildSnapshotItems({
-    product,
-    selectedVariant,
-    displaySku,
-    availableQty,
-    productRating,
-    reviewCount: displayReviewCount,
-  });
-  const snapshotItems = mergeListWithDefaults(
-    pageConfig?.detailsSection?.snapshotItems || [],
-    defaultSnapshotItems,
   );
   const defaultShippingPoints = buildShippingPoints();
   const shippingPoints = mergeListWithDefaults(
@@ -565,16 +673,19 @@ const ProductDetailPage = () => {
     isDemoPreview ? buildDemoProduct().images : [],
   );
   const activeImage = images[activeImageIndex] || images[0] || "/product_1.png";
+  const visibleGalleryImages = images.slice(0, 4);
+  const remainingGalleryCount = Math.max(images.length - 4, 0);
   const selectedPackLabel =
     resolveVariantLabel(selectedVariant, product) ||
     resolveVariantLabel(defaultVariant, product) ||
     "Default option";
   const activeWeightGrams = resolvedSelectedVariant
-    ? convertWeightToGrams(
+    ? getWeightInGrams(resolvedSelectedVariant) ||
+      convertWeightToGrams(
         resolvedSelectedVariant.weight ?? product?.weight,
         resolvedSelectedVariant.unit ?? product?.unit,
       )
-    : convertWeightToGrams(product?.weight, product?.unit);
+    : getWeightInGrams(product) || convertWeightToGrams(product?.weight, product?.unit);
   const deliveryPreviewWeightGrams =
     activeWeightGrams > 0 ? activeWeightGrams : 500;
   const deliveryPreviewOrderAmount = Math.max(toNumber(activePrice, 0), 0);
@@ -608,8 +719,6 @@ const ProductDetailPage = () => {
     !isDemoPreview && pageConfig?.frequentlyBoughtSection?.show !== false;
   const showRecommendedCombosSection =
     !isDemoPreview && pageConfig?.recommendedCombosSection?.show !== false;
-  const showRelatedProductsSection =
-    !isDemoPreview && pageConfig?.relatedProductsSection?.show !== false;
   const galleryGridClassName = showHeroStoryCard
     ? "relative mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-stretch"
     : "relative mt-6";
@@ -634,7 +743,7 @@ const ProductDetailPage = () => {
     setReviewSettings(DEFAULT_REVIEW_SETTINGS);
   }, []);
 
-  const fetchProductReviews = async (productValueId) => {
+  const fetchProductReviews = useCallback(async (productValueId, variantId = "") => {
     if (!productValueId) {
       setCustomerReviews([]);
       return;
@@ -642,7 +751,12 @@ const ProductDetailPage = () => {
 
     try {
       setReviewsLoading(true);
-      const response = await fetchDataFromApi(`/api/reviews/${productValueId}`);
+      const variantQuery = variantId
+        ? `?variantId=${encodeURIComponent(String(variantId))}`
+        : "";
+      const response = await fetchDataFromApi(
+        `/api/reviews/${productValueId}${variantQuery}`,
+      );
       if (response?.success && Array.isArray(response?.data)) {
         setCustomerReviews(response.data);
       } else {
@@ -654,7 +768,7 @@ const ProductDetailPage = () => {
     } finally {
       setReviewsLoading(false);
     }
-  };
+  }, []);
 
   const handleSubmitPublicReview = async () => {
     const activeProductId = getResolvedProductId(product);
@@ -703,6 +817,7 @@ const ProductDetailPage = () => {
     try {
       const response = await postData("/api/reviews", {
         productId: activeProductId,
+        variantId: selectedVariantId || null,
         userName,
         city,
         rating,
@@ -740,7 +855,40 @@ const ProductDetailPage = () => {
     }
   };
 
-  const fetchFrequentlyBought = async (productValueId) => {
+  const fetchFallbackProducts = useCallback(
+    async ({ categoryId = "", excludeId = "", limit = 5 } = {}) => {
+      const categoryQuery = categoryId
+        ? `category=${encodeURIComponent(String(categoryId))}&`
+        : "";
+      const excludeQuery = excludeId
+        ? `&exclude=${encodeURIComponent(String(excludeId))}`
+        : "";
+      const urls = [
+        categoryId
+          ? `/api/products?${categoryQuery}sortBy=popular&order=desc&limit=${limit}${excludeQuery}`
+          : "",
+        `/api/products?bestSeller=true&sortBy=popular&order=desc&limit=${limit}${excludeQuery}`,
+        `/api/products?sortBy=createdAt&order=desc&limit=${limit}${excludeQuery}`,
+      ].filter(Boolean);
+
+      for (const url of urls) {
+        try {
+          const response = await fetchDataFromApi(url);
+          const items = Array.isArray(response?.data) ? response.data : [];
+          const visibleItems = items.filter(
+            (item) => !isExclusiveProduct(item),
+          );
+          if (visibleItems.length > 0) return visibleItems;
+        } catch {
+          // Try the next fallback source.
+        }
+      }
+      return [];
+    },
+    [],
+  );
+
+  const fetchFrequentlyBought = useCallback(async (productValueId, categoryId = "") => {
     if (!productValueId) {
       setFrequentlyBought([]);
       return;
@@ -752,21 +900,55 @@ const ProductDetailPage = () => {
         `/api/products/${productValueId}/frequently-bought?limit=3`,
       );
       if (response?.success && Array.isArray(response?.data)) {
-        setFrequentlyBought(
-          response.data.filter((item) => !isExclusiveProduct(item)),
-        );
+        const items = response.data.filter((item) => !isExclusiveProduct(item));
+        if (items.length > 0) {
+          setFrequentlyBought(items);
+          return;
+        }
       } else {
-        setFrequentlyBought([]);
+        const fallbackProducts = await fetchFallbackProducts({
+          categoryId,
+          excludeId: productValueId,
+          limit: 3,
+        });
+        setFrequentlyBought(
+          fallbackProducts.map((fallbackProduct) => ({
+            product: fallbackProduct,
+            recommendation: { product: fallbackProduct },
+          })),
+        );
+        return;
       }
+      const fallbackProducts = await fetchFallbackProducts({
+        categoryId,
+        excludeId: productValueId,
+        limit: 3,
+      });
+      setFrequentlyBought(
+        fallbackProducts.map((fallbackProduct) => ({
+          product: fallbackProduct,
+          recommendation: { product: fallbackProduct },
+        })),
+      );
     } catch (error) {
       console.error("Error fetching frequently bought together:", error);
-      setFrequentlyBought([]);
+      const fallbackProducts = await fetchFallbackProducts({
+        categoryId,
+        excludeId: productValueId,
+        limit: 3,
+      });
+      setFrequentlyBought(
+        fallbackProducts.map((fallbackProduct) => ({
+          product: fallbackProduct,
+          recommendation: { product: fallbackProduct },
+        })),
+      );
     } finally {
       setFbtLoading(false);
     }
-  };
+  }, [fetchFallbackProducts]);
 
-  const fetchRecommendedCombos = async (productValueId) => {
+  const fetchRecommendedCombos = useCallback(async (productValueId) => {
     if (!productValueId) {
       setRecommendedCombos([]);
       return;
@@ -778,11 +960,10 @@ const ProductDetailPage = () => {
         `/api/combos/sections?productId=${productValueId}`,
       );
       if (response?.success) {
-        setRecommendedCombos(
-          (response?.data?.recommendedCombos || []).filter(
-            (combo) => !isExclusiveCombo(combo),
-          ),
+        const combos = (response?.data?.recommendedCombos || []).filter(
+          (combo) => !isExclusiveCombo(combo),
         );
+        setRecommendedCombos(combos);
       } else {
         setRecommendedCombos([]);
       }
@@ -792,7 +973,7 @@ const ProductDetailPage = () => {
     } finally {
       setRecommendedLoading(false);
     }
-  };
+  }, []);
 
   const fetchProduct = useCallback(
     async ({ showLoader = true, preserveCurrent = false } = {}) => {
@@ -851,14 +1032,15 @@ const ProductDetailPage = () => {
             price: Number(resolvedProduct?.price || 0),
           });
 
-          if (resolvedPageConfig?.reviewsSection?.show !== false) {
-            fetchProductReviews(resolvedProductId);
-          } else {
+          if (resolvedPageConfig?.reviewsSection?.show === false) {
             setCustomerReviews([]);
           }
 
           if (resolvedPageConfig?.frequentlyBoughtSection?.show !== false) {
-            fetchFrequentlyBought(resolvedProductId);
+            fetchFrequentlyBought(
+              resolvedProductId,
+              resolvedProduct?.category?._id || resolvedProduct?.category || "",
+            );
           } else {
             setFrequentlyBought([]);
           }
@@ -867,26 +1049,6 @@ const ProductDetailPage = () => {
             fetchRecommendedCombos(resolvedProductId);
           } else {
             setRecommendedCombos([]);
-          }
-
-          if (
-            resolvedPageConfig?.relatedProductsSection?.show !== false &&
-            resolvedProduct?.category
-          ) {
-            const relatedResponse = await fetchDataFromApi(
-              `/api/products?category=${resolvedProduct.category._id || resolvedProduct.category}&limit=5&exclude=${routeId}`,
-            );
-            if (relatedResponse?.error !== true) {
-              setRelatedProducts(
-                (
-                  relatedResponse?.data ||
-                  relatedResponse?.products ||
-                  []
-                ).filter((item) => !isExclusiveProduct(item)),
-              );
-            }
-          } else {
-            setRelatedProducts([]);
           }
         } else {
           if (!preserveCurrent) {
@@ -900,7 +1062,6 @@ const ProductDetailPage = () => {
           setCustomerReviews([]);
           setFrequentlyBought([]);
           setRecommendedCombos([]);
-          setRelatedProducts([]);
         }
       } finally {
         if (showLoader) {
@@ -908,7 +1069,11 @@ const ProductDetailPage = () => {
         }
       }
     },
-    [routeId],
+    [
+      fetchFrequentlyBought,
+      fetchRecommendedCombos,
+      routeId,
+    ],
   );
 
   const stopFallbackPolling = useCallback(() => {
@@ -951,7 +1116,6 @@ const ProductDetailPage = () => {
           null,
       );
       setCustomerReviews(buildDemoReviews());
-      setRelatedProducts([]);
       setFrequentlyBought([]);
       setRecommendedCombos([]);
       setLoading(false);
@@ -971,6 +1135,45 @@ const ProductDetailPage = () => {
 
     void fetchReviewSettings();
   }, [fetchReviewSettings, isDemoPreview, routeId]);
+
+  useEffect(() => {
+    if (isDemoPreview || !productId) return;
+
+    if (showReviewsSection) {
+      void fetchProductReviews(
+        productId,
+        product?.hasVariants ? effectiveReviewVariantId : "",
+      );
+    } else {
+      setCustomerReviews([]);
+    }
+  }, [
+    effectiveReviewVariantId,
+    fetchProductReviews,
+    isDemoPreview,
+    product?.hasVariants,
+    productId,
+    showReviewsSection,
+  ]);
+
+  useEffect(() => {
+    setReviewPage(1);
+  }, [reviewVariantFilter, customerReviews.length]);
+
+  useEffect(() => {
+    if (!product?.hasVariants || !Array.isArray(product?.variants)) {
+      setReviewVariantFilter("");
+      return;
+    }
+
+    const nextVariantId =
+      selectedVariantId || defaultVariant?._id || defaultVariant?.id || "";
+    setReviewVariantFilter((previous) =>
+      String(previous || "") === String(nextVariantId || "")
+        ? previous
+        : String(nextVariantId || ""),
+    );
+  }, [defaultVariant, product?.hasVariants, product?.variants, selectedVariantId]);
 
   useEffect(() => {
     if (!product?.hasVariants || !Array.isArray(product?.variants)) return;
@@ -996,9 +1199,6 @@ const ProductDetailPage = () => {
     const unsubscribeStock = subscribeToStockUpdates((payload) => {
       startTransition(() => {
         setProduct((previous) => applyStockUpdateToProduct(previous, payload));
-        setRelatedProducts((previous) =>
-          applyStockUpdateToProductCollection(previous, payload),
-        );
       });
     });
 
@@ -1237,6 +1437,8 @@ const ProductDetailPage = () => {
         name: selectedVariant.name,
         sku: selectedVariant.sku,
         price: selectedVariant.price,
+        weightInGrams: selectedVariant.weightInGrams,
+        label: selectedVariant.label,
         weight: selectedVariant.weight,
         unit: selectedVariant.unit,
       },
@@ -1308,6 +1510,8 @@ const ProductDetailPage = () => {
           name: variant?.name,
           sku: variant?.sku,
           price,
+          weightInGrams: variant?.weightInGrams,
+          label: variant?.label,
           weight: variant?.weight,
           unit: variant?.unit,
         },
@@ -1550,6 +1754,18 @@ const ProductDetailPage = () => {
     defaultVariant?.stockNotificationRequested ||
     product?.stockNotificationRequested,
   );
+  const showPreviousImage = () => {
+    if (images.length <= 1) return;
+    setActiveImageIndex((previous) =>
+      previous === 0 ? images.length - 1 : previous - 1,
+    );
+  };
+  const showNextImage = () => {
+    if (images.length <= 1) return;
+    setActiveImageIndex((previous) =>
+      previous === images.length - 1 ? 0 : previous + 1,
+    );
+  };
 
   if (loading) {
     return (
@@ -1614,24 +1830,16 @@ const ProductDetailPage = () => {
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={() =>
-                        setActiveImageIndex((previous) =>
-                          previous === 0 ? images.length - 1 : previous - 1,
-                        )
-                      }
-                      className="flex h-10 w-10 items-center justify-center rounded-full border border-white/70 bg-white/85 text-[#1d3740] shadow-sm transition hover:-translate-y-0.5"
+                      onClick={showPreviousImage}
+                      className="slider-nav border border-white/70 transition hover:-translate-y-0.5"
                       aria-label="Previous image"
                     >
                       <FiChevronLeft />
                     </button>
                     <button
                       type="button"
-                      onClick={() =>
-                        setActiveImageIndex((previous) =>
-                          previous === images.length - 1 ? 0 : previous + 1,
-                        )
-                      }
-                      className="flex h-10 w-10 items-center justify-center rounded-full border border-white/70 bg-white/85 text-[#1d3740] shadow-sm transition hover:-translate-y-0.5"
+                      onClick={showNextImage}
+                      className="slider-nav border border-white/70 transition hover:-translate-y-0.5"
                       aria-label="Next image"
                     >
                       <FiChevronRight />
@@ -1642,23 +1850,63 @@ const ProductDetailPage = () => {
 
               <div className={galleryGridClassName}>
                 <div className={imageStageClassName}>
-                  <div className="absolute inset-x-[16%] bottom-4 h-10 rounded-full bg-[#6a4331]/12 blur-2xl" />
                   <button
                     type="button"
                     onClick={() => setIsImageZoomOpen(true)}
-                    className="group relative z-10 flex h-full w-full cursor-zoom-in items-center justify-center rounded-[24px]"
+                    onKeyDown={(event) => {
+                      if (event.key === "ArrowLeft") showPreviousImage();
+                      if (event.key === "ArrowRight") showNextImage();
+                    }}
+                    onTouchStart={(event) => {
+                      galleryTouchStartXRef.current =
+                        event.touches?.[0]?.clientX ?? null;
+                    }}
+                    onTouchEnd={(event) => {
+                      const startX = galleryTouchStartXRef.current;
+                      const endX = event.changedTouches?.[0]?.clientX ?? null;
+                      galleryTouchStartXRef.current = null;
+                      if (startX == null || endX == null) return;
+                      const delta = endX - startX;
+                      if (Math.abs(delta) < 36) return;
+                      if (delta > 0) showPreviousImage();
+                      else showNextImage();
+                    }}
+                    className="group relative z-10 flex h-full w-full cursor-zoom-in items-center justify-center rounded-2xl"
                     aria-label="Open product image zoom"
                   >
-                    <img
+                    <ProductImage
                       src={activeImage}
                       alt={product?.name || product?.title || "Product image"}
-                      className="h-[360px] w-full object-contain drop-shadow-[0_26px_36px_rgba(60,36,24,0.18)] sm:h-[430px] lg:h-[520px]"
+                      aspect="aspect-square"
+                      fit="cover"
+                      className="h-[360px] w-full sm:h-[430px] lg:h-[520px]"
+                      imgClassName="transition duration-300 ease-out"
                     />
                     <span className="pointer-events-none absolute bottom-3 right-3 inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/85 px-3 py-1.5 text-xs font-semibold text-[#1d3740] opacity-0 transition group-hover:opacity-100">
                       <FiMaximize2 className="text-sm" />
                       Click to zoom
                     </span>
                   </button>
+                  {images.length > 1 ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={showPreviousImage}
+                        className="slider-nav absolute left-4 top-1/2 -translate-y-1/2 transition hover:bg-white"
+                        aria-label="Previous product image"
+                      >
+                        <FiChevronLeft />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={showNextImage}
+                        className="slider-nav absolute right-4 top-1/2 -translate-y-1/2 transition hover:bg-white"
+                        aria-label="Next product image"
+                      >
+                        <FiChevronRight />
+                      </button>
+                    </>
+                  ) : null}
                 </div>
 
                 {showHeroStoryCard ? (
@@ -1705,27 +1953,44 @@ const ProductDetailPage = () => {
             </div>
 
             {images.length > 1 ? (
-              <div className="grid grid-cols-4 gap-3 sm:grid-cols-5">
-                {images.map((image, index) => (
+              <div className="grid grid-cols-4 gap-3">
+                {visibleGalleryImages.map((image, index) => {
+                  const showMoreOverlay =
+                    index === 3 && remainingGalleryCount > 0;
+                  return (
                   <button
                     key={`${image}-${index}`}
                     type="button"
-                    onClick={() => setActiveImageIndex(index)}
+                    onClick={() => {
+                      setActiveImageIndex(index);
+                      if (showMoreOverlay) {
+                        setIsImageZoomOpen(true);
+                      }
+                    }}
                     className={`overflow-hidden rounded-[22px] border bg-white p-2 shadow-sm transition ${
                       activeImageIndex === index
                         ? "border-[#123b4a] shadow-[0_18px_40px_-28px_rgba(18,59,74,0.7)]"
                         : "border-[#eadcd1] hover:-translate-y-0.5 hover:border-[#b9d0d8]"
                     }`}
                   >
-                    <div className="aspect-square rounded-[16px] bg-[#f9f3ed]">
-                      <img
-                        src={image}
-                        alt={`Preview ${index + 1}`}
-                        className="h-full w-full object-contain"
-                      />
-                    </div>
+                        <ProductImage
+                          src={image}
+                          alt={`Preview ${index + 1}`}
+                          aspect="aspect-square"
+                          fit="cover"
+                          padding="p-1"
+                          rounded="rounded-[16px]"
+                          className="w-full"
+                      >
+                      {showMoreOverlay ? (
+                        <span className="absolute inset-2 flex items-center justify-center rounded-[16px] bg-black/55 text-lg font-semibold text-white">
+                          +{remainingGalleryCount}
+                        </span>
+                      ) : null}
+                    </ProductImage>
                   </button>
-                ))}
+                  );
+                })}
               </div>
             ) : null}
           </div>
@@ -1747,7 +2012,7 @@ const ProductDetailPage = () => {
                     readOnly
                     size="small"
                   />
-                  <span>{reviewSummaryLabel}</span>
+                  <span>({displayReviewCount})</span>
                 </div>
                 <div className="inline-flex items-center gap-2 rounded-full border border-[#eaded5] bg-[#f4eadf] px-4 py-2 text-sm font-medium text-[#6a4b39]">
                   <MdVerified className="text-base" />
@@ -1778,7 +2043,7 @@ const ProductDetailPage = () => {
                     {formatPrice(toNumber(activeOriginalPrice, 0))}
                   </p>
                 ) : null}
-                {toNumber(activeOriginalPrice, 0) > toNumber(activePrice, 0) ? (
+                {activeDiscountPercent > 0 ? (
                   <span
                     className="rounded-full px-4 py-2 text-sm font-semibold"
                     style={{
@@ -1786,19 +2051,14 @@ const ProductDetailPage = () => {
                       color: "var(--flavor-text, #ffffff)",
                     }}
                   >
-                    Save{" "}
-                    {formatPrice(
-                      Math.max(
-                        toNumber(activeOriginalPrice, 0) -
-                          toNumber(activePrice, 0),
-                        0,
-                      ),
-                    )}
+                    Save {activeDiscountPercent}%
                   </span>
                 ) : null}
               </div>
 
-              {product?.hasVariants && Array.isArray(product?.variants) ? (
+              {product?.hasVariants &&
+              Array.isArray(product?.variants) &&
+              product.variants.length > 1 ? (
                 <div className="mt-8">
                   <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#7b6355]">
                     Weight / Pack
@@ -2176,28 +2436,43 @@ const ProductDetailPage = () => {
 
             <div className="mt-6">
               {activeTab === "description" && showDescriptionSection ? (
-                <div className="grid gap-6 xl:grid-cols-[minmax(0,0.94fr)_minmax(320px,0.78fr)]">
+                <div className="grid items-start gap-6 xl:grid-cols-2">
                   {pageConfig?.descriptionSection?.showEditorialBanner !==
                   false ? (
-                    <div className="overflow-hidden rounded-[32px] bg-[linear-gradient(135deg,_#2f1b12_0%,_#6b4331_42%,_#9a6b54_100%)] p-6 text-white shadow-[0_28px_60px_-44px_rgba(47,27,18,0.88)] sm:p-8">
+                    <div className="self-start overflow-hidden rounded-[32px] bg-[linear-gradient(135deg,_#2f1b12_0%,_#6b4331_42%,_#9a6b54_100%)] p-6 text-white sm:p-8">
                       <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#f2dbc7]">
                         {mergeTextOverride(
                           pageConfig?.descriptionSection?.editorialEyebrow,
                           "Featured Overview",
                         )}
                       </p>
-                      <div className="mt-5 grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)] lg:items-center">
-                        <div className="rounded-[28px] bg-white/10 p-4">
-                          <img
-                            src={activeImage}
+                      <div
+                        className={`mt-5 grid items-start gap-6 ${
+                          pageConfig?.descriptionSection
+                            ?.showFeaturedBannerImage !== false &&
+                          pageConfig?.descriptionSection?.featuredBannerImage
+                            ? "lg:grid-cols-[260px_minmax(0,1fr)]"
+                            : "grid-cols-1"
+                        }`}
+                      >
+                        {pageConfig?.descriptionSection
+                          ?.showFeaturedBannerImage !== false &&
+                        pageConfig?.descriptionSection?.featuredBannerImage ? (
+                          <ProductImage
+                            src={
+                              pageConfig.descriptionSection.featuredBannerImage
+                            }
                             alt={
                               product?.name ||
                               product?.title ||
                               "Product showcase"
                             }
-                            className="mx-auto max-h-[280px] w-full object-contain"
+                            fit="cover"
+                            aspect="aspect-[4/3]"
+                            className="w-full bg-white/10"
+                            imgClassName="object-cover"
                           />
-                        </div>
+                        ) : null}
                         <div>
                           <h2 className="text-3xl font-semibold leading-tight">
                             {mergeTextOverride(
@@ -2219,15 +2494,16 @@ const ProductDetailPage = () => {
 
                   {pageConfig?.descriptionSection?.showDescriptionFlow !==
                   false ? (
-                    <div className="rounded-[32px] border border-[#e7dad1] bg-[#fbf7f2] p-6 sm:p-8">
+                    <div className="self-start rounded-[32px] border border-[#e7dad1] bg-[#fbf7f2] p-6 sm:p-8">
                       <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7b6355]">
                         {mergeTextOverride(
                           pageConfig?.descriptionSection?.flowEyebrow,
                           "Description Flow",
                         )}
                       </p>
-                      <div className="mt-5 space-y-5 text-base leading-7 text-[#4b392f]">
-                        {product?.description ? (
+                      <div className="mt-5 max-w-[68ch] space-y-5 text-base leading-8 text-[#4b392f]">
+                        {product?.description &&
+                        /<\/?[a-z][\s\S]*>/i.test(product.description) ? (
                           <div
                             className="max-w-none text-[#4b392f]"
                             dangerouslySetInnerHTML={{
@@ -2235,6 +2511,12 @@ const ProductDetailPage = () => {
                             }}
                           />
                         ) : null}
+                        {product?.description &&
+                        !/<\/?[a-z][\s\S]*>/i.test(product.description)
+                          ? productDescriptionParagraphs.map((paragraph) => (
+                              <p key={paragraph}>{paragraph}</p>
+                            ))
+                          : null}
                         {descriptionParagraphs.map((paragraph) => (
                           <p key={paragraph}>{paragraph}</p>
                         ))}
@@ -2245,7 +2527,7 @@ const ProductDetailPage = () => {
               ) : null}
 
               {activeTab === "details" && showDetailsSection ? (
-                <div className="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(320px,0.75fr)]">
+                <div>
                   {pageConfig?.detailsSection?.showCards !== false ? (
                     <div className="grid gap-4 sm:grid-cols-2">
                       {detailCards.map((card) => (
@@ -2264,26 +2546,6 @@ const ProductDetailPage = () => {
                           </p>
                         </div>
                       ))}
-                    </div>
-                  ) : null}
-                  {pageConfig?.detailsSection?.showSnapshot !== false ? (
-                    <div className="rounded-[32px] border border-[#e7dad1] bg-white p-6 shadow-[0_24px_50px_-42px_rgba(42,28,20,0.3)] sm:p-8">
-                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7b6355]">
-                        {mergeTextOverride(
-                          pageConfig?.detailsSection?.snapshotEyebrow,
-                          "Snapshot",
-                        )}
-                      </p>
-                      <div className="mt-5 space-y-4">
-                        {snapshotItems.map((item) => (
-                          <div
-                            key={item}
-                            className="rounded-2xl border border-[#efe4dc] bg-[#fbf7f2] px-4 py-4 text-sm leading-6 text-[#4b392f]"
-                          >
-                            {item}
-                          </div>
-                        ))}
-                      </div>
                     </div>
                   ) : null}
                 </div>
@@ -2356,6 +2618,49 @@ const ProductDetailPage = () => {
                   )}
                 </h2>
               </div>
+              {product?.hasVariants &&
+              Array.isArray(product?.variants) &&
+              product.variants.length > 1 ? (
+                <label className="min-w-[190px] text-sm font-semibold text-[#4b392f]">
+                  <span className="mb-2 block text-xs uppercase tracking-[0.16em] text-[#7b6355]">
+                    Variant
+                  </span>
+                  <select
+                    value={reviewVariantFilter}
+                    onChange={(event) => {
+                      setReviewVariantFilter(event.target.value);
+                      setReviewPage(1);
+                    }}
+                    className="w-full rounded-2xl border border-[#d8c6bb] bg-white px-4 py-3 text-sm outline-none"
+                  >
+                    {product.variants.map((variant) => {
+                      const variantId = variant?._id || variant?.id;
+                      return (
+                        <option key={variantId} value={variantId}>
+                          {formatVariantLabel(variant)}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </label>
+              ) : null}
+              <label className="min-w-[180px] text-sm font-semibold text-[#4b392f]">
+                <span className="mb-2 block text-xs uppercase tracking-[0.16em] text-[#7b6355]">
+                  Sort
+                </span>
+                <select
+                  value={reviewSort}
+                  onChange={(event) => {
+                    setReviewSort(event.target.value);
+                    setReviewPage(1);
+                  }}
+                  className="w-full rounded-2xl border border-[#d8c6bb] bg-white px-4 py-3 text-sm outline-none"
+                >
+                  <option value="latest">Latest</option>
+                  <option value="highest">Highest rating</option>
+                  <option value="lowest">Lowest rating</option>
+                </select>
+              </label>
               <div className="rounded-[24px] border border-[#eaded5] bg-[#f6efe7] px-5 py-4 text-right">
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#6a4b39]">
                   Average Rating
@@ -2378,14 +2683,46 @@ const ProductDetailPage = () => {
               {reviewsLoading ? (
                 <p className="text-sm text-[#6d584a]">Loading reviews...</p>
               ) : displayReviews.length > 0 ? (
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                  {displayReviews.slice(0, 6).map((review, index) => (
+                <div>
+                  <div className="mb-4 flex items-center justify-end gap-3">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        reviewScrollerRef.current?.scrollBy({
+                          left: -320,
+                          behavior: "smooth",
+                        })
+                      }
+                      className="slider-nav border border-[#d8c6bb] transition"
+                      aria-label="Previous reviews"
+                    >
+                      <FiChevronLeft />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        reviewScrollerRef.current?.scrollBy({
+                          left: 320,
+                          behavior: "smooth",
+                        })
+                      }
+                      className="slider-nav border border-[#d8c6bb] transition"
+                      aria-label="Next reviews"
+                    >
+                      <FiChevronRight />
+                    </button>
+                  </div>
+                  <div
+                    ref={reviewScrollerRef}
+                    className="flex snap-x snap-mandatory gap-4 overflow-x-auto pb-3 [scrollbar-width:thin]"
+                  >
+                  {reviewCarouselItems.map((review, index) => (
                     <article
                       key={
                         review?._id ||
                         `${review?.userName || "review"}-${index}`
                       }
-                      className="product-review-card rounded-[28px] border border-[#e7dad1] bg-[#fbf7f2] p-6 shadow-[0_24px_50px_-42px_rgba(42,28,20,0.28)]"
+                      className="product-review-card min-w-[280px] snap-start rounded-[28px] border border-[#e7dad1] bg-[#fbf7f2] p-6 sm:min-w-[320px] lg:min-w-[360px]"
                     >
                       <div className="flex items-center gap-4">
                         {review?.avatar ? (
@@ -2422,14 +2759,19 @@ const ProductDetailPage = () => {
                       </p>
                     </article>
                   ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowAllReviewsModal(true)}
+                    className="mt-5 w-full rounded-2xl border border-[#d8c6bb] bg-white px-5 py-3 text-sm font-semibold text-[#2f1b12] transition hover:bg-[#fbf7f2]"
+                  >
+                    View All Reviews
+                  </button>
                 </div>
               ) : (
-                <div className="rounded-[28px] border border-dashed border-[#d9c8bc] bg-[#fbf7f2] p-8 text-center text-[#5d4b41]">
-                  {mergeTextOverride(
-                    pageConfig?.reviewsSection?.emptyState,
-                    "No reviews yet. This upgraded layout is ready for real review content as soon as customer feedback is available.",
-                  )}
-                </div>
+                <p className="text-sm font-semibold text-[#6d584a]">
+                  No reviews yet
+                </p>
               )}
             </div>
 
@@ -2589,13 +2931,13 @@ const ProductDetailPage = () => {
                     <div className="grid gap-4 lg:grid-cols-4">
                       <div className="rounded-[28px] border border-[#e7dad1] bg-[#fbf7f2] p-5">
                         <div className="flex items-center gap-4">
-                          <div className="flex h-[72px] w-[72px] items-center justify-center rounded-2xl border border-[#efe4dc] bg-white p-2">
-                            <img
+                          <ProductImage
                               src={activeImage}
                               alt={product?.name || product?.title}
-                              className="h-full w-full object-contain"
+                              aspect="aspect-square"
+                              fit="cover"
+                              className="h-[72px] w-[72px] flex-shrink-0 border border-[#efe4dc]"
                             />
-                          </div>
                           <div>
                             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#7b6355]">
                               Main Product
@@ -2630,13 +2972,13 @@ const ProductDetailPage = () => {
                             className="rounded-[28px] border border-[#e7dad1] bg-[#fbf7f2] p-5"
                           >
                             <div className="flex items-center gap-4">
-                              <div className="flex h-[72px] w-[72px] items-center justify-center rounded-2xl border border-[#efe4dc] bg-white p-2">
-                                <img
+                              <ProductImage
                                   src={getImageUrl(recommendation.image)}
                                   alt={recProduct?.name || "Suggested product"}
-                                  className="h-full w-full object-contain"
+                                  aspect="aspect-square"
+                                  fit="cover"
+                                  className="h-[72px] w-[72px] flex-shrink-0 border border-[#efe4dc]"
                                 />
-                              </div>
                               <div className="min-w-0">
                                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#7b6355]">
                                   Add-on
@@ -2689,17 +3031,15 @@ const ProductDetailPage = () => {
                     </div>
                   ) : (
                     <p className="text-sm text-[#6d584a]">
-                      {mergeTextOverride(
-                        pageConfig?.frequentlyBoughtSection?.emptyState,
-                        "No suggestions available yet.",
-                      )}
+                      Loading products...
                     </p>
                   )}
                 </div>
               </div>
             ) : null}
 
-            {showRecommendedCombosSection ? (
+            {showRecommendedCombosSection &&
+            (recommendedLoading || recommendedCombos.length > 0) ? (
               <div className="product-reveal product-reveal-delay-3 mt-12 rounded-[36px] border border-[#e1cdbf] bg-white/88 p-6 shadow-[0_34px_90px_-55px_rgba(44,29,20,0.38)] backdrop-blur sm:p-8">
                 <div className="flex flex-wrap items-center justify-between gap-4">
                   <div>
@@ -2741,65 +3081,82 @@ const ProductDetailPage = () => {
                         />
                       ))}
                     </div>
-                  ) : (
-                    <p className="text-sm text-[#6d584a]">
-                      {mergeTextOverride(
-                        pageConfig?.recommendedCombosSection?.emptyState,
-                        "No recommended combos available right now.",
-                      )}
-                    </p>
-                  )}
+                  ) : null}
                 </div>
-              </div>
-            ) : null}
-
-            {showRelatedProductsSection ? (
-              <div className="product-reveal product-reveal-delay-3 mt-12 rounded-[36px] border border-[#e1cdbf] bg-white/88 p-6 shadow-[0_34px_90px_-55px_rgba(44,29,20,0.38)] backdrop-blur sm:p-8">
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7b6355]">
-                  {mergeTextOverride(
-                    pageConfig?.relatedProductsSection?.eyebrow,
-                    "Related Products",
-                  )}
-                </p>
-                <h2 className="mt-2 text-3xl font-semibold text-[#24150f]">
-                  {mergeTextOverride(
-                    pageConfig?.relatedProductsSection?.title,
-                    "More products in the same browsing mood",
-                  )}
-                </h2>
-                {relatedProducts.length > 0 ? (
-                  <div className="mt-6 grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">
-                    {relatedProducts.slice(0, 5).map((item) => (
-                      <ProductItem
-                        key={item._id || item.id}
-                        id={item._id || item.id}
-                        name={item.name || item.title}
-                        brand={item.brand || "Healthy One Gram"}
-                        price={item.price || item.salePrice}
-                        originalPrice={item.originalPrice || item.regularPrice}
-                        discount={item.discount || 0}
-                        rating={item.rating || 4.5}
-                        image={
-                          item.image || item.images?.[0] || "/product_1.png"
-                        }
-                        product={item}
-                        realtimeManagedExternally
-                      />
-                    ))}
-                  </div>
-                ) : (
-                  <p className="mt-6 text-sm text-[#6d584a]">
-                    {mergeTextOverride(
-                      pageConfig?.relatedProductsSection?.emptyState,
-                      "No related products available right now.",
-                    )}
-                  </p>
-                )}
               </div>
             ) : null}
           </>
         ) : null}
       </div>
+
+      {showAllReviewsModal ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="All product reviews"
+          className="fixed inset-0 z-[1390] overflow-y-auto bg-black/70 p-4 sm:p-8"
+          onClick={() => setShowAllReviewsModal(false)}
+        >
+          <div
+            className="mx-auto max-w-5xl rounded-[32px] bg-white p-5 shadow-2xl sm:p-8"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7b6355]">
+                  All Reviews
+                </p>
+                <h2 className="mt-2 text-2xl font-semibold text-[#24150f]">
+                  {reviewSummaryLabel}
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAllReviewsModal(false)}
+                className="flex h-11 w-11 items-center justify-center rounded-full bg-[#f6efe7] text-[#2f1b12]"
+                aria-label="Close all reviews"
+              >
+                <FiX />
+              </button>
+            </div>
+
+            <div className="mt-6 grid gap-4 md:grid-cols-2">
+              {paginatedReviews.map((review, index) => (
+                <ReviewCard
+                  key={review?._id || `${review?.userName || "review"}-${index}`}
+                  review={review}
+                />
+              ))}
+            </div>
+
+            <div className="mt-6 flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => setReviewPage((current) => Math.max(1, current - 1))}
+                disabled={reviewPage <= 1}
+                className="rounded-2xl border border-[#d8c6bb] px-5 py-3 text-sm font-semibold text-[#2f1b12] disabled:opacity-40"
+              >
+                Previous
+              </button>
+              <span className="text-sm font-semibold text-[#6d584a]">
+                Page {reviewPage} of {allReviewsTotalPages}
+              </span>
+              <button
+                type="button"
+                onClick={() =>
+                  setReviewPage((current) =>
+                    Math.min(allReviewsTotalPages, current + 1),
+                  )
+                }
+                disabled={reviewPage >= allReviewsTotalPages}
+                className="rounded-2xl border border-[#d8c6bb] px-5 py-3 text-sm font-semibold text-[#2f1b12] disabled:opacity-40"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {isImageZoomOpen ? (
         <div
@@ -2813,7 +3170,7 @@ const ProductDetailPage = () => {
             <button
               type="button"
               onClick={() => setIsImageZoomOpen(false)}
-              className="absolute right-0 top-0 z-20 flex h-11 w-11 items-center justify-center rounded-full bg-white/15 text-white transition hover:bg-white/25"
+              className="slider-nav absolute right-0 top-0 transition hover:bg-white"
               aria-label="Close image zoom"
             >
               <FiX className="text-xl" />
@@ -2829,7 +3186,7 @@ const ProductDetailPage = () => {
                       previous === 0 ? images.length - 1 : previous - 1,
                     );
                   }}
-                  className="absolute left-0 z-20 flex h-11 w-11 items-center justify-center rounded-full bg-white/15 text-white transition hover:bg-white/25"
+                  className="slider-nav absolute left-0 transition hover:bg-white"
                   aria-label="Previous zoomed image"
                 >
                   <FiChevronLeft className="text-xl" />
@@ -2842,7 +3199,7 @@ const ProductDetailPage = () => {
                       previous === images.length - 1 ? 0 : previous + 1,
                     );
                   }}
-                  className="absolute right-0 z-20 flex h-11 w-11 items-center justify-center rounded-full bg-white/15 text-white transition hover:bg-white/25"
+                  className="slider-nav absolute right-0 transition hover:bg-white"
                   aria-label="Next zoomed image"
                 >
                   <FiChevronRight className="text-xl" />
@@ -2854,11 +3211,17 @@ const ProductDetailPage = () => {
               100%
             </div>
 
-            <img
+            <ProductImage
               src={activeImage}
               alt={product?.name || product?.title || "Zoomed product image"}
               onClick={(event) => event.stopPropagation()}
-              className="max-h-[88vh] max-w-[92vw] object-contain"
+              aspect=""
+              padding="p-0"
+              fit="cover"
+              rounded="rounded-2xl"
+              natural
+              className="flex max-h-[88vh] max-w-[92vw] items-center justify-center bg-transparent"
+              imgClassName="max-h-[88vh] max-w-[92vw] object-contain"
             />
           </div>
         </div>

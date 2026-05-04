@@ -64,6 +64,7 @@ const getUserProfile = async (userId) => {
 const toResponseReview = (review) => ({
   _id: review._id,
   productId: review.productId,
+  variantId: review.variantId || null,
   comboId: review.comboId || null,
   orderId: review.orderId,
   userId: review.userId,
@@ -87,6 +88,7 @@ const toAdminResponseReview = (review) => {
   return {
     _id: review._id,
     productId: productRef?._id || productRef || null,
+    variantId: review.variantId || null,
     comboId: review.comboId?._id || review.comboId || null,
     orderId: orderRef?._id || orderRef || null,
     userId: userRef?._id || userRef || null,
@@ -122,34 +124,8 @@ const syncReviewAggregates = async ({
   };
 
   if (isValidObjectId(productId)) {
-    const productReviews = await ReviewModel.find({
-      productId,
-      $and: [
-        { $or: [{ comboId: null }, { comboId: { $exists: false } }] },
-        visibleFilter,
-      ],
-    })
-      .select("rating")
-      .lean();
-
-    const count = productReviews.length;
-    const rating = count
-      ? Math.round(
-          (productReviews.reduce(
-            (sum, review) => sum + Number(review?.rating || 0),
-            0,
-          ) /
-            count) *
-            10,
-        ) / 10
-      : 0;
-
-    await ProductModel.findByIdAndUpdate(productId, {
-      $set: {
-        numReviews: count,
-        rating,
-      },
-    }).catch(() => null);
+    // Product review counts are computed from ReviewModel at read time.
+    // Do not persist rating/review totals on Product or Product variants.
   }
 
   if (isValidObjectId(comboId)) {
@@ -233,6 +209,7 @@ const submitOrderLinkedReview = async ({
   res,
   userId,
   productId,
+  variantId = null,
   orderId,
   rating,
   comment,
@@ -286,10 +263,18 @@ const submitOrderLinkedReview = async ({
     });
   }
 
+  const normalizedVariantId = isValidObjectId(variantId) ? variantId : null;
   const productExistsInOrder = Array.isArray(order.products)
-    ? order.products.some(
-        (item) => String(item?.productId || "") === String(productId),
-      )
+    ? order.products.some((item) => {
+        const itemProductMatches =
+          String(item?.productId || "") === String(productId);
+        if (!itemProductMatches) return false;
+        if (!normalizedVariantId) return true;
+        return (
+          String(item?.variantId || item?.variant?._id || item?.variant || "") ===
+          String(normalizedVariantId)
+        );
+      })
     : false;
 
   if (!productExistsInOrder) {
@@ -312,6 +297,7 @@ const submitOrderLinkedReview = async ({
   const existingReview = await ReviewModel.findOne({
     orderId,
     productId,
+    variantId: normalizedVariantId,
     userId,
   }).select("_id");
 
@@ -332,6 +318,7 @@ const submitOrderLinkedReview = async ({
 
   const review = await ReviewModel.create({
     productId,
+    variantId: normalizedVariantId,
     orderId,
     userId,
     userName: userIdentity.userName,
@@ -359,6 +346,7 @@ const submitPublicReview = async ({
   res,
   userId,
   productId,
+  variantId,
   comboId,
   rating,
   comment,
@@ -374,6 +362,7 @@ const submitPublicReview = async ({
   }
 
   const normalizedComboId = isValidObjectId(comboId) ? comboId : null;
+  const normalizedVariantId = isValidObjectId(variantId) ? variantId : null;
   const targetId = normalizedComboId || productId;
 
   if (!isValidObjectId(targetId)) {
@@ -411,6 +400,7 @@ const submitPublicReview = async ({
 
   const review = await ReviewModel.create({
     productId: targetId,
+    variantId: normalizedVariantId,
     comboId: normalizedComboId,
     orderId: createPlaceholderObjectId(),
     userId: isValidObjectId(userId) ? userId : createPlaceholderObjectId(),
@@ -445,7 +435,7 @@ const submitPublicReview = async ({
 export const submitReview = async (req, res) => {
   try {
     const userId = getRequesterUserId(req);
-    const { productId, comboId, orderId, rating, comment } = req.body || {};
+    const { productId, variantId, comboId, orderId, rating, comment } = req.body || {};
 
     if ((!productId && !comboId) || rating === undefined || !sanitizePlainText(comment)) {
       return res.status(400).json({
@@ -472,6 +462,7 @@ export const submitReview = async (req, res) => {
         res,
         userId,
         productId,
+        variantId,
         orderId,
         rating: normalizedRating,
         comment: normalizedComment,
@@ -483,6 +474,7 @@ export const submitReview = async (req, res) => {
       res,
       userId,
       productId,
+      variantId,
       comboId,
       rating: normalizedRating,
       comment: normalizedComment,
@@ -513,6 +505,7 @@ export const submitReview = async (req, res) => {
 export const getProductReviews = async (req, res) => {
   try {
     const { productId } = req.params;
+    const { variantId } = req.query || {};
     if (!isValidObjectId(productId)) {
       return res.status(400).json({
         success: false,
@@ -521,7 +514,7 @@ export const getProductReviews = async (req, res) => {
       });
     }
 
-    const reviews = await ReviewModel.find({
+    const filter = {
       productId,
       $and: [
         { $or: [{ comboId: null }, { comboId: { $exists: false } }] },
@@ -533,9 +526,22 @@ export const getProductReviews = async (req, res) => {
           ],
         },
       ],
-    })
+    };
+
+    if (variantId) {
+      if (!isValidObjectId(variantId)) {
+        return res.status(400).json({
+          success: false,
+          error: true,
+          message: "Invalid variantId",
+        });
+      }
+      filter.variantId = variantId;
+    }
+
+    const reviews = await ReviewModel.find(filter)
       .select(
-        "productId orderId userName userEmail city rating comment source visibility isVerifiedPurchase createdAt updatedAt",
+        "productId variantId orderId userName userEmail city rating comment source visibility isVerifiedPurchase createdAt updatedAt",
       )
       .sort({ createdAt: -1 })
       .lean();
@@ -560,6 +566,7 @@ export const getProductReviews = async (req, res) => {
 export const getComboReviews = async (req, res) => {
   try {
     const { comboId } = req.params;
+    const { variantId } = req.query || {};
     if (!isValidObjectId(comboId)) {
       return res.status(400).json({
         success: false,
@@ -568,16 +575,29 @@ export const getComboReviews = async (req, res) => {
       });
     }
 
-    const reviews = await ReviewModel.find({
+    const filter = {
       comboId,
       $or: [
         { visibility: "visible" },
         { visibility: { $exists: false } },
         { visibility: null },
       ],
-    })
+    };
+
+    if (variantId) {
+      if (!isValidObjectId(variantId)) {
+        return res.status(400).json({
+          success: false,
+          error: true,
+          message: "Invalid variantId",
+        });
+      }
+      filter.variantId = variantId;
+    }
+
+    const reviews = await ReviewModel.find(filter)
       .select(
-        "productId comboId orderId userName userEmail city rating comment source visibility isVerifiedPurchase createdAt updatedAt",
+        "productId variantId comboId orderId userName userEmail city rating comment source visibility isVerifiedPurchase createdAt updatedAt",
       )
       .sort({ createdAt: -1 })
       .lean();
@@ -641,7 +661,7 @@ export const getMyReviews = async (req, res) => {
 
     const reviews = await ReviewModel.find(filter)
       .select(
-        "productId orderId userName userEmail city rating comment source visibility isVerifiedPurchase createdAt updatedAt",
+        "productId variantId orderId userName userEmail city rating comment source visibility isVerifiedPurchase createdAt updatedAt",
       )
       .sort({ createdAt: -1 })
       .lean();
@@ -671,6 +691,7 @@ export const getAdminReviews = async (req, res) => {
   try {
     const {
       productId,
+      variantId,
       comboId,
       orderId,
       userId,
@@ -693,6 +714,17 @@ export const getAdminReviews = async (req, res) => {
         });
       }
       filter.productId = productId;
+    }
+
+    if (variantId) {
+      if (!isValidObjectId(variantId)) {
+        return res.status(400).json({
+          success: false,
+          error: true,
+          message: "Invalid variantId",
+        });
+      }
+      filter.variantId = variantId;
     }
 
     if (comboId) {
@@ -786,7 +818,7 @@ export const getAdminReviews = async (req, res) => {
     const [reviews, total] = await Promise.all([
       ReviewModel.find(filter)
         .select(
-          "productId comboId orderId userId userName userEmail city rating comment source visibility isVerifiedPurchase createdAt updatedAt moderatedAt moderatedBy",
+          "productId variantId comboId orderId userId userName userEmail city rating comment source visibility isVerifiedPurchase createdAt updatedAt moderatedAt moderatedBy",
         )
         .populate("productId", "name thumbnail price rating")
         .populate("comboId", "name slug thumbnail comboPrice rating reviewCount")

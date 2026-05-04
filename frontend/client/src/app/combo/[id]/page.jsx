@@ -249,6 +249,7 @@ export default function ComboDetailPage() {
   const [deliveryPincode, setDeliveryPincode] = useState("");
   const [customerReviews, setCustomerReviews] = useState([]);
   const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [reviewSort, setReviewSort] = useState("highest");
   const [reviewSettings, setReviewSettings] = useState(DEFAULT_REVIEW_SETTINGS);
   const [publicReviewForm, setPublicReviewForm] = useState({
     userName: "",
@@ -329,9 +330,26 @@ export default function ComboDetailPage() {
       ? Math.min(maxPerOrder, Math.max(availableStock, 1))
       : Math.max(availableStock, 1);
   const starRating = toNumber(combo?.adminStarRating ?? combo?.rating, 0);
-  const reviewCount = customerReviews.length || toNumber(combo?.reviewCount, 0);
-  const reviewRating = customerReviews.length
-    ? averageReviewRating(customerReviews)
+  const sortedReviews = customerReviews.slice().sort((a, b) => {
+    if (reviewSort === "latest") {
+      return (
+        new Date(b?.createdAt || 0).getTime() -
+        new Date(a?.createdAt || 0).getTime()
+      );
+    }
+    const ratingDelta =
+      reviewSort === "lowest"
+        ? Number(a?.rating || 0) - Number(b?.rating || 0)
+        : Number(b?.rating || 0) - Number(a?.rating || 0);
+    if (ratingDelta !== 0) return ratingDelta;
+    return (
+      new Date(b?.createdAt || 0).getTime() -
+      new Date(a?.createdAt || 0).getTime()
+    );
+  });
+  const reviewCount = sortedReviews.length || toNumber(combo?.reviewCount, 0);
+  const reviewRating = sortedReviews.length
+    ? averageReviewRating(sortedReviews)
     : starRating;
   const outOfStockItems = useMemo(() => {
     if (Array.isArray(combo?.outOfStockItems)) return combo.outOfStockItems;
@@ -1195,6 +1213,20 @@ export default function ComboDetailPage() {
                   )}
                 </h2>
               </div>
+              <label className="min-w-[180px] text-sm font-semibold text-[#4b392f]">
+                <span className="mb-2 block text-xs uppercase tracking-[0.16em] text-[#7b6355]">
+                  Sort
+                </span>
+                <select
+                  value={reviewSort}
+                  onChange={(event) => setReviewSort(event.target.value)}
+                  className="w-full rounded-2xl border border-[#d8c6bb] bg-white px-4 py-3 text-sm outline-none"
+                >
+                  <option value="latest">Latest</option>
+                  <option value="highest">Highest rating</option>
+                  <option value="lowest">Lowest rating</option>
+                </select>
+              </label>
               <div className="rounded-[24px] border border-[#eaded5] bg-[#f6efe7] px-5 py-4 text-right">
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#6a4b39]">
                   Average Rating
@@ -1211,12 +1243,12 @@ export default function ComboDetailPage() {
             <div className="mt-6">
               {reviewsLoading ? (
                 <p className="text-sm text-[#6d584a]">Loading reviews...</p>
-              ) : customerReviews.length > 0 ? (
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                  {customerReviews.slice(0, 6).map((review, index) => (
+              ) : sortedReviews.length > 0 ? (
+                <div className="flex snap-x snap-mandatory gap-4 overflow-x-auto pb-3 [scrollbar-width:thin]">
+                  {sortedReviews.slice(0, 10).map((review, index) => (
                     <article
                       key={review?._id || `${review?.userName || "review"}-${index}`}
-                      className="rounded-[28px] border border-[#e7dad1] bg-[#fbf7f2] p-6 shadow-[0_24px_50px_-42px_rgba(42,28,20,0.28)]"
+                      className="min-w-[280px] snap-start rounded-[28px] border border-[#e7dad1] bg-[#fbf7f2] p-6 sm:min-w-[320px] lg:min-w-[360px]"
                     >
                       <div className="flex items-center gap-4">
                         <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#2f1b12] text-base font-semibold text-white">
@@ -1247,12 +1279,9 @@ export default function ComboDetailPage() {
                   ))}
                 </div>
               ) : (
-                <div className="rounded-[28px] border border-dashed border-[#d9c8bc] bg-[#fbf7f2] p-8 text-center text-[#5d4b41]">
-                  {mergeTextOverride(
-                    pageConfig?.reviewsSection?.emptyState,
-                    "No reviews yet. This section is ready to show combo feedback as soon as customer reviews are available.",
-                  )}
-                </div>
+                <p className="text-sm font-semibold text-[#6d584a]">
+                  No reviews yet
+                </p>
               )}
             </div>
 

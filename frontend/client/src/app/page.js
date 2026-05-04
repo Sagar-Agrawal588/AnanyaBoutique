@@ -107,8 +107,8 @@ export default async function Home() {
         <HomeSlider initialSlides={homeSlides} />
         <CatSlider />
         <Banners initialBanners={banners} />
-        <HomeComboDeals />
         <PopularProducts />
+        <HomeComboDeals />
         <MembershipCTA />
       </div>
     </>

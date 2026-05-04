@@ -8,9 +8,9 @@ import {
   createDefaultProductPageConfig,
   mergeProductPageConfig,
 } from "@/utils/productPageConfig";
+import { normalizeVariantWeight } from "@/utils/weightNormalization";
 import { Button } from "@mui/material";
 import MenuItem from "@mui/material/MenuItem";
-import Rating from "@mui/material/Rating";
 import Select from "@mui/material/Select";
 import Switch from "@mui/material/Switch";
 import { useParams, useRouter } from "next/navigation";
@@ -28,17 +28,12 @@ const EditProduct = () => {
   const [description, setDescription] = useState("");
   const [shortDescription, setShortDescription] = useState("");
   const [categoryVal, setCategoryVal] = useState("");
-  const [price, setPrice] = useState("");
-  const [oldPrice, setOldPrice] = useState("");
-  const [isFeatured, setIsFeatured] = useState(false);
   const [isNewArrival, setIsNewArrival] = useState(false);
   const [isBestSeller, setIsBestSeller] = useState(false);
   const [isExclusive, setIsExclusive] = useState(false);
   const [demandStatus, setDemandStatus] = useState("NORMAL");
   const [brand, setBrand] = useState("");
   const [hsnCode, setHsnCode] = useState("");
-  const [discount, setDiscount] = useState("");
-  const [rating, setRating] = useState(4);
   const [tags, setTags] = useState("");
   const [newImages, setNewImages] = useState([]); // { file, preview }
   const [existingImages, setExistingImages] = useState([]); // URLs
@@ -50,7 +45,7 @@ const EditProduct = () => {
   );
 
   // Variants
-  const [hasVariants, setHasVariants] = useState(false);
+  const hasVariants = true;
   const [variants, setVariants] = useState([]);
 
   const addVariant = () => {
@@ -77,10 +72,16 @@ const EditProduct = () => {
       const w = field === "weight" ? value : updated[index].weight;
       const u = field === "unit" ? value : updated[index].unit;
       if (w) {
-        const normalizedWeight =
-          Number(w) >= 1000 && u === "g" ? `${Number(w) / 1000}kg` : `${w}${u}`;
+        let normalizedWeight = "";
+        try {
+          normalizedWeight = normalizeVariantWeight({ weight: w, unit: u }).label;
+        } catch {
+          normalizedWeight = `${w}${u}`;
+        }
         const rawName = String(updated[index].name || "").trim();
-        const baseName = rawName.replace(/\s*-\s*[\d.]+\s*(kg|g|ml|l|pcs)$/i, "").trim();
+        const baseName = rawName
+          .replace(/\s*-\s*[\d.]+\s*(kg|g)$/i, "")
+          .trim();
         updated[index].name = baseName
           ? `${baseName} - ${normalizedWeight}`
           : normalizedWeight;
@@ -142,48 +143,25 @@ const EditProduct = () => {
         setShortDescription(product.shortDescription || "");
         const catId = product.category?._id || product.category || "";
         setCategoryVal(catId);
-        setPrice(
-          Number.isFinite(Number(product.price))
-            ? Math.round(Number(product.price))
-            : "",
-        );
-        setOldPrice(
-          Number.isFinite(Number(product.originalPrice || product.oldPrice))
-            ? Math.round(Number(product.originalPrice || product.oldPrice))
-            : "",
-        );
-        setIsFeatured(product.isFeatured || false);
         setIsNewArrival(product.isNewArrival || false);
         setIsBestSeller(product.isBestSeller || false);
         setIsExclusive(Boolean(product.isExclusive));
         setDemandStatus(product.demandStatus || "NORMAL");
         setBrand(product.brand || "");
         setHsnCode(product.hsnCode || "");
-        setDiscount(product.discount || "");
-        setRating(product.rating || 4);
         setTags(product.tags ? product.tags.join(", ") : "");
         setExistingImages(product.images || []);
         setProductPage(mergeProductPageConfig(product.productPage));
 
         // Load variants
         if (product.hasVariants && product.variants?.length > 0) {
-          setHasVariants(true);
           setVariants(
             product.variants.map((v) => {
-              // Parse weight from name for old variants missing weight field
-              let parsedWeight = v.weight || 0;
-              let parsedUnit = v.unit || "g";
-              if (!parsedWeight && v.name) {
-                const kgMatch = v.name.match(/([\d.]+)\s*[Kk][Gg]/); 
-                const gMatch = v.name.match(/([\d.]+)\s*g/i);
-                if (kgMatch) {
-                  parsedWeight = Math.round(parseFloat(kgMatch[1]) * 1000);
-                  parsedUnit = "g";
-                } else if (gMatch) {
-                  parsedWeight = parseFloat(gMatch[1]);
-                  parsedUnit = "g";
-                }
-              }
+              const parsedUnit =
+                String(v.unit || "g").trim().toLowerCase() === "kg"
+                  ? "kg"
+                  : "g";
+              const parsedWeight = Number(v.weight || 0);
               const variantPrice = Number.isFinite(Number(v.price))
                 ? Math.round(Number(v.price))
                 : "";
@@ -198,6 +176,7 @@ const EditProduct = () => {
                 stock: v.stock_quantity ?? v.stock ?? "",
                 sku: v.sku || "",
                 weight: parsedWeight || "",
+                label: v.label || "",
                 unit: parsedUnit,
                 isDefault: v.isDefault || false,
               };
@@ -213,8 +192,24 @@ const EditProduct = () => {
             return prev;
           });
         } else {
-          setHasVariants(false);
-          setVariants([]);
+          setVariants([
+            {
+              name: "",
+              price: Number.isFinite(Number(product.price))
+                ? Math.round(Number(product.price))
+                : "",
+              originalPrice: Number.isFinite(
+                Number(product.originalPrice || product.oldPrice),
+              )
+                ? Math.round(Number(product.originalPrice || product.oldPrice))
+                : "",
+              stock: product.stock_quantity ?? product.stock ?? "",
+              sku: product.sku || "",
+              weight: product.weight || "",
+              unit: product.unit || "g",
+              isDefault: true,
+            },
+          ]);
         }
       } else {
         console.error("Product fetch failed:", response);
@@ -278,14 +273,45 @@ const EditProduct = () => {
       toast.error("Please select a category");
       return;
     }
-    if (!price || price <= 0) {
-      toast.error("Please enter a valid price");
-      return;
-    }
     if (existingImages.length === 0 && newImages.length === 0) {
       toast.error("Please have at least one image");
       return;
     }
+
+    let variantData = [];
+    try {
+      variantData = variants
+        .filter((v) => v.price)
+        .map((v, i) => {
+        const normalizedWeight = normalizeVariantWeight(v);
+        return {
+        _id: v._id || undefined,
+        name: v.name || normalizedWeight.label,
+        label: normalizedWeight.label,
+        sku: v.sku || `${productName.substring(0, 3).toUpperCase()}-V${i + 1}`,
+        price: Math.round(Number(v.price)),
+        originalPrice: v.originalPrice
+          ? Math.round(Number(v.originalPrice))
+          : undefined,
+        weight: Number(v.weight),
+        unit: String(v.unit || "g").toLowerCase() === "kg" ? "kg" : "g",
+        isDefault: !!v.isDefault,
+        stock: v.stock ? Number(v.stock) : 0,
+        stock_quantity: v.stock ? Number(v.stock) : 0,
+        };
+      });
+    } catch (error) {
+      toast.error(error.message || "Invalid weight format");
+      return;
+    }
+
+    if (variantData.length === 0 || variantData.some((v) => !v.price || v.price <= 0)) {
+      toast.error("Please add at least one variant with a valid price");
+      return;
+    }
+
+    const defaultVariant =
+      variantData.find((variant) => variant.isDefault) || variantData[0];
 
     // Check if token exists
     console.log("EditProduct handleSubmit:", {
@@ -323,58 +349,27 @@ const EditProduct = () => {
       // Combine existing and new images
       const allImages = [...existingImages, ...uploadedImageUrls];
 
-      const normalizedPrice = Math.round(Number(price));
-      const normalizedOldPrice = oldPrice ? Math.round(Number(oldPrice)) : undefined;
-
       const productData = {
         name: productName,
         description,
         shortDescription,
         category: categoryVal,
-        price: normalizedPrice,
-        originalPrice: normalizedOldPrice,
-        isFeatured,
+        price: defaultVariant.price,
+        originalPrice: defaultVariant.originalPrice,
         isNewArrival,
         isBestSeller,
         isExclusive,
         demandStatus,
         brand,
         hsnCode: String(hsnCode || "").trim(),
-        discount: discount ? Number(discount) : 0,
-        rating,
         tags: tags ? tags.split(",").map((t) => t.trim()) : [],
         images: allImages,
         thumbnail: allImages[0] || "",
         hasVariants,
-        variants: hasVariants
-          ? variants
-              .filter((v) => v.price)
-              .map((v, i) => ({
-                _id: v._id || undefined,
-                name: v.name || `${v.weight}${v.unit || "g"}`,
-                sku:
-                  v.sku ||
-                  `${productName.substring(0, 3).toUpperCase()}-V${i + 1}`,
-                price: Math.round(Number(v.price)),
-                originalPrice: v.originalPrice
-                  ? Math.round(Number(v.originalPrice))
-                  : undefined,
-                discountPercent:
-                  v.originalPrice && Number(v.originalPrice) > Number(v.price)
-                    ? Math.round(
-                        ((Number(v.originalPrice) - Number(v.price)) /
-                          Number(v.originalPrice)) *
-                          100,
-                      )
-                    : 0,
-                weight: Number(v.weight) || 0,
-                unit: v.unit || "g",
-                isDefault: !!v.isDefault,
-                stock: v.stock ? Number(v.stock) : 0,
-                stock_quantity: v.stock ? Number(v.stock) : 0,
-              }))
-              : [],
+        variants: variantData,
         variantType: hasVariants ? "weight" : "",
+        weight: defaultVariant.weight || undefined,
+        unit: defaultVariant.unit || "g",
         productPage,
       };
 
@@ -486,35 +481,6 @@ const EditProduct = () => {
               </Select>
             </div>
 
-            <div className="col flex flex-col gap-1">
-              <span className="text-[15px] text-gray-800 font-medium">
-                Price (₹) *
-              </span>
-              <input
-                type="number"
-                value={price}
-                onChange={(e) => setPrice(e.target.value)}
-                placeholder="0"
-                min="0"
-                step="1"
-                className="w-full h-[40px] border border-[rgba(0,0,0,0.2)] outline-none rounded-md focus:border-blue-500 px-3 text-[14px]"
-              />
-            </div>
-
-            <div className="col flex flex-col gap-1">
-              <span className="text-[15px] text-gray-800 font-medium">
-                Original Price (₹)
-              </span>
-              <input
-                type="number"
-                value={oldPrice}
-                onChange={(e) => setOldPrice(e.target.value)}
-                placeholder="0 (for strikethrough)"
-                min="0"
-                step="1"
-                className="w-full h-[40px] border border-[rgba(0,0,0,0.2)] outline-none rounded-md focus:border-blue-500 px-3 text-[14px]"
-              />
-            </div>
           </div>
 
           {/* Product Details */}
@@ -548,32 +514,6 @@ const EditProduct = () => {
               />
             </div>
 
-            <div className="col flex flex-col gap-1">
-              <span className="text-[15px] text-gray-800 font-medium">
-                Discount (%)
-              </span>
-              <input
-                type="number"
-                value={discount}
-                onChange={(e) => setDiscount(e.target.value)}
-                placeholder="0"
-                min="0"
-                max="100"
-                className="w-full h-[40px] border border-[rgba(0,0,0,0.2)] outline-none rounded-md focus:border-blue-500 px-3 text-[14px]"
-              />
-            </div>
-
-            <div className="col flex flex-col gap-1">
-              <span className="text-[15px] text-gray-800 font-medium">
-                Rating
-              </span>
-              <Rating
-                name="product-rating"
-                value={rating}
-                onChange={(event, newValue) => setRating(newValue)}
-                size="large"
-              />
-            </div>
           </div>
 
           {/* Tags & Status */}
@@ -589,22 +529,6 @@ const EditProduct = () => {
                 placeholder="organic, healthy, natural (comma separated)"
                 className="w-full h-[40px] border border-[rgba(0,0,0,0.2)] outline-none rounded-md focus:border-blue-500 px-3 text-[14px]"
               />
-            </div>
-
-            <div className="col flex flex-col gap-1">
-              <span className="text-[15px] text-gray-800 font-medium">
-                Featured Product
-              </span>
-              <div className="flex items-center gap-2">
-                <Switch
-                  checked={isFeatured}
-                  onChange={(e) => setIsFeatured(e.target.checked)}
-                  color="primary"
-                />
-                <span className="text-sm text-gray-600">
-                  {isFeatured ? "Yes" : "No"}
-                </span>
-              </div>
             </div>
 
             <div className="col flex flex-col gap-1">
@@ -685,32 +609,20 @@ const EditProduct = () => {
                 <span className="text-[15px] text-gray-800 font-semibold">
                   📦 Size / Weight Variants
                 </span>
-                <Switch
-                  checked={hasVariants}
-                  onChange={(e) => {
-                    setHasVariants(e.target.checked);
-                    if (!e.target.checked) setVariants([]);
-                  }}
-                  color="primary"
-                  size="small"
-                />
-                <span className="text-sm text-gray-500">
-                  {hasVariants ? "Enabled" : "Disabled"}
+                <span className="text-sm text-blue-600 font-medium">
+                  Required
                 </span>
               </div>
-              {hasVariants && (
-                <Button
-                  type="button"
-                  onClick={addVariant}
-                  className="!bg-blue-50 !text-blue-600 !text-sm !px-4 !py-1.5 hover:!bg-blue-100 !font-medium !normal-case"
-                >
-                  + Add Size
-                </Button>
-              )}
+              <Button
+                type="button"
+                onClick={addVariant}
+                className="!bg-blue-50 !text-blue-600 !text-sm !px-4 !py-1.5 hover:!bg-blue-100 !font-medium !normal-case"
+              >
+                + Add Size
+              </Button>
             </div>
 
-            {hasVariants && (
-              <>
+            <>
                 <p className="text-xs text-gray-500 mb-4">
                   Add different sizes/weights for this product (e.g., 500g, 1
                   Kg). Each variant has its own price & stock.
@@ -749,6 +661,7 @@ const EditProduct = () => {
                             }
                             placeholder="500"
                             min="0"
+                            step="0.01"
                             className="flex-1 min-w-0 h-[36px] border border-gray-300 rounded-md px-2 text-sm focus:border-blue-500 outline-none"
                           />
                           <select
@@ -760,9 +673,6 @@ const EditProduct = () => {
                           >
                             <option value="g">g</option>
                             <option value="kg">kg</option>
-                            <option value="ml">ml</option>
-                            <option value="L">L</option>
-                            <option value="pcs">pcs</option>
                           </select>
                         </div>
                       </div>
@@ -858,13 +768,13 @@ const EditProduct = () => {
                     </div>
                   ))}
                 </div>
-              </>
-            )}
+            </>
           </div>
 
           <ProductPageSettingsSection
             productPage={productPage}
             setProductPage={setProductPage}
+            token={token}
           />
 
           {/* Images */}

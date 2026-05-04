@@ -22,6 +22,31 @@ const formatReservationCountdown = (value) => {
 };
 
 const buildDisplayTotals = (order) => {
+  const pricing = order?.pricing || {};
+  if (pricing && Object.keys(pricing).length > 0) {
+    const subtotal = round2(Number(pricing.originalPrice ?? order?.originalPrice ?? 0));
+    const discount = round2(Number(pricing.discount ?? order?.discount ?? 0));
+    const discountedSubtotal = round2(
+      Number(pricing.discountedPrice ?? order?.subtotal ?? 0),
+    );
+    const gst = round2(Number(pricing.gst ?? order?.tax ?? 0));
+    const total = round2(
+      Number(pricing.roundedTotal ?? order?.roundedAmount ?? order?.finalAmount ?? order?.totalAmt ?? 0),
+    );
+    const roundOff = round2(Number(pricing.roundOff ?? order?.roundOff ?? 0));
+
+    return {
+      couponCode: String(order?.couponCode || "").trim(),
+      hasCouponDiscount: discount > 0.009,
+      subtotalDisplay: subtotal,
+      couponDiscount: discount,
+      discountedSubtotal,
+      gst,
+      roundOff,
+      shipping: round2(Number(order?.shipping || 0)),
+      total,
+    };
+  }
   const totals = order?.totals || {};
   const couponCode = String(order?.couponCode || "").trim();
   const subtotalRaw = Math.max(Number(totals.subtotal || 0), 0);
@@ -34,8 +59,12 @@ const buildDisplayTotals = (order) => {
   const taxRaw = Math.max(Number(totals.tax || 0), 0);
   const shippingRaw = Math.max(Number(totals.shipping || 0), 0);
   const totalRaw = Math.max(Number(totals.finalAmount || 0), 0);
+  const roundOffRaw = Number(order?.roundOff ?? totals.roundOff ?? 0);
+  const roundedAmountRaw = Number(
+    order?.roundedAmount ?? totals.roundedAmount ?? Math.round(totalRaw),
+  );
 
-  const totalRounded = toRoundedRupee(totalRaw);
+  const totalRounded = Math.max(Math.round(roundedAmountRaw || totalRaw), 0);
   const discountedSubtotalRaw = Math.max(subtotalRaw - legacyDiscountRaw, 0);
   const gstRatePercent =
     discountedSubtotalRaw > 0 && taxRaw >= 0
@@ -60,6 +89,7 @@ const buildDisplayTotals = (order) => {
     couponDiscount: round2(couponDiscount),
     discountedSubtotal,
     gst,
+    roundOff: round2(roundOffRaw || totalRounded - (discountedSubtotal + gst)),
     shipping: round2(shippingRaw),
     total: round2(totalRounded),
   };
@@ -269,12 +299,19 @@ const PayOrderPage = () => {
               <span>₹{displayTotals.gst.toFixed(2)}</span>
             </div>
             <div className="flex items-center justify-between">
+              <span>Round Off</span>
+              <span>
+                {displayTotals.roundOff >= 0 ? "+" : "-"}₹
+                {Math.abs(displayTotals.roundOff).toFixed(2)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
               <span>Shipping</span>
               <span>₹{displayTotals.shipping.toFixed(2)}</span>
             </div>
             <div className="flex items-center justify-between font-semibold text-slate-900">
-              <span>Total</span>
-              <span>₹{displayTotals.total.toFixed(2)}</span>
+              <span>Final Payable</span>
+              <span>₹{displayTotals.total.toFixed(0)}</span>
             </div>
           </div>
         </div>

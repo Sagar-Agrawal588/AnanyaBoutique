@@ -25,13 +25,7 @@ const toStringList = (value, { limit = 8, maxLength = 240 } = {}) => {
 };
 
 const toCards = (value, { limit = 4 } = {}) => {
-  if (!Array.isArray(value)) return [];
-
-  return value.slice(0, limit).map((card) => ({
-    label: toTrimmedString(card?.label, 80),
-    value: toTrimmedString(card?.value, 120),
-    helper: toTrimmedString(card?.helper, 220),
-  }));
+  return [];
 };
 
 export const normalizeProductPageConfig = (value = {}) => {
@@ -112,6 +106,14 @@ export const normalizeProductPageConfig = (value = {}) => {
         source?.descriptionSection?.editorialDescription,
         360,
       ),
+      featuredBannerImage: toTrimmedString(
+        source?.descriptionSection?.featuredBannerImage,
+        500,
+      ),
+      showFeaturedBannerImage: toBooleanWithFallback(
+        source?.descriptionSection?.showFeaturedBannerImage,
+        true,
+      ),
       flowEyebrow: toTrimmedString(
         source?.descriptionSection?.flowEyebrow,
         80,
@@ -130,19 +132,7 @@ export const normalizeProductPageConfig = (value = {}) => {
         source?.detailsSection?.showCards,
         true,
       ),
-      showSnapshot: toBooleanWithFallback(
-        source?.detailsSection?.showSnapshot,
-        true,
-      ),
       cards: toCards(source?.detailsSection?.cards),
-      snapshotEyebrow: toTrimmedString(
-        source?.detailsSection?.snapshotEyebrow,
-        80,
-      ),
-      snapshotItems: toStringList(source?.detailsSection?.snapshotItems, {
-        limit: 8,
-        maxLength: 240,
-      }),
     },
     shippingSection: {
       show: toBooleanWithFallback(source?.shippingSection?.show, true),
@@ -176,59 +166,20 @@ export const normalizeProductPageConfig = (value = {}) => {
     },
     reviewsSection: {
       show: toBooleanWithFallback(source?.reviewsSection?.show, true),
-      eyebrow: toTrimmedString(source?.reviewsSection?.eyebrow, 80),
-      title: toTrimmedString(source?.reviewsSection?.title, 180),
-      emptyState: toTrimmedString(source?.reviewsSection?.emptyState, 280),
     },
     frequentlyBoughtSection: {
       show: toBooleanWithFallback(
         source?.frequentlyBoughtSection?.show,
         true,
       ),
-      eyebrow: toTrimmedString(
-        source?.frequentlyBoughtSection?.eyebrow,
-        80,
-      ),
-      title: toTrimmedString(source?.frequentlyBoughtSection?.title, 180),
-      buttonText: toTrimmedString(
-        source?.frequentlyBoughtSection?.buttonText,
-        60,
-      ),
-      emptyState: toTrimmedString(
-        source?.frequentlyBoughtSection?.emptyState,
-        220,
-      ),
+      emptyState: "",
     },
     recommendedCombosSection: {
       show: toBooleanWithFallback(
         source?.recommendedCombosSection?.show,
         true,
       ),
-      eyebrow: toTrimmedString(
-        source?.recommendedCombosSection?.eyebrow,
-        80,
-      ),
-      title: toTrimmedString(source?.recommendedCombosSection?.title, 180),
-      linkText: toTrimmedString(
-        source?.recommendedCombosSection?.linkText,
-        60,
-      ),
-      emptyState: toTrimmedString(
-        source?.recommendedCombosSection?.emptyState,
-        220,
-      ),
-    },
-    relatedProductsSection: {
-      show: toBooleanWithFallback(
-        source?.relatedProductsSection?.show,
-        true,
-      ),
-      eyebrow: toTrimmedString(source?.relatedProductsSection?.eyebrow, 80),
-      title: toTrimmedString(source?.relatedProductsSection?.title, 180),
-      emptyState: toTrimmedString(
-        source?.relatedProductsSection?.emptyState,
-        220,
-      ),
+      emptyState: "",
     },
   };
 };

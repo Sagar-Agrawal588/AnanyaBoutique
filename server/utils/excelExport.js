@@ -57,6 +57,8 @@ export const ORDER_REPORT_COLUMNS = [
     width: 30,
   },
   { header: "Order Status", key: "orderStatus", width: 16 },
+  { header: "UTR Number", key: "utrNumber", width: 18 },
+  { header: "Payment ID", key: "paymentId", width: 28 },
   { header: "Customer", key: "customer", width: 24 },
   { header: "Order Date", key: "orderDate", width: 18 },
   { header: "Delivery Status", key: "deliveryStatus", width: 18 },

@@ -1,6 +1,7 @@
 {
   "private": true,
   "scripts": {
+    "test": "npm --prefix server test",
     "validate:env": "node scripts/validate-env-examples.mjs",
     "test:server": "npm --prefix server test",
     "build:client": "npm --prefix frontend/client run build",

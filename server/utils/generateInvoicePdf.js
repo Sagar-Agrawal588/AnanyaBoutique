@@ -245,16 +245,29 @@ const formatDate = (value) => {
   const date = value ? new Date(value) : new Date();
   if (Number.isNaN(date.getTime())) return "-";
   return date.toLocaleDateString("en-IN", {
+    timeZone: "Asia/Kolkata",
     year: "numeric",
     month: "short",
     day: "2-digit",
   });
 };
 
+const firstNonEmptyString = (...values) =>
+  values.map((value) => String(value || "").trim()).find(Boolean) || "";
+
 const formatAmount = (amount, currencySymbol) =>
   `${currencySymbol}${roundMoney(amount).toFixed(2)}`;
 
 const formatPlainAmount = (amount) => roundMoney(amount).toFixed(2);
+
+const formatLineItemAmount = (amount) => {
+  const safe = roundMoney(amount);
+  return Number.isInteger(safe) ? String(safe) : safe.toFixed(2);
+};
+const formatSignedPlainAmount = (amount) => {
+  const safe = roundMoney(amount);
+  return `${safe >= 0 ? "+" : "-"}${formatPlainAmount(Math.abs(safe))}`;
+};
 const formatQuantity = (value) => Number(value || 0).toFixed(4);
 
 const formatPackWeightLabel = (grams) => {
@@ -680,7 +693,7 @@ const drawTableRow = (doc, item, cols, widths, y, index) => {
     y + 6,
     { width: widths.qty - 4, align: "right" },
   );
-  doc.text(formatPlainAmount(item.rate), cols.rate + 2, y + 6, {
+  doc.text(item.rateDisplay || formatPlainAmount(item.rate), cols.rate + 2, y + 6, {
     width: widths.rate - 4,
     align: "right",
   });
@@ -688,7 +701,7 @@ const drawTableRow = (doc, item, cols, widths, y, index) => {
     width: widths.per - 4,
     align: "center",
   });
-  doc.text(formatPlainAmount(item.amount), cols.amount + 2, y + 6, {
+  doc.text(item.amountDisplay || formatPlainAmount(item.amount), cols.amount + 2, y + 6, {
     width: widths.amount - 4,
     align: "right",
   });
@@ -990,7 +1003,10 @@ const prepareInvoiceData = (order, sellerDetails, productMetaById = {}) => {
       : sellerState && buyerState
         ? sellerState !== buyerState
         : true;
-  const gstRate = Number(order?.gst?.rate || DEFAULT_TAX_RATE);
+  const pricingSnapshot = order?.pricing || {};
+  const gstRate = Number(
+    pricingSnapshot?.gstRate || order?.gst?.rate || DEFAULT_TAX_RATE,
+  );
 
   const products = Array.isArray(order?.products) ? order.products : [];
   const grossSubtotal = roundMoney(
@@ -1005,49 +1021,68 @@ const prepareInvoiceData = (order, sellerDetails, productMetaById = {}) => {
     ),
   );
 
+  const originalPrice = roundMoney(
+    pricingSnapshot?.originalPrice ?? Number(order?.originalPrice || grossSubtotal),
+  );
+  const totalDiscount = roundMoney(
+    pricingSnapshot?.discount ?? Number(order?.discount || 0),
+  );
+  const discountedPrice = roundMoney(
+    pricingSnapshot?.discountedPrice ??
+      Math.max(originalPrice - totalDiscount, 0),
+  );
+  const storedGstAmount = roundMoney(
+    pricingSnapshot?.gst ??
+      Number(order?.gst?.totalTax || order?.tax || 0),
+  );
+  const taxTotal =
+    storedGstAmount > 0
+      ? storedGstAmount
+      : roundMoney((discountedPrice * gstRate) / 100);
+
   // Shipping is intentionally excluded from invoice math and display.
   const persistedShippingTotal = roundMoney(Number(order?.shipping || 0));
   const shippingTotal = 0;
 
   // Persisted order totals may include shipping. Remove shipping from invoice total.
-  const finalAmount = roundMoney(Number(order?.finalAmount || 0));
-  const totalAmount = roundMoney(Number(order?.totalAmt || 0));
+  const finalAmount = roundMoney(
+    pricingSnapshot?.total ?? Number(order?.finalAmount || 0),
+  );
+  const totalAmount = roundMoney(
+    pricingSnapshot?.total ?? Number(order?.totalAmt || 0),
+  );
   const storedGrandTotalWithShipping = roundMoney(
     finalAmount > 0 ? finalAmount : totalAmount,
   );
   const derivedGrandTotalWithoutShipping = roundMoney(
     Math.max(storedGrandTotalWithShipping - persistedShippingTotal, 0),
   );
-  const fallbackGrandTotalFromGoods = roundMoney(Math.max(grossSubtotal, 0));
-  // Use stored totals (post-discount) when available; only fall back to goods total
-  // when we have no reliable stored total. This preserves coupon-discounted totals.
+  const fallbackGrandTotalFromGoods = roundMoney(
+    Math.max(discountedPrice + taxTotal, 0),
+  );
+  // Use stored totals (post-discount) when available; only fall back to derived
+  // discount + GST total when we have no reliable stored total.
   const grandTotal =
     storedGrandTotalWithShipping > 0
       ? derivedGrandTotalWithoutShipping
       : fallbackGrandTotalFromGoods;
 
   const netInclusiveSubtotal = roundMoney(Math.max(grandTotal, 0));
-
-  // Derive discount so coins/coupons reconcile even if stored fields differ.
-  const totalDiscount = roundMoney(
-    Math.max(grossSubtotal - netInclusiveSubtotal, 0),
+  const taxableTotal = roundMoney(
+    pricingSnapshot?.discountedPrice ??
+      Number(order?.gst?.taxableAmount || order?.subtotal || 0),
   );
-
-  const storedTaxTotal = roundMoney(Number(order?.tax || 0));
-  const taxTotal =
-    storedTaxTotal > 0
-      ? storedTaxTotal
-      : gstRate > 0
-        ? roundMoney(
-            netInclusiveSubtotal - netInclusiveSubtotal / (1 + gstRate / 100),
-          )
-        : 0;
-
-  const taxableTotal = roundMoney(Math.max(netInclusiveSubtotal - taxTotal, 0));
 
   const weights = products.map((item) => Number(item?.subTotal || 0));
   const discountAlloc = allocateByWeight(totalDiscount, weights);
   const taxAlloc = allocateByWeight(taxTotal, weights);
+  const roundedGrandTotalFromOrder =
+    Number(order?.roundedAmount || 0) > 0
+      ? Math.max(Math.round(Number(order.roundedAmount || 0)), 0)
+      : Math.max(Math.round(grandTotal), 0);
+  const storedRoundOff = Number.isFinite(Number(order?.roundOff))
+    ? roundMoney(Number(order.roundOff || 0))
+    : null;
 
   const lineItems = products.map((item, index) => {
     const quantityUnits = Math.max(Number(item?.quantity || 1), 1);
@@ -1096,7 +1131,7 @@ const prepareInvoiceData = (order, sellerDetails, productMetaById = {}) => {
     const igst = isInterState ? lineTax : 0;
     const cgst = isInterState ? 0 : roundMoney(lineTax / 2);
     const sgst = isInterState ? 0 : roundMoney(lineTax - cgst);
-    const taxableAmount = roundMoney(Math.max(grossAfterDiscount - lineTax, 0));
+    const taxableAmount = grossAfterDiscount;
 
     const lineDetails = [];
     const variantName = String(item?.variantName || "").trim();
@@ -1126,6 +1161,11 @@ const prepareInvoiceData = (order, sellerDetails, productMetaById = {}) => {
       sgst,
       total: grossAfterDiscount,
       amount: taxableAmount,
+      rateDisplay:
+        discount > 0
+          ? `${formatPlainAmount(rate)} (-${formatPlainAmount(discount)})`
+          : formatPlainAmount(rate),
+      amountDisplay: formatLineItemAmount(grossAfterDiscount),
       isInterState,
     };
   });
@@ -1172,9 +1212,14 @@ const prepareInvoiceData = (order, sellerDetails, productMetaById = {}) => {
     taxBreakup.igst + taxBreakup.cgst + taxBreakup.sgst,
   );
   const amountBeforeRound = roundMoney(goodsAmount + taxAmount + shippingTotal);
-  let roundOff = roundMoney(grandTotal - amountBeforeRound);
+  let roundOff =
+    storedRoundOff !== null
+      ? storedRoundOff
+      : roundMoney(roundedGrandTotalFromOrder - amountBeforeRound);
   if (Math.abs(roundOff) < 0.01) roundOff = 0;
-  const roundedGrandTotal = roundMoney(amountBeforeRound + roundOff);
+  const roundedGrandTotal = roundMoney(
+    storedRoundOff !== null ? roundedGrandTotalFromOrder : amountBeforeRound + roundOff,
+  );
 
   const hasOnlyKg =
     lineItems.length > 0 &&
@@ -1213,6 +1258,7 @@ const prepareInvoiceData = (order, sellerDetails, productMetaById = {}) => {
       roundOff,
       shippingTotal,
       grandTotal: roundedGrandTotal,
+      exactGrandTotal: roundMoney(grandTotal),
       totalQuantityLabel,
       amountInWords: amountToWordsINR(roundedGrandTotal),
       gstRate,
@@ -1488,6 +1534,22 @@ export const generateInvoicePdf = async ({
       order?.order_id ||
       order?.orderId ||
       (order?._id ? `BOG-${String(order._id).slice(-8).toUpperCase()}` : "-");
+    const utrNumber = firstNonEmptyString(
+      order?.utrNumber,
+      order?.upiRefId,
+      order?.upiRef,
+      order?.utr,
+    );
+    const paymentId = firstNonEmptyString(
+      order?.paymentAppTxnId,
+      order?.paymentId,
+      order?.paytmTransactionId,
+      order?.phonepeTransactionId,
+    );
+    const paymentProvider = firstNonEmptyString(
+      order?.paymentProvider,
+      order?.paymentMethod,
+    );
     const metaRows = [
       { label: "Invoice No.", value: invoiceNumber },
       { label: "Dated", value: formatDate(invoiceDate) },
@@ -1501,6 +1563,9 @@ export const generateInvoicePdf = async ({
           order?.payment_status || order?.paymentMethod || "-",
         ).toUpperCase(),
       },
+      { label: "UTR Number", value: utrNumber || "-" },
+      { label: "Payment ID", value: paymentId || "-" },
+      { label: "Provider", value: paymentProvider || "-" },
       { label: "Buyer's Order No.", value: buyerOrderNumber },
       { label: "Dated", value: formatDate(orderDate) },
       { label: "Dispatch Doc No.", value: order?.awb_number || "-" },
@@ -1598,7 +1663,7 @@ export const generateInvoicePdf = async ({
       drawLedgerRow(`OUTPUT SGST@${splitRate}%`, taxBreakup.sgst);
     }
 
-    drawLedgerRow("Roundoff", summary.roundOff);
+    drawLedgerRow("Round Off", formatSignedPlainAmount(summary.roundOff));
     drawLedgerRow("Total", summary.grandTotal, {
       bold: true,
       showQty: true,
@@ -1641,7 +1706,7 @@ export const generateInvoicePdf = async ({
     }
 
     y += 6;
-    const summaryFormula = `Taxable Amount + GST: ${formatPlainAmount(summary.goodsAmount)} + ${formatPlainAmount(summary.taxAmount)} = ${formatPlainAmount(summary.grandTotal)}`;
+    const summaryFormula = `Taxable Amount + GST + Round Off: ${formatPlainAmount(summary.goodsAmount)} + ${formatPlainAmount(summary.taxAmount)} ${summary.roundOff ? `${summary.roundOff >= 0 ? "+" : "-"} ${formatPlainAmount(Math.abs(summary.roundOff))}` : "+ 0.00"} = ${formatPlainAmount(summary.grandTotal)}`;
     doc
       .font("Helvetica")
       .fontSize(8)

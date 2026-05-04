@@ -1,6 +1,7 @@
 import dotenv from "dotenv";
 import mongoose from "mongoose";
 import { ensureOrderIdentityIndexes } from "../utils/orderIdentityIndexes.js";
+import { ensureReviewVariantIndexes } from "../utils/reviewVariantIndexes.js";
 dotenv.config();
 
 const normalizeEnvValue = (value) => {
@@ -72,6 +73,16 @@ async function connectDb() {
     } catch (indexError) {
       console.warn(
         "[startup] Order identity index check failed:",
+        indexError?.message || indexError,
+      );
+    }
+
+    try {
+      await ensureReviewVariantIndexes({ log: console });
+      console.log("[startup] Review variant index check complete.");
+    } catch (indexError) {
+      console.warn(
+        "[startup] Review variant index check failed:",
         indexError?.message || indexError,
       );
     }

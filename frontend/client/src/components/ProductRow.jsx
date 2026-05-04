@@ -15,17 +15,15 @@ import ProductItem from "./ProductItem";
  * @param {string} props.title - Section title
  * @param {string} props.subtitle - Section subtitle/description
  * @param {string} props.categorySlug - Filter by category
- * @param {boolean} props.isFeatured - Show only featured products
  * @param {boolean} props.isNewArrivals - Show newest products
  * @param {boolean} props.isBestSeller - Show best sellers
  * @param {number} props.limit - Number of products to fetch
  * @param {string} props.viewAllLink - Link for "View All" button
  */
 const ProductRow = ({
-  title = "Featured Products",
+  title = "Products",
   subtitle = "Discover our handpicked selection of premium products",
   categorySlug,
-  isFeatured = false,
   isNewArrivals = false,
   isBestSeller = false,
   limit = 10,
@@ -44,7 +42,6 @@ const ProductRow = ({
         const params = [];
 
         if (categorySlug) params.push(`category=${categorySlug}`);
-        if (isFeatured) params.push("isFeatured=true");
         if (isNewArrivals) params.push("newArrivals=true");
         if (isBestSeller) params.push("bestSeller=true");
         params.push(`limit=${limit}`);
@@ -66,7 +63,7 @@ const ProductRow = ({
     };
 
     fetchProducts();
-  }, [categorySlug, isFeatured, isNewArrivals, isBestSeller, limit]);
+  }, [categorySlug, isNewArrivals, isBestSeller, limit]);
 
   // Loading skeleton
   if (loading) {
@@ -137,13 +134,11 @@ const ProductRow = ({
                 className="w-1.5 h-1.5 rounded-full animate-pulse"
                 style={{ backgroundColor: flavor.color }}
               />
-              {isFeatured
-                ? "Featured"
-                : isNewArrivals
-                  ? "New Arrivals"
-                  : isBestSeller
-                    ? "Best Sellers"
-                    : "Shop Now"}
+              {isNewArrivals
+                ? "New Arrivals"
+                : isBestSeller
+                  ? "Best Sellers"
+                  : "Shop Now"}
             </span>
 
             {/* Title */}

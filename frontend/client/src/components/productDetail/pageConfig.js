@@ -18,9 +18,6 @@ const toStringList = (value) =>
 const toCards = (value) =>
   Array.isArray(value)
     ? value.map((card) => ({
-        label: toTrimmedString(card?.label),
-        value: toTrimmedString(card?.value),
-        helper: toTrimmedString(card?.helper),
       }))
     : [];
 
@@ -87,6 +84,13 @@ export const normalizeProductPageConfig = (value = {}) => {
       editorialDescription: toTrimmedString(
         source?.descriptionSection?.editorialDescription,
       ),
+      featuredBannerImage: toTrimmedString(
+        source?.descriptionSection?.featuredBannerImage,
+      ),
+      showFeaturedBannerImage: toBooleanWithFallback(
+        source?.descriptionSection?.showFeaturedBannerImage,
+        true,
+      ),
       flowEyebrow: toTrimmedString(source?.descriptionSection?.flowEyebrow),
       extraParagraphs: toStringList(source?.descriptionSection?.extraParagraphs),
     },
@@ -96,13 +100,7 @@ export const normalizeProductPageConfig = (value = {}) => {
         source?.detailsSection?.showCards,
         true,
       ),
-      showSnapshot: toBooleanWithFallback(
-        source?.detailsSection?.showSnapshot,
-        true,
-      ),
       cards: toCards(source?.detailsSection?.cards),
-      snapshotEyebrow: toTrimmedString(source?.detailsSection?.snapshotEyebrow),
-      snapshotItems: toStringList(source?.detailsSection?.snapshotItems),
     },
     shippingSection: {
       show: toBooleanWithFallback(source?.shippingSection?.show, true),
@@ -123,58 +121,31 @@ export const normalizeProductPageConfig = (value = {}) => {
     },
     reviewsSection: {
       show: toBooleanWithFallback(source?.reviewsSection?.show, true),
-      eyebrow: toTrimmedString(source?.reviewsSection?.eyebrow),
-      title: toTrimmedString(source?.reviewsSection?.title),
-      emptyState: toTrimmedString(source?.reviewsSection?.emptyState),
     },
     frequentlyBoughtSection: {
       show: toBooleanWithFallback(
         source?.frequentlyBoughtSection?.show,
         true,
       ),
-      eyebrow: toTrimmedString(source?.frequentlyBoughtSection?.eyebrow),
-      title: toTrimmedString(source?.frequentlyBoughtSection?.title),
-      buttonText: toTrimmedString(source?.frequentlyBoughtSection?.buttonText),
-      emptyState: toTrimmedString(
-        source?.frequentlyBoughtSection?.emptyState,
-      ),
+      emptyState: "",
     },
     recommendedCombosSection: {
       show: toBooleanWithFallback(
         source?.recommendedCombosSection?.show,
         true,
       ),
-      eyebrow: toTrimmedString(source?.recommendedCombosSection?.eyebrow),
-      title: toTrimmedString(source?.recommendedCombosSection?.title),
-      linkText: toTrimmedString(source?.recommendedCombosSection?.linkText),
-      emptyState: toTrimmedString(
-        source?.recommendedCombosSection?.emptyState,
-      ),
-    },
-    relatedProductsSection: {
-      show: toBooleanWithFallback(
-        source?.relatedProductsSection?.show,
-        true,
-      ),
-      eyebrow: toTrimmedString(source?.relatedProductsSection?.eyebrow),
-      title: toTrimmedString(source?.relatedProductsSection?.title),
-      emptyState: toTrimmedString(source?.relatedProductsSection?.emptyState),
+      emptyState: "",
     },
   };
 };
 
-export const mergeTextOverride = (overrideValue, fallbackValue) =>
-  toTrimmedString(overrideValue) || fallbackValue;
+export const mergeTextOverride = (customText, fallbackValue) =>
+  toTrimmedString(customText) || fallbackValue;
 
-export const mergeCardsWithDefaults = (defaultCards = [], overrideCards = []) =>
-  defaultCards.map((card, index) => {
-    const override = overrideCards[index] || {};
-    return {
-      label: mergeTextOverride(override.label, card.label),
-      value: mergeTextOverride(override.value, card.value),
-      helper: mergeTextOverride(override.helper, card.helper),
-    };
-  });
+export const mergeCardCopyWithDefaults = (defaultCards = [], overrideCards = []) =>
+  defaultCards.map((card) => ({ ...card }));
+
+export const mergeCardsWithDefaults = mergeCardCopyWithDefaults;
 
 export const mergeListWithDefaults = (overrideItems = [], fallbackItems = []) =>
   overrideItems.length > 0 ? overrideItems : fallbackItems;

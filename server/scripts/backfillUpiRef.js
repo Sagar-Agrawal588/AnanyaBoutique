@@ -18,11 +18,13 @@ const delayMs = Math.max(Number(delayArg?.split("=")[1] || 700), 0);
 const singleOrderId = String(orderIdArg?.split("=")[1] || "").trim();
 
 const VALID_UPI_REF_REGEX = /^[0-9]{12,16}$/;
+const VALID_UTR_REGEX = /^[0-9]{12}$/;
 const SUCCESS_PAYMENT_STATUSES = ["paid", "confirmed", "captured", "success", "successful"];
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const isValidUPIRef = (ref) => VALID_UPI_REF_REGEX.test(String(ref || "").trim());
+const isValidUTR = (ref) => VALID_UTR_REGEX.test(String(ref || "").trim());
 
 const extractUpiRefFromStatus = (statusPayload = {}) => {
   const paymentDetails = Array.isArray(statusPayload?.paymentDetails)
@@ -48,6 +50,25 @@ const extractUpiRefFromStatus = (statusPayload = {}) => {
     }
   }
 
+  return "";
+};
+
+const extractUtrFromOrder = (order = {}) => {
+  const candidates = [
+    order?.utrNumber,
+    order?.utr,
+    order?.upiRef,
+    order?.upiReferenceNumber,
+    order?.paymentId,
+    order?.paytmTransactionId,
+    order?.phonepeTransactionId,
+  ];
+  for (const candidate of candidates) {
+    const normalized = String(candidate || "").trim();
+    if (isValidUTR(normalized)) return normalized;
+    const embedded = normalized.match(/(?:^|[^\d])(\d{12})(?:[^\d]|$)/);
+    if (embedded?.[1]) return embedded[1];
+  }
   return "";
 };
 
@@ -112,7 +133,7 @@ const run = async () => {
 
   const orders = await query
     .select(
-      "_id payment_status paymentStatus paymentId paymentMethod payment_method phonepeMerchantOrderId phonepeOrderId phonepeTransactionId upiRef upiReferenceNumber",
+      "_id payment_status paymentStatus paymentId paymentMethod payment_method phonepeMerchantOrderId phonepeOrderId phonepeTransactionId paytmTransactionId upiRef upiReferenceNumber utr utrNumber upiRefId",
     )
     .exec();
 
@@ -143,6 +164,7 @@ const run = async () => {
     try {
       const statusPayload = await getPhonePeOrderStatus({ merchantOrderId });
       const upiRef = extractUpiRefFromStatus(statusPayload);
+      const utrNumber = isValidUTR(upiRef) ? upiRef : extractUtrFromOrder(order);
 
       if (!isValidUPIRef(upiRef)) {
         summary.skippedInvalidRef += 1;
@@ -153,6 +175,8 @@ const run = async () => {
         order.upiReferenceNo = upiRef;
         order.rrn = upiRef;
         order.utr = upiRef;
+        order.utrNumber = utrNumber || upiRef;
+        order.upiRefId = upiRef;
         await order.save();
         summary.updated += 1;
         console.log(`[updated] order=${orderId} upiRef=${upiRef}`);

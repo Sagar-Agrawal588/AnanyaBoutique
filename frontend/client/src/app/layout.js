@@ -86,6 +86,7 @@ export async function generateMetadata({ request }) {
       }
       if (page) {
         return {
+          metadataBase: defaultMetadata.metadataBase,
           title: page.metaTitle || defaultMetadata.title,
           description: page.metaDescription || defaultMetadata.description,
           keywords: page.keywords || defaultMetadata.keywords,

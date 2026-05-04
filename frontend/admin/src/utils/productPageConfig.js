@@ -35,37 +35,32 @@ const DEFAULT_PRODUCT_PAGE_CONFIG = {
       "A stronger product story can live right beside the product without overwhelming the transaction.",
     editorialDescription:
       "This section gives longer-form content a more intentional home, helping the product feel more premium while keeping the purchase path above it calm and focused.",
+    featuredBannerImage: "",
+    showFeaturedBannerImage: true,
     flowEyebrow: "Description Flow",
     extraParagraphs: [],
   },
   detailsSection: {
     show: true,
     showCards: true,
-    showSnapshot: true,
     cards: [
       {
         label: "Category",
-        value: "",
         helper: "Live product taxonomy",
       },
       {
         label: "Selected Pack",
-        value: "",
         helper: "Variant-aware display",
       },
       {
         label: "Customer Reviews",
-        value: "",
         helper: "Visible social proof",
       },
       {
         label: "Availability",
-        value: "",
         helper: "Real-time stock signal",
       },
     ],
-    snapshotEyebrow: "Snapshot",
-    snapshotItems: [],
   },
   shippingSection: {
     show: true,
@@ -82,40 +77,25 @@ const DEFAULT_PRODUCT_PAGE_CONFIG = {
   },
   reviewsSection: {
     show: true,
-    eyebrow: "Review Section",
-    title: "Customer reviews below the product story",
-    emptyState:
-      "No reviews yet. This section is ready to show customer feedback as soon as reviews come in.",
   },
   frequentlyBoughtSection: {
     show: true,
-    eyebrow: "Frequently Bought Together",
-    title: "Helpful add-ons close to the primary product",
-    buttonText: "Add All To Cart",
-    emptyState: "No suggestions available yet.",
   },
   recommendedCombosSection: {
     show: true,
-    eyebrow: "Recommended Combos",
-    title: "Bundle options that support the same buying flow",
-    linkText: "View all combos",
-    emptyState: "No recommended combos available right now.",
-  },
-  relatedProductsSection: {
-    show: true,
-    eyebrow: "Related Products",
-    title: "More products in the same browsing mood",
-    emptyState: "No related products available right now.",
   },
 };
 
 const cloneConfig = (value) => JSON.parse(JSON.stringify(value));
 
 const mergeCards = (overrides = []) =>
-  DEFAULT_PRODUCT_PAGE_CONFIG.detailsSection.cards.map((card, index) => ({
-    ...card,
-    ...(Array.isArray(overrides) ? overrides[index] || {} : {}),
-  }));
+  DEFAULT_PRODUCT_PAGE_CONFIG.detailsSection.cards.map((card, index) => {
+    const override = Array.isArray(overrides) ? overrides[index] || {} : {};
+    return {
+      label: String(override?.label || card.label || "").trim(),
+      helper: String(override?.helper || card.helper || "").trim(),
+    };
+  });
 
 export const createDefaultProductPageConfig = () =>
   cloneConfig(DEFAULT_PRODUCT_PAGE_CONFIG);
@@ -137,6 +117,8 @@ export const mergeProductPageConfig = (value = {}) => {
     descriptionSection: {
       ...defaults.descriptionSection,
       ...(source.descriptionSection || {}),
+      showFeaturedBannerImage:
+        source?.descriptionSection?.showFeaturedBannerImage !== false,
       extraParagraphs: Array.isArray(source?.descriptionSection?.extraParagraphs)
         ? source.descriptionSection.extraParagraphs
         : defaults.descriptionSection.extraParagraphs,
@@ -144,10 +126,7 @@ export const mergeProductPageConfig = (value = {}) => {
     detailsSection: {
       ...defaults.detailsSection,
       ...(source.detailsSection || {}),
-      cards: mergeCards(source?.detailsSection?.cards),
-      snapshotItems: Array.isArray(source?.detailsSection?.snapshotItems)
-        ? source.detailsSection.snapshotItems
-        : defaults.detailsSection.snapshotItems,
+      cards: defaults.detailsSection.cards,
     },
     shippingSection: {
       ...defaults.shippingSection,
@@ -172,10 +151,6 @@ export const mergeProductPageConfig = (value = {}) => {
     recommendedCombosSection: {
       ...defaults.recommendedCombosSection,
       ...(source.recommendedCombosSection || {}),
-    },
-    relatedProductsSection: {
-      ...defaults.relatedProductsSection,
-      ...(source.relatedProductsSection || {}),
     },
   };
 };

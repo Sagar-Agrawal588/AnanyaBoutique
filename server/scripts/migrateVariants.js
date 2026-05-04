@@ -16,6 +16,7 @@ import dotenv from "dotenv";
 import mongoose from "mongoose";
 import path from "path";
 import { fileURLToPath } from "url";
+import { formatWeight, normalizeWeight } from "../utils/weightNormalization.js";
 
 
 const __filename = fileURLToPath(import.meta.url);
@@ -70,6 +71,8 @@ async function migrate() {
       const currentWeight = product.weight || 500;
       const currentUnit =
         product.unit && product.unit !== "piece" ? product.unit : "g";
+      const currentWeightInGrams = normalizeWeight(currentWeight, currentUnit);
+      const currentWeightLabel = formatWeight(currentWeightInGrams);
       const currentPrice = product.price || 0;
       const currentOriginalPrice = product.originalPrice || 0;
       const currentStock = product.stock_quantity ?? product.stock ?? 0;
@@ -77,7 +80,8 @@ async function migrate() {
 
       // Create 500g variant from existing product data
       const variant500 = {
-        name: `${currentWeight}${currentUnit}`,
+        name: currentWeightLabel,
+        label: currentWeightLabel,
         sku: `${skuBase}-500G`,
         price: currentPrice,
         originalPrice:
@@ -89,8 +93,9 @@ async function migrate() {
                   100,
               )
             : 0,
-        weight: currentWeight,
-        unit: currentUnit,
+        weightInGrams: currentWeightInGrams,
+        weight: currentWeightInGrams,
+        unit: "g",
         isDefault: true,
         stock: currentStock,
         stock_quantity: currentStock,
@@ -105,6 +110,7 @@ async function migrate() {
 
       const variant1000 = {
         name: "1 Kg",
+        label: "1kg",
         sku: `${skuBase}-1KG`,
         price: price1kg,
         originalPrice: origPrice1kg > 0 ? origPrice1kg : undefined,
@@ -112,6 +118,7 @@ async function migrate() {
           origPrice1kg > price1kg
             ? Math.round(((origPrice1kg - price1kg) / origPrice1kg) * 100)
             : 0,
+        weightInGrams: 1000,
         weight: 1000,
         unit: "g",
         isDefault: false,

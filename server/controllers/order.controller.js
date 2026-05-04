@@ -63,8 +63,6 @@ import {
   registerReservationExpiryListener,
   releaseExpiredReservations,
 } from "../services/inventoryReservationExpiry.service.js";
-import { syncActiveStockReservations } from "../services/stockReservation.service.js";
-import { trackRestockConversionsForOrder } from "../services/productAvailabilityAnalytics.service.js";
 import {
   createPaytmPayment,
   getPaytmStatus,
@@ -73,14 +71,13 @@ import {
   createPhonePePayment,
   getPhonePeOrderStatus,
 } from "../services/phonepe.service.js";
+import { trackRestockConversionsForOrder } from "../services/productAvailabilityAnalytics.service.js";
 import {
   getShippingQuote,
   validateIndianPincode,
 } from "../services/shippingRate.service.js";
-import {
-  calculateTax,
-  splitGstInclusiveAmount,
-} from "../services/tax.service.js";
+import { syncActiveStockReservations } from "../services/stockReservation.service.js";
+import { splitGstInclusiveAmount } from "../services/tax.service.js";
 import { createUserLocationLog } from "../services/userLocationLog.service.js";
 import {
   buildLegacyGuestDetails,
@@ -110,10 +107,7 @@ import {
   getAbsolutePathFromStoredInvoicePath,
 } from "../utils/generateInvoicePdf.js";
 import isPrivilegedAdminRole from "../utils/isPrivilegedAdminRole.js";
-import {
-  syncOrderStatus,
-  syncOrderToFirestore,
-} from "../utils/orderFirestoreSync.js";
+import { syncOrderToFirestore } from "../utils/orderFirestoreSync.js";
 import { saveDocumentWithTempIdRetry } from "../utils/orderPersistence.js";
 import {
   applyOrderStatusTransition,
@@ -124,12 +118,12 @@ import {
   resolveOrderAwb,
   resolveOrderTrackingUrl,
 } from "../utils/orderTracking.js";
+import { formatDateTimeIST } from "../utils/pricingEngine.js";
 import {
   calculateInfluencerCommission,
   calculateReferralDiscount,
   updateInfluencerStats,
 } from "./influencer.controller.js";
-import { sendOrderUpdateNotification } from "./notification.controller.js";
 
 // ==================== PAYMENT PROVIDER CONFIGURATION ====================
 
@@ -676,6 +670,16 @@ const roundToNearestRupee = (value) => Math.round(Number(value || 0));
 const resolveGatewayPayableAmount = (value) =>
   Math.max(roundToNearestRupee(value), 1);
 
+const buildRoundedPricing = (value) => {
+  const finalAmount = Math.max(round2(Number(value || 0)), 0);
+  const roundedAmount = resolveGatewayPayableAmount(finalAmount);
+  return {
+    finalAmount,
+    roundedAmount,
+    roundOff: round2(roundedAmount - finalAmount),
+  };
+};
+
 const resolveInfluencerCommissionBase = (order = {}) => {
   const taxableSubtotal = Number(
     order?.subtotal ?? order?.gst?.taxableAmount ?? 0,
@@ -1148,22 +1152,7 @@ const safeEqual = (a, b) => {
 };
 
 const formatOrderDateForEmail = (value) => {
-  const parsed = new Date(value || Date.now());
-  if (Number.isNaN(parsed.getTime())) {
-    return new Date().toLocaleString("en-IN");
-  }
-
-  return parsed
-    .toLocaleString("en-IN", {
-      year: "numeric",
-      month: "short",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: true,
-    })
-    .replace(/\bam\b/g, "AM")
-    .replace(/\bpm\b/g, "PM");
+  return formatDateTimeIST(value);
 };
 
 const stringifyOrderItemsForEmail = (order) => {
@@ -1348,23 +1337,40 @@ const sendOrderConfirmationEmail = async (order) => {
     const hasPaymentLink = Boolean(paymentUrl);
     const paymentCtaLabel = hasPaymentLink ? "Pay Now" : "View Store";
     const safePaymentUrl = paymentUrl || siteUrl;
+    const pricingSnapshot = order?.pricing || {};
 
     const originalSubtotal = round2(
       Number(
-        order?.originalPrice ||
+        pricingSnapshot.originalPrice ||
+          order?.originalPrice ||
           Number(order?.subtotal || 0) + Number(order?.discount || 0) ||
           0,
       ),
     );
     const discount = round2(
-      Number(order?.discount || order?.discountAmount || 0) +
-        Number(order?.coinRedemption?.amount || 0),
+      Number(
+        pricingSnapshot.discount ||
+          order?.discount ||
+          order?.discountAmount ||
+          0,
+      ) + Number(order?.coinRedemption?.amount || 0),
     );
-    const taxableAmount = round2(Number(order?.subtotal || 0));
-    const taxAmount = round2(Number(order?.tax || 0));
+    const taxableAmount = round2(
+      Number(pricingSnapshot.discountedPrice || order?.subtotal || 0),
+    );
+    const taxAmount = round2(Number(pricingSnapshot.gst || order?.tax || 0));
     const shippingAmount = round2(Number(order?.shipping || 0));
     const finalAmount = round2(
-      Number(order?.finalAmount || order?.totalAmt || 0),
+      Number(
+        pricingSnapshot.roundedTotal ||
+          order?.roundedAmount ||
+          order?.finalAmount ||
+          order?.totalAmt ||
+          0,
+      ),
+    );
+    const roundOff = round2(
+      Number(pricingSnapshot.roundOff || order?.roundOff || 0),
     );
 
     const awbNumber = resolveOrderAwb(order);
@@ -1417,7 +1423,10 @@ const sendOrderConfirmationEmail = async (order) => {
       `Status: ${order?.order_status || "pending"}`,
       `Payment: ${order?.payment_status || "pending"}`,
       `Final Amount: ${formatInr(finalAmount)}`,
-      `Estimated Delivery: ${estimatedDeliveryDate.toLocaleDateString("en-IN")}`,
+      `Round Off: ${formatInr(roundOff)}`,
+      `Estimated Delivery: ${estimatedDeliveryDate.toLocaleDateString("en-IN", {
+        timeZone: "Asia/Kolkata",
+      })} IST`,
       awbNumber ? `AWB: ${awbNumber}` : "",
       trackingUrl ? `Track Shipment: ${trackingUrl}` : "",
       hasPaymentLink ? `Pay now: ${paymentUrl}` : "",
@@ -1441,9 +1450,14 @@ const sendOrderConfirmationEmail = async (order) => {
         taxable_amount: formatInr(taxableAmount),
         tax_amount: formatInr(taxAmount),
         shipping_amount: formatInr(shippingAmount),
+        round_off: formatInr(roundOff),
         final_amount: formatInr(finalAmount),
-        estimated_delivery_date:
-          estimatedDeliveryDate.toLocaleDateString("en-IN"),
+        estimated_delivery_date: `${estimatedDeliveryDate.toLocaleDateString(
+          "en-IN",
+          {
+            timeZone: "Asia/Kolkata",
+          },
+        )} IST`,
         awb_number: awbNumber,
         tracking_url: trackingUrl,
         site_url: siteUrl,
@@ -1523,8 +1537,18 @@ const sendOrderPaymentSuccessEmail = async (
     const providerLabel = resolvePaymentProviderLabel(
       paymentProvider || order?.paymentMethod,
     );
+    const pricingSnapshot = order?.pricing || {};
     const finalAmount = round2(
-      Number(order?.finalAmount || order?.totalAmt || 0),
+      Number(
+        pricingSnapshot.roundedTotal ||
+          order?.roundedAmount ||
+          order?.finalAmount ||
+          order?.totalAmt ||
+          0,
+      ),
+    );
+    const roundOff = round2(
+      Number(pricingSnapshot.roundOff || order?.roundOff || 0),
     );
 
     const text = [
@@ -1533,6 +1557,7 @@ const sendOrderPaymentSuccessEmail = async (
       `Payment provider: ${providerLabel}`,
       `Payment status: paid`,
       `Final Amount: ${formatInr(finalAmount)}`,
+      `Round Off: ${formatInr(roundOff)}`,
       `Open: ${actionUrl}`,
       `Support: ${supportContact}`,
     ].join("\n");
@@ -1549,6 +1574,7 @@ const sendOrderPaymentSuccessEmail = async (
         order_status: String(order?.order_status || "accepted"),
         payment_provider: providerLabel,
         items_text: stringifyOrderItemsForEmail(order),
+        round_off: formatInr(roundOff),
         final_amount: formatInr(finalAmount),
         action_url: actionUrl,
         site_url: siteUrl,
@@ -1596,6 +1622,7 @@ const sendOrderCancelledEmail = async (order) => {
     const supportContact = getSupportContactEmail();
     const supportUrl = getSupportContactUrl();
     const siteUrl = getPrimaryStoreUrl();
+    const pricingSnapshot = order?.pricing || {};
 
     const text = [
       `Order No: ${displayOrderNumber}`,
@@ -1682,7 +1709,11 @@ const flushExpiredReservationsSafely = async (
 
 const ensureOrderHasActiveReservationForPayment = async (
   order,
-  { source = "PAYMENT_PAGE", refreshExpiry = true, throwOnUnavailable = true } = {},
+  {
+    source = "PAYMENT_PAGE",
+    refreshExpiry = true,
+    throwOnUnavailable = true,
+  } = {},
 ) => {
   if (!order) {
     throw new AppError("ORDER_NOT_FOUND");
@@ -1945,15 +1976,21 @@ const sendOrderPaymentReminderEmail = async (
       : order?.user
         ? "View your order"
         : "Visit the store";
+    const pricingSnapshot = order?.pricing || {};
     const finalAmount = round2(
-      Number(order?.finalAmount || order?.totalAmt || 0),
+      Number(
+        pricingSnapshot.roundedTotal ||
+          order?.finalAmount ||
+          order?.totalAmt ||
+          0,
+      ),
     );
     const failureMessage =
       normalizedFailureKind === "cancelled"
         ? "Your payment was cancelled before completion. You can return and place the order again when ready."
         : normalizedFailureKind === "expired"
           ? "Your 3 minute 30 second reservation window ended before payment completed. Use the link below to retry payment before these items sell out."
-        : "Your payment did not complete successfully. You can retry from your order page or place the order again.";
+          : "Your payment did not complete successfully. You can retry from your order page or place the order again.";
 
     const text = [
       `Order No: ${displayOrderNumber}`,
@@ -2295,8 +2332,12 @@ const processDueOrderPaymentReminderEmails = async ({
     await maybeSendOrderPaymentReminderEmail({
       order,
       failureKind:
-        String(order?.payment_status || "").trim().toLowerCase() === "pending" &&
-        String(order?.inventoryStatus || "").trim().toLowerCase() === "released"
+        String(order?.payment_status || "")
+          .trim()
+          .toLowerCase() === "pending" &&
+        String(order?.inventoryStatus || "")
+          .trim()
+          .toLowerCase() === "released"
           ? "expired"
           : inferStoredPaymentFailureKind(order),
       paymentProvider:
@@ -2441,6 +2482,16 @@ const extractPaytmWebhookFields = (payload = {}) => {
     payload?.BANKTXNID ||
     null;
 
+  const utrNumber = extractUtrNumber({
+    utr: payload?.utr,
+    UTR: payload?.UTR,
+    rrn: payload?.rrn,
+    RRN: payload?.RRN,
+    bankTransactionId: payload?.BANKTXNID,
+    providerReferenceId: payload?.providerReferenceId,
+    txnId: transactionId,
+  });
+
   const state =
     payload?.txnStatus ||
     payload?.TXNSTATUS ||
@@ -2453,7 +2504,7 @@ const extractPaytmWebhookFields = (payload = {}) => {
     resultInfo?.resultStatus ||
     null;
 
-  return { merchantTransactionId, transactionId, state };
+  return { merchantTransactionId, transactionId, state, utrNumber };
 };
 
 const normalizePaytmState = (value) => {
@@ -2513,6 +2564,10 @@ const verifyPaytmWebhookState = async (merchantTransactionId) => {
     const statusResponse = await getPaytmStatus({
       orderId: merchantTransactionId,
     });
+    console.log(
+      "PAYMENT RAW RESPONSE:",
+      JSON.stringify(statusResponse || {}, null, 2),
+    );
     const payload =
       statusResponse && typeof statusResponse === "object"
         ? statusResponse
@@ -3021,6 +3076,7 @@ const normalizePhonePeState = (value) =>
     .toUpperCase();
 
 const UPI_REFERENCE_REGEX = /^\d{12,16}$/;
+const UTR_REGEX = /^\d{12,16}$/;
 const extractNumericUpiReference = (value) => {
   const normalized = String(value || "").trim();
   if (!normalized) return "";
@@ -3029,9 +3085,42 @@ const extractNumericUpiReference = (value) => {
   return embedded?.[1] || "";
 };
 
+const extractUtrNumber = (...args) => {
+  const candidateFields =
+    args.length === 1 &&
+    args[0] &&
+    typeof args[0] === "object" &&
+    !Array.isArray(args[0])
+      ? [
+          args[0]?.utr,
+          args[0]?.UTR,
+          args[0]?.rrn,
+          args[0]?.RRN,
+          args[0]?.bankTransactionId,
+          args[0]?.providerReferenceId,
+          args[0]?.txnId,
+        ]
+      : args;
+
+  for (const value of candidateFields) {
+    const normalized = String(value || "").trim();
+    if (!normalized) continue;
+    const numeric = normalized.replace(/\D/g, "");
+    if (numeric.length >= 12 && numeric.length <= 16) {
+      return numeric;
+    }
+  }
+
+  return "";
+};
+
 const verifyPhonePeWebhookState = async (merchantOrderId) => {
   try {
     const statusResponse = await getPhonePeOrderStatus({ merchantOrderId });
+    console.log(
+      "PAYMENT RAW RESPONSE:",
+      JSON.stringify(statusResponse || {}, null, 2),
+    );
     const state = normalizePhonePeState(statusResponse?.state);
     const paymentDetails = Array.isArray(statusResponse?.paymentDetails)
       ? statusResponse.paymentDetails
@@ -3048,6 +3137,16 @@ const verifyPhonePeWebhookState = async (merchantOrderId) => {
       statusResponse?.bankTransactionId ||
       "";
     const upiReference = extractNumericUpiReference(upiReferenceCandidate);
+    const utrNumber = extractUtrNumber({
+      utr: firstPayment?.utr || statusResponse?.utr,
+      rrn: firstPayment?.rrn || statusResponse?.rrn,
+      bankTransactionId:
+        firstPayment?.bankTransactionId || statusResponse?.bankTransactionId,
+      providerReferenceId:
+        firstPayment?.providerReferenceId ||
+        statusResponse?.providerReferenceId,
+      txnId: firstPayment?.transactionId,
+    });
 
     return {
       state,
@@ -3059,6 +3158,7 @@ const verifyPhonePeWebhookState = async (merchantOrderId) => {
         firstPayment?.utr ||
         null,
       upiReference: upiReference || null,
+      utrNumber: utrNumber || null,
       raw: statusResponse,
     };
   } catch (error) {
@@ -3798,27 +3898,27 @@ const calculateCheckoutPricing = async ({
   const originalAmount = round2(
     standaloneAmount + effectiveComboOriginalAmount,
   );
-  const normalizedComboDiscount = Math.min(
+
+  const comboDiscountInclusive = Math.min(
     Math.max(round2(Number(comboDiscount || 0)), 0),
     originalAmount,
   );
   const discountedOriginalAmount = round2(
-    Math.max(originalAmount - normalizedComboDiscount, 0),
+    Math.max(originalAmount - comboDiscountInclusive, 0),
   );
+
   const originalBaseSplit = splitGstInclusiveAmount(
     originalAmount,
     CHECKOUT_GST_RATE,
     checkoutContact?.state,
   );
   const originalBaseSubtotal = round2(originalBaseSplit.taxableAmount || 0);
-
-  // Product catalog prices are GST-inclusive; derive a GST-exclusive base first.
-  const baseSplit = splitGstInclusiveAmount(
+  const discountedBaseSplit = splitGstInclusiveAmount(
     discountedOriginalAmount,
     CHECKOUT_GST_RATE,
     checkoutContact?.state,
   );
-  const baseSubtotal = round2(baseSplit.taxableAmount || 0);
+  const baseSubtotal = round2(discountedBaseSplit.taxableAmount || 0);
   const comboDiscountBase = round2(
     Math.max(originalBaseSubtotal - baseSubtotal, 0),
   );
@@ -3863,12 +3963,27 @@ const calculateCheckoutPricing = async ({
     workingTaxableAmount,
   );
 
-  const taxableAmount = Math.max(
-    round2(workingTaxableAmount - couponDiscount),
-    0,
+  const totalDiscount = round2(
+    membershipDiscount +
+      influencerDiscount +
+      couponDiscount +
+      comboDiscountBase,
   );
-  const taxData = calculateTax(taxableAmount, checkoutContact?.state || "");
-  const gstAmount = round2(taxData.tax || 0);
+
+  const taxableAmount = round2(
+    Math.max(workingTaxableAmount - couponDiscount, 0),
+  );
+  const gstAmount = round2((taxableAmount * CHECKOUT_GST_RATE) / 100);
+  const taxData = {
+    rate: CHECKOUT_GST_RATE,
+    state: checkoutContact?.state || "",
+    taxableAmount,
+    tax: gstAmount,
+    totalTax: gstAmount,
+    cgst: 0,
+    sgst: 0,
+    igst: gstAmount,
+  };
 
   const requestedCoins = Number(coinRedeem?.coins || coinRedeem || 0);
   if (requestedCoins > 0) {
@@ -3910,13 +4025,10 @@ const calculateCheckoutPricing = async ({
   }
   shippingCharge = Math.max(round2(shippingCharge), 0);
 
-  const finalAmount = round2(postDiscountInclusive + shippingCharge);
-  const totalDiscount = round2(
-    membershipDiscount +
-      influencerDiscount +
-      couponDiscount +
-      comboDiscountBase,
+  const pricingTotals = buildRoundedPricing(
+    postDiscountInclusive + shippingCharge,
   );
+  const finalAmount = pricingTotals.finalAmount;
 
   let influencerCommission = 0;
   if (influencerData?._id) {
@@ -3933,6 +4045,8 @@ const calculateCheckoutPricing = async ({
     gstAmount,
     shippingCharge,
     finalAmount,
+    roundedAmount: pricingTotals.roundedAmount,
+    roundOff: pricingTotals.roundOff,
     totalDiscount,
     membershipDiscount,
     couponDiscount,
@@ -3950,7 +4064,10 @@ const calculateCheckoutPricing = async ({
     },
     redemption,
     comboDiscount: comboDiscountBase,
-    comboDiscountInclusive: normalizedComboDiscount,
+    comboDiscountInclusive: comboDiscountInclusive,
+    basePrice: round2(originalBaseSubtotal),
+    discountedPrice: taxableAmount,
+    roundedTotal: pricingTotals.roundedAmount,
   };
 };
 
@@ -4035,6 +4152,7 @@ export const ensureOrderInvoice = async (orderDoc, options = {}) => {
     }
 
     const pricing = calculateOrderTotal(populatedOrder);
+    const pricingSnapshot = populatedOrder.pricing || {};
     const addressSnapshot =
       populatedOrder.deliveryAddressSnapshot ||
       buildOrderAddressSnapshot(
@@ -4055,18 +4173,21 @@ export const ensureOrderInvoice = async (orderDoc, options = {}) => {
       populatedOrder.guestDetails?.state ||
       populatedOrder.delivery_address?.state ||
       "";
-    const taxBreakdownFromService = calculateTax(pricing.subtotal, state);
     const gst = populatedOrder.gst || {};
     const taxBreakdown = {
-      rate: Number(gst.rate ?? taxBreakdownFromService.rate),
-      state: gst.state || taxBreakdownFromService.state,
+      rate: Number(gst.rate ?? pricingSnapshot.gstRate ?? CHECKOUT_GST_RATE),
+      state: gst.state || pricingSnapshot.state || state || "",
       taxableAmount: Number(
-        gst.taxableAmount ?? taxBreakdownFromService.taxableAmount,
+        gst.taxableAmount ??
+          pricingSnapshot.discountedPrice ??
+          pricing.subtotal,
       ),
-      cgst: Number(gst.cgst ?? taxBreakdownFromService.cgst),
-      sgst: Number(gst.sgst ?? taxBreakdownFromService.sgst),
-      igst: Number(gst.igst ?? taxBreakdownFromService.igst),
-      totalTax: round2(Number(gst.totalTax ?? pricing.tax)),
+      cgst: Number(gst.cgst || 0),
+      sgst: Number(gst.sgst || 0),
+      igst: Number(gst.igst || 0),
+      totalTax: round2(
+        Number(gst.totalTax ?? pricingSnapshot.gst ?? pricing.tax),
+      ),
     };
 
     const billingDetails = {
@@ -4277,6 +4398,7 @@ export const getAllOrders = asyncHandler(async (req, res) => {
       purchaseOrder: null,
       // Hide test/demo orders from the production admin orders screen.
       isDemoOrder: { $ne: true },
+      status: { $ne: ORDER_STATUS.PENDING },
     };
     const andFilters = [];
     const normalizedStatus = String(status || "all")
@@ -4289,11 +4411,6 @@ export const getAllOrders = asyncHandler(async (req, res) => {
       ORDER_STATUS.OUT_FOR_DELIVERY,
       ORDER_STATUS.DELIVERED,
       ORDER_STATUS.COMPLETED,
-    ];
-    const pendingStatuses = [
-      ORDER_STATUS.PENDING,
-      ORDER_STATUS.PAYMENT_PENDING,
-      ORDER_STATUS.IN_WAREHOUSE,
     ];
     const failedStatuses = [
       ORDER_STATUS.CANCELLED,
@@ -4313,7 +4430,6 @@ export const getAllOrders = asyncHandler(async (req, res) => {
       "PAID",
       "CONFIRMED",
     ];
-    const pendingPaymentStatuses = ["pending", "pending_payment", "PENDING"];
     const failedPaymentStatuses = ["failed", "FAILED"];
 
     // Filter by status
@@ -4321,41 +4437,31 @@ export const getAllOrders = asyncHandler(async (req, res) => {
       if (normalizedStatus === "successful") {
         andFilters.push({
           $or: [
-            { order_status: { $in: successStatuses } },
+            { status: { $in: successStatuses } },
             { payment_status: { $in: paidLikeStatuses } },
           ],
         });
       } else if (normalizedStatus === "failed") {
         andFilters.push({
           $or: [
-            { order_status: { $in: failedStatuses } },
+            { status: { $in: failedStatuses } },
             { payment_status: { $in: failedPaymentStatuses } },
           ],
         });
       } else if (normalizedStatus === "pending") {
-        andFilters.push({
-          $or: [
-            { order_status: { $in: pendingStatuses } },
-            { payment_status: { $in: pendingPaymentStatuses } },
-          ],
-        });
+        filter.status = ORDER_STATUS.PENDING;
       } else if (normalizedStatus === "dispatched") {
-        filter.order_status = { $in: dispatchedStatuses };
+        filter.status = { $in: dispatchedStatuses };
       } else {
         const normalizedOrderStatus = normalizeOrderStatus(normalizedStatus);
         if (normalizedOrderStatus === ORDER_STATUS.ACCEPTED) {
-          filter.order_status = { $in: [ORDER_STATUS.ACCEPTED, "confirmed"] };
+          filter.status = { $in: [ORDER_STATUS.ACCEPTED, "confirmed"] };
         } else if (normalizedOrderStatus === "confirmed") {
-          filter.order_status = { $in: [ORDER_STATUS.ACCEPTED, "confirmed"] };
+          filter.status = { $in: [ORDER_STATUS.ACCEPTED, "confirmed"] };
         } else {
-          filter.order_status = normalizedOrderStatus;
+          filter.status = normalizedOrderStatus;
         }
       }
-    } else {
-      andFilters.push({
-        order_status: { $nin: pendingStatuses },
-        payment_status: { $nin: pendingPaymentStatuses },
-      });
     }
 
     // Search by payment identifiers or user email
@@ -4869,9 +4975,9 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
       OrderModel.find()
         .populate("user", "name email avatar")
         .sort({ createdAt: -1 })
-        .limit(5)
+        .limit(10)
         .lean(),
-      OrderModel.countDocuments({ order_status: "pending" }),
+      OrderModel.countDocuments({ status: ORDER_STATUS.PENDING }),
       OrderModel.countDocuments({ payment_status: "pending" }),
     ]);
 
@@ -5007,7 +5113,6 @@ export const updateOrderStatus = asyncHandler(async (req, res) => {
       message:
         "Manual order status changes are disabled. Order status is updated automatically from payment and shipping events.",
     });
-
   } catch (error) {
     if (error instanceof AppError) {
       return sendError(res, error);
@@ -5567,11 +5672,13 @@ export const createOrder = asyncHandler(async (req, res) => {
     const taxData = pricing.taxData;
     const shippingCharge = pricing.shippingCharge;
     const computedFinalAmount = pricing.finalAmount;
+    const roundedAmount = pricing.roundedAmount;
+    const roundOff = pricing.roundOff;
     const totalDiscount = pricing.totalDiscount;
     const comboDiscount = round2(
       Number(pricing.comboDiscountInclusive ?? pricing.comboDiscount ?? 0),
     );
-    const payableAmount = resolveGatewayPayableAmount(computedFinalAmount);
+    const payableAmount = roundedAmount;
 
     const checkoutPurchaseOrder = await authorizePurchaseOrderForCheckout({
       purchaseOrderId,
@@ -5589,7 +5696,10 @@ export const createOrder = asyncHandler(async (req, res) => {
       user: userId,
       products: mergedProducts,
       combos: comboPayload.normalizedCombos,
+      basePrice: round2(Number(pricing.basePrice || 0)),
       subtotal: taxData.taxableAmount,
+      discountedPrice: round2(Number(pricing.taxableAmount || 0)),
+      total: round2(Number(pricing.total ?? (computedFinalAmount || 0))),
       totalAmt: computedFinalAmount,
       delivery_address: checkoutContact.addressId || null,
       payment_status: "pending",
@@ -5605,10 +5715,13 @@ export const createOrder = asyncHandler(async (req, res) => {
       paymentMethod: selectedPaymentProvider,
       originalPrice: pricing.originalAmount,
       comboDiscount,
+      discount: totalDiscount,
       finalAmount: computedFinalAmount,
+      roundedAmount,
+      roundedTotal: roundedAmount,
+      roundOff,
       couponCode: normalizedCouponCode,
       discountAmount: couponDiscount,
-      discount: totalDiscount,
       membershipDiscount,
       membershipPlan: pricing.membershipPlan?.planId || null,
       tax: taxData.tax,
@@ -5620,6 +5733,20 @@ export const createOrder = asyncHandler(async (req, res) => {
         cgst: taxData.cgst,
         sgst: taxData.sgst,
         igst: taxData.igst,
+        totalTax: taxData.totalTax || taxData.tax,
+      },
+      pricing: {
+        originalPrice: round2(Number(pricing.originalAmount || 0)),
+        basePrice: round2(Number(pricing.basePrice || 0)),
+        discount: round2(Number(totalDiscount || 0)),
+        discountedPrice: round2(Number(pricing.taxableAmount || 0)),
+        gst: round2(Number(pricing.gstAmount || 0)),
+        total: round2(Number(pricing.finalAmount || computedFinalAmount || 0)),
+        roundedTotal: round2(Number(roundedAmount || 0)),
+        roundOff: round2(Number(roundOff || 0)),
+        shipping: round2(Number(shippingCharge || 0)),
+        state: checkoutContact?.state || "",
+        gstRate: CHECKOUT_GST_RATE,
       },
       gstNumber: checkoutContact.contact.gst || "",
       billingDetails,
@@ -5914,6 +6041,8 @@ export const createOrder = asyncHandler(async (req, res) => {
             tax: round2(Number(taxData.tax || 0)),
             shipping: round2(Number(shippingCharge || 0)),
             finalAmount: round2(Number(computedFinalAmount || 0)),
+            roundedAmount,
+            roundOff,
           },
           paymentUrl: paymentUrlWithGateway,
           merchantTransactionId,
@@ -5969,6 +6098,8 @@ export const createOrder = asyncHandler(async (req, res) => {
             tax: round2(Number(taxData.tax || 0)),
             shipping: round2(Number(shippingCharge || 0)),
             finalAmount: round2(Number(computedFinalAmount || 0)),
+            roundedAmount,
+            roundOff,
           },
           paymentUrl: phonepeResponse.redirectUrl,
           merchantTransactionId,
@@ -6131,7 +6262,9 @@ export const previewOrderPricing = asyncHandler(async (req, res) => {
         gstAmount: pricing.gstAmount,
         shipping: pricing.shippingCharge,
         finalAmount: pricing.finalAmount,
-        gatewayPayableAmount: resolveGatewayPayableAmount(pricing.finalAmount),
+        roundedAmount: pricing.roundedAmount,
+        roundOff: pricing.roundOff,
+        gatewayPayableAmount: pricing.roundedAmount,
         originalAmount: pricing.originalAmount,
         discountBreakdown: {
           combo: round2(
@@ -6289,6 +6422,8 @@ export const saveOrderForLater = asyncHandler(async (req, res) => {
     const taxData = pricing.taxData;
     const shippingCharge = pricing.shippingCharge;
     const finalOrderAmount = pricing.finalAmount;
+    const roundedAmount = pricing.roundedAmount;
+    const roundOff = pricing.roundOff;
     const totalDiscount = pricing.totalDiscount;
     const comboDiscount = round2(
       Number(pricing.comboDiscountInclusive ?? pricing.comboDiscount ?? 0),
@@ -6331,6 +6466,8 @@ export const saveOrderForLater = asyncHandler(async (req, res) => {
       membershipPlan: pricing.membershipPlan?.planId || null,
       comboDiscount,
       finalAmount: finalOrderAmount,
+      roundedAmount,
+      roundOff,
       influencerId: influencerData?._id || null,
       influencerCode: pricing.influencerCode || null,
       influencerDiscount,
@@ -6598,7 +6735,7 @@ export const saveOrderForLater = asyncHandler(async (req, res) => {
         orderId: savedOrder._id,
         orderStatus: savedOrder.order_status,
         paymentStatus: savedOrder.payment_status,
-        gatewayPayableAmount: resolveGatewayPayableAmount(finalOrderAmount),
+        gatewayPayableAmount: roundedAmount,
         pricing: {
           originalAmount: originalPrice,
           membershipDiscount,
@@ -6609,6 +6746,8 @@ export const saveOrderForLater = asyncHandler(async (req, res) => {
           shipping: shippingCharge,
           totalDiscount,
           finalAmount: finalOrderAmount,
+          roundedAmount,
+          roundOff,
         },
         discountsApplied: {
           influencer: Boolean(influencerData?.code),
@@ -6709,11 +6848,14 @@ export const getPayOrderDetails = asyncHandler(async (req, res) => {
       pendingStatuses.has(normalizedOrderStatus)
     ) {
       await flushExpiredReservationsSafely("getPayOrderDetails");
-      reservationState = await ensureOrderHasActiveReservationForPayment(order, {
-        source: "PAY_ORDER_DETAILS",
-        refreshExpiry: true,
-        throwOnUnavailable: false,
-      });
+      reservationState = await ensureOrderHasActiveReservationForPayment(
+        order,
+        {
+          source: "PAY_ORDER_DETAILS",
+          refreshExpiry: true,
+          throwOnUnavailable: false,
+        },
+      );
     }
 
     const isPayable =
@@ -6722,9 +6864,8 @@ export const getPayOrderDetails = asyncHandler(async (req, res) => {
       reservationState?.status !== "unavailable";
     const reservationExpiresAt =
       reservationState?.expiresAt || order.reservationExpiresAt || null;
-    const reservationSecondsRemaining = resolveReservationSecondsRemaining(
-      reservationExpiresAt,
-    );
+    const reservationSecondsRemaining =
+      resolveReservationSecondsRemaining(reservationExpiresAt);
 
     const displayOrderId = resolveDisplayOrderNumber(order);
     const items = Array.isArray(order.products)
@@ -6851,8 +6992,13 @@ export const initiatePayOrderPayment = asyncHandler(async (req, res) => {
       requestedPaymentProvider,
     );
 
-    const payableAmount = resolveGatewayPayableAmount(
-      Number(order.finalAmount || order.totalAmt || 0),
+    const payableAmount = Math.max(
+      Number(order.roundedAmount || 0) > 0
+        ? roundToNearestRupee(order.roundedAmount)
+        : resolveGatewayPayableAmount(
+            Number(order.finalAmount || order.totalAmt || 0),
+          ),
+      1,
     );
 
     const primaryOrigin = resolveClientBaseUrl(req);
@@ -6933,6 +7079,10 @@ export const initiatePayOrderPayment = asyncHandler(async (req, res) => {
           tax: round2(Number(order.tax || 0)),
           shipping: round2(Number(order.shipping || 0)),
           finalAmount: round2(Number(order.finalAmount || order.totalAmt || 0)),
+          roundedAmount: roundToNearestRupee(
+            order.roundedAmount || payableAmount,
+          ),
+          roundOff: round2(Number(order.roundOff || 0)),
         },
         paymentUrl: paymentUrlWithGateway,
         merchantTransactionId,
@@ -6999,6 +7149,10 @@ export const initiatePayOrderPayment = asyncHandler(async (req, res) => {
           tax: round2(Number(order.tax || 0)),
           shipping: round2(Number(order.shipping || 0)),
           finalAmount: round2(Number(order.finalAmount || order.totalAmt || 0)),
+          roundedAmount: roundToNearestRupee(
+            order.roundedAmount || payableAmount,
+          ),
+          roundOff: round2(Number(order.roundOff || 0)),
         },
         paymentUrl: phonepeResponse.redirectUrl,
         merchantTransactionId,
@@ -7113,8 +7267,13 @@ export const retryOrderPayment = asyncHandler(async (req, res) => {
       requestedPaymentProvider,
     );
 
-    const payableAmount = resolveGatewayPayableAmount(
-      Number(order.finalAmount || order.totalAmt || 0),
+    const payableAmount = Math.max(
+      Number(order.roundedAmount || 0) > 0
+        ? roundToNearestRupee(order.roundedAmount)
+        : resolveGatewayPayableAmount(
+            Number(order.finalAmount || order.totalAmt || 0),
+          ),
+      1,
     );
 
     const primaryOrigin = resolveClientBaseUrl(req);
@@ -7189,6 +7348,10 @@ export const retryOrderPayment = asyncHandler(async (req, res) => {
           tax: round2(Number(order.tax || 0)),
           shipping: round2(Number(order.shipping || 0)),
           finalAmount: round2(Number(order.finalAmount || order.totalAmt || 0)),
+          roundedAmount: roundToNearestRupee(
+            order.roundedAmount || payableAmount,
+          ),
+          roundOff: round2(Number(order.roundOff || 0)),
         },
         paymentUrl: paymentUrlWithGateway,
         merchantTransactionId,
@@ -7254,6 +7417,10 @@ export const retryOrderPayment = asyncHandler(async (req, res) => {
           tax: round2(Number(order.tax || 0)),
           shipping: round2(Number(order.shipping || 0)),
           finalAmount: round2(Number(order.finalAmount || order.totalAmt || 0)),
+          roundedAmount: roundToNearestRupee(
+            order.roundedAmount || payableAmount,
+          ),
+          roundOff: round2(Number(order.roundOff || 0)),
         },
         paymentUrl: phonepeResponse.redirectUrl,
         merchantTransactionId,
@@ -7647,6 +7814,23 @@ const applyResolvedPaymentStatus = async ({
   ) {
     order[providerTransactionIdField] = transactionId;
     order.paymentId = transactionId;
+    order.paymentAppTxnId = transactionId;
+    orderMutated = true;
+  }
+
+  if (
+    transactionId &&
+    String(order.paymentAppTxnId || "") !== String(transactionId)
+  ) {
+    order.paymentAppTxnId = transactionId;
+    orderMutated = true;
+  }
+
+  if (
+    paymentProvider &&
+    String(order.paymentProvider || "") !== String(paymentProvider)
+  ) {
+    order.paymentProvider = paymentProvider;
     orderMutated = true;
   }
 
@@ -7947,6 +8131,19 @@ const reconcileOrderPaymentStatus = async ({
           verifiedStatus?.upiReference || order.upiReferenceNo || null,
         rrn: verifiedStatus?.upiReference || order.rrn || null,
         utr: verifiedStatus?.upiReference || order.utr || null,
+        utrNumber:
+          verifiedStatus?.utrNumber ||
+          extractUtrNumber({
+            providerReferenceId: verifiedStatus?.upiReference,
+            txnId: verifiedStatus?.transactionId,
+          }) ||
+          order.utrNumber ||
+          null,
+        upiRefId:
+          verifiedStatus?.upiReference ||
+          verifiedStatus?.transactionId ||
+          order.upiRefId ||
+          null,
       },
       successSource,
       shipmentSource,
@@ -8190,6 +8387,13 @@ export const handlePaytmWebhook = asyncHandler(async (req, res) => {
             failureKind,
           })
         : "Paytm payment failed";
+    const resolvedPaytmUtrNumber =
+      verifiedStatus?.utrNumber ||
+      extractUtrNumber({ txnId: transactionId }) ||
+      null;
+    if (!resolvedPaytmUtrNumber) {
+      console.warn("UTR NOT FOUND IN PAYMENT RESPONSE");
+    }
 
     const resolution = await applyResolvedPaymentStatus({
       order,
@@ -8199,6 +8403,12 @@ export const handlePaytmWebhook = asyncHandler(async (req, res) => {
       transactionId,
       providerOrderIdField: "paytmOrderId",
       providerTransactionIdField: "paytmTransactionId",
+      extraUpdates: {
+        paymentAppTxnId: transactionId || order.paymentAppTxnId || null,
+        utrNumber: resolvedPaytmUtrNumber,
+        upiRefId:
+          verifiedStatus?.utrNumber || transactionId || order.upiRefId || null,
+      },
       successSource: "PAYMENT_WEBHOOK",
       shipmentSource: "PAYMENT_WEBHOOK_AUTO_SHIPMENT",
       failureReason,
@@ -8470,17 +8680,30 @@ export const backfillSuccessfulOrderPaymentIds = asyncHandler(
         }
 
         const currentPaymentId = String(order?.paymentId || "").trim();
-        if (currentPaymentId && !isGatewayMerchantReference(currentPaymentId)) {
+        const currentPaymentAppTxnId = String(
+          order?.paymentAppTxnId || "",
+        ).trim();
+        if (
+          currentPaymentId &&
+          !currentPaymentAppTxnId &&
+          !isGatewayMerchantReference(currentPaymentId)
+        ) {
           skipped += 1;
           continue;
         }
 
-        if (currentPaymentId === transactionId) {
+        if (
+          currentPaymentId === transactionId &&
+          currentPaymentAppTxnId === transactionId
+        ) {
           skipped += 1;
           continue;
         }
 
         order.paymentId = transactionId;
+        order.paymentAppTxnId = transactionId;
+        order.paymentProvider =
+          order.paymentProvider || resolvePaymentProviderFromOrder(order) || "";
         order.updatedAt = new Date();
         await order.save();
         updated += 1;
@@ -8641,6 +8864,17 @@ export const handlePhonePeWebhook = asyncHandler(async (req, res) => {
             failureKind,
           })
         : "PhonePe payment failed";
+    const resolvedPhonePeUtrNumber =
+      verifiedStatus?.utrNumber ||
+      extractUtrNumber({
+        providerReferenceId: verifiedStatus?.upiReference,
+        txnId: transactionId,
+      }) ||
+      order.utrNumber ||
+      null;
+    if (!resolvedPhonePeUtrNumber) {
+      console.warn("UTR NOT FOUND IN PAYMENT RESPONSE");
+    }
 
     const resolution = await applyResolvedPaymentStatus({
       order,
@@ -8651,6 +8885,7 @@ export const handlePhonePeWebhook = asyncHandler(async (req, res) => {
       providerOrderIdField: "phonepeMerchantOrderId",
       providerTransactionIdField: "phonepeTransactionId",
       extraUpdates: {
+        paymentAppTxnId: transactionId || order.paymentAppTxnId || null,
         phonepeOrderId:
           verifiedStatus.phonepeOrderId || order.phonepeOrderId || null,
         upiRef: verifiedStatus?.upiReference || order.upiRef || null,
@@ -8660,6 +8895,12 @@ export const handlePhonePeWebhook = asyncHandler(async (req, res) => {
           verifiedStatus?.upiReference || order.upiReferenceNo || null,
         rrn: verifiedStatus?.upiReference || order.rrn || null,
         utr: verifiedStatus?.upiReference || order.utr || null,
+        utrNumber: resolvedPhonePeUtrNumber,
+        upiRefId:
+          verifiedStatus?.upiReference ||
+          transactionId ||
+          order.upiRefId ||
+          null,
       },
       successSource: "PHONEPE_WEBHOOK",
       shipmentSource: "PHONEPE_WEBHOOK_AUTO_SHIPMENT",
@@ -8760,6 +9001,15 @@ export const createTestOrder = asyncHandler(async (req, res) => {
     const influencerCode = String(body.influencerCode || "")
       .trim()
       .toUpperCase();
+    const couponCode = String(body.couponCode || "")
+      .trim()
+      .toUpperCase();
+    const recipientEmailOverride = String(body.recipientEmail || "")
+      .trim()
+      .toLowerCase();
+    const shouldSendConfirmationEmail = Boolean(
+      body.sendConfirmationEmail || recipientEmailOverride,
+    );
     const shippingSuppressed = true;
 
     if (!effectiveUserId) {
@@ -8770,7 +9020,9 @@ export const createTestOrder = asyncHandler(async (req, res) => {
 
     logger.debug("createTestOrder", "Creating test order", {
       userId: effectiveUserId,
+      couponCode: couponCode || null,
       influencerCode: influencerCode || null,
+      recipientEmailOverride: recipientEmailOverride || null,
       shippingSuppressed,
     });
 
@@ -8855,7 +9107,7 @@ export const createTestOrder = asyncHandler(async (req, res) => {
       state: selectedState,
       contact: {
         fullName: String(user.name || "Demo User"),
-        email: String(user.email || "")
+        email: String(recipientEmailOverride || user.email || "")
           .trim()
           .toLowerCase(),
         phone: String(user.mobile || body.phone || "").trim(),
@@ -8873,7 +9125,7 @@ export const createTestOrder = asyncHandler(async (req, res) => {
       comboDiscount: comboPayload.comboDiscount,
       comboOriginalAmount: comboPayload.comboOriginalAmount,
       userId: effectiveUserId,
-      couponCode: null,
+      couponCode: couponCode || null,
       influencerCode: influencerCode || null,
       checkoutContact,
       coinRedeem: { coins: 0 },
@@ -8894,25 +9146,38 @@ export const createTestOrder = asyncHandler(async (req, res) => {
       : round2(Number(pricing.shippingCharge || 0));
     const taxableAmount = round2(Number(pricing.taxableAmount || 0));
     const gstAmount = round2(Number(pricing.gstAmount || 0));
-    const finalAmount = round2(taxableAmount + gstAmount + shippingCharge);
+    const pricingTotals = buildRoundedPricing(
+      taxableAmount + gstAmount + shippingCharge,
+    );
+    const finalAmount = pricingTotals.finalAmount;
     const generatedFinalOrderId = await generateFinalOrderId();
     const billingDetails =
       buildBillingDetailsFromCheckoutContact(checkoutContact);
 
     // Create test order (paid + accepted), but shipping-suppressed.
+    const generatedTestPaymentId = `TEST_${Date.now()}`;
     const testOrder = new OrderModel({
       user: effectiveUserId,
       products: mergedProducts,
       combos: comboPayload.normalizedCombos,
+      basePrice: round2(Number(pricing.basePrice || 0)),
+      total: round2(Number(pricing.total || finalAmount || 0)),
       totalAmt: finalAmount,
       subtotal: taxableAmount,
+      discountedPrice: taxableAmount,
       tax: gstAmount,
       shipping: shippingCharge,
       finalAmount,
+      roundedAmount: pricingTotals.roundedAmount,
+      roundedTotal: pricingTotals.roundedAmount,
+      roundOff: pricingTotals.roundOff,
       paymentMethod: "TEST",
       payment_status: "paid",
       order_status: ORDER_STATUS.ACCEPTED,
       status: "confirmed",
+      shippingStatus: "manual",
+      shipmentStatus: "pending",
+      shipment_status: "pending",
       statusTimeline: [
         {
           status: ORDER_STATUS.PENDING,
@@ -8925,14 +9190,15 @@ export const createTestOrder = asyncHandler(async (req, res) => {
           timestamp: new Date(),
         },
       ],
-      paymentId: `TEST_${Date.now()}`,
+      paymentId: generatedTestPaymentId,
+      paymentAppTxnId: generatedTestPaymentId,
       originalPrice: round2(Number(pricing.originalAmount || finalAmount)),
       comboDiscount: round2(
         Number(pricing.comboDiscountInclusive ?? pricing.comboDiscount ?? 0),
       ),
+      discount: round2(Number(pricing.totalDiscount || 0)),
       couponCode: pricing.normalizedCouponCode || null,
       discountAmount: round2(Number(pricing.couponDiscount || 0)),
-      discount: round2(Number(pricing.totalDiscount || 0)),
       membershipDiscount: round2(Number(pricing.membershipDiscount || 0)),
       influencerId: pricing.influencerData?._id || null,
       influencerCode: pricing.influencerCode || null,
@@ -8949,6 +9215,20 @@ export const createTestOrder = asyncHandler(async (req, res) => {
         cgst: Number(pricing.taxData?.cgst || 0),
         sgst: Number(pricing.taxData?.sgst || 0),
         igst: Number(pricing.taxData?.igst || 0),
+        totalTax: Number(pricing.taxData?.totalTax || gstAmount || 0),
+      },
+      pricing: {
+        originalPrice: round2(Number(pricing.originalAmount || 0)),
+        basePrice: round2(Number(pricing.basePrice || 0)),
+        discount: round2(Number(pricing.totalDiscount || 0)),
+        discountedPrice: round2(Number(taxableAmount || 0)),
+        gst: round2(Number(gstAmount || 0)),
+        total: round2(Number(pricing.finalAmount || finalAmount || 0)),
+        roundedTotal: round2(Number(pricingTotals.roundedAmount || 0)),
+        roundOff: round2(Number(pricingTotals.roundOff || 0)),
+        shipping: round2(Number(shippingCharge || 0)),
+        state: pricing.taxData?.state || selectedState || "",
+        gstRate: CHECKOUT_GST_RATE,
       },
       gstNumber: checkoutContact.contact.gst || "",
       billingDetails,
@@ -8967,7 +9247,7 @@ export const createTestOrder = asyncHandler(async (req, res) => {
       isDemoOrder: true,
       notes:
         String(body.notes || "").trim() ||
-        "Demo influencer test order (shipping suppressed)",
+        "Demo test order (shipping suppressed, shippingStatus=manual)",
     });
 
     await testOrder.save();
@@ -9052,6 +9332,8 @@ export const createTestOrder = asyncHandler(async (req, res) => {
         gst: gstAmount,
         shipping: shippingCharge,
         total: finalAmount,
+        roundedAmount: pricingTotals.roundedAmount,
+        roundOff: pricingTotals.roundOff,
       },
       items: mergedProducts.map((item) => ({
         productId: item.productId || null,
@@ -9096,6 +9378,11 @@ export const createTestOrder = asyncHandler(async (req, res) => {
       },
     });
 
+    let confirmationEmailSent = false;
+    if (shouldSendConfirmationEmail) {
+      confirmationEmailSent = await sendOrderConfirmationEmail(testOrder);
+    }
+
     logger.info("createTestOrder", "Test order created", {
       orderId: testOrder._id,
       influencerCode: testOrder.influencerCode || null,
@@ -9119,6 +9406,19 @@ export const createTestOrder = asyncHandler(async (req, res) => {
           discount: round2(Number(testOrder.influencerDiscount || 0)),
           commission: round2(Number(testOrder.influencerCommission || 0)),
           statsSynced: influencerStatsSynced,
+        },
+        coupon: {
+          code: testOrder.couponCode || null,
+          discount: round2(Number(testOrder.discountAmount || 0)),
+        },
+        email: {
+          recipient:
+            recipientEmailOverride ||
+            String(user.email || "")
+              .trim()
+              .toLowerCase() ||
+            null,
+          sent: confirmationEmailSent,
         },
         invoice: invoiceSummary,
         clientInvoice,

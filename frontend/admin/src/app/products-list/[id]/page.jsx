@@ -18,20 +18,7 @@ const normalizeVariantLabel = (variant) => {
     .toLowerCase();
 
   if (Number.isFinite(weight) && weight > 0) {
-    if (rawUnit === "g") {
-      return weight >= 1000 ? `${weight / 1000}kg` : `${weight}g`;
-    }
-    if (
-      rawUnit === "kg" ||
-      rawUnit === "ml" ||
-      rawUnit === "l" ||
-      rawUnit === "pcs"
-    ) {
-      return `${weight}${rawUnit}`;
-    }
-    if (rawUnit) {
-      return `${weight}${rawUnit}`;
-    }
+    return `${weight}${rawUnit || "g"}`;
   }
 
   return String(variant?.name || "Variant")
@@ -61,6 +48,7 @@ const ViewProduct = () => {
   const [selectedImage, setSelectedImage] = useState(0);
   const [reviews, setReviews] = useState([]);
   const [reviewsLoading, setReviewsLoading] = useState(true);
+  const [selectedReviewVariant, setSelectedReviewVariant] = useState("all");
 
   const fetchProduct = useCallback(async () => {
     setIsLoading(true);
@@ -83,8 +71,12 @@ const ViewProduct = () => {
 
     setReviewsLoading(true);
     try {
+      const variantQuery =
+        selectedReviewVariant && selectedReviewVariant !== "all"
+          ? `&variantId=${encodeURIComponent(String(selectedReviewVariant))}`
+          : "";
       const response = await getData(
-        `/api/admin/reviews?productId=${encodeURIComponent(String(productId))}&limit=100`,
+        `/api/admin/reviews?productId=${encodeURIComponent(String(productId))}${variantQuery}&limit=100`,
         token,
       );
       if (response?.success && Array.isArray(response?.data)) {
@@ -98,7 +90,7 @@ const ViewProduct = () => {
     } finally {
       setReviewsLoading(false);
     }
-  }, [productId, token]);
+  }, [productId, token, selectedReviewVariant]);
 
   useEffect(() => {
     if (!loading && !isAuthenticated) {
@@ -271,11 +263,10 @@ const ViewProduct = () => {
 
             <p className="text-sm text-gray-500 mb-4">{product.brand}</p>
 
-            <div className="flex items-center gap-3 mb-4">
-              <Rating value={product.rating || 0} readOnly precision={0.5} />
-              <span className="text-gray-600">
-                ({product.numReviews || 0} reviews)
-              </span>
+            <div className="mb-4 text-gray-600">
+              {Number(product.reviewCount || product.numReviews || 0) > 0
+                ? `${Number(product.rating || 0).toFixed(1)} (${Number(product.reviewCount || product.numReviews || 0)})`
+                : "0.0 (0)"}
             </div>
 
             <div className="flex items-baseline gap-3 mb-6">
@@ -406,6 +397,25 @@ const ViewProduct = () => {
                 All reviews currently published or hidden for this product.
               </p>
             </div>
+            {variantInventoryLines.length > 0 ? (
+              <label className="min-w-[220px] text-sm text-gray-700">
+                <span className="mb-1 block font-medium">Review Variant</span>
+                <select
+                  value={selectedReviewVariant}
+                  onChange={(event) =>
+                    setSelectedReviewVariant(event.target.value)
+                  }
+                  className="h-10 w-full rounded-md border border-gray-200 bg-white px-3 outline-none focus:border-blue-500"
+                >
+                  <option value="all">All variants</option>
+                  {variantInventoryLines.map((entry) => (
+                    <option key={entry.id} value={entry.id}>
+                      {entry.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
             <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-right">
               <p className="text-xs uppercase tracking-wide text-blue-700">
                 Reviews
@@ -450,6 +460,15 @@ const ViewProduct = () => {
                           .filter(Boolean)
                           .join(" • ") || "No extra identity"}
                       </p>
+                      {review.variantId ? (
+                        <p className="mt-1 text-xs font-medium text-blue-700">
+                          Variant:{" "}
+                          {variantInventoryLines.find(
+                            (entry) =>
+                              String(entry.id) === String(review.variantId),
+                          )?.label || String(review.variantId)}
+                        </p>
+                      ) : null}
                       <p className="mt-2 text-sm text-gray-700">
                         {review.comment}
                       </p>
