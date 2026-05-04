@@ -285,8 +285,7 @@ const buildDetailCards = ({
   avgRating,
   reviewCount,
 }) => {
-  const categoryLabel =
-    product?.category?.name || product?.categoryName || "";
+  const categoryLabel = product?.category?.name || product?.categoryName || "";
   const selectedLabel = selectedVariant
     ? getVariantWeightLabel(selectedVariant)
     : formatVariantWeight(product);
@@ -543,7 +542,11 @@ const ProductDetailPage = () => {
   const currentVariantInCart =
     productId && isInCart(productId, selectedVariantId);
   const effectiveReviewVariantId = product?.hasVariants
-    ? reviewVariantFilter || selectedVariantId || defaultVariant?._id || defaultVariant?.id || ""
+    ? reviewVariantFilter ||
+      selectedVariantId ||
+      defaultVariant?._id ||
+      defaultVariant?.id ||
+      ""
     : "";
   const variantFilteredReviews = (
     customerReviews.length > 0 ? customerReviews : demoReviewFallback
@@ -685,7 +688,8 @@ const ProductDetailPage = () => {
         resolvedSelectedVariant.weight ?? product?.weight,
         resolvedSelectedVariant.unit ?? product?.unit,
       )
-    : getWeightInGrams(product) || convertWeightToGrams(product?.weight, product?.unit);
+    : getWeightInGrams(product) ||
+      convertWeightToGrams(product?.weight, product?.unit);
   const deliveryPreviewWeightGrams =
     activeWeightGrams > 0 ? activeWeightGrams : 500;
   const deliveryPreviewOrderAmount = Math.max(toNumber(activePrice, 0), 0);
@@ -723,8 +727,8 @@ const ProductDetailPage = () => {
     ? "relative mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-stretch"
     : "relative mt-6";
   const imageStageClassName = showHeroStoryCard
-    ? "product-image-stage relative flex min-h-[480px] items-center justify-center overflow-hidden rounded-[30px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.92)_0%,rgba(244,236,229,0.88)_100%)] p-6 lg:h-full lg:min-h-[540px]"
-    : "product-image-stage relative mx-auto flex min-h-[420px] max-w-[840px] items-center justify-center overflow-hidden rounded-[30px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.92)_0%,rgba(244,236,229,0.88)_100%)] p-6 sm:p-10";
+    ? "product-image-stage relative flex min-h-[480px] overflow-hidden rounded-[30px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.92)_0%,rgba(244,236,229,0.88)_100%)] p-0 lg:h-full lg:min-h-[540px]"
+    : "product-image-stage relative mx-auto flex min-h-[420px] max-w-[840px] overflow-hidden rounded-[30px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.92)_0%,rgba(244,236,229,0.88)_100%)] p-0";
 
   const fetchReviewSettings = useCallback(async () => {
     try {
@@ -743,32 +747,35 @@ const ProductDetailPage = () => {
     setReviewSettings(DEFAULT_REVIEW_SETTINGS);
   }, []);
 
-  const fetchProductReviews = useCallback(async (productValueId, variantId = "") => {
-    if (!productValueId) {
-      setCustomerReviews([]);
-      return;
-    }
-
-    try {
-      setReviewsLoading(true);
-      const variantQuery = variantId
-        ? `?variantId=${encodeURIComponent(String(variantId))}`
-        : "";
-      const response = await fetchDataFromApi(
-        `/api/reviews/${productValueId}${variantQuery}`,
-      );
-      if (response?.success && Array.isArray(response?.data)) {
-        setCustomerReviews(response.data);
-      } else {
+  const fetchProductReviews = useCallback(
+    async (productValueId, variantId = "") => {
+      if (!productValueId) {
         setCustomerReviews([]);
+        return;
       }
-    } catch (error) {
-      console.error("Error fetching product reviews:", error);
-      setCustomerReviews([]);
-    } finally {
-      setReviewsLoading(false);
-    }
-  }, []);
+
+      try {
+        setReviewsLoading(true);
+        const variantQuery = variantId
+          ? `?variantId=${encodeURIComponent(String(variantId))}`
+          : "";
+        const response = await fetchDataFromApi(
+          `/api/reviews/${productValueId}${variantQuery}`,
+        );
+        if (response?.success && Array.isArray(response?.data)) {
+          setCustomerReviews(response.data);
+        } else {
+          setCustomerReviews([]);
+        }
+      } catch (error) {
+        console.error("Error fetching product reviews:", error);
+        setCustomerReviews([]);
+      } finally {
+        setReviewsLoading(false);
+      }
+    },
+    [],
+  );
 
   const handleSubmitPublicReview = async () => {
     const activeProductId = getResolvedProductId(product);
@@ -888,24 +895,40 @@ const ProductDetailPage = () => {
     [],
   );
 
-  const fetchFrequentlyBought = useCallback(async (productValueId, categoryId = "") => {
-    if (!productValueId) {
-      setFrequentlyBought([]);
-      return;
-    }
+  const fetchFrequentlyBought = useCallback(
+    async (productValueId, categoryId = "") => {
+      if (!productValueId) {
+        setFrequentlyBought([]);
+        return;
+      }
 
-    try {
-      setFbtLoading(true);
-      const response = await fetchDataFromApi(
-        `/api/products/${productValueId}/frequently-bought?limit=3`,
-      );
-      if (response?.success && Array.isArray(response?.data)) {
-        const items = response.data.filter((item) => !isExclusiveProduct(item));
-        if (items.length > 0) {
-          setFrequentlyBought(items);
+      try {
+        setFbtLoading(true);
+        const response = await fetchDataFromApi(
+          `/api/products/${productValueId}/frequently-bought?limit=3`,
+        );
+        if (response?.success && Array.isArray(response?.data)) {
+          const items = response.data.filter(
+            (item) => !isExclusiveProduct(item),
+          );
+          if (items.length > 0) {
+            setFrequentlyBought(items);
+            return;
+          }
+        } else {
+          const fallbackProducts = await fetchFallbackProducts({
+            categoryId,
+            excludeId: productValueId,
+            limit: 3,
+          });
+          setFrequentlyBought(
+            fallbackProducts.map((fallbackProduct) => ({
+              product: fallbackProduct,
+              recommendation: { product: fallbackProduct },
+            })),
+          );
           return;
         }
-      } else {
         const fallbackProducts = await fetchFallbackProducts({
           categoryId,
           excludeId: productValueId,
@@ -917,36 +940,25 @@ const ProductDetailPage = () => {
             recommendation: { product: fallbackProduct },
           })),
         );
-        return;
+      } catch (error) {
+        console.error("Error fetching frequently bought together:", error);
+        const fallbackProducts = await fetchFallbackProducts({
+          categoryId,
+          excludeId: productValueId,
+          limit: 3,
+        });
+        setFrequentlyBought(
+          fallbackProducts.map((fallbackProduct) => ({
+            product: fallbackProduct,
+            recommendation: { product: fallbackProduct },
+          })),
+        );
+      } finally {
+        setFbtLoading(false);
       }
-      const fallbackProducts = await fetchFallbackProducts({
-        categoryId,
-        excludeId: productValueId,
-        limit: 3,
-      });
-      setFrequentlyBought(
-        fallbackProducts.map((fallbackProduct) => ({
-          product: fallbackProduct,
-          recommendation: { product: fallbackProduct },
-        })),
-      );
-    } catch (error) {
-      console.error("Error fetching frequently bought together:", error);
-      const fallbackProducts = await fetchFallbackProducts({
-        categoryId,
-        excludeId: productValueId,
-        limit: 3,
-      });
-      setFrequentlyBought(
-        fallbackProducts.map((fallbackProduct) => ({
-          product: fallbackProduct,
-          recommendation: { product: fallbackProduct },
-        })),
-      );
-    } finally {
-      setFbtLoading(false);
-    }
-  }, [fetchFallbackProducts]);
+    },
+    [fetchFallbackProducts],
+  );
 
   const fetchRecommendedCombos = useCallback(async (productValueId) => {
     if (!productValueId) {
@@ -1069,11 +1081,7 @@ const ProductDetailPage = () => {
         }
       }
     },
-    [
-      fetchFrequentlyBought,
-      fetchRecommendedCombos,
-      routeId,
-    ],
+    [fetchFrequentlyBought, fetchRecommendedCombos, routeId],
   );
 
   const stopFallbackPolling = useCallback(() => {
@@ -1173,7 +1181,12 @@ const ProductDetailPage = () => {
         ? previous
         : String(nextVariantId || ""),
     );
-  }, [defaultVariant, product?.hasVariants, product?.variants, selectedVariantId]);
+  }, [
+    defaultVariant,
+    product?.hasVariants,
+    product?.variants,
+    selectedVariantId,
+  ]);
 
   useEffect(() => {
     if (!product?.hasVariants || !Array.isArray(product?.variants)) return;
@@ -1871,16 +1884,17 @@ const ProductDetailPage = () => {
                       if (delta > 0) showPreviousImage();
                       else showNextImage();
                     }}
-                    className="group relative z-10 flex h-full w-full cursor-zoom-in items-center justify-center rounded-2xl"
+                    className="group relative z-10 flex h-full w-full cursor-zoom-in overflow-hidden rounded-[28px]"
                     aria-label="Open product image zoom"
                   >
                     <ProductImage
                       src={activeImage}
                       alt={product?.name || product?.title || "Product image"}
-                      aspect="aspect-square"
                       fit="cover"
-                      className="h-[360px] w-full sm:h-[430px] lg:h-[520px]"
-                      imgClassName="transition duration-300 ease-out"
+                      aspect=""
+                      rounded="rounded-[28px]"
+                      className="h-full w-full bg-transparent"
+                      imgClassName="transition duration-300 ease-out group-hover:scale-[1.03]"
                     />
                     <span className="pointer-events-none absolute bottom-3 right-3 inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/85 px-3 py-1.5 text-xs font-semibold text-[#1d3740] opacity-0 transition group-hover:opacity-100">
                       <FiMaximize2 className="text-sm" />
@@ -1958,37 +1972,37 @@ const ProductDetailPage = () => {
                   const showMoreOverlay =
                     index === 3 && remainingGalleryCount > 0;
                   return (
-                  <button
-                    key={`${image}-${index}`}
-                    type="button"
-                    onClick={() => {
-                      setActiveImageIndex(index);
-                      if (showMoreOverlay) {
-                        setIsImageZoomOpen(true);
-                      }
-                    }}
-                    className={`overflow-hidden rounded-[22px] border bg-white p-2 shadow-sm transition ${
-                      activeImageIndex === index
-                        ? "border-[#123b4a] shadow-[0_18px_40px_-28px_rgba(18,59,74,0.7)]"
-                        : "border-[#eadcd1] hover:-translate-y-0.5 hover:border-[#b9d0d8]"
-                    }`}
-                  >
-                        <ProductImage
-                          src={image}
-                          alt={`Preview ${index + 1}`}
-                          aspect="aspect-square"
-                          fit="cover"
-                          padding="p-1"
-                          rounded="rounded-[16px]"
-                          className="w-full"
+                    <button
+                      key={`${image}-${index}`}
+                      type="button"
+                      onClick={() => {
+                        setActiveImageIndex(index);
+                        if (showMoreOverlay) {
+                          setIsImageZoomOpen(true);
+                        }
+                      }}
+                      className={`overflow-hidden rounded-[22px] border bg-white p-2 shadow-sm transition ${
+                        activeImageIndex === index
+                          ? "border-[#123b4a] shadow-[0_18px_40px_-28px_rgba(18,59,74,0.7)]"
+                          : "border-[#eadcd1] hover:-translate-y-0.5 hover:border-[#b9d0d8]"
+                      }`}
+                    >
+                      <ProductImage
+                        src={image}
+                        alt={`Preview ${index + 1}`}
+                        aspect="aspect-square"
+                        fit="cover"
+                        padding="p-1"
+                        rounded="rounded-[16px]"
+                        className="w-full"
                       >
-                      {showMoreOverlay ? (
-                        <span className="absolute inset-2 flex items-center justify-center rounded-[16px] bg-black/55 text-lg font-semibold text-white">
-                          +{remainingGalleryCount}
-                        </span>
-                      ) : null}
-                    </ProductImage>
-                  </button>
+                        {showMoreOverlay ? (
+                          <span className="absolute inset-2 flex items-center justify-center rounded-[16px] bg-black/55 text-lg font-semibold text-white">
+                            +{remainingGalleryCount}
+                          </span>
+                        ) : null}
+                      </ProductImage>
+                    </button>
                   );
                 })}
               </div>
@@ -2614,7 +2628,7 @@ const ProductDetailPage = () => {
                 <h2 className="mt-2 text-3xl font-semibold text-[#24150f]">
                   {mergeTextOverride(
                     pageConfig?.reviewsSection?.title,
-                    "Reviews below the story, closer to the buy decision",
+                    "Ratings and reviews",
                   )}
                 </h2>
               </div>
@@ -2716,49 +2730,52 @@ const ProductDetailPage = () => {
                     ref={reviewScrollerRef}
                     className="flex snap-x snap-mandatory gap-4 overflow-x-auto pb-3 [scrollbar-width:thin]"
                   >
-                  {reviewCarouselItems.map((review, index) => (
-                    <article
-                      key={
-                        review?._id ||
-                        `${review?.userName || "review"}-${index}`
-                      }
-                      className="product-review-card min-w-[280px] snap-start rounded-[28px] border border-[#e7dad1] bg-[#fbf7f2] p-6 sm:min-w-[320px] lg:min-w-[360px]"
-                    >
-                      <div className="flex items-center gap-4">
-                        {review?.avatar ? (
-                          <img
-                            src={getImageUrl(review.avatar)}
-                            alt={review?.userName || "Customer"}
-                            className="h-14 w-14 rounded-2xl object-cover"
-                          />
-                        ) : (
-                          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#2f1b12] text-base font-semibold text-white">
-                            {getReviewInitials(review)}
+                    {reviewCarouselItems.map((review, index) => (
+                      <article
+                        key={
+                          review?._id ||
+                          `${review?.userName || "review"}-${index}`
+                        }
+                        className="product-review-card min-w-[280px] snap-start rounded-[28px] border border-[#e7dad1] bg-[#fbf7f2] p-6 sm:min-w-[320px] lg:min-w-[360px]"
+                      >
+                        <div className="flex items-center gap-4">
+                          {review?.avatar ? (
+                            <img
+                              src={getImageUrl(review.avatar)}
+                              alt={review?.userName || "Customer"}
+                              className="h-14 w-14 rounded-2xl object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#2f1b12] text-base font-semibold text-white">
+                              {getReviewInitials(review)}
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <p className="font-semibold text-[#24150f]">
+                              {review?.userName || "Customer"}
+                            </p>
+                            <p className="text-sm text-[#6d584a]">
+                              {[
+                                review?.city,
+                                formatReviewDate(review?.createdAt),
+                              ]
+                                .filter(Boolean)
+                                .join("  •  ")}
+                            </p>
                           </div>
-                        )}
-                        <div className="min-w-0">
-                          <p className="font-semibold text-[#24150f]">
-                            {review?.userName || "Customer"}
-                          </p>
-                          <p className="text-sm text-[#6d584a]">
-                            {[review?.city, formatReviewDate(review?.createdAt)]
-                              .filter(Boolean)
-                              .join("  •  ")}
-                          </p>
                         </div>
-                      </div>
-                      <div className="mt-4">
-                        <Rating
-                          value={Math.max(Number(review?.rating || 0), 0)}
-                          readOnly
-                          size="small"
-                        />
-                      </div>
-                      <p className="mt-4 text-sm leading-7 text-[#4b392f]">
-                        {review?.comment || "No written comment available."}
-                      </p>
-                    </article>
-                  ))}
+                        <div className="mt-4">
+                          <Rating
+                            value={Math.max(Number(review?.rating || 0), 0)}
+                            readOnly
+                            size="small"
+                          />
+                        </div>
+                        <p className="mt-4 text-sm leading-7 text-[#4b392f]">
+                          {review?.comment || "No written comment available."}
+                        </p>
+                      </article>
+                    ))}
                   </div>
                   <button
                     type="button"
@@ -2783,16 +2800,9 @@ const ProductDetailPage = () => {
                       Share Feedback
                     </p>
                     <h3 className="mt-2 text-2xl font-semibold text-[#24150f]">
-                      Add your own review
+                      Help Others by Sharing Your Review and experience
                     </h3>
-                    <p className="mt-2 max-w-2xl text-sm leading-6 text-[#5c473d]">
-                      Anyone can submit product feedback here. New reviews
-                      publish immediately.
-                    </p>
                   </div>
-                  <span className="rounded-full border border-[#dbc9bd] bg-white px-3 py-1 text-xs font-semibold text-[#6d584a]">
-                    Instant publish
-                  </span>
                 </div>
 
                 <div className="mt-5 grid gap-4 md:grid-cols-2">
@@ -2868,10 +2878,6 @@ const ProductDetailPage = () => {
                 </div>
 
                 <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
-                  <p className="text-xs leading-5 text-[#6d584a]">
-                    Public reviews can be removed later from admin review
-                    management.
-                  </p>
                   <button
                     type="button"
                     onClick={handleSubmitPublicReview}
@@ -2932,12 +2938,12 @@ const ProductDetailPage = () => {
                       <div className="rounded-[28px] border border-[#e7dad1] bg-[#fbf7f2] p-5">
                         <div className="flex items-center gap-4">
                           <ProductImage
-                              src={activeImage}
-                              alt={product?.name || product?.title}
-                              aspect="aspect-square"
-                              fit="cover"
-                              className="h-[72px] w-[72px] flex-shrink-0 border border-[#efe4dc]"
-                            />
+                            src={activeImage}
+                            alt={product?.name || product?.title}
+                            aspect="aspect-square"
+                            fit="cover"
+                            className="h-[72px] w-[72px] flex-shrink-0 border border-[#efe4dc]"
+                          />
                           <div>
                             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#7b6355]">
                               Main Product
@@ -2973,12 +2979,12 @@ const ProductDetailPage = () => {
                           >
                             <div className="flex items-center gap-4">
                               <ProductImage
-                                  src={getImageUrl(recommendation.image)}
-                                  alt={recProduct?.name || "Suggested product"}
-                                  aspect="aspect-square"
-                                  fit="cover"
-                                  className="h-[72px] w-[72px] flex-shrink-0 border border-[#efe4dc]"
-                                />
+                                src={getImageUrl(recommendation.image)}
+                                alt={recProduct?.name || "Suggested product"}
+                                aspect="aspect-square"
+                                fit="cover"
+                                className="h-[72px] w-[72px] flex-shrink-0 border border-[#efe4dc]"
+                              />
                               <div className="min-w-0">
                                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#7b6355]">
                                   Add-on
@@ -3123,7 +3129,9 @@ const ProductDetailPage = () => {
             <div className="mt-6 grid gap-4 md:grid-cols-2">
               {paginatedReviews.map((review, index) => (
                 <ReviewCard
-                  key={review?._id || `${review?.userName || "review"}-${index}`}
+                  key={
+                    review?._id || `${review?.userName || "review"}-${index}`
+                  }
                   review={review}
                 />
               ))}
@@ -3132,7 +3140,9 @@ const ProductDetailPage = () => {
             <div className="mt-6 flex items-center justify-between gap-3">
               <button
                 type="button"
-                onClick={() => setReviewPage((current) => Math.max(1, current - 1))}
+                onClick={() =>
+                  setReviewPage((current) => Math.max(1, current - 1))
+                }
                 disabled={reviewPage <= 1}
                 className="rounded-2xl border border-[#d8c6bb] px-5 py-3 text-sm font-semibold text-[#2f1b12] disabled:opacity-40"
               >

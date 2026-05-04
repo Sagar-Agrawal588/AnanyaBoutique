@@ -1,11 +1,11 @@
 "use client";
 
+import SeoImg from "@/components/SeoImg";
 import { getImageUrl } from "@/utils/imageUtils";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import "swiper/css";
 import { Swiper, SwiperSlide } from "swiper/react";
-import SeoImg from "@/components/SeoImg";
 
 /**
  * Product Zoom Component
@@ -46,7 +46,7 @@ const ProductZoom = ({
     <div className="w-full">
       {/* Main Product Image */}
       <div
-        className="border rounded-2xl p-4 overflow-hidden shadow-sm"
+        className="relative w-full aspect-square overflow-hidden rounded-2xl border shadow-sm"
         style={{
           backgroundColor: "var(--flavor-card-bg, #fffbf5)",
           borderColor:
@@ -55,16 +55,16 @@ const ProductZoom = ({
       >
         <Swiper
           ref={bigSliderRef}
-          className="productBigSlider"
+          className="productBigSlider h-full"
           onSlideChange={(swiper) => setActiveIndex(swiper.activeIndex)}
         >
           {normalizedImages.map((img, index) => (
             <SwiperSlide key={index}>
-                <div className="flex justify-center items-center aspect-square">
+              <div className="relative h-full w-full overflow-hidden">
                 <SeoImg
                   src={img}
                   fallbackAlt={`Product Image ${index + 1}`}
-                  className="w-full h-auto max-h-125 object-contain transition-transform duration-300 hover:scale-105 cursor-zoom-in"
+                  className="h-full w-full object-cover transition-transform duration-300 ease-out hover:scale-[1.03] cursor-zoom-in"
                   onClick={() => openFullImageView(index)}
                 />
               </div>
@@ -85,10 +85,11 @@ const ProductZoom = ({
               <SwiperSlide key={index}>
                 <div
                   onClick={() => goToSlide(index)}
-                  className={`cursor-pointer border rounded-lg p-2 transition-all duration-300 ${activeIndex === index
+                  className={`cursor-pointer border rounded-lg p-2 transition-all duration-300 ${
+                    activeIndex === index
                       ? "border-primary shadow-md"
                       : "hover:border-gray-300"
-                    }`}
+                  }`}
                   style={{
                     backgroundColor: "var(--flavor-card-bg, #fffbf5)",
                     borderColor:
