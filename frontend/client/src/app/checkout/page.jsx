@@ -574,11 +574,7 @@ const Checkout = () => {
     Number(previewPricing?.roundOff ?? Math.round(total) - total),
   );
   const displayTotal = round2(
-    Number(
-      previewPricing?.roundedAmount ??
-        previewPricing?.gatewayPayableAmount ??
-        Math.round(total),
-    ),
+    Number(previewPricing?.gatewayPayableAmount ?? total),
   );
   const displaySubtotal = subtotal;
   const displayTax = tax;
@@ -2649,7 +2645,8 @@ const Checkout = () => {
                     <div className="flex justify-between text-gray-400 font-bold uppercase tracking-widest text-xs">
                       <span>Round Off</span>
                       <span className="text-white">
-                        {roundOff >= 0 ? "+" : "-"}₹{Math.abs(roundOff).toFixed(2)}
+                        {roundOff >= 0 ? "+" : "-"}₹
+                        {Math.abs(roundOff).toFixed(2)}
                       </span>
                     </div>
 

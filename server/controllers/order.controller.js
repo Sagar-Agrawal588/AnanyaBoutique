@@ -63,8 +63,6 @@ import {
   registerReservationExpiryListener,
   releaseExpiredReservations,
 } from "../services/inventoryReservationExpiry.service.js";
-import { syncActiveStockReservations } from "../services/stockReservation.service.js";
-import { trackRestockConversionsForOrder } from "../services/productAvailabilityAnalytics.service.js";
 import {
   createPaytmPayment,
   getPaytmStatus,
@@ -73,14 +71,13 @@ import {
   createPhonePePayment,
   getPhonePeOrderStatus,
 } from "../services/phonepe.service.js";
+import { trackRestockConversionsForOrder } from "../services/productAvailabilityAnalytics.service.js";
 import {
   getShippingQuote,
   validateIndianPincode,
 } from "../services/shippingRate.service.js";
-import {
-  calculateTax,
-  splitGstInclusiveAmount,
-} from "../services/tax.service.js";
+import { syncActiveStockReservations } from "../services/stockReservation.service.js";
+import { splitGstInclusiveAmount } from "../services/tax.service.js";
 import { createUserLocationLog } from "../services/userLocationLog.service.js";
 import {
   buildLegacyGuestDetails,
@@ -96,10 +93,6 @@ import {
   normalizeOrderForResponse,
 } from "../utils/calculateOrderTotal.js";
 import {
-  calculateInclusiveOrderPricing,
-  formatDateTimeIST,
-} from "../utils/pricingEngine.js";
-import {
   AppError,
   asyncHandler,
   handleDatabaseError,
@@ -114,10 +107,7 @@ import {
   getAbsolutePathFromStoredInvoicePath,
 } from "../utils/generateInvoicePdf.js";
 import isPrivilegedAdminRole from "../utils/isPrivilegedAdminRole.js";
-import {
-  syncOrderStatus,
-  syncOrderToFirestore,
-} from "../utils/orderFirestoreSync.js";
+import { syncOrderToFirestore } from "../utils/orderFirestoreSync.js";
 import { saveDocumentWithTempIdRetry } from "../utils/orderPersistence.js";
 import {
   applyOrderStatusTransition,
@@ -128,12 +118,12 @@ import {
   resolveOrderAwb,
   resolveOrderTrackingUrl,
 } from "../utils/orderTracking.js";
+import { formatDateTimeIST } from "../utils/pricingEngine.js";
 import {
   calculateInfluencerCommission,
   calculateReferralDiscount,
   updateInfluencerStats,
 } from "./influencer.controller.js";
-import { sendOrderUpdateNotification } from "./notification.controller.js";
 
 // ==================== PAYMENT PROVIDER CONFIGURATION ====================
 
@@ -1358,15 +1348,17 @@ const sendOrderConfirmationEmail = async (order) => {
       ),
     );
     const discount = round2(
-      Number(pricingSnapshot.discount || order?.discount || order?.discountAmount || 0) +
-        Number(order?.coinRedemption?.amount || 0),
+      Number(
+        pricingSnapshot.discount ||
+          order?.discount ||
+          order?.discountAmount ||
+          0,
+      ) + Number(order?.coinRedemption?.amount || 0),
     );
     const taxableAmount = round2(
       Number(pricingSnapshot.discountedPrice || order?.subtotal || 0),
     );
-    const taxAmount = round2(
-      Number(pricingSnapshot.gst || order?.tax || 0),
-    );
+    const taxAmount = round2(Number(pricingSnapshot.gst || order?.tax || 0));
     const shippingAmount = round2(Number(order?.shipping || 0));
     const finalAmount = round2(
       Number(
@@ -1460,9 +1452,12 @@ const sendOrderConfirmationEmail = async (order) => {
         shipping_amount: formatInr(shippingAmount),
         round_off: formatInr(roundOff),
         final_amount: formatInr(finalAmount),
-        estimated_delivery_date: `${estimatedDeliveryDate.toLocaleDateString("en-IN", {
-          timeZone: "Asia/Kolkata",
-        })} IST`,
+        estimated_delivery_date: `${estimatedDeliveryDate.toLocaleDateString(
+          "en-IN",
+          {
+            timeZone: "Asia/Kolkata",
+          },
+        )} IST`,
         awb_number: awbNumber,
         tracking_url: trackingUrl,
         site_url: siteUrl,
@@ -1714,7 +1709,11 @@ const flushExpiredReservationsSafely = async (
 
 const ensureOrderHasActiveReservationForPayment = async (
   order,
-  { source = "PAYMENT_PAGE", refreshExpiry = true, throwOnUnavailable = true } = {},
+  {
+    source = "PAYMENT_PAGE",
+    refreshExpiry = true,
+    throwOnUnavailable = true,
+  } = {},
 ) => {
   if (!order) {
     throw new AppError("ORDER_NOT_FOUND");
@@ -1991,7 +1990,7 @@ const sendOrderPaymentReminderEmail = async (
         ? "Your payment was cancelled before completion. You can return and place the order again when ready."
         : normalizedFailureKind === "expired"
           ? "Your 3 minute 30 second reservation window ended before payment completed. Use the link below to retry payment before these items sell out."
-        : "Your payment did not complete successfully. You can retry from your order page or place the order again.";
+          : "Your payment did not complete successfully. You can retry from your order page or place the order again.";
 
     const text = [
       `Order No: ${displayOrderNumber}`,
@@ -2333,8 +2332,12 @@ const processDueOrderPaymentReminderEmails = async ({
     await maybeSendOrderPaymentReminderEmail({
       order,
       failureKind:
-        String(order?.payment_status || "").trim().toLowerCase() === "pending" &&
-        String(order?.inventoryStatus || "").trim().toLowerCase() === "released"
+        String(order?.payment_status || "")
+          .trim()
+          .toLowerCase() === "pending" &&
+        String(order?.inventoryStatus || "")
+          .trim()
+          .toLowerCase() === "released"
           ? "expired"
           : inferStoredPaymentFailureKind(order),
       paymentProvider:
@@ -3967,14 +3970,10 @@ const calculateCheckoutPricing = async ({
       comboDiscountBase,
   );
 
-  const pricingSnapshot = calculateInclusiveOrderPricing({
-    originalPrice: originalAmount,
-    discount: totalDiscount,
-    gstRate: CHECKOUT_GST_RATE,
-    state: checkoutContact?.state || "",
-  });
-  const taxableAmount = round2(pricingSnapshot.taxableAmount || 0);
-  const gstAmount = round2(pricingSnapshot.gst || 0);
+  const taxableAmount = round2(
+    Math.max(workingTaxableAmount - couponDiscount, 0),
+  );
+  const gstAmount = round2((taxableAmount * CHECKOUT_GST_RATE) / 100);
   const taxData = {
     rate: CHECKOUT_GST_RATE,
     state: checkoutContact?.state || "",
@@ -4066,9 +4065,9 @@ const calculateCheckoutPricing = async ({
     redemption,
     comboDiscount: comboDiscountBase,
     comboDiscountInclusive: comboDiscountInclusive,
-    basePrice: pricingSnapshot.basePrice,
-    discountedPrice: pricingSnapshot.discountedPrice,
-    roundedTotal: pricingSnapshot.roundedTotal,
+    basePrice: round2(originalBaseSubtotal),
+    discountedPrice: taxableAmount,
+    roundedTotal: pricingTotals.roundedAmount,
   };
 };
 
@@ -5114,7 +5113,6 @@ export const updateOrderStatus = asyncHandler(async (req, res) => {
       message:
         "Manual order status changes are disabled. Order status is updated automatically from payment and shipping events.",
     });
-
   } catch (error) {
     if (error instanceof AppError) {
       return sendError(res, error);
@@ -5701,9 +5699,7 @@ export const createOrder = asyncHandler(async (req, res) => {
       basePrice: round2(Number(pricing.basePrice || 0)),
       subtotal: taxData.taxableAmount,
       discountedPrice: round2(Number(pricing.taxableAmount || 0)),
-      total: round2(
-        Number(pricing.total ?? (computedFinalAmount || 0)),
-      ),
+      total: round2(Number(pricing.total ?? (computedFinalAmount || 0))),
       totalAmt: computedFinalAmount,
       delivery_address: checkoutContact.addressId || null,
       payment_status: "pending",
@@ -6852,11 +6848,14 @@ export const getPayOrderDetails = asyncHandler(async (req, res) => {
       pendingStatuses.has(normalizedOrderStatus)
     ) {
       await flushExpiredReservationsSafely("getPayOrderDetails");
-      reservationState = await ensureOrderHasActiveReservationForPayment(order, {
-        source: "PAY_ORDER_DETAILS",
-        refreshExpiry: true,
-        throwOnUnavailable: false,
-      });
+      reservationState = await ensureOrderHasActiveReservationForPayment(
+        order,
+        {
+          source: "PAY_ORDER_DETAILS",
+          refreshExpiry: true,
+          throwOnUnavailable: false,
+        },
+      );
     }
 
     const isPayable =
@@ -6865,9 +6864,8 @@ export const getPayOrderDetails = asyncHandler(async (req, res) => {
       reservationState?.status !== "unavailable";
     const reservationExpiresAt =
       reservationState?.expiresAt || order.reservationExpiresAt || null;
-    const reservationSecondsRemaining = resolveReservationSecondsRemaining(
-      reservationExpiresAt,
-    );
+    const reservationSecondsRemaining =
+      resolveReservationSecondsRemaining(reservationExpiresAt);
 
     const displayOrderId = resolveDisplayOrderNumber(order);
     const items = Array.isArray(order.products)
@@ -6997,7 +6995,9 @@ export const initiatePayOrderPayment = asyncHandler(async (req, res) => {
     const payableAmount = Math.max(
       Number(order.roundedAmount || 0) > 0
         ? roundToNearestRupee(order.roundedAmount)
-        : resolveGatewayPayableAmount(Number(order.finalAmount || order.totalAmt || 0)),
+        : resolveGatewayPayableAmount(
+            Number(order.finalAmount || order.totalAmt || 0),
+          ),
       1,
     );
 
@@ -7079,7 +7079,9 @@ export const initiatePayOrderPayment = asyncHandler(async (req, res) => {
           tax: round2(Number(order.tax || 0)),
           shipping: round2(Number(order.shipping || 0)),
           finalAmount: round2(Number(order.finalAmount || order.totalAmt || 0)),
-          roundedAmount: roundToNearestRupee(order.roundedAmount || payableAmount),
+          roundedAmount: roundToNearestRupee(
+            order.roundedAmount || payableAmount,
+          ),
           roundOff: round2(Number(order.roundOff || 0)),
         },
         paymentUrl: paymentUrlWithGateway,
@@ -7147,7 +7149,9 @@ export const initiatePayOrderPayment = asyncHandler(async (req, res) => {
           tax: round2(Number(order.tax || 0)),
           shipping: round2(Number(order.shipping || 0)),
           finalAmount: round2(Number(order.finalAmount || order.totalAmt || 0)),
-          roundedAmount: roundToNearestRupee(order.roundedAmount || payableAmount),
+          roundedAmount: roundToNearestRupee(
+            order.roundedAmount || payableAmount,
+          ),
           roundOff: round2(Number(order.roundOff || 0)),
         },
         paymentUrl: phonepeResponse.redirectUrl,
@@ -7266,7 +7270,9 @@ export const retryOrderPayment = asyncHandler(async (req, res) => {
     const payableAmount = Math.max(
       Number(order.roundedAmount || 0) > 0
         ? roundToNearestRupee(order.roundedAmount)
-        : resolveGatewayPayableAmount(Number(order.finalAmount || order.totalAmt || 0)),
+        : resolveGatewayPayableAmount(
+            Number(order.finalAmount || order.totalAmt || 0),
+          ),
       1,
     );
 
@@ -7342,7 +7348,9 @@ export const retryOrderPayment = asyncHandler(async (req, res) => {
           tax: round2(Number(order.tax || 0)),
           shipping: round2(Number(order.shipping || 0)),
           finalAmount: round2(Number(order.finalAmount || order.totalAmt || 0)),
-          roundedAmount: roundToNearestRupee(order.roundedAmount || payableAmount),
+          roundedAmount: roundToNearestRupee(
+            order.roundedAmount || payableAmount,
+          ),
           roundOff: round2(Number(order.roundOff || 0)),
         },
         paymentUrl: paymentUrlWithGateway,
@@ -7409,7 +7417,9 @@ export const retryOrderPayment = asyncHandler(async (req, res) => {
           tax: round2(Number(order.tax || 0)),
           shipping: round2(Number(order.shipping || 0)),
           finalAmount: round2(Number(order.finalAmount || order.totalAmt || 0)),
-          roundedAmount: roundToNearestRupee(order.roundedAmount || payableAmount),
+          roundedAmount: roundToNearestRupee(
+            order.roundedAmount || payableAmount,
+          ),
           roundOff: round2(Number(order.roundOff || 0)),
         },
         paymentUrl: phonepeResponse.redirectUrl,
@@ -7808,12 +7818,18 @@ const applyResolvedPaymentStatus = async ({
     orderMutated = true;
   }
 
-  if (transactionId && String(order.paymentAppTxnId || "") !== String(transactionId)) {
+  if (
+    transactionId &&
+    String(order.paymentAppTxnId || "") !== String(transactionId)
+  ) {
     order.paymentAppTxnId = transactionId;
     orderMutated = true;
   }
 
-  if (paymentProvider && String(order.paymentProvider || "") !== String(paymentProvider)) {
+  if (
+    paymentProvider &&
+    String(order.paymentProvider || "") !== String(paymentProvider)
+  ) {
     order.paymentProvider = paymentProvider;
     orderMutated = true;
   }
@@ -8664,7 +8680,9 @@ export const backfillSuccessfulOrderPaymentIds = asyncHandler(
         }
 
         const currentPaymentId = String(order?.paymentId || "").trim();
-        const currentPaymentAppTxnId = String(order?.paymentAppTxnId || "").trim();
+        const currentPaymentAppTxnId = String(
+          order?.paymentAppTxnId || "",
+        ).trim();
         if (
           currentPaymentId &&
           !currentPaymentAppTxnId &&
@@ -8674,7 +8692,10 @@ export const backfillSuccessfulOrderPaymentIds = asyncHandler(
           continue;
         }
 
-        if (currentPaymentId === transactionId && currentPaymentAppTxnId === transactionId) {
+        if (
+          currentPaymentId === transactionId &&
+          currentPaymentAppTxnId === transactionId
+        ) {
           skipped += 1;
           continue;
         }
@@ -9393,7 +9414,9 @@ export const createTestOrder = asyncHandler(async (req, res) => {
         email: {
           recipient:
             recipientEmailOverride ||
-            String(user.email || "").trim().toLowerCase() ||
+            String(user.email || "")
+              .trim()
+              .toLowerCase() ||
             null,
           sent: confirmationEmailSent,
         },
