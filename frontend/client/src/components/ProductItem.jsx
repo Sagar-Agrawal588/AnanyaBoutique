@@ -178,6 +178,14 @@ const ProductItem = (props) => {
     productData.name,
     displayWeightLabel,
   );
+  const displayShortDescription = String(
+    productData.shortDescription ||
+      productData.short_description ||
+      productData.subtitle ||
+      productData.tagline ||
+      productData.metaDescription ||
+      "",
+  ).trim();
   const isNewArrival = Boolean(
     productData.newArrival ?? productData.isNewArrival,
   );
@@ -348,8 +356,8 @@ const ProductItem = (props) => {
         cardImage
         aspect="aspect-square"
         fit="cover"
-        className="mb-3 w-full bg-[#f5f5f5]"
-        imgClassName={`transition-all duration-300 ${
+        className="mb-3 w-full aspect-square bg-[#f5f5f5]"
+        imgClassName={`object-cover transition-all duration-300 ${
           isOutOfStock
             ? "grayscale-[0.45] saturate-50 opacity-70"
             : "group-hover:scale-105"
@@ -410,13 +418,13 @@ const ProductItem = (props) => {
         <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-gray-400">
           {productData.brand}
         </p>
-        <h3 className="min-h-10 line-clamp-2 text-[13px] font-semibold leading-snug text-gray-900 transition-colors group-hover:text-primary">
+        <h3 className="text-[13px] font-semibold leading-snug text-gray-900 transition-colors group-hover:text-primary">
           {displayProductName || productData.name}
         </h3>
         <div className="mt-1 min-h-7">
-          {productData.shortDescription ? (
+          {displayShortDescription ? (
             <p className="line-clamp-2 text-[11px] font-medium text-gray-500">
-              {productData.shortDescription}
+              {displayShortDescription}
             </p>
           ) : null}
         </div>
