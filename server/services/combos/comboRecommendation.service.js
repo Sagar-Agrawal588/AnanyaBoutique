@@ -211,7 +211,9 @@ const getTrendingProductRecommendations = async ({
 } = {}) => {
   const safeLimit = Math.max(Number(limit || 2), 1);
   const excluded = Array.from(
-    new Set((Array.isArray(excludeProductIds) ? excludeProductIds : []).map(String)),
+    new Set(
+      (Array.isArray(excludeProductIds) ? excludeProductIds : []).map(String),
+    ),
   ).filter(Boolean);
   const filter = {
     isActive: true,

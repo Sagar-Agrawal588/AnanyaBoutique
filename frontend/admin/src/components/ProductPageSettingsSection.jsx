@@ -2,7 +2,7 @@
 
 import { uploadFile } from "@/utils/api";
 import Switch from "@mui/material/Switch";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const sectionCardClass = "rounded-xl border border-gray-200 bg-gray-50 p-5";
 const inputClass =
@@ -17,7 +17,10 @@ const ToggleField = ({ label, checked, onChange, hint }) => (
         <p className="text-sm font-medium text-gray-800">{label}</p>
         {hint ? <p className="mt-1 text-xs text-gray-500">{hint}</p> : null}
       </div>
-      <Switch checked={checked} onChange={(event) => onChange(event.target.checked)} />
+      <Switch
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+      />
     </div>
   </div>
 );
@@ -35,12 +38,36 @@ const TextField = ({ label, value, onChange, placeholder }) => (
   </label>
 );
 
-const TextAreaField = ({ label, value, onChange, placeholder, rows = 3, hint }) => (
+const TextAreaField = ({
+  label,
+  value,
+  onChange,
+  onBlur,
+  placeholder,
+  rows = 3,
+  hint,
+  enableParagraphShortcuts = false,
+}) => (
   <label className="flex flex-col gap-1">
     <span className="text-sm font-medium text-gray-800">{label}</span>
     <textarea
       value={value}
       onChange={(event) => onChange(event.target.value)}
+      onBlur={onBlur}
+      onKeyDown={(event) => {
+        if (!enableParagraphShortcuts || event.key !== "Enter") return;
+        event.preventDefault();
+        const textarea = event.currentTarget;
+        const insert = event.shiftKey ? "\n" : "\n\n";
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        const nextValue =
+          textarea.value.slice(0, start) + insert + textarea.value.slice(end);
+        onChange(nextValue);
+        const nextPos = start + insert.length;
+        textarea.selectionStart = nextPos;
+        textarea.selectionEnd = nextPos;
+      }}
       placeholder={placeholder}
       rows={rows}
       className={textAreaClass}
@@ -58,6 +85,22 @@ const fromLines = (value) =>
     .map((line) => line.trim())
     .filter(Boolean);
 
+const toParagraphText = (value) =>
+  Array.isArray(value) ? value.filter(Boolean).join("\n\n") : "";
+
+const fromParagraphText = (value) =>
+  String(value || "")
+    .split(/\r?\n\s*\r?\n/)
+    .map((paragraph) =>
+      paragraph
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .join(" ")
+        .trim(),
+    )
+    .filter(Boolean);
+
 export default function ProductPageSettingsSection({
   productPage,
   setProductPage,
@@ -68,6 +111,24 @@ export default function ProductPageSettingsSection({
   lowerSectionLabel = "product",
 }) {
   const [bannerUploading, setBannerUploading] = useState(false);
+  const [extraParagraphDraft, setExtraParagraphDraft] = useState(
+    toParagraphText(productPage.descriptionSection.extraParagraphs),
+  );
+  const [reasonsParagraphDraft, setReasonsParagraphDraft] = useState(
+    toParagraphText(productPage.shippingSection.reasonsParagraphs),
+  );
+
+  useEffect(() => {
+    setExtraParagraphDraft(
+      toParagraphText(productPage.descriptionSection.extraParagraphs),
+    );
+  }, [productPage.descriptionSection.extraParagraphs]);
+
+  useEffect(() => {
+    setReasonsParagraphDraft(
+      toParagraphText(productPage.shippingSection.reasonsParagraphs),
+    );
+  }, [productPage.shippingSection.reasonsParagraphs]);
 
   const updateSectionField = (section, field, nextValue) => {
     setProductPage((current) => ({
@@ -107,19 +168,16 @@ export default function ProductPageSettingsSection({
   return (
     <div className="mt-8 space-y-5">
       <div>
-        <h3 className="text-[18px] font-semibold text-gray-800">
-          {pageTitle}
-        </h3>
+        <h3 className="text-[18px] font-semibold text-gray-800">{pageTitle}</h3>
         <p className="mt-1 text-sm text-gray-500">
-          Control section visibility and supporting copy for the live
-          `{storefrontPath}` page from admin.
+          Control section visibility and supporting copy for the live `
+          {storefrontPath}` page from admin.
         </p>
       </div>
 
       <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-        Changes here update the real client {entityLabel} page layout,
-        including the review section shown below the {lowerSectionLabel}{" "}
-        details.
+        Changes here update the real client {entityLabel} page layout, including
+        the review section shown below the {lowerSectionLabel} details.
       </div>
 
       <div className={sectionCardClass}>
@@ -187,13 +245,6 @@ export default function ProductPageSettingsSection({
 
         <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-3">
           <div className="space-y-3 rounded-lg border border-gray-200 bg-white p-4">
-            <TextField
-              label="Price Card Eyebrow"
-              value={productPage.hero.priceCardEyebrow}
-              onChange={(nextValue) =>
-                updateSectionField("hero", "priceCardEyebrow", nextValue)
-              }
-            />
             <TextAreaField
               label="Price Card Description"
               value={productPage.hero.priceCardDescription}
@@ -205,13 +256,6 @@ export default function ProductPageSettingsSection({
           </div>
 
           <div className="space-y-3 rounded-lg border border-gray-200 bg-white p-4">
-            <TextField
-              label="Variant Card Eyebrow"
-              value={productPage.hero.variantCardEyebrow}
-              onChange={(nextValue) =>
-                updateSectionField("hero", "variantCardEyebrow", nextValue)
-              }
-            />
             <TextAreaField
               label="Variant Card Description"
               value={productPage.hero.variantCardDescription}
@@ -223,22 +267,11 @@ export default function ProductPageSettingsSection({
           </div>
 
           <div className="space-y-3 rounded-lg border border-gray-200 bg-white p-4">
-            <TextField
-              label="Social Proof Eyebrow"
-              value={productPage.hero.socialProofEyebrow}
-              onChange={(nextValue) =>
-                updateSectionField("hero", "socialProofEyebrow", nextValue)
-              }
-            />
             <TextAreaField
               label="Social Proof Description"
               value={productPage.hero.socialProofDescription}
               onChange={(nextValue) =>
-                updateSectionField(
-                  "hero",
-                  "socialProofDescription",
-                  nextValue,
-                )
+                updateSectionField("hero", "socialProofDescription", nextValue)
               }
               rows={3}
             />
@@ -434,25 +467,25 @@ export default function ProductPageSettingsSection({
             label="Description Flow Eyebrow"
             value={productPage.descriptionSection.flowEyebrow}
             onChange={(nextValue) =>
-              updateSectionField(
-                "descriptionSection",
-                "flowEyebrow",
-                nextValue,
-              )
+              updateSectionField("descriptionSection", "flowEyebrow", nextValue)
             }
           />
           <TextAreaField
             label="Extra Description Paragraphs"
-            value={toLines(productPage.descriptionSection.extraParagraphs)}
-            onChange={(nextValue) =>
+            value={extraParagraphDraft}
+            onChange={(nextValue) => {
+              setExtraParagraphDraft(nextValue);
+            }}
+            onBlur={() =>
               updateSectionField(
                 "descriptionSection",
                 "extraParagraphs",
-                fromLines(nextValue),
+                fromParagraphText(extraParagraphDraft),
               )
             }
             rows={6}
-            hint="One paragraph per line. Leave blank to use the default generated copy."
+            hint="Use a blank line between paragraphs. Single line breaks become spaces. Leave blank to use the default generated copy."
+            enableParagraphShortcuts
           />
         </div>
       </div>
@@ -504,7 +537,11 @@ export default function ProductPageSettingsSection({
             label="Show Reasons Panel"
             checked={productPage.shippingSection.showReasonsPanel}
             onChange={(nextValue) =>
-              updateSectionField("shippingSection", "showReasonsPanel", nextValue)
+              updateSectionField(
+                "shippingSection",
+                "showReasonsPanel",
+                nextValue,
+              )
             }
           />
         </div>
@@ -515,21 +552,12 @@ export default function ProductPageSettingsSection({
               label="Shipping Points Eyebrow"
               value={productPage.shippingSection.pointsEyebrow}
               onChange={(nextValue) =>
-                updateSectionField("shippingSection", "pointsEyebrow", nextValue)
-              }
-            />
-            <TextAreaField
-              label="Shipping Points"
-              value={toLines(productPage.shippingSection.points)}
-              onChange={(nextValue) =>
                 updateSectionField(
                   "shippingSection",
-                  "points",
-                  fromLines(nextValue),
+                  "pointsEyebrow",
+                  nextValue,
                 )
               }
-              rows={6}
-              hint="One shipping or trust point per line."
             />
           </div>
 
@@ -547,16 +575,20 @@ export default function ProductPageSettingsSection({
             />
             <TextAreaField
               label="Reasons Panel Paragraphs"
-              value={toLines(productPage.shippingSection.reasonsParagraphs)}
-              onChange={(nextValue) =>
+              value={reasonsParagraphDraft}
+              onChange={(nextValue) => {
+                setReasonsParagraphDraft(nextValue);
+              }}
+              onBlur={() =>
                 updateSectionField(
                   "shippingSection",
                   "reasonsParagraphs",
-                  fromLines(nextValue),
+                  fromParagraphText(reasonsParagraphDraft),
                 )
               }
               rows={6}
-              hint="One paragraph per line."
+              hint="Use a blank line between paragraphs. Single line breaks become spaces."
+              enableParagraphShortcuts
             />
           </div>
         </div>
@@ -589,11 +621,7 @@ export default function ProductPageSettingsSection({
               label="Show Frequently Bought Together"
               checked={productPage.frequentlyBoughtSection.show}
               onChange={(nextValue) =>
-                updateSectionField(
-                  "frequentlyBoughtSection",
-                  "show",
-                  nextValue,
-                )
+                updateSectionField("frequentlyBoughtSection", "show", nextValue)
               }
             />
           </div>

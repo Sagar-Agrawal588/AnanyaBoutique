@@ -337,12 +337,6 @@ const ViewProduct = () => {
                     : "No variants"}
                 </p>
               </div>
-              <div className="bg-gray-50 p-3 rounded-lg">
-                <p className="text-sm text-gray-500">Views</p>
-                <p className="font-medium text-gray-800">
-                  {product.viewCount || 0}
-                </p>
-              </div>
             </div>
 
             {product.shortDescription && (
