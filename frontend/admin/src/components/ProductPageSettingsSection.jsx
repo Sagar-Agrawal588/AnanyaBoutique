@@ -135,13 +135,6 @@ export default function ProductPageSettingsSection({
 
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           <ToggleField
-            label="Show Story Card"
-            checked={productPage.hero.showStoryCard}
-            onChange={(nextValue) =>
-              updateSectionField("hero", "showStoryCard", nextValue)
-            }
-          />
-          <ToggleField
             label="Show Insight Cards"
             checked={productPage.hero.showInsightCards}
             onChange={(nextValue) =>
@@ -154,34 +147,6 @@ export default function ProductPageSettingsSection({
             onChange={(nextValue) =>
               updateSectionField("hero", "showDeliveryPreview", nextValue)
             }
-          />
-        </div>
-
-        <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <TextField
-            label="Story Eyebrow"
-            value={productPage.hero.storyEyebrow}
-            onChange={(nextValue) =>
-              updateSectionField("hero", "storyEyebrow", nextValue)
-            }
-          />
-          <TextField
-            label="Story Title"
-            value={productPage.hero.storyTitle}
-            onChange={(nextValue) =>
-              updateSectionField("hero", "storyTitle", nextValue)
-            }
-          />
-        </div>
-
-        <div className="mt-4">
-          <TextAreaField
-            label="Story Description"
-            value={productPage.hero.storyDescription}
-            onChange={(nextValue) =>
-              updateSectionField("hero", "storyDescription", nextValue)
-            }
-            rows={3}
           />
         </div>
 
