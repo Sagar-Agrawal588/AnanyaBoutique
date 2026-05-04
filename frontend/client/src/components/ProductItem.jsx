@@ -3,19 +3,19 @@
 import ProductCardBadges from "@/components/productCard/ProductCardBadges";
 import ProductCardPriceBlock from "@/components/productCard/ProductCardPriceBlock";
 import ProductImage from "@/components/ProductImage";
-import { subscribeToStockUpdates } from "@/realtime/stockSocket";
 import ShareButton from "@/components/ShareButton";
 import StockNotificationButton from "@/components/StockNotificationButton";
 import { useCart } from "@/context/CartContext";
-import { applyStockUpdateToProduct } from "@/utils/stockRealtime";
 import { useWishlist } from "@/context/WishlistContext";
+import useSeoAlt from "@/hooks/useSeoAlt";
+import { subscribeToStockUpdates } from "@/realtime/stockSocket";
+import { applyStockUpdateToProduct } from "@/utils/stockRealtime";
 import {
   formatWeight,
   getWeightInGrams,
   replaceWeightRange,
 } from "@/utils/weightDisplay";
 import Link from "next/link";
-import useSeoAlt from "@/hooks/useSeoAlt";
 import { startTransition, useEffect, useState } from "react";
 import {
   IoIosStar,
@@ -104,7 +104,9 @@ const ProductItem = (props) => {
 
     return subscribeToStockUpdates((payload) => {
       startTransition(() => {
-        setLiveProduct((previous) => applyStockUpdateToProduct(previous, payload));
+        setLiveProduct((previous) =>
+          applyStockUpdateToProduct(previous, payload),
+        );
       });
     });
   }, [product, realtimeManagedExternally]);
@@ -125,16 +127,17 @@ const ProductItem = (props) => {
     ? isComboInCart(productCardId)
     : isInCart(productCardId, productVariantId);
 
-  const productData = liveProduct || product || {
-    _id: id || _id || product?.id || 1,
-    name: name || "Classic Peanut Butter",
-    brand: brand || "Buy One Gram",
-    price: price || 349,
-    originalPrice: originalPrice || 499,
-    images: [image || "/product_1.png"],
-    rating: rating || 0,
-    discount: discount || 30,
-  };
+  const productData = liveProduct ||
+    product || {
+      _id: id || _id || product?.id || 1,
+      name: name || "Classic Peanut Butter",
+      brand: brand || "Buy One Gram",
+      price: price || 349,
+      originalPrice: originalPrice || 499,
+      images: [image || "/product_1.png"],
+      rating: rating || 0,
+      discount: discount || 30,
+    };
 
   // Derive display values from default variant when hasVariants
   const defaultVariant =
@@ -178,8 +181,11 @@ const ProductItem = (props) => {
   const isNewArrival = Boolean(
     productData.newArrival ?? productData.isNewArrival,
   );
-  const isBestSeller = Boolean(productData.bestSeller ?? productData.isBestSeller);
-  const isHighDemand = Boolean(productData.highDemand) ||
+  const isBestSeller = Boolean(
+    productData.bestSeller ?? productData.isBestSeller,
+  );
+  const isHighDemand =
+    Boolean(productData.highDemand) ||
     String(productData.demandStatus || "").toUpperCase() === "HIGH";
   const showDiscountBadge =
     Number(normalizedDisplayDiscount) > 0 && !isNewArrival && !isBestSeller;
@@ -197,7 +203,7 @@ const ProductItem = (props) => {
   const notifyVariantName = defaultVariant?.name || "";
   const notifyRequested = Boolean(
     productData?.stockNotificationRequested ||
-      defaultVariant?.stockNotificationRequested,
+    defaultVariant?.stockNotificationRequested,
   );
   const actionLabel = alreadyInCart
     ? isComboItem
@@ -326,11 +332,13 @@ const ProductItem = (props) => {
 
   return (
     <Link
-      href={isComboItem ? `/combo/${productCardId}` : `/product/${productCardId}`}
-      className={`group relative flex h-full w-full min-w-0 flex-col rounded-3xl border bg-white p-2.5 transition-all sm:p-3 ${
+      href={
+        isComboItem ? `/combo/${productCardId}` : `/product/${productCardId}`
+      }
+      className={`group relative flex h-full w-full min-w-0 flex-col rounded-[22px] border bg-white p-3 shadow-[0_6px_16px_rgba(0,0,0,0.08)] transition-all ${
         isOutOfStock
-          ? "border-gray-100 shadow-[0_20px_48px_-40px_rgba(36,21,15,0.28)]"
-          : "border-gray-100 hover:-translate-y-1 hover:shadow-xl"
+          ? "border-gray-100"
+          : "border-gray-100 hover:-translate-y-0.5 hover:shadow-[0_10px_24px_rgba(0,0,0,0.12)]"
       }`}
     >
       {/* Image Container */}
@@ -339,8 +347,9 @@ const ProductItem = (props) => {
         alt={imgAlt}
         cardImage
         aspect="aspect-square"
-        className="mb-3 h-32 w-full sm:h-40"
-        imgClassName={`p-2 mix-blend-multiply transition-all duration-300 ${
+        fit="cover"
+        className="mb-3 w-full bg-[#f5f5f5]"
+        imgClassName={`transition-all duration-300 ${
           isOutOfStock
             ? "grayscale-[0.45] saturate-50 opacity-70"
             : "group-hover:scale-105"
@@ -397,14 +406,14 @@ const ProductItem = (props) => {
       </ProductImage>
 
       {/* Content */}
-      <div className="flex flex-1 flex-col px-1">
-        <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">
+      <div className="flex flex-1 flex-col">
+        <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-gray-400">
           {productData.brand}
         </p>
-        <h3 className="min-h-11 line-clamp-2 text-sm font-bold text-gray-900 transition-colors group-hover:text-primary sm:min-h-10">
+        <h3 className="min-h-10 line-clamp-2 text-[13px] font-semibold leading-snug text-gray-900 transition-colors group-hover:text-primary">
           {displayProductName || productData.name}
         </h3>
-        <div className="mt-1 min-h-7 sm:min-h-8">
+        <div className="mt-1 min-h-7">
           {productData.shortDescription ? (
             <p className="line-clamp-2 text-[11px] font-medium text-gray-500">
               {productData.shortDescription}
@@ -414,10 +423,10 @@ const ProductItem = (props) => {
 
         {/* Weight */}
         {displayWeightLabel && (
-          <span className="inline-block mt-1 text-[11px] font-semibold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+          <span className="mt-2 inline-flex w-fit rounded-full bg-[#f0f0f0] px-2.5 py-0.5 text-[11px] font-semibold text-gray-600">
             {displayWeightLabel}
             {productData.hasVariants && productData.variants?.length > 1 && (
-              <span className="text-gray-400 ml-1">
+              <span className="ml-1 text-gray-400">
                 +{productData.variants.length - 1} more
               </span>
             )}
@@ -425,14 +434,16 @@ const ProductItem = (props) => {
         )}
 
         {/* Rating */}
-        <div className="mt-1 flex items-center gap-1">
+        <div className="mt-2 flex items-center gap-1">
           <div className="flex text-xs">{renderStars()}</div>
-          <span className="text-[10px] text-gray-400">({displayReviewCount})</span>
+          <span className="text-[10px] text-gray-400">
+            ({displayReviewCount})
+          </span>
         </div>
 
         {/* Price & Cart */}
         <div className="mt-auto border-t border-[#f3ece6] pt-3">
-          <div className="min-h-10.5 flex items-end">
+          <div className="min-h-10 flex items-end">
             <div>
               <ProductCardPriceBlock
                 originalPrice={displayOriginalPrice}

@@ -9,14 +9,16 @@ const ProductImage = ({
   imgClassName = "",
   aspect = "aspect-square",
   rounded = "rounded-2xl",
-  padding = "p-2",
+  padding = "p-0",
   fit = "contain",
   cardImage = false,
   natural = false,
   children,
   ...props
 }) => {
-  const resolvedSrc = cardImage ? getProductCardImageUrl(src) : getImageUrl(src);
+  const resolvedSrc = cardImage
+    ? getProductCardImageUrl(src)
+    : getImageUrl(src);
   const objectFit = fit === "cover" ? "object-cover" : "object-contain";
   const aspectClass = aspect ? aspect : "";
   const imageSizeClass = natural ? "max-h-full max-w-full" : "h-full w-full";

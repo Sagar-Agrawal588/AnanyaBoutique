@@ -2,15 +2,15 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import ShareButton from "@/components/ShareButton";
-import { formatPrice } from "@/config/siteConfig";
-import { useCart } from "@/context/CartContext";
 import {
   mergeCardsWithDefaults,
   mergeListWithDefaults,
   mergeTextOverride,
   normalizeProductPageConfig,
 } from "@/components/productDetail/pageConfig";
+import ShareButton from "@/components/ShareButton";
+import { formatPrice } from "@/config/siteConfig";
+import { useCart } from "@/context/CartContext";
 import { trackEvent } from "@/utils/analyticsTracker";
 import { fetchDataFromApi, postData } from "@/utils/api";
 import { getImageUrl } from "@/utils/imageUtils";
@@ -73,7 +73,9 @@ const resolveComboGallery = (combo) => {
     ...itemImages,
   ].filter((entry) => isImageCandidate(entry));
 
-  return [...new Set(candidates)].slice(0, 10).map((entry) => getImageUrl(entry));
+  return [...new Set(candidates)]
+    .slice(0, 10)
+    .map((entry) => getImageUrl(entry));
 };
 
 const formatComboVariantLabel = (item = {}) => {
@@ -130,14 +132,23 @@ const buildDescriptionParagraphs = (combo) => {
 
 const getHeroStatusLabel = (combo, reviewCount) => {
   if (combo?.isBestSeller) return "Best seller";
-  if (String(combo?.demandStatus || "").trim().toUpperCase() === "HIGH") {
+  if (
+    String(combo?.demandStatus || "")
+      .trim()
+      .toUpperCase() === "HIGH"
+  ) {
     return "High demand";
   }
   if (reviewCount > 0) return "Top rated";
   return "Combo deal";
 };
 
-const buildDetailCards = ({ combo, includedCount, reviewCount, availableStock }) => [
+const buildDetailCards = ({
+  combo,
+  includedCount,
+  reviewCount,
+  availableStock,
+}) => [
   {
     label: "Category",
     value: combo?.category || combo?.categoryName || "Combo Deals",
@@ -160,12 +171,21 @@ const buildDetailCards = ({ combo, includedCount, reviewCount, availableStock })
   },
 ];
 
-const buildSnapshotItems = ({ combo, availableStock, savings, includedLabels }) => {
+const buildSnapshotItems = ({
+  combo,
+  availableStock,
+  savings,
+  includedLabels,
+}) => {
   const items = [];
 
-  items.push(`Category: ${combo?.category || combo?.categoryName || "Combo Deals"}`);
+  items.push(
+    `Category: ${combo?.category || combo?.categoryName || "Combo Deals"}`,
+  );
   if (combo?.sku) items.push(`SKU: ${combo.sku}`);
-  items.push(`Availability: ${availableStock > 0 ? "Bundle available" : "Currently unavailable"}`);
+  items.push(
+    `Availability: ${availableStock > 0 ? "Bundle available" : "Currently unavailable"}`,
+  );
   if (includedLabels.length > 0) {
     items.push(`Included: ${includedLabels.slice(0, 3).join(", ")}`);
   }
@@ -308,10 +328,15 @@ export default function ComboDetailPage() {
   }, [decodedRouteId, routeId]);
 
   const galleryImages = useMemo(() => resolveComboGallery(combo), [combo]);
-  const images = galleryImages.length > 0 ? galleryImages : [FALLBACK_COMBO_IMAGE];
-  const activeImage = images[activeImageIndex] || images[0] || FALLBACK_COMBO_IMAGE;
+  const images =
+    galleryImages.length > 0 ? galleryImages : [FALLBACK_COMBO_IMAGE];
+  const activeImage =
+    images[activeImageIndex] || images[0] || FALLBACK_COMBO_IMAGE;
 
-  const originalTotal = toNumber(combo?.originalPrice ?? combo?.originalTotal, 0);
+  const originalTotal = toNumber(
+    combo?.originalPrice ?? combo?.originalTotal,
+    0,
+  );
   const comboPrice = toNumber(
     combo?.price ?? combo?.comboPrice ?? combo?.suggestedPrice,
     0,
@@ -322,7 +347,10 @@ export default function ComboDetailPage() {
       ? Math.round(((originalTotal - comboPrice) / originalTotal) * 100)
       : Math.round(toNumber(combo?.discountPercentage, 0));
   const comboId = combo?._id || combo?.id || "";
-  const availableStock = toNumber(combo?.availableStock ?? combo?.stockQuantity, 0);
+  const availableStock = toNumber(
+    combo?.availableStock ?? combo?.stockQuantity,
+    0,
+  );
   const isOutOfStock = availableStock <= 0;
   const maxPerOrder = toNumber(combo?.maxPerOrder, 0);
   const maxQty =
@@ -400,10 +428,14 @@ export default function ComboDetailPage() {
   useEffect(() => {
     const loadReviewSettings = async () => {
       try {
-        const response = await fetchDataFromApi("/api/settings/public/reviewSettings");
+        const response = await fetchDataFromApi(
+          "/api/settings/public/reviewSettings",
+        );
         if (response?.success) {
           setReviewSettings(
-            normalizePublicReviewSettings(response?.data?.value || response?.data || {}),
+            normalizePublicReviewSettings(
+              response?.data?.value || response?.data || {},
+            ),
           );
           return;
         }
@@ -426,7 +458,9 @@ export default function ComboDetailPage() {
 
       try {
         setReviewsLoading(true);
-        const response = await fetchDataFromApi(`/api/reviews/combo/${comboId}`);
+        const response = await fetchDataFromApi(
+          `/api/reviews/combo/${comboId}`,
+        );
         if (response?.success && Array.isArray(response?.data)) {
           setCustomerReviews(response.data);
         } else {
@@ -446,19 +480,28 @@ export default function ComboDetailPage() {
     pageConfig?.tabs?.showDescription !== false
       ? {
           id: "description",
-          label: mergeTextOverride(pageConfig?.tabs?.descriptionLabel, "Description"),
+          label: mergeTextOverride(
+            pageConfig?.tabs?.descriptionLabel,
+            "Description",
+          ),
         }
       : null,
     pageConfig?.tabs?.showDetails !== false
       ? {
           id: "details",
-          label: mergeTextOverride(pageConfig?.tabs?.detailsLabel, "Product Details"),
+          label: mergeTextOverride(
+            pageConfig?.tabs?.detailsLabel,
+            "Product Details",
+          ),
         }
       : null,
     pageConfig?.tabs?.showShipping !== false
       ? {
           id: "shipping",
-          label: mergeTextOverride(pageConfig?.tabs?.shippingLabel, "Shipping & Trust"),
+          label: mergeTextOverride(
+            pageConfig?.tabs?.shippingLabel,
+            "Shipping & Trust",
+          ),
         }
       : null,
   ].filter(Boolean);
@@ -677,7 +720,10 @@ export default function ComboDetailPage() {
               {pageConfig?.hero?.showStoryCard !== false ? (
                 <div className="product-story-card rounded-[30px] bg-[linear-gradient(180deg,#6a4331_0%,#8c624d_100%)] p-6 text-white shadow-[0_28px_60px_-40px_rgba(44,29,20,0.8)]">
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#f6dfcf]">
-                    {mergeTextOverride(pageConfig?.hero?.storyEyebrow, "Product Story")}
+                    {mergeTextOverride(
+                      pageConfig?.hero?.storyEyebrow,
+                      "Product Story",
+                    )}
                   </p>
                   <h2 className="mt-4 text-[32px] font-semibold leading-[1.12]">
                     {mergeTextOverride(
@@ -704,7 +750,9 @@ export default function ComboDetailPage() {
                         <p className="mt-2 text-[18px] font-semibold text-white">
                           {card.value}
                         </p>
-                        <p className="mt-1 text-sm text-[#f7ebdf]">{card.helper}</p>
+                        <p className="mt-1 text-sm text-[#f7ebdf]">
+                          {card.helper}
+                        </p>
                       </div>
                     ))}
                   </div>
@@ -762,7 +810,11 @@ export default function ComboDetailPage() {
 
             <div className="mt-5 flex flex-wrap items-center gap-3">
               <div className="flex items-center gap-2 rounded-full border border-[#ecd8c9] bg-[#fbf7f2] px-4 py-2">
-                <Rating value={Math.max(starRating, reviewCount > 0 ? starRating : 5)} readOnly size="small" />
+                <Rating
+                  value={Math.max(starRating, reviewCount > 0 ? starRating : 5)}
+                  readOnly
+                  size="small"
+                />
                 <span className="text-sm text-[#4b392f]">
                   {reviewCount > 0
                     ? `${reviewCount} review${reviewCount === 1 ? "" : "s"}`
@@ -817,7 +869,9 @@ export default function ComboDetailPage() {
               </div>
             </div>
 
-            <div className={`mt-8 grid gap-4 ${pageConfig?.hero?.showDeliveryPreview !== false ? "xl:grid-cols-2" : ""}`}>
+            <div
+              className={`mt-8 grid gap-4 ${pageConfig?.hero?.showDeliveryPreview !== false ? "xl:grid-cols-2" : ""}`}
+            >
               {pageConfig?.hero?.showDeliveryPreview !== false ? (
                 <div className="rounded-[28px] border border-[#e3d4c9] bg-[#fbf7f2] p-5">
                   <div className="flex items-center justify-between gap-3">
@@ -843,7 +897,8 @@ export default function ComboDetailPage() {
                   />
                   <p
                     className={`mt-3 text-sm ${
-                      buildStaticDeliveryMessage(deliveryPincode) === "Enter Right Pincode"
+                      buildStaticDeliveryMessage(deliveryPincode) ===
+                      "Enter Right Pincode"
                         ? "font-semibold text-[#b42318]"
                         : "text-[#5d4b41]"
                     }`}
@@ -860,15 +915,21 @@ export default function ComboDetailPage() {
                 <div className="mt-4 flex items-center justify-between rounded-[22px] border border-[#e4d0c3] bg-white px-4 py-3">
                   <button
                     type="button"
-                    onClick={() => setQuantity((current) => Math.max(current - 1, 1))}
+                    onClick={() =>
+                      setQuantity((current) => Math.max(current - 1, 1))
+                    }
                     className="product-qty-action flex h-11 w-11 items-center justify-center rounded-full bg-[#e9ddd4] text-lg font-semibold text-[#6a4331]"
                   >
                     -
                   </button>
-                  <span className="text-lg font-semibold text-[#24150f]">{quantity}</span>
+                  <span className="text-lg font-semibold text-[#24150f]">
+                    {quantity}
+                  </span>
                   <button
                     type="button"
-                    onClick={() => setQuantity((current) => Math.min(current + 1, maxQty))}
+                    onClick={() =>
+                      setQuantity((current) => Math.min(current + 1, maxQty))
+                    }
                     className="product-qty-action flex h-11 w-11 items-center justify-center rounded-full bg-[#e9ddd4] text-lg font-semibold text-[#6a4331]"
                   >
                     +
@@ -968,11 +1029,17 @@ export default function ComboDetailPage() {
 
             {isOutOfStock ? (
               <div className="mt-6 rounded-[24px] border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-                <p>Out of stock because one product in this combo is unavailable.</p>
+                <p>
+                  Out of stock because one product in this combo is unavailable.
+                </p>
                 {outOfStockItems.slice(0, 3).map((item, index) => (
-                  <p key={`${item?.productId || "oos"}-${index}`} className="mt-1 text-xs">
+                  <p
+                    key={`${item?.productId || "oos"}-${index}`}
+                    className="mt-1 text-xs"
+                  >
                     {item?.productTitle || "Product"}
-                    {item?.variantName ? ` ${item.variantName}` : ""} is currently out of stock.
+                    {item?.variantName ? ` ${item.variantName}` : ""} is
+                    currently out of stock.
                   </p>
                 ))}
               </div>
@@ -984,7 +1051,10 @@ export default function ComboDetailPage() {
           <div className="product-reveal product-reveal-delay-2 mt-12 grid gap-4 xl:grid-cols-3">
             <div className="rounded-[30px] border border-[#e1cdbf] bg-white/88 p-6 shadow-[0_34px_90px_-55px_rgba(44,29,20,0.28)] backdrop-blur">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#7b6355]">
-                {mergeTextOverride(pageConfig?.hero?.priceCardEyebrow, "Price Focus")}
+                {mergeTextOverride(
+                  pageConfig?.hero?.priceCardEyebrow,
+                  "Price Focus",
+                )}
               </p>
               <p className="mt-4 text-[18px] font-semibold leading-8 text-[#24150f]">
                 {comboPrice > 0 ? formatPrice(comboPrice) : "Bundle pricing"}
@@ -998,10 +1068,14 @@ export default function ComboDetailPage() {
             </div>
             <div className="rounded-[30px] border border-[#e1cdbf] bg-white/88 p-6 shadow-[0_34px_90px_-55px_rgba(44,29,20,0.28)] backdrop-blur">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#7b6355]">
-                {mergeTextOverride(pageConfig?.hero?.variantCardEyebrow, "Bundle View")}
+                {mergeTextOverride(
+                  pageConfig?.hero?.variantCardEyebrow,
+                  "Bundle View",
+                )}
               </p>
               <p className="mt-4 text-[18px] font-semibold leading-8 text-[#24150f]">
-                {includedItems.length} item{includedItems.length === 1 ? "" : "s"}
+                {includedItems.length} item
+                {includedItems.length === 1 ? "" : "s"}
               </p>
               <p className="mt-3 text-sm leading-7 text-[#5d4b41]">
                 {mergeTextOverride(
@@ -1012,7 +1086,10 @@ export default function ComboDetailPage() {
             </div>
             <div className="rounded-[30px] border border-[#e1cdbf] bg-white/88 p-6 shadow-[0_34px_90px_-55px_rgba(44,29,20,0.28)] backdrop-blur">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#7b6355]">
-                {mergeTextOverride(pageConfig?.hero?.socialProofEyebrow, "Social Proof")}
+                {mergeTextOverride(
+                  pageConfig?.hero?.socialProofEyebrow,
+                  "Social Proof",
+                )}
               </p>
               <p className="mt-4 text-[18px] font-semibold leading-8 text-[#24150f]">
                 {reviewCount > 0
@@ -1048,9 +1125,11 @@ export default function ComboDetailPage() {
               ))}
             </div>
 
-            {activeTab === "description" && pageConfig?.descriptionSection?.show !== false ? (
+            {activeTab === "description" &&
+            pageConfig?.descriptionSection?.show !== false ? (
               <div className="mt-8 space-y-8">
-                {pageConfig?.descriptionSection?.showEditorialBanner !== false ? (
+                {pageConfig?.descriptionSection?.showEditorialBanner !==
+                false ? (
                   <div className="rounded-[32px] border border-[#e7dad1] bg-[#fbf7f2] p-6 sm:p-8">
                     <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7b6355]">
                       {mergeTextOverride(
@@ -1073,7 +1152,8 @@ export default function ComboDetailPage() {
                   </div>
                 ) : null}
 
-                {pageConfig?.descriptionSection?.showDescriptionFlow !== false ? (
+                {pageConfig?.descriptionSection?.showDescriptionFlow !==
+                false ? (
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7b6355]">
                       {mergeTextOverride(
@@ -1097,13 +1177,16 @@ export default function ComboDetailPage() {
                 {combo?.description ? (
                   <div
                     className="prose prose-stone max-w-none text-[#4b392f]"
-                    dangerouslySetInnerHTML={{ __html: sanitizeHTML(combo.description) }}
+                    dangerouslySetInnerHTML={{
+                      __html: sanitizeHTML(combo.description),
+                    }}
                   />
                 ) : null}
               </div>
             ) : null}
 
-            {activeTab === "details" && pageConfig?.detailsSection?.show !== false ? (
+            {activeTab === "details" &&
+            pageConfig?.detailsSection?.show !== false ? (
               <div className="mt-8 space-y-8">
                 {pageConfig?.detailsSection?.showCards !== false ? (
                   <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -1149,7 +1232,8 @@ export default function ComboDetailPage() {
               </div>
             ) : null}
 
-            {activeTab === "shipping" && pageConfig?.shippingSection?.show !== false ? (
+            {activeTab === "shipping" &&
+            pageConfig?.shippingSection?.show !== false ? (
               <div className="mt-8 grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
                 {pageConfig?.shippingSection?.showPoints !== false ? (
                   <div className="rounded-[30px] border border-[#e7dad1] bg-[#fbf7f2] p-6">
@@ -1161,11 +1245,22 @@ export default function ComboDetailPage() {
                     </p>
                     <div className="mt-5 space-y-4">
                       {shippingPoints.map((point, index) => (
-                        <div key={`combo-shipping-point-${index}`} className="flex gap-3">
+                        <div
+                          key={`combo-shipping-point-${index}`}
+                          className="flex gap-3"
+                        >
                           <span className="product-trust-icon mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white">
-                            {index === 0 ? <MdLocalShipping /> : index === 1 ? <MdVerified /> : <MdOutlineSecurity />}
+                            {index === 0 ? (
+                              <MdLocalShipping />
+                            ) : index === 1 ? (
+                              <MdVerified />
+                            ) : (
+                              <MdOutlineSecurity />
+                            )}
                           </span>
-                          <p className="text-[15px] leading-7 text-[#4b392f]">{point}</p>
+                          <p className="text-[15px] leading-7 text-[#4b392f]">
+                            {point}
+                          </p>
                         </div>
                       ))}
                     </div>
@@ -1204,12 +1299,15 @@ export default function ComboDetailPage() {
             <div className="flex flex-wrap items-end justify-between gap-4">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7b6355]">
-                  {mergeTextOverride(pageConfig?.reviewsSection?.eyebrow, "Review Section")}
+                  {mergeTextOverride(
+                    pageConfig?.reviewsSection?.eyebrow,
+                    "Review Section",
+                  )}
                 </p>
                 <h2 className="mt-2 text-3xl font-semibold text-[#24150f]">
                   {mergeTextOverride(
                     pageConfig?.reviewsSection?.title,
-                    "Customer reviews below the combo story",
+                    "Ratings and reviews",
                   )}
                 </h2>
               </div>
@@ -1235,7 +1333,12 @@ export default function ComboDetailPage() {
                   <span className="text-2xl font-semibold text-[#2f1b12]">
                     {reviewRating > 0 ? reviewRating.toFixed(1) : "0.0"}
                   </span>
-                  <Rating value={reviewRating} precision={0.5} readOnly size="small" />
+                  <Rating
+                    value={reviewRating}
+                    precision={0.5}
+                    readOnly
+                    size="small"
+                  />
                 </div>
               </div>
             </div>
@@ -1247,7 +1350,10 @@ export default function ComboDetailPage() {
                 <div className="flex snap-x snap-mandatory gap-4 overflow-x-auto pb-3 [scrollbar-width:thin]">
                   {sortedReviews.slice(0, 10).map((review, index) => (
                     <article
-                      key={review?._id || `${review?.userName || "review"}-${index}`}
+                      key={
+                        review?._id ||
+                        `${review?.userName || "review"}-${index}`
+                      }
                       className="min-w-[280px] snap-start rounded-[28px] border border-[#e7dad1] bg-[#fbf7f2] p-6 sm:min-w-[320px] lg:min-w-[360px]"
                     >
                       <div className="flex items-center gap-4">
@@ -1293,15 +1399,9 @@ export default function ComboDetailPage() {
                       Share Feedback
                     </p>
                     <h3 className="mt-2 text-2xl font-semibold text-[#24150f]">
-                      Add your own review
+                      Help Others by Sharing Your Review and experience
                     </h3>
-                    <p className="mt-2 max-w-2xl text-sm leading-6 text-[#5c473d]">
-                      Anyone can submit combo feedback here. New reviews publish immediately.
-                    </p>
                   </div>
-                  <span className="rounded-full border border-[#dbc9bd] bg-white px-3 py-1 text-xs font-semibold text-[#6d584a]">
-                    Instant publish
-                  </span>
                 </div>
 
                 <div className="mt-5 grid gap-4 md:grid-cols-2">
@@ -1338,7 +1438,9 @@ export default function ComboDetailPage() {
                   </label>
 
                   <div className="md:col-span-2">
-                    <p className="text-sm font-semibold text-[#4b392f]">Your Rating</p>
+                    <p className="text-sm font-semibold text-[#4b392f]">
+                      Your Rating
+                    </p>
                     <div className="mt-3 flex flex-wrap items-center gap-3">
                       <Rating
                         value={publicReviewForm.rating}
@@ -1356,7 +1458,9 @@ export default function ComboDetailPage() {
                   </div>
 
                   <label className="text-sm text-[#4b392f] md:col-span-2">
-                    <span className="mb-2 block font-semibold">Review Comment</span>
+                    <span className="mb-2 block font-semibold">
+                      Review Comment
+                    </span>
                     <textarea
                       value={publicReviewForm.comment}
                       onChange={(event) =>
@@ -1373,9 +1477,6 @@ export default function ComboDetailPage() {
                 </div>
 
                 <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
-                  <p className="text-xs leading-5 text-[#6d584a]">
-                    Reviews can be removed later from admin review management.
-                  </p>
                   <button
                     type="button"
                     onClick={handleSubmitPublicReview}
@@ -1403,7 +1504,11 @@ export default function ComboDetailPage() {
                 Products included in this combo
               </h2>
             </div>
-            <Link href="/combo-deals" className="text-sm font-semibold" style={{ color: "var(--primary)" }}>
+            <Link
+              href="/combo-deals"
+              className="text-sm font-semibold"
+              style={{ color: "var(--primary)" }}
+            >
               View all combos
             </Link>
           </div>
@@ -1411,7 +1516,9 @@ export default function ComboDetailPage() {
           {includedItems.length > 0 ? (
             <div className="mt-6 grid gap-4 md:grid-cols-2">
               {includedItems.map((item, index) => {
-                const itemImage = getImageUrl(item?.image || FALLBACK_COMBO_IMAGE);
+                const itemImage = getImageUrl(
+                  item?.image || FALLBACK_COMBO_IMAGE,
+                );
                 return (
                   <div
                     key={`${item?.productId || "combo-item"}-${index}`}
@@ -1437,9 +1544,12 @@ export default function ComboDetailPage() {
                             Variant: {formatComboVariantLabel(item)}
                           </p>
                         ) : null}
-                        <p className="mt-1 text-sm text-[#6d584a]">Qty: {item?.quantity || 1}</p>
+                        <p className="mt-1 text-sm text-[#6d584a]">
+                          Qty: {item?.quantity || 1}
+                        </p>
                         <div className="mt-3 flex items-center gap-2">
-                          {toNumber(item?.originalPrice, 0) > toNumber(item?.price, 0) ? (
+                          {toNumber(item?.originalPrice, 0) >
+                          toNumber(item?.price, 0) ? (
                             <span className="text-sm text-[#a08d80] line-through">
                               {formatPrice(toNumber(item?.originalPrice, 0))}
                             </span>
