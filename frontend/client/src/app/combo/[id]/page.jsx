@@ -2,12 +2,14 @@
 
 /* eslint-disable @next/next/no-img-element */
 
+import ComboCard from "@/components/ComboCard";
 import {
   mergeCardsWithDefaults,
   mergeListWithDefaults,
   mergeTextOverride,
   normalizeProductPageConfig,
 } from "@/components/productDetail/pageConfig";
+import ProductImage from "@/components/ProductImage";
 import ShareButton from "@/components/ShareButton";
 import { formatPrice } from "@/config/siteConfig";
 import { useCart } from "@/context/CartContext";
@@ -18,7 +20,7 @@ import { sanitizeHTML } from "@/utils/sanitize";
 import { Rating } from "@mui/material";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "react-hot-toast";
 import { FiChevronLeft, FiChevronRight } from "react-icons/fi";
 import { IoMdCart } from "react-icons/io";
@@ -34,6 +36,29 @@ const isObjectId = (value) => /^[0-9a-f]{24}$/i.test(String(value || ""));
 const toNumber = (value, fallback = 0) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const isExclusiveProduct = (value) => {
+  const product = value?.product || value;
+  return (
+    product?.isExclusive === true ||
+    product?.isMembersExclusive === true ||
+    product?.membersExclusive === true
+  );
+};
+
+const isExclusiveCombo = (combo) => {
+  const audience = String(
+    combo?.audience || combo?.visibility || combo?.access || combo?.tag || "",
+  )
+    .trim()
+    .toLowerCase();
+  return (
+    combo?.isExclusive === true ||
+    combo?.isMembersExclusive === true ||
+    combo?.membersExclusive === true ||
+    audience === "members_exclusive"
+  );
 };
 
 const stripHtml = (value) =>
@@ -171,31 +196,6 @@ const buildDetailCards = ({
   },
 ];
 
-const buildSnapshotItems = ({
-  combo,
-  availableStock,
-  savings,
-  includedLabels,
-}) => {
-  const items = [];
-
-  items.push(
-    `Category: ${combo?.category || combo?.categoryName || "Combo Deals"}`,
-  );
-  if (combo?.sku) items.push(`SKU: ${combo.sku}`);
-  items.push(
-    `Availability: ${availableStock > 0 ? "Bundle available" : "Currently unavailable"}`,
-  );
-  if (includedLabels.length > 0) {
-    items.push(`Included: ${includedLabels.slice(0, 3).join(", ")}`);
-  }
-  if (savings > 0) {
-    items.push(`Savings: ${formatPrice(savings)}`);
-  }
-
-  return items;
-};
-
 const buildShippingPoints = () => [
   "Standard delivery typically lands within 3-5 business days after dispatch.",
   "Bundle packaging is prepared to keep every included product protected in transit.",
@@ -257,7 +257,7 @@ export default function ComboDetailPage() {
   const routeId = String(id || "").trim();
   const decodedRouteId = routeId ? decodeURIComponent(routeId) : "";
   const router = useRouter();
-  const { addComboToCart } = useCart();
+  const { addComboToCart, addToCart, cartItems, isComboCartItem } = useCart();
 
   const [combo, setCombo] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -271,6 +271,10 @@ export default function ComboDetailPage() {
   const [reviewsLoading, setReviewsLoading] = useState(false);
   const [reviewSort, setReviewSort] = useState("highest");
   const [reviewSettings, setReviewSettings] = useState(DEFAULT_REVIEW_SETTINGS);
+  const [frequentlyBought, setFrequentlyBought] = useState([]);
+  const [fbtLoading, setFbtLoading] = useState(false);
+  const [recommendedCombos, setRecommendedCombos] = useState([]);
+  const [recommendedLoading, setRecommendedLoading] = useState(false);
   const [publicReviewForm, setPublicReviewForm] = useState({
     userName: "",
     city: "",
@@ -332,6 +336,12 @@ export default function ComboDetailPage() {
     galleryImages.length > 0 ? galleryImages : [FALLBACK_COMBO_IMAGE];
   const activeImage =
     images[activeImageIndex] || images[0] || FALLBACK_COMBO_IMAGE;
+  const maxVisibleThumbnails = 3;
+  const visibleGalleryImages = images.slice(0, maxVisibleThumbnails);
+  const remainingGalleryCount = Math.max(
+    images.length - maxVisibleThumbnails,
+    0,
+  );
 
   const originalTotal = toNumber(
     combo?.originalPrice ?? combo?.originalTotal,
@@ -346,6 +356,7 @@ export default function ComboDetailPage() {
     originalTotal > 0
       ? Math.round(((originalTotal - comboPrice) / originalTotal) * 100)
       : Math.round(toNumber(combo?.discountPercentage, 0));
+  const comboDiscountPercent = Math.max(discountPercent, 0);
   const comboId = combo?._id || combo?.id || "";
   const availableStock = toNumber(
     combo?.availableStock ?? combo?.stockQuantity,
@@ -387,9 +398,8 @@ export default function ComboDetailPage() {
     return [];
   }, [combo]);
   const includedItems = Array.isArray(combo?.items) ? combo.items : [];
-  const includedLabels = includedItems
-    .map((item) => String(item?.productTitle || "").trim())
-    .filter(Boolean);
+  const primaryProductId =
+    includedItems.find((item) => item?.productId)?.productId || "";
 
   const pageConfig = normalizeProductPageConfig(combo?.productPage);
   const defaultDescriptionParagraphs = buildDescriptionParagraphs(combo);
@@ -406,24 +416,74 @@ export default function ComboDetailPage() {
     }),
     pageConfig?.detailsSection?.cards || [],
   );
-  const snapshotItems = mergeListWithDefaults(
-    pageConfig?.detailsSection?.snapshotItems || [],
-    buildSnapshotItems({
-      combo,
-      availableStock,
-      savings,
-      includedLabels,
-    }),
-  );
   const shippingPoints = mergeListWithDefaults(
     pageConfig?.shippingSection?.points || [],
     buildShippingPoints(),
   );
   const heroStatusLabel = getHeroStatusLabel(combo, reviewCount);
+  const showHeroStoryCard = pageConfig?.hero?.showStoryCard !== false;
   const showPublicReviewForm =
     pageConfig?.reviewsSection?.show !== false &&
     reviewSettings.allowPublicSubmissions !== false &&
     reviewSettings.showPublicReviewForm !== false;
+  const showFrequentlyBoughtSection =
+    pageConfig?.frequentlyBoughtSection?.show !== false;
+  const showRecommendedCombosSection =
+    pageConfig?.recommendedCombosSection?.show !== false;
+  const galleryGridClassName = showHeroStoryCard
+    ? "relative mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-stretch"
+    : "relative mt-6";
+  const imageStageClassName = showHeroStoryCard
+    ? "product-image-stage relative flex min-h-[480px] overflow-hidden rounded-[30px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.92)_0%,rgba(244,236,229,0.88)_100%)] p-0 lg:h-full lg:min-h-[540px]"
+    : "product-image-stage relative mx-auto flex min-h-[420px] max-w-[840px] overflow-hidden rounded-[30px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.92)_0%,rgba(244,236,229,0.88)_100%)] p-0";
+
+  const openGalleryAtIndex = (index) => {
+    setActiveImageIndex(index);
+    if (!comboId) return;
+    router.push(
+      `/product-image-zoom?comboId=${encodeURIComponent(comboId)}&type=combo&index=${Math.max(Number(index || 0), 0)}`,
+    );
+  };
+
+  const fetchComboSections = useCallback(async (productId) => {
+    if (!productId) {
+      setFrequentlyBought([]);
+      setRecommendedCombos([]);
+      return;
+    }
+
+    try {
+      setFbtLoading(true);
+      setRecommendedLoading(true);
+      const response = await fetchDataFromApi(
+        `/api/combos/sections?productId=${encodeURIComponent(productId)}`,
+      );
+      if (response?.success) {
+        const fbt = Array.isArray(response?.data?.frequentlyBoughtTogether)
+          ? response.data.frequentlyBoughtTogether.filter(
+              (item) => !isExclusiveProduct(item),
+            )
+          : [];
+        const combos = Array.isArray(response?.data?.recommendedCombos)
+          ? response.data.recommendedCombos.filter(
+              (comboItem) => !isExclusiveCombo(comboItem),
+            )
+          : [];
+        setFrequentlyBought(fbt);
+        setRecommendedCombos(combos);
+        return;
+      }
+      setFrequentlyBought([]);
+      setRecommendedCombos([]);
+    } catch (error) {
+      console.error("Error fetching combo sections:", error);
+      setFrequentlyBought([]);
+      setRecommendedCombos([]);
+    } finally {
+      setFbtLoading(false);
+      setRecommendedLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     const loadReviewSettings = async () => {
@@ -475,6 +535,27 @@ export default function ComboDetailPage() {
 
     loadComboReviews();
   }, [comboId]);
+
+  useEffect(() => {
+    if (!primaryProductId) {
+      setFrequentlyBought([]);
+      setRecommendedCombos([]);
+      return;
+    }
+
+    if (showFrequentlyBoughtSection || showRecommendedCombosSection) {
+      fetchComboSections(primaryProductId);
+      return;
+    }
+
+    setFrequentlyBought([]);
+    setRecommendedCombos([]);
+  }, [
+    fetchComboSections,
+    primaryProductId,
+    showFrequentlyBoughtSection,
+    showRecommendedCombosSection,
+  ]);
 
   const tabs = [
     pageConfig?.tabs?.showDescription !== false
@@ -531,6 +612,130 @@ export default function ComboDetailPage() {
       setActiveTab(tabs[0].id);
     }
   }, [activeTab, tabs]);
+
+  const getRecommendationPayload = (item) => {
+    const recommendation = item?.recommendation || {};
+    const recProduct = recommendation?.product || item?.product || null;
+    if (!recProduct) return null;
+
+    const variant = recommendation?.variant || item?.variant || null;
+    const fallbackPrice = Number(recProduct?.price ?? 0);
+    const rawPrice = Number(
+      item?.price ?? recommendation?.price ?? variant?.price ?? fallbackPrice,
+    );
+    const safePrice =
+      Number.isFinite(rawPrice) && rawPrice > 0
+        ? rawPrice
+        : Number.isFinite(fallbackPrice) && fallbackPrice > 0
+          ? fallbackPrice
+          : 0;
+
+    const rawOriginalPrice = Number(
+      item?.originalPrice ??
+        recommendation?.originalPrice ??
+        variant?.originalPrice ??
+        recProduct?.originalPrice ??
+        safePrice,
+    );
+    const safeOriginalPrice = Number.isFinite(rawOriginalPrice)
+      ? Math.max(rawOriginalPrice, safePrice)
+      : safePrice;
+
+    return {
+      product: recProduct,
+      variant,
+      variantId: variant?._id || variant?.id || null,
+      label: variant?.label || variant?.name || "",
+      price: safePrice > 0 ? safePrice : safeOriginalPrice,
+      originalPrice: Math.max(safeOriginalPrice, safePrice),
+      image:
+        item?.image ||
+        recommendation?.image ||
+        variant?.image ||
+        recProduct?.thumbnail ||
+        recProduct?.images?.[0] ||
+        "",
+    };
+  };
+
+  const buildCartProductFromRecommendation = (item) => {
+    const recommendation = getRecommendationPayload(item);
+    if (!recommendation?.product) return null;
+
+    const recProduct = recommendation.product;
+    const variant = recommendation.variant;
+    const price = Number(recommendation.price || 0);
+    const originalPrice = Number(recommendation.originalPrice || price);
+
+    if (recommendation.variantId) {
+      return {
+        ...recProduct,
+        price,
+        originalPrice,
+        selectedVariant: {
+          _id: recommendation.variantId,
+          name: variant?.name,
+          sku: variant?.sku,
+          price,
+          weightInGrams: variant?.weightInGrams,
+          label: variant?.label,
+          weight: variant?.weight,
+          unit: variant?.unit,
+        },
+        variantId: recommendation.variantId,
+      };
+    }
+
+    return {
+      ...recProduct,
+      price,
+      originalPrice,
+    };
+  };
+
+  const hasSelectedVariantInCart = (targetProductId, variantId) => {
+    if (!targetProductId) return false;
+
+    return cartItems.some((item) => {
+      if (typeof isComboCartItem === "function" && isComboCartItem(item)) {
+        return false;
+      }
+
+      const itemProductId =
+        item?.product?._id || item?.product?.id || item?.product || item?.id;
+      if (String(itemProductId) !== String(targetProductId)) return false;
+
+      if (!variantId) return true;
+
+      const itemVariantId =
+        item?.variant?._id ||
+        item?.variant?.id ||
+        item?.variantId ||
+        item?.variant ||
+        item?.selectedVariant?._id ||
+        item?.selectedVariant?.id ||
+        null;
+
+      return String(itemVariantId || "") === String(variantId);
+    });
+  };
+
+  const handleAddAllToCart = async () => {
+    if (frequentlyBought.length === 0) return;
+
+    for (const item of frequentlyBought) {
+      const payload = buildCartProductFromRecommendation(item);
+      if (!payload) continue;
+
+      const targetProductId = payload?._id || payload?.id || "";
+      if (!targetProductId) continue;
+      if (hasSelectedVariantInCart(targetProductId, payload?.variantId)) {
+        continue;
+      }
+
+      await addToCart(payload, 1);
+    }
+  };
 
   const handleAddCombo = async () => {
     if (!combo || isAdding) return;
@@ -703,18 +908,27 @@ export default function ComboDetailPage() {
               </div>
             </div>
 
-            <div className="relative mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-stretch">
-              <div className="product-image-stage relative flex min-h-[480px] items-center justify-center overflow-hidden rounded-[30px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.92)_0%,rgba(244,236,229,0.88)_100%)] p-6 lg:min-h-[540px]">
+            <div className={galleryGridClassName}>
+              <div className={imageStageClassName}>
                 {discountPercent > 0 ? (
                   <span className="absolute left-5 top-5 z-10 rounded-full bg-[#ef4444] px-3 py-1 text-xs font-bold text-white">
                     {discountPercent}% OFF
                   </span>
                 ) : null}
-                <img
-                  src={activeImage}
-                  alt={combo?.name || "Combo image"}
-                  className="max-h-[420px] w-full object-contain"
-                />
+                <button
+                  type="button"
+                  className="group relative z-10 flex h-full w-full overflow-hidden rounded-[28px]"
+                  aria-label="Combo image"
+                >
+                  <ProductImage
+                    src={activeImage}
+                    alt={combo?.name || "Combo image"}
+                    fit="cover"
+                    aspect=""
+                    rounded="rounded-[28px]"
+                    className="h-full w-full bg-transparent"
+                  />
+                </button>
               </div>
 
               {pageConfig?.hero?.showStoryCard !== false ? (
@@ -762,7 +976,7 @@ export default function ComboDetailPage() {
 
             {images.length > 1 ? (
               <div className="mt-6 flex flex-wrap gap-3">
-                {images.map((image, index) => (
+                {visibleGalleryImages.map((image, index) => (
                   <button
                     key={`${image}-${index}`}
                     type="button"
@@ -773,13 +987,38 @@ export default function ComboDetailPage() {
                         : "border-[#ead7ca]"
                     }`}
                   >
-                    <img
+                    <ProductImage
                       src={image}
                       alt={`${combo?.name || "Combo"} ${index + 1}`}
-                      className="h-full w-full object-contain"
+                      aspect="aspect-square"
+                      fit="cover"
+                      padding="p-1"
+                      rounded="rounded-[16px]"
+                      className="h-full w-full"
                     />
                   </button>
                 ))}
+                {remainingGalleryCount > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => openGalleryAtIndex(maxVisibleThumbnails)}
+                    className="relative h-[98px] w-[98px] overflow-hidden rounded-[22px] border border-[#ead7ca] bg-white p-2 shadow-sm transition"
+                  >
+                    <ProductImage
+                      src={images[maxVisibleThumbnails]}
+                      alt="More combo images"
+                      aspect="aspect-square"
+                      fit="cover"
+                      padding="p-1"
+                      rounded="rounded-[16px]"
+                      className="h-full w-full"
+                      imgClassName="blur-[1px]"
+                    />
+                    <span className="absolute inset-2 flex items-center justify-center rounded-[16px] bg-black/45 text-lg font-semibold text-white">
+                      +{remainingGalleryCount}
+                    </span>
+                  </button>
+                ) : null}
               </div>
             ) : null}
           </div>
@@ -826,23 +1065,30 @@ export default function ComboDetailPage() {
               </div>
             </div>
 
-            <p className="mt-5 text-lg leading-8 text-[#6d584a]">
-              {combo?.shortDescription ||
-                "A curated bundle with stronger pricing context, included item clarity, and a cleaner path to checkout."}
-            </p>
+            {combo?.shortDescription ? (
+              <p className="mt-5 text-lg leading-8 text-[#6d584a]">
+                {combo.shortDescription}
+              </p>
+            ) : null}
 
-            <div className="mt-6 flex flex-wrap items-center gap-3">
-              <span className="text-[42px] font-semibold tracking-tight text-[#24150f]">
+            <div className="mt-7 flex flex-wrap items-end gap-3">
+              <p className="text-4xl font-semibold text-[#24150f]">
                 {formatPrice(comboPrice)}
-              </span>
+              </p>
               {originalTotal > comboPrice ? (
-                <span className="text-2xl text-[#a08d80] line-through">
+                <p className="pb-1 text-lg font-medium text-[#9a8476] line-through">
                   {formatPrice(originalTotal)}
-                </span>
+                </p>
               ) : null}
-              {savings > 0 ? (
-                <span className="rounded-full bg-[#6a4331] px-4 py-2 text-sm font-semibold text-white">
-                  Save {formatPrice(savings)}
+              {comboDiscountPercent > 0 ? (
+                <span
+                  className="rounded-full px-4 py-2 text-sm font-semibold"
+                  style={{
+                    backgroundColor: "var(--primary)",
+                    color: "var(--flavor-text, #ffffff)",
+                  }}
+                >
+                  Save {comboDiscountPercent}%
                 </span>
               ) : null}
             </div>
@@ -1127,60 +1373,84 @@ export default function ComboDetailPage() {
 
             {activeTab === "description" &&
             pageConfig?.descriptionSection?.show !== false ? (
-              <div className="mt-8 space-y-8">
+              <div className="mt-8 grid items-start gap-6 xl:grid-cols-2">
                 {pageConfig?.descriptionSection?.showEditorialBanner !==
                 false ? (
-                  <div className="rounded-[32px] border border-[#e7dad1] bg-[#fbf7f2] p-6 sm:p-8">
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7b6355]">
+                  <div className="self-start overflow-hidden rounded-[32px] bg-[linear-gradient(135deg,_#2f1b12_0%,_#6b4331_42%,_#9a6b54_100%)] p-6 text-white sm:p-8">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#f2dbc7]">
                       {mergeTextOverride(
                         pageConfig?.descriptionSection?.editorialEyebrow,
                         "Featured Overview",
                       )}
                     </p>
-                    <h2 className="mt-3 text-3xl font-semibold text-[#24150f]">
-                      {mergeTextOverride(
-                        pageConfig?.descriptionSection?.editorialTitle,
-                        "A stronger combo story can live next to the bundle without overwhelming the purchase decision.",
-                      )}
-                    </h2>
-                    <p className="mt-4 text-base leading-8 text-[#5d4b41]">
-                      {mergeTextOverride(
-                        pageConfig?.descriptionSection?.editorialDescription,
-                        "Use this section to explain the thinking behind the bundle, the shopping outcome it solves, and why the included products belong together.",
-                      )}
-                    </p>
+                    <div
+                      className={`mt-5 grid items-start gap-6 ${
+                        pageConfig?.descriptionSection
+                          ?.showFeaturedBannerImage !== false &&
+                        pageConfig?.descriptionSection?.featuredBannerImage
+                          ? "lg:grid-cols-[260px_minmax(0,1fr)]"
+                          : "grid-cols-1"
+                      }`}
+                    >
+                      {pageConfig?.descriptionSection
+                        ?.showFeaturedBannerImage !== false &&
+                      pageConfig?.descriptionSection?.featuredBannerImage ? (
+                        <ProductImage
+                          src={
+                            pageConfig.descriptionSection.featuredBannerImage
+                          }
+                          alt={combo?.name || "Combo showcase"}
+                          fit="cover"
+                          aspect="aspect-[4/3]"
+                          className="w-full bg-white/10"
+                          imgClassName="object-cover"
+                        />
+                      ) : null}
+                      <div>
+                        <h2 className="text-3xl font-semibold leading-tight">
+                          {mergeTextOverride(
+                            pageConfig?.descriptionSection?.editorialTitle,
+                            "A stronger combo story can live next to the bundle without overwhelming the purchase decision.",
+                          )}
+                        </h2>
+                        <p className="mt-4 text-base leading-7 text-[#f8ebe2]">
+                          {mergeTextOverride(
+                            pageConfig?.descriptionSection
+                              ?.editorialDescription,
+                            "Use this section to explain the thinking behind the bundle, the shopping outcome it solves, and why the included products belong together.",
+                          )}
+                        </p>
+                      </div>
+                    </div>
                   </div>
                 ) : null}
 
                 {pageConfig?.descriptionSection?.showDescriptionFlow !==
                 false ? (
-                  <div>
+                  <div className="self-start rounded-[32px] border border-[#e7dad1] bg-[#fbf7f2] p-6 sm:p-8">
                     <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7b6355]">
                       {mergeTextOverride(
                         pageConfig?.descriptionSection?.flowEyebrow,
                         "Description Flow",
                       )}
                     </p>
-                    <div className="mt-4 grid gap-4 lg:grid-cols-3">
-                      {descriptionParagraphs.map((paragraph, index) => (
+                    <div className="mt-5 max-w-[68ch] space-y-5 text-base leading-8 text-[#4b392f]">
+                      {combo?.description &&
+                      /<\/?[a-z][\s\S]*>/i.test(combo.description) ? (
                         <div
-                          key={`combo-desc-${index}`}
-                          className="rounded-[24px] border border-[#e7dad1] bg-white p-5 text-[15px] leading-8 text-[#4b392f] shadow-sm"
-                        >
-                          {paragraph}
-                        </div>
-                      ))}
+                          className="max-w-none text-[#4b392f]"
+                          dangerouslySetInnerHTML={{
+                            __html: sanitizeHTML(combo.description),
+                          }}
+                        />
+                      ) : null}
+                      {(!combo?.description ||
+                        !/<\/?[a-z][\s\S]*>/i.test(combo.description)) &&
+                        descriptionParagraphs.map((paragraph, index) => (
+                          <p key={`combo-desc-${index}`}>{paragraph}</p>
+                        ))}
                     </div>
                   </div>
-                ) : null}
-
-                {combo?.description ? (
-                  <div
-                    className="prose prose-stone max-w-none text-[#4b392f]"
-                    dangerouslySetInnerHTML={{
-                      __html: sanitizeHTML(combo.description),
-                    }}
-                  />
                 ) : null}
               </div>
             ) : null}
@@ -1206,27 +1476,6 @@ export default function ComboDetailPage() {
                         </p>
                       </div>
                     ))}
-                  </div>
-                ) : null}
-
-                {pageConfig?.detailsSection?.showSnapshot !== false ? (
-                  <div className="rounded-[30px] border border-[#e7dad1] bg-white p-6">
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7b6355]">
-                      {mergeTextOverride(
-                        pageConfig?.detailsSection?.snapshotEyebrow,
-                        "Snapshot",
-                      )}
-                    </p>
-                    <div className="mt-4 grid gap-3 lg:grid-cols-2">
-                      {snapshotItems.map((item, index) => (
-                        <div
-                          key={`combo-snapshot-${index}`}
-                          className="rounded-[18px] border border-[#efe4dc] bg-[#fbf7f2] px-4 py-3 text-sm text-[#4b392f]"
-                        >
-                          {item}
-                        </div>
-                      ))}
-                    </div>
                   </div>
                 ) : null}
               </div>
@@ -1488,6 +1737,176 @@ export default function ComboDetailPage() {
                 </div>
               </div>
             ) : null}
+          </div>
+        ) : null}
+
+        {showFrequentlyBoughtSection ? (
+          <div className="product-reveal product-reveal-delay-3 mt-12 rounded-[36px] border border-[#e1cdbf] bg-white/88 p-6 shadow-[0_34px_90px_-55px_rgba(44,29,20,0.38)] backdrop-blur sm:p-8">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7b6355]">
+                  {mergeTextOverride(
+                    pageConfig?.frequentlyBoughtSection?.eyebrow,
+                    "Frequently Bought Together",
+                  )}
+                </p>
+                <h2 className="mt-2 text-3xl font-semibold text-[#24150f]">
+                  {mergeTextOverride(
+                    pageConfig?.frequentlyBoughtSection?.title,
+                    "Helpful add-ons that pair well with this combo",
+                  )}
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={handleAddAllToCart}
+                disabled={frequentlyBought.length === 0}
+                className="rounded-2xl px-5 py-3 text-sm font-semibold transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50"
+                style={{
+                  backgroundColor: "var(--primary)",
+                  color: "var(--flavor-text, #ffffff)",
+                }}
+              >
+                {mergeTextOverride(
+                  pageConfig?.frequentlyBoughtSection?.buttonText,
+                  "Add All To Cart",
+                )}
+              </button>
+            </div>
+
+            <div className="mt-6">
+              {fbtLoading ? (
+                <p className="text-sm text-[#6d584a]">Loading suggestions...</p>
+              ) : frequentlyBought.length > 0 ? (
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  {frequentlyBought.map((item, index) => {
+                    const recommendation = getRecommendationPayload(item);
+                    if (!recommendation?.product) return null;
+
+                    const recProduct = recommendation.product;
+                    const recProductId =
+                      recProduct?._id || recProduct?.id || "";
+                    const isAdded = hasSelectedVariantInCart(
+                      recProductId,
+                      recommendation.variantId,
+                    );
+
+                    return (
+                      <div
+                        key={`${String(recProductId)}:${String(recommendation.variantId || "base")}:${index}`}
+                        className="rounded-[28px] border border-[#e7dad1] bg-[#fbf7f2] p-5"
+                      >
+                        <div className="flex items-center gap-4">
+                          <ProductImage
+                            src={getImageUrl(recommendation.image)}
+                            alt={recProduct?.name || "Suggested product"}
+                            aspect="aspect-square"
+                            fit="cover"
+                            className="h-[72px] w-[72px] flex-shrink-0 border border-[#efe4dc]"
+                          />
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#7b6355]">
+                              Add-on
+                            </p>
+                            <h3 className="line-clamp-2 text-sm font-semibold text-[#24150f]">
+                              {recProduct?.name || recProduct?.title}
+                            </h3>
+                            {recommendation.label ? (
+                              <p className="mt-1 text-xs text-[#6d584a]">
+                                {recommendation.label}
+                              </p>
+                            ) : null}
+                            <p
+                              className="mt-2 text-sm font-semibold"
+                              style={{ color: "var(--primary)" }}
+                            >
+                              {formatPrice(toNumber(recommendation.price, 0))}
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const payload =
+                              buildCartProductFromRecommendation(item);
+                            if (!payload) return;
+                            addToCart(payload, 1);
+                          }}
+                          disabled={isAdded}
+                          className={`mt-4 w-full rounded-2xl border px-4 py-3 text-sm font-semibold transition ${
+                            isAdded ? "bg-white" : "hover:-translate-y-0.5"
+                          }`}
+                          style={
+                            isAdded
+                              ? {
+                                  borderColor: "var(--primary)",
+                                  color: "var(--primary)",
+                                }
+                              : {
+                                  borderColor: "var(--primary)",
+                                  backgroundColor: "var(--primary)",
+                                  color: "var(--flavor-text, #ffffff)",
+                                }
+                          }
+                        >
+                          {isAdded ? "Added" : "Add to Cart"}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-sm text-[#6d584a]">Loading products...</p>
+              )}
+            </div>
+          </div>
+        ) : null}
+
+        {showRecommendedCombosSection &&
+        (recommendedLoading || recommendedCombos.length > 0) ? (
+          <div className="product-reveal product-reveal-delay-3 mt-12 rounded-[36px] border border-[#e1cdbf] bg-white/88 p-6 shadow-[0_34px_90px_-55px_rgba(44,29,20,0.38)] backdrop-blur sm:p-8">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7b6355]">
+                  {mergeTextOverride(
+                    pageConfig?.recommendedCombosSection?.eyebrow,
+                    "Recommended Combos",
+                  )}
+                </p>
+                <h2 className="mt-2 text-3xl font-semibold text-[#24150f]">
+                  {mergeTextOverride(
+                    pageConfig?.recommendedCombosSection?.title,
+                    "Bundle options that support the same buying flow",
+                  )}
+                </h2>
+              </div>
+              <Link
+                href="/combo-deals"
+                className="text-sm font-semibold"
+                style={{ color: "var(--primary)" }}
+              >
+                {mergeTextOverride(
+                  pageConfig?.recommendedCombosSection?.linkText,
+                  "View all combos",
+                )}
+              </Link>
+            </div>
+
+            <div className="mt-6">
+              {recommendedLoading ? (
+                <p className="text-sm text-[#6d584a]">Loading combos...</p>
+              ) : recommendedCombos.length > 0 ? (
+                <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">
+                  {recommendedCombos.map((comboItem) => (
+                    <ComboCard
+                      key={comboItem._id || comboItem.slug}
+                      combo={comboItem}
+                      context="combo_recommended_combos"
+                    />
+                  ))}
+                </div>
+              ) : null}
+            </div>
           </div>
         ) : null}
 
