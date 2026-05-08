@@ -3,26 +3,8 @@ service: default
 
 automatic_scaling:
   min_instances: 0
-  max_num_instances: 2
-  cool_down_period_sec: 120
-  cpu_utilization:
-    target_utilization: 0.65
-
-liveness_check:
-  path: "/healthz"
-  check_interval_sec: 30
-  timeout_sec: 4
-  failure_threshold: 4
-  success_threshold: 2
-  initial_delay_sec: 300
-
-readiness_check:
-  path: "/healthz"
-  check_interval_sec: 10
-  timeout_sec: 4
-  failure_threshold: 3
-  success_threshold: 2
-  app_start_timeout_sec: 300
+  max_instances: 2
+  target_cpu_utilization: 0.65
 
 env_variables:
   NODE_ENV: "production"
