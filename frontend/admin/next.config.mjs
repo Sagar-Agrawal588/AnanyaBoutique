@@ -21,6 +21,7 @@ const apiImagePattern = [
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   basePath: "/admin",
+  outputFileTracingRoot: __dirname,
   async redirects() {
     return [
       {

@@ -1,0 +1,71 @@
+# Prevent the ignore file from being uploaded when deploying from the repo root.
+.gcloudignore
+
+# Exclude repository metadata and local editor settings.
+.git/
+.github/
+.gitignore
+.vscode/
+.codex-temp/
+
+# Skip all local dependency directories; Cloud Build restores dependencies from lockfiles.
+node_modules/
+**/node_modules/
+
+# Exclude local build output and caches from Next.js and generic JS toolchains.
+.next/
+**/.next/
+dist/
+**/dist/
+coverage/
+**/coverage/
+build/
+**/build/
+.cache/
+**/.cache/
+*.tsbuildinfo
+
+# Do not upload local environment files; deploy-time config should come from App Engine.
+.env
+.env.*
+!.env.example
+!**/.env.example
+
+# Exclude local logs, debug output, and temporary working files.
+logs/
+**/logs/
+tmp/
+**/tmp/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Exclude screenshots, test artifacts, and non-production validation assets.
+screenshots/
+test-artifacts/
+frontend/client/tests/
+frontend/client/test-results/
+server/tests/
+server/postman/
+
+# Exclude local uploads and generated business artifacts that do not belong in production images.
+uploads/
+server/uploads/
+server/invoices/
+output/
+backups/
+
+# Exclude root-level working docs and binary deliverables from deploy archives.
+API_plan_files/
+docs/
+plans/
+_deliverables/
+*.pdf
+*.docx
+*.pptx
+
+# Skip OS metadata.
+.DS_Store
+Thumbs.db

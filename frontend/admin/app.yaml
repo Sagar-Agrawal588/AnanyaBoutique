@@ -20,3 +20,10 @@ env_variables:
   NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: "SET_OPTIONAL_AT_DEPLOY"
   NEXT_PUBLIC_FIREBASE_APP_ID: "SET_OPTIONAL_AT_DEPLOY"
   NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID: "SET_OPTIONAL_AT_DEPLOY"
+
+instance_class: F1
+
+automatic_scaling:
+  min_idle_instances: 0
+  max_idle_instances: 0
+  max_instances: 1
