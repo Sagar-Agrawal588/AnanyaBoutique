@@ -2,7 +2,7 @@
 service: default
 
 automatic_scaling:
-  min_num_instances: 0
+  min_instances: 0
   max_num_instances: 2
   cool_down_period_sec: 120
   cpu_utilization:
