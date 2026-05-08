@@ -151,25 +151,23 @@ jobs:
               if value:
                   public_env[key] = value
 
-          lines = [
-              "runtime: nodejs22",
-              "service: admin",
-              "",
-              "build_env_variables:",
-          ]
-          for key, value in public_env.items():
-              lines.append(f"  {key}: {json.dumps(value)}")
-
-          lines.extend([
-              "",
-              "env_variables:",
-          ])
-          for key, value in public_env.items():
-              lines.append(f"  {key}: {json.dumps(value)}")
-
-          with open("frontend/admin/app.deploy.yaml", "w", encoding="utf-8") as f:
-              f.write("\n".join(lines) + "\n")
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env_file:
+              env_file.write(
+                  "APP_DEPLOY_PUBLIC_ENV_JSON="
+                  + json.dumps(public_env, separators=(",", ":"))
+                  + "\n"
+              )
           PY
+
+      - name: Render admin deploy YAML from app.yaml
+        env:
+          APP_DEPLOY_PUBLIC_ENV_JSON: ${{ env.APP_DEPLOY_PUBLIC_ENV_JSON }}
+        run: |
+          python scripts/build_app_engine_deploy_yaml.py \
+            --source frontend/admin/app.yaml \
+            --target frontend/admin/app.deploy.yaml \
+            --build-env-json "$APP_DEPLOY_PUBLIC_ENV_JSON" \
+            --env-json "$APP_DEPLOY_PUBLIC_ENV_JSON"
 
       - name: Deploy admin service
         run: gcloud app deploy frontend/admin/app.deploy.yaml --project="${{ secrets.GCP_PROJECT_ID }}" --quiet

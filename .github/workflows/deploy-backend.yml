@@ -229,18 +229,14 @@ jobs:
                       f"Provide all or none: {', '.join(keys)}"
                   )
 
-          lines = [
-              "runtime: nodejs22",
-              "service: default",
-              "",
-              "env_variables:",
-              f"  NODE_ENV: {json.dumps('production')}",
-              f"  MONGO_URI: {json.dumps(os.environ['MONGO_URI'])}",
-              f"  ACCESS_TOKEN_SECRET: {json.dumps(os.environ['ACCESS_TOKEN_SECRET'])}",
-              f"  REFRESH_TOKEN_SECRET: {json.dumps(os.environ['REFRESH_TOKEN_SECRET'])}",
-              f"  CLIENT_URL: {json.dumps(os.environ['CLIENT_URL'])}",
-              f"  ADMIN_URL: {json.dumps(os.environ['ADMIN_URL'])}",
-          ]
+          env_values = {
+              "NODE_ENV": "production",
+              "MONGO_URI": os.environ["MONGO_URI"],
+              "ACCESS_TOKEN_SECRET": os.environ["ACCESS_TOKEN_SECRET"],
+              "REFRESH_TOKEN_SECRET": os.environ["REFRESH_TOKEN_SECRET"],
+              "CLIENT_URL": os.environ["CLIENT_URL"],
+              "ADMIN_URL": os.environ["ADMIN_URL"],
+          }
 
           optional = [
               "SMTP_HOST",
@@ -309,11 +305,24 @@ jobs:
           for key in optional:
               value = os.environ.get(key, "")
               if value:
-                  lines.append(f"  {key}: {json.dumps(value)}")
+                  env_values[key] = value
 
-          with open("server/app.deploy.yaml", "w", encoding="utf-8") as f:
-              f.write("\n".join(lines) + "\n")
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env_file:
+              env_file.write(
+                  "APP_DEPLOY_BACKEND_ENV_JSON="
+                  + json.dumps(env_values, separators=(",", ":"))
+                  + "\n"
+              )
           PY
+
+      - name: Render backend deploy YAML from app.yaml
+        env:
+          APP_DEPLOY_BACKEND_ENV_JSON: ${{ env.APP_DEPLOY_BACKEND_ENV_JSON }}
+        run: |
+          python scripts/build_app_engine_deploy_yaml.py \
+            --source server/app.yaml \
+            --target server/app.deploy.yaml \
+            --env-json "$APP_DEPLOY_BACKEND_ENV_JSON"
 
       - name: Deploy backend service
         run: gcloud app deploy server/app.deploy.yaml --project="${{ secrets.GCP_PROJECT_ID }}" --quiet

@@ -28,3 +28,11 @@ env_variables:
   NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID: "SET_OPTIONAL_AT_DEPLOY"
   NEXT_PUBLIC_FIREBASE_VAPID_KEY: "SET_OPTIONAL_AT_DEPLOY"
   NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: "SET_OPTIONAL_AT_DEPLOY"
+
+
+instance_class: F1
+
+automatic_scaling:
+  min_idle_instances: 0
+  max_idle_instances: 0
+  max_instances: 1
