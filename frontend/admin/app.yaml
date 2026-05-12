@@ -24,6 +24,8 @@ env_variables:
 instance_class: F1
 
 automatic_scaling:
+  min_instances: 0
   min_idle_instances: 0
   max_idle_instances: 0
   max_instances: 1
+  target_cpu_utilization: 0.95
