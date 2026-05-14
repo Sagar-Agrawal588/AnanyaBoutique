@@ -129,20 +129,20 @@ const BlogsPage = () => {
               className="bg-white rounded-2xl shadow hover:shadow-xl transition overflow-hidden"
             >
               {/* Image */}
-              {blog.videoUrl ? (
+              {blog.mediaType === "video" && blog.videoUrl ? (
                 <video
                   src={blog.videoUrl}
                   poster={blog.image || undefined}
                   controls
                   className="w-full h-40 object-cover bg-black"
                 />
-              ) : blog.image ? (
+              ) : (
                 <img
-                  src={blog.image}
+                  src={blog.image || "https://picsum.photos/600/400"}
                   alt={blog.title}
                   className="w-full h-40 object-cover"
                 />
-              ) : null}
+              )}
 
               <div className="p-5">
                 <div className="flex justify-between items-start">

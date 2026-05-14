@@ -1,9 +1,6 @@
 import { deleteFromCloudinary } from "../config/cloudinary.js";
-import { invalidatePublicResponseCache } from "../middlewares/publicResponseCache.js";
 import BlogModel from "../models/blog.model.js";
 import { extractPublicIdFromUrl } from "../utils/imageUtils.js";
-
-const BLOG_RESPONSE_CACHE_NAMESPACES = ["blogs"];
 
 const normalizeText = (value, fallback = "") => {
   if (typeof value !== "string") return fallback;
@@ -25,13 +22,6 @@ const normalizeTags = (value) => {
 
   return [];
 };
-
-const resolveBlogTitle = (title, content, excerpt, referenceLink) =>
-  normalizeText(
-    title,
-    normalizeText(content, normalizeText(excerpt, normalizeText(referenceLink, "Untitled Blog"))).slice(0, 120) ||
-      "Untitled Blog",
-  );
 
 const normalizePublishFlag = (value, fallback = true) => {
   if (value === undefined || value === null || value === "") {
@@ -152,24 +142,6 @@ export const getBlogBySlug = async (req, res) => {
   }
 };
 
-export const incrementBlogViewCountBestEffort = async (identifier) => {
-  try {
-    const normalizedIdentifier = String(identifier || "").trim();
-    if (!normalizedIdentifier) {
-      return;
-    }
-
-    await BlogModel.updateOne(resolvePublicBlogQuery(normalizedIdentifier), {
-      $inc: { viewCount: 1 },
-    });
-  } catch (error) {
-    console.warn(
-      "Blog view count cache-hit update failed:",
-      error?.message || error,
-    );
-  }
-};
-
 /**
  * Get single blog by ID (Admin - for editing)
  */
@@ -253,15 +225,19 @@ export const createBlog = async (req, res) => {
       isPublished,
     } = req.body;
 
-    const normalizedTitle = resolveBlogTitle(title, content, excerpt, referenceLink);
-    const normalizedContent = normalizeText(content, "");
+    const normalizedTitle = normalizeText(
+      title,
+      normalizeText(content, "Untitled Blog").slice(0, 120) || "Untitled Blog",
+    );
+    const normalizedContent = normalizeText(
+      content,
+      normalizeText(excerpt, normalizeText(referenceLink, "Blog content coming soon.")),
+    );
     const normalizedExcerpt = normalizeText(
       excerpt,
-      normalizedContent ? normalizedContent.slice(0, 500) : "",
+      normalizedContent.slice(0, 500),
     );
-    const normalizedVideoUrl = normalizeText(videoUrl, "");
-    const normalizedMediaType =
-      mediaType === "video" || normalizedVideoUrl ? "video" : "image";
+    const normalizedMediaType = mediaType === "video" ? "video" : "image";
 
     const blog = new BlogModel({
       title: normalizedTitle,
@@ -270,7 +246,7 @@ export const createBlog = async (req, res) => {
       image: normalizeText(image, "") || null,
       referenceLink: normalizeText(referenceLink, "") || null,
       mediaType: normalizedMediaType,
-      videoUrl: normalizedVideoUrl || null,
+      videoUrl: normalizeText(videoUrl, "") || null,
       author: normalizeText(author, "Admin"),
       category: normalizeText(category, "General"),
       tags: normalizeTags(tags),
@@ -278,7 +254,6 @@ export const createBlog = async (req, res) => {
     });
 
     await blog.save();
-    await invalidatePublicResponseCache(BLOG_RESPONSE_CACHE_NAMESPACES);
 
     res.status(201).json({
       error: false,
@@ -338,26 +313,21 @@ export const updateBlog = async (req, res) => {
     }
 
     // Update fields
-    if (title !== undefined) {
-      blog.title = resolveBlogTitle(title, content ?? blog.content, excerpt ?? blog.excerpt, referenceLink ?? blog.referenceLink);
-    }
-    if (content !== undefined) blog.content = normalizeText(content, "");
-    if (excerpt !== undefined) blog.excerpt = normalizeText(excerpt, "");
+    if (title !== undefined) blog.title = normalizeText(title, blog.title);
+    if (content !== undefined) blog.content = normalizeText(content, blog.content);
+    if (excerpt !== undefined) blog.excerpt = normalizeText(excerpt, blog.excerpt);
     if (image !== undefined) blog.image = normalizeText(image, "") || null;
     if (referenceLink !== undefined) {
       blog.referenceLink = normalizeText(referenceLink, "") || null;
     }
+    if (mediaType) blog.mediaType = mediaType === "video" ? "video" : "image";
     if (videoUrl !== undefined) blog.videoUrl = normalizeText(videoUrl, "") || null;
-    if (mediaType || videoUrl !== undefined) {
-      blog.mediaType = mediaType === "video" || blog.videoUrl ? "video" : "image";
-    }
     if (author !== undefined) blog.author = normalizeText(author, blog.author);
     if (category !== undefined) blog.category = normalizeText(category, blog.category);
     if (tags !== undefined) blog.tags = normalizeTags(tags);
     if (isPublished !== undefined) blog.isPublished = normalizePublishFlag(isPublished, blog.isPublished);
 
     await blog.save();
-    await invalidatePublicResponseCache(BLOG_RESPONSE_CACHE_NAMESPACES);
 
     res.status(200).json({
       error: false,
@@ -402,7 +372,6 @@ export const deleteBlog = async (req, res) => {
         });
       }
     }
-    await invalidatePublicResponseCache(BLOG_RESPONSE_CACHE_NAMESPACES);
 
     res.status(200).json({
       error: false,

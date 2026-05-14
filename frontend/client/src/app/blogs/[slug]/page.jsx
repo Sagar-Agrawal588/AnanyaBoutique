@@ -1,27 +1,9 @@
 "use client";
 import { useProducts } from "@/context/ProductContext";
+import { API_BASE_URL } from "@/utils/api";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
-
-const resolveBlogApiBaseUrl = () => {
-  const configuredBase = String(
-    process.env.NEXT_PUBLIC_APP_API_URL || process.env.NEXT_PUBLIC_API_URL || "",
-  )
-    .trim()
-    .replace(/^['"]|['"]$/g, "")
-    .replace(/\/+$/, "");
-
-  if (configuredBase) {
-    return configuredBase;
-  }
-
-  if (typeof window !== "undefined") {
-    return String(window.location.origin || "").replace(/\/+$/, "");
-  }
-
-  return "http://127.0.0.1:8000";
-};
 
 export default function BlogDetailPage() {
   const params = useParams();
@@ -30,75 +12,65 @@ export default function BlogDetailPage() {
   const [blog, setBlog] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [directFetchAttempted, setDirectFetchAttempted] = useState(false);
 
   useEffect(() => {
-    if (!slug) {
-      setError("Blog not found");
-      setLoading(false);
-      return;
-    }
-
-    let isCancelled = false;
-
-    const loadBlog = async () => {
-      setLoading(true);
-      setError(null);
-
-      const foundBlog = Array.isArray(blogs)
-        ? blogs.find((b) => b.slug === slug || String(b._id) === String(slug))
-        : null;
-
+    if (blogs && blogs.length > 0) {
+      const foundBlog = blogs.find(
+        (b) => b.slug === slug || String(b._id) === String(slug),
+      );
       if (foundBlog) {
         setBlog(foundBlog);
-        setLoading(false);
-        return;
+        setError(null);
       }
+      setLoading(false);
+    }
+  }, [blogs, slug]);
 
+  useEffect(() => {
+    if (!blogs || blogs.length === 0) {
+      fetchBlogs();
+    }
+  }, [blogs, fetchBlogs]);
+
+  useEffect(() => {
+    const fetchBySlug = async () => {
+      if (!slug || directFetchAttempted) return;
+      setDirectFetchAttempted(true);
       try {
-        const response = await fetch(
-          `${resolveBlogApiBaseUrl()}/api/blogs/${encodeURIComponent(slug)}`,
-          {
-            credentials: "include",
-          },
-        );
-
-        if (isCancelled) return;
-
+        const response = await fetch(`${API_BASE_URL}/api/blogs/${slug}`, {
+          cache: "no-store",
+        });
         if (!response.ok) {
           setError("Blog not found");
           setLoading(false);
           return;
         }
         const data = await response.json();
-        if (data?.error || !data?.data) {
+        if (data?.success && data?.data) {
+          setBlog(data.data);
+          setError(null);
+        } else {
           setError("Blog not found");
-          setLoading(false);
-          return;
         }
-
-        setBlog(data.data);
-        setError(null);
       } catch (err) {
-        if (isCancelled) return;
         console.error("Error fetching blog by slug:", err);
         setError("Blog not found");
       } finally {
-        if (!isCancelled) {
-          setLoading(false);
-        }
+        setLoading(false);
       }
     };
 
-    loadBlog();
+    if (!blog && (!blogs || blogs.length === 0)) {
+      fetchBySlug();
+      return;
+    }
 
-    return () => {
-      isCancelled = true;
-    };
-  }, [blogs, slug]);
-
-  useEffect(() => {
-    fetchBlogs();
-  }, [fetchBlogs]);
+    if (!blog && blogs && blogs.length > 0) {
+      setError("Blog not found");
+      setLoading(false);
+    }
+  }, [API_BASE_URL, blog, blogs, directFetchAttempted, slug]);
 
   // Listen for blog updates from admin
   useEffect(() => {
@@ -143,11 +115,9 @@ export default function BlogDetailPage() {
     );
   }
 
-  const relatedBlogs = (Array.isArray(blogs) ? blogs : []).filter(
+  const relatedBlogs = blogs.filter(
     (b) => b.category === blog.category && b._id !== blog._id,
   );
-  const shouldRenderVideo = (item) => Boolean(item?.videoUrl);
-  const shouldRenderImage = (item) => Boolean(item?.image);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -191,23 +161,22 @@ export default function BlogDetailPage() {
           {/* Blog Content */}
           <div className="lg:col-span-2">
             {/* Featured Image */}
-            {shouldRenderVideo(blog) ? (
+            {blog.mediaType === "video" && blog.videoUrl ? (
               <div className="mb-8 rounded-lg overflow-hidden bg-black">
                 <video
                   src={blog.videoUrl}
                   controls
                   playsInline
                   poster={blog.image || undefined}
-                  preload="metadata"
-                  className="w-full max-h-[70vh] bg-black object-contain"
+                  className="w-full h-96 object-cover"
                 />
               </div>
-            ) : shouldRenderImage(blog) ? (
-              <div className="mb-8 rounded-lg overflow-hidden bg-white">
+            ) : blog.image ? (
+              <div className="mb-8 rounded-lg overflow-hidden">
                 <img
                   src={blog.image}
                   alt={blog.title}
-                  className="w-full max-h-[70vh] object-contain"
+                  className="w-full h-96 object-cover"
                 />
               </div>
             ) : null}
@@ -277,21 +246,20 @@ export default function BlogDetailPage() {
                       href={`/blogs/${relatedBlog.slug || relatedBlog._id}`}
                       className="block group"
                     >
-                      {shouldRenderVideo(relatedBlog) ? (
+                      {relatedBlog.mediaType === "video" && relatedBlog.videoUrl ? (
                         <div className="mb-2 rounded overflow-hidden h-32 bg-black">
                           <video
                             src={relatedBlog.videoUrl}
                             poster={relatedBlog.image || undefined}
-                            preload="metadata"
-                            className="w-full h-full object-contain"
+                            className="w-full h-full object-cover"
                           />
                         </div>
-                      ) : shouldRenderImage(relatedBlog) ? (
+                      ) : relatedBlog.image ? (
                         <div className="mb-2 rounded overflow-hidden h-32">
                           <img
                             src={relatedBlog.image}
                             alt={relatedBlog.title}
-                            className="w-full h-full object-contain bg-white group-hover:scale-105 transition-transform"
+                            className="w-full h-full object-cover group-hover:scale-110 transition-transform"
                           />
                         </div>
                       ) : null}
