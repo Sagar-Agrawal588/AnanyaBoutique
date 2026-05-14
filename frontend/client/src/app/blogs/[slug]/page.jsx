@@ -1,13 +1,31 @@
 "use client";
 import { useProducts } from "@/context/ProductContext";
-import { API_BASE_URL } from "@/utils/api";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
+const resolveBlogApiBaseUrl = () => {
+  const configuredBase = String(
+    process.env.NEXT_PUBLIC_APP_API_URL || process.env.NEXT_PUBLIC_API_URL || "",
+  )
+    .trim()
+    .replace(/^['"]|['"]$/g, "")
+    .replace(/\/+$/, "");
+
+  if (configuredBase) {
+    return configuredBase;
+  }
+
+  if (typeof window !== "undefined") {
+    return String(window.location.origin || "").replace(/\/+$/, "");
+  }
+
+  return "http://127.0.0.1:8000";
+};
+
 export default function BlogDetailPage() {
   const params = useParams();
-  const slug = params.slug;
+  const slug = Array.isArray(params.slug) ? params.slug[0] : params.slug;
   const { blogs, fetchBlogs } = useProducts();
   const [blog, setBlog] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -16,7 +34,9 @@ export default function BlogDetailPage() {
 
   useEffect(() => {
     if (blogs && blogs.length > 0) {
-      const foundBlog = blogs.find((b) => b.slug === slug);
+      const foundBlog = blogs.find(
+        (b) => b.slug === slug || String(b._id) === String(slug),
+      );
       if (foundBlog) {
         setBlog(foundBlog);
         setError(null);
@@ -36,21 +56,26 @@ export default function BlogDetailPage() {
       if (!slug || directFetchAttempted) return;
       setDirectFetchAttempted(true);
       try {
-        const response = await fetch(`${API_BASE_URL}/api/blogs/${slug}`, {
-          cache: "no-store",
-        });
+        const response = await fetch(
+          `${resolveBlogApiBaseUrl()}/api/blogs/${encodeURIComponent(slug)}`,
+          {
+            credentials: "include",
+          },
+        );
         if (!response.ok) {
           setError("Blog not found");
           setLoading(false);
           return;
         }
         const data = await response.json();
-        if (data?.success && data?.data) {
-          setBlog(data.data);
-          setError(null);
-        } else {
+        if (data?.error || !data?.data) {
           setError("Blog not found");
+          setLoading(false);
+          return;
         }
+
+        setBlog(data.data);
+        setError(null);
       } catch (err) {
         console.error("Error fetching blog by slug:", err);
         setError("Blog not found");
@@ -68,7 +93,7 @@ export default function BlogDetailPage() {
       setError("Blog not found");
       setLoading(false);
     }
-  }, [API_BASE_URL, blog, blogs, directFetchAttempted, slug]);
+  }, [blog, blogs, directFetchAttempted, slug]);
 
   // Listen for blog updates from admin
   useEffect(() => {
@@ -159,7 +184,17 @@ export default function BlogDetailPage() {
           {/* Blog Content */}
           <div className="lg:col-span-2">
             {/* Featured Image */}
-            {blog.image && (
+            {blog.mediaType === "video" && blog.videoUrl ? (
+              <div className="mb-8 rounded-lg overflow-hidden bg-black">
+                <video
+                  src={blog.videoUrl}
+                  controls
+                  playsInline
+                  poster={blog.image || undefined}
+                  className="w-full h-96 object-cover"
+                />
+              </div>
+            ) : blog.image ? (
               <div className="mb-8 rounded-lg overflow-hidden">
                 <img
                   src={blog.image}
@@ -167,13 +202,29 @@ export default function BlogDetailPage() {
                   className="w-full h-96 object-cover"
                 />
               </div>
-            )}
+            ) : null}
 
             {/* Excerpt */}
             {blog.excerpt && (
               <p className="text-lg text-gray-600 italic mb-8 pb-8 border-b">
                 {blog.excerpt}
               </p>
+            )}
+
+            {blog.referenceLink && (
+              <div className="mb-8 rounded-lg border border-orange-200 bg-orange-50 px-4 py-3">
+                <p className="text-sm font-semibold text-orange-700 mb-1">
+                  Reference Link
+                </p>
+                <a
+                  href={blog.referenceLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm text-orange-600 hover:text-orange-700 hover:underline break-all"
+                >
+                  {blog.referenceLink}
+                </a>
+              </div>
             )}
 
             {/* Content */}
@@ -215,10 +266,18 @@ export default function BlogDetailPage() {
                   {relatedBlogs.slice(0, 3).map((relatedBlog) => (
                     <Link
                       key={relatedBlog._id}
-                      href={`/blogs/${relatedBlog.slug}`}
+                      href={`/blogs/${relatedBlog.slug || relatedBlog._id}`}
                       className="block group"
                     >
-                      {relatedBlog.image && (
+                      {relatedBlog.mediaType === "video" && relatedBlog.videoUrl ? (
+                        <div className="mb-2 rounded overflow-hidden h-32 bg-black">
+                          <video
+                            src={relatedBlog.videoUrl}
+                            poster={relatedBlog.image || undefined}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      ) : relatedBlog.image ? (
                         <div className="mb-2 rounded overflow-hidden h-32">
                           <img
                             src={relatedBlog.image}
@@ -226,7 +285,7 @@ export default function BlogDetailPage() {
                             className="w-full h-full object-cover group-hover:scale-110 transition-transform"
                           />
                         </div>
-                      )}
+                      ) : null}
                       <h4 className="font-semibold text-gray-800 group-hover:text-orange-500 transition line-clamp-2">
                         {relatedBlog.title}
                       </h4>
