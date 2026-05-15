@@ -122,18 +122,14 @@ export const fetchMySupportTicketById = async (ticketId) => {
   }
 };
 
-export const replyToMySupportTicket = async (ticketId, messageOrFormData) => {
+export const replyToMySupportTicket = async (ticketId, message) => {
   const normalizedTicketId = String(ticketId || "").trim();
-  const isFormData =
-    typeof FormData !== "undefined" && messageOrFormData instanceof FormData;
-  const payload = isFormData ? messageOrFormData : { message: messageOrFormData };
   try {
     return await postData(
       normalizeApiPath(
         `/api/support/my-tickets/${encodeURIComponent(normalizedTicketId)}/reply`,
       ),
-      payload,
-      isFormData ? { headers: { "Content-Type": "multipart/form-data" } } : {},
+      { message },
     );
   } catch (error) {
     return toErrorPayload(error, "Failed to send support reply.");
