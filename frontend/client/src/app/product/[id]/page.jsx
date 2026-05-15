@@ -41,7 +41,7 @@ import {
 } from "@/utils/weightDisplay";
 import { Alert, CircularProgress, Rating, Snackbar } from "@mui/material";
 import Link from "next/link";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import {
   startTransition,
   useCallback,
@@ -50,17 +50,18 @@ import {
   useState,
 } from "react";
 import {
-  FiCheckCircle,
   FiChevronLeft,
   FiChevronRight,
   FiMaximize2,
-  FiPackage,
-  FiShield,
-  FiTruck,
   FiX,
 } from "react-icons/fi";
 import { IoMdCart } from "react-icons/io";
-import { MdVerified } from "react-icons/md";
+import {
+  MdLocalShipping,
+  MdOutlineInventory2,
+  MdOutlineSecurity,
+  MdVerified,
+} from "react-icons/md";
 
 const DEFAULT_TABS = [
   { id: "description", label: "Description" },
@@ -335,22 +336,22 @@ const DEFAULT_SUPPORT_CARDS = [
   {
     title: "Free Delivery",
     description: "Stronger utility near the CTA block.",
-    Icon: FiTruck,
+    Icon: MdLocalShipping,
   },
   {
     title: "Secure Payment",
     description: "Checkout trust signal stays visible.",
-    Icon: FiShield,
+    Icon: MdOutlineSecurity,
   },
   {
     title: "Authentic Product",
     description: "Premium surface with useful proof points.",
-    Icon: FiCheckCircle,
+    Icon: MdVerified,
   },
   {
     title: "Clear Inventory",
     description: "Variant-aware stock display for better decisions.",
-    Icon: FiPackage,
+    Icon: MdOutlineInventory2,
   },
 ];
 
@@ -460,9 +461,7 @@ const ReviewCard = ({ review, compact = false }) => (
 const ProductDetailPage = () => {
   const { id } = useParams();
   const router = useRouter();
-  const searchParams = useSearchParams();
   const routeId = String(id || "").trim();
-  const requestedVariantId = String(searchParams.get("variantId") || "").trim();
   const isDemoPreview = routeId.toLowerCase() === DEMO_PRODUCT_ID;
   const { addToCart, removeFromCart, isInCart, cartItems, isComboCartItem } =
     useCart();
@@ -507,8 +506,6 @@ const ProductDetailPage = () => {
   });
   const fallbackPollRef = useRef(null);
   const reviewScrollerRef = useRef(null);
-  const reviewSectionRef = useRef(null);
-  const publicReviewFormRef = useRef(null);
   const galleryTouchStartXRef = useRef(null);
   const { lookupPincode } = useIndiaPincodeLookup();
 
@@ -709,7 +706,7 @@ const ProductDetailPage = () => {
     selectedVariant,
     isDemoPreview ? buildDemoProduct().images : [],
   );
-  const activeImage = images[activeImageIndex] || images[0] || "/product_1.webp";
+  const activeImage = images[activeImageIndex] || images[0] || "/product_1.png";
   const visibleGalleryImages = images.slice(0, 4);
   const remainingGalleryCount = Math.max(images.length - 4, 0);
   const selectedPackLabel =
@@ -765,40 +762,6 @@ const ProductDetailPage = () => {
     showReviewsSection &&
     reviewSettings.allowPublicSubmissions !== false &&
     reviewSettings.showPublicReviewForm !== false;
-  const scrollToReviews = useCallback(() => {
-    if (!showReviewsSection) return;
-
-    const targetElement =
-      publicReviewFormRef.current || reviewSectionRef.current;
-    if (!targetElement) return;
-
-    targetElement.scrollIntoView({
-      behavior: "smooth",
-      block: "start",
-    });
-
-    if (typeof window !== "undefined") {
-      window.history.replaceState(
-        null,
-        "",
-        `${window.location.pathname}${window.location.search}#reviews`,
-      );
-    }
-
-    const focusTarget = publicReviewFormRef.current?.querySelector(
-      "input:not([type='hidden']), textarea",
-    );
-
-    if (focusTarget && typeof window !== "undefined") {
-      window.setTimeout(() => {
-        try {
-          focusTarget.focus({ preventScroll: true });
-        } catch {
-          focusTarget.focus();
-        }
-      }, 420);
-    }
-  }, [showReviewsSection]);
   const showFrequentlyBoughtSection =
     !isDemoPreview && pageConfig?.frequentlyBoughtSection?.show !== false;
   const showRecommendedCombosSection =
@@ -1093,18 +1056,6 @@ const ProductDetailPage = () => {
               return null;
             }
 
-            if (requestedVariantId) {
-              const requestedVariant =
-                resolvedProduct.variants.find(
-                  (variant) =>
-                    String(variant?._id || variant?.id || "") ===
-                    String(requestedVariantId),
-                ) || null;
-              if (requestedVariant) {
-                return requestedVariant;
-              }
-            }
-
             const previousVariantId = previous?._id || previous?.id;
             if (previousVariantId) {
               const matchedVariant =
@@ -1173,12 +1124,7 @@ const ProductDetailPage = () => {
         }
       }
     },
-    [
-      fetchFrequentlyBought,
-      fetchRecommendedCombos,
-      requestedVariantId,
-      routeId,
-    ],
+    [fetchFrequentlyBought, fetchRecommendedCombos, routeId],
   );
 
   const stopFallbackPolling = useCallback(() => {
@@ -1533,17 +1479,6 @@ const ProductDetailPage = () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [isImageZoomOpen, images.length]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return undefined;
-    if (window.location.hash !== "#reviews") return undefined;
-
-    const timer = window.setTimeout(() => {
-      scrollToReviews();
-    }, 140);
-
-    return () => window.clearTimeout(timer);
-  }, [productId, scrollToReviews, showReviewsSection]);
 
   const buildCartProduct = () => {
     if (!product) return null;
@@ -1998,9 +1933,6 @@ const ProductDetailPage = () => {
                     <ProductImage
                       src={activeImage}
                       alt={product?.name || product?.title || "Product image"}
-                      responsiveProfile="gallery"
-                      sizes="(max-width: 768px) 92vw, (max-width: 1280px) 54vw, 720px"
-                      eager
                       fit="cover"
                       aspect=""
                       rounded="rounded-[28px]"
@@ -2102,8 +2034,6 @@ const ProductDetailPage = () => {
                       <ProductImage
                         src={image}
                         alt={`Preview ${index + 1}`}
-                        responsiveProfile="thumb"
-                        sizes="98px"
                         aspect="aspect-square"
                         fit="cover"
                         padding="p-1"
@@ -2133,23 +2063,15 @@ const ProductDetailPage = () => {
               </h1>
 
               <div className="mt-4 flex flex-wrap items-center gap-3">
-                <button
-                  type="button"
-                  onClick={scrollToReviews}
-                  disabled={!showReviewsSection}
-                  aria-controls="reviews"
-                  aria-label="Jump to ratings and review form"
-                  className="inline-flex items-center gap-2 rounded-full border border-[#eaded5] bg-[#faf6f1] px-4 py-2 text-sm font-medium text-[#2f190f] transition hover:bg-[#f7efe7] disabled:cursor-default disabled:hover:bg-[#faf6f1]"
-                >
+                <div className="inline-flex items-center gap-2 rounded-full border border-[#eaded5] bg-[#faf6f1] px-4 py-2 text-sm font-medium text-[#2f190f]">
                   <Rating
                     value={productRating}
                     precision={0.5}
                     readOnly
                     size="small"
-                    sx={{ pointerEvents: "none" }}
                   />
                   <span>({displayReviewCount})</span>
-                </button>
+                </div>
                 <div className="inline-flex items-center gap-2 rounded-full border border-[#eaded5] bg-[#f4eadf] px-4 py-2 text-sm font-medium text-[#6a4b39]">
                   <MdVerified className="text-base" />
                   {heroStatusLabel}
@@ -2347,7 +2269,7 @@ const ProductDetailPage = () => {
                   <p className="mt-3 text-lg font-semibold text-[#24150f]">
                     {isReservedForCheckout
                       ? "This pack is temporarily reserved"
-                      : "We're restocking soon"}
+                      : "We&apos;re restocking soon"}
                   </p>
                   <p className="mt-1 text-sm leading-6 text-[#6b5144]">
                     {isReservedForCheckout
@@ -2445,10 +2367,8 @@ const ProductDetailPage = () => {
                         className="rounded-[24px] border border-[#e7dad1] bg-[#faf6f2] p-4"
                       >
                         <div className="flex items-center gap-3">
-                          <div className="product-trust-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl">
-                            {TrustIcon ? (
-                              <TrustIcon className="h-5 w-5 shrink-0" />
-                            ) : null}
+                          <div className="product-trust-icon flex h-11 w-11 items-center justify-center rounded-2xl">
+                            {TrustIcon ? <TrustIcon className="text-xl" /> : null}
                           </div>
                           <div>
                             <p className="font-semibold text-[#24150f]">
@@ -2584,7 +2504,6 @@ const ProductDetailPage = () => {
                               product?.title ||
                               "Product showcase"
                             }
-                            responsiveProfile="content"
                             fit="cover"
                             aspect="aspect-[4/3]"
                             className="w-full bg-white/10"
@@ -2720,14 +2639,7 @@ const ProductDetailPage = () => {
         ) : null}
 
         {showReviewsSection ? (
-          <div
-            id="reviews"
-            ref={reviewSectionRef}
-            className="product-reveal product-reveal-delay-3 mt-10 rounded-[36px] border border-[#e1cdbf] bg-white/88 p-6 shadow-[0_34px_90px_-55px_rgba(44,29,20,0.38)] backdrop-blur sm:p-8"
-            style={{
-              scrollMarginTop: "calc(var(--header-height, 0px) + 24px)",
-            }}
-          >
+          <div className="product-reveal product-reveal-delay-3 mt-10 rounded-[36px] border border-[#e1cdbf] bg-white/88 p-6 shadow-[0_34px_90px_-55px_rgba(44,29,20,0.38)] backdrop-blur sm:p-8">
             <div className="flex flex-wrap items-end justify-between gap-4">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7b6355]">
@@ -2904,13 +2816,7 @@ const ProductDetailPage = () => {
             </div>
 
             {showPublicReviewForm ? (
-              <div
-                ref={publicReviewFormRef}
-                className="mt-8 rounded-[28px] border border-[#eaded5] bg-[#f8f2eb] p-6"
-                style={{
-                  scrollMarginTop: "calc(var(--header-height, 0px) + 24px)",
-                }}
-              >
+              <div className="mt-8 rounded-[28px] border border-[#eaded5] bg-[#f8f2eb] p-6">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7b6355]">
@@ -3057,8 +2963,6 @@ const ProductDetailPage = () => {
                           <ProductImage
                             src={activeImage}
                             alt={product?.name || product?.title}
-                            responsiveProfile="thumb"
-                            sizes="72px"
                             aspect="aspect-square"
                             fit="cover"
                             className="h-[72px] w-[72px] flex-shrink-0 border border-[#efe4dc]"
@@ -3100,8 +3004,6 @@ const ProductDetailPage = () => {
                               <ProductImage
                                 src={getImageUrl(recommendation.image)}
                                 alt={recProduct?.name || "Suggested product"}
-                                responsiveProfile="thumb"
-                                sizes="72px"
                                 aspect="aspect-square"
                                 fit="cover"
                                 className="h-[72px] w-[72px] flex-shrink-0 border border-[#efe4dc]"
@@ -3345,8 +3247,6 @@ const ProductDetailPage = () => {
             <ProductImage
               src={activeImage}
               alt={product?.name || product?.title || "Zoomed product image"}
-              responsiveProfile="zoom"
-              sizes="92vw"
               onClick={(event) => event.stopPropagation()}
               aspect=""
               padding="p-0"
@@ -3453,15 +3353,6 @@ const ProductDetailPage = () => {
         .product-trust-icon {
           background: var(--pd-accent);
           color: var(--pd-accent-text);
-        }
-
-        .product-trust-icon svg {
-          display: block;
-          height: 20px;
-          width: 20px;
-          max-height: 20px;
-          max-width: 20px;
-          stroke-width: 2.1;
         }
 
         .product-review-card {
