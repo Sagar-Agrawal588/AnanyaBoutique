@@ -149,6 +149,8 @@ const getStatusFilterValues = (status) => {
 const normalizeStatusForDisplay = (status) =>
   normalizeStatus(status || "OPEN") || "OPEN";
 
+const isResolvedStatus = (status) => normalizeStatus(status) === "RESOLVED";
+
 const coercePagination = (query) => {
   const page = Math.max(Number.parseInt(query.page, 10) || 1, 1);
   const limit = Math.min(
@@ -358,6 +360,104 @@ const getTicketTimestampMs = (ticket, fieldName) => {
   return buildIstTicketTimestampPayload(fallbackValue).unixMs;
 };
 
+const buildSupportMessage = ({
+  authorType,
+  authorName = "",
+  authorId = null,
+  authorModel = null,
+  message,
+  images = [],
+  videos = [],
+  attachments = [],
+  createdAt = null,
+}) => {
+  const timestamp = buildIstTicketTimestampPayload(createdAt || new Date());
+  return {
+    authorType,
+    authorName: sanitizeText(authorName, { maxLength: 120 }),
+    authorId: normalizeObjectId(authorId) || null,
+    authorModel: authorModel || "",
+    message: sanitizeText(message || "", {
+      maxLength: 5000,
+      allowNewLines: true,
+    }),
+    images: Array.isArray(images) ? images.filter(Boolean) : [],
+    videos: Array.isArray(videos) ? videos.filter(Boolean) : [],
+    attachments: Array.isArray(attachments) ? attachments.filter(Boolean) : [],
+    created_at: timestamp.formatted,
+    created_at_ts: timestamp.unixMs,
+  };
+};
+
+const normalizeTicketMessages = (ticket) => {
+  const rawMessages = Array.isArray(ticket?.messages) ? ticket.messages : [];
+  const normalizedMessages = rawMessages
+    .map((entry) => ({
+      authorType: entry?.authorType || "system",
+      authorName: entry?.authorName || "",
+      authorId: entry?.authorId || null,
+      authorModel: entry?.authorModel || "",
+      message: sanitizeText(entry?.message || "", {
+        maxLength: 5000,
+        allowNewLines: true,
+      }),
+      images: Array.isArray(entry?.images) ? entry.images.filter(Boolean) : [],
+      videos: Array.isArray(entry?.videos) ? entry.videos.filter(Boolean) : [],
+      attachments: Array.isArray(entry?.attachments)
+        ? entry.attachments.filter(Boolean)
+        : [],
+      created_at:
+        String(entry?.created_at || "").trim() ||
+        formatIstTicketTimestamp(entry?.createdAt || ticket?.createdAt),
+      created_at_ts: Number.isFinite(Number(entry?.created_at_ts))
+        ? Number(entry.created_at_ts)
+        : buildIstTicketTimestampPayload(entry?.createdAt || ticket?.createdAt)
+            .unixMs,
+    }))
+    .filter((entry) => entry.message);
+
+  if (!normalizedMessages.length && ticket?.message) {
+    normalizedMessages.push(
+      buildSupportMessage({
+        authorType: "customer",
+        authorName: ticket.name || "Customer",
+        authorId: ticket.userId || null,
+        authorModel: ticket.userId ? "User" : null,
+        message: ticket.message,
+        images: Array.isArray(ticket.images) ? ticket.images : [],
+        videos: Array.isArray(ticket.videos) ? ticket.videos : [],
+        attachments: Array.isArray(ticket.attachments) ? ticket.attachments : [],
+        createdAt: ticket.created_at_ts
+          ? new Date(Number(ticket.created_at_ts))
+          : null,
+      }),
+    );
+  }
+
+  const adminReply = String(ticket?.adminReply || "").trim();
+  const hasAdminReplyInThread = normalizedMessages.some(
+    (entry) =>
+      entry.authorType === "admin" &&
+      String(entry.message || "").trim() === adminReply,
+  );
+  if (adminReply && !hasAdminReplyInThread) {
+    normalizedMessages.push(
+      buildSupportMessage({
+        authorType: "admin",
+        authorName: "Customer Care",
+        message: adminReply,
+        createdAt: ticket.updated_at_ts
+          ? new Date(Number(ticket.updated_at_ts))
+          : null,
+      }),
+    );
+  }
+
+  return normalizedMessages.sort(
+    (a, b) => Number(a.created_at_ts || 0) - Number(b.created_at_ts || 0),
+  );
+};
+
 const sanitizeTicketForResponse = (ticket) => {
   if (!ticket) return null;
 
@@ -381,6 +481,7 @@ const sanitizeTicketForResponse = (ticket) => {
     "updated_at",
   );
   normalizedTicket.status = normalizeStatusForDisplay(normalizedTicket.status);
+  normalizedTicket.messages = normalizeTicketMessages(normalizedTicket);
 
   delete normalizedTicket.createdAt;
   delete normalizedTicket.updatedAt;
@@ -411,6 +512,10 @@ const buildTicketSummary = (ticket) => {
     updated_at: getTicketTimestamp(ticket, "updated_at"),
     created_at_ts: getTicketTimestampMs(ticket, "created_at"),
     updated_at_ts: getTicketTimestampMs(ticket, "updated_at"),
+    lastMessage:
+      normalizeTicketMessages(ticket).slice(-1)[0]?.message ||
+      ticket.message ||
+      "",
   };
 };
 
@@ -813,6 +918,18 @@ export const createSupportTicket = async (req, res) => {
       videos,
       attachments,
       status: "OPEN",
+      messages: [
+        buildSupportMessage({
+          authorType: "customer",
+          authorName: name,
+        authorId: userId || null,
+        authorModel: userId ? "User" : null,
+        message,
+        images,
+        videos,
+        attachments,
+      }),
+      ],
     });
 
     void captureCrmTouchpointSafely({
@@ -952,6 +1069,193 @@ export const getMySupportTickets = async (req, res) => {
       error?.message || "Unexpected error",
     );
     return sendError(res, "Failed to fetch your tickets.", 500);
+  }
+};
+
+export const getMySupportTicketById = async (req, res) => {
+  try {
+    const userId = req.user;
+    if (!userId) {
+      return sendError(res, "Authentication required.", 401);
+    }
+
+    const ticketId = sanitizeText(req.params.ticketId || "", { maxLength: 40 });
+    if (!ticketId) {
+      return sendError(res, "ticketId is required.", 400);
+    }
+
+    const ticket = await SupportTicketModel.findOne({ ticketId, userId })
+      .populate(
+        "orderId",
+        "_id createdAt order_status payment_status totalAmt finalAmount subtotal discount tax shipping coinRedemption products",
+      )
+      .lean();
+
+    if (!ticket) {
+      return sendError(res, "Support ticket not found.", 404);
+    }
+
+    if (ticket.orderId && typeof ticket.orderId === "object") {
+      ticket.orderId = withOrderPresentation(ticket.orderId);
+    }
+
+    return sendSuccess(res, "Support ticket fetched successfully.", {
+      ticket: sanitizeTicketForResponse(ticket),
+    });
+  } catch (error) {
+    console.error(
+      "getMySupportTicketById error:",
+      error?.message || "Unexpected error",
+    );
+    return sendError(res, "Failed to fetch support ticket.", 500);
+  }
+};
+
+export const replyToMySupportTicket = async (req, res) => {
+  const imageFiles = normalizeFiles(req, "images");
+  const videoFiles = normalizeFiles(req, "videos");
+  const allFiles = [...imageFiles, ...videoFiles];
+
+  try {
+    const userId = req.user;
+    if (!userId) {
+      return sendError(res, "Authentication required.", 401);
+    }
+
+    const ticketId = sanitizeText(req.params.ticketId || "", { maxLength: 40 });
+    const message = sanitizeText(req.body?.message || "", {
+      maxLength: 5000,
+      allowNewLines: true,
+    });
+    const externalAttachments = normalizeAttachmentInputs(req);
+
+    if (!ticketId) {
+      return sendError(res, "ticketId is required.", 400);
+    }
+    if (!message || message.length < 2) {
+      await cleanupUploadedFiles(allFiles);
+      return sendError(res, "Write a reply before sending.", 400);
+    }
+
+    if (imageFiles.length > supportUploadConfig.MAX_IMAGE_COUNT) {
+      await cleanupUploadedFiles(allFiles);
+      return sendError(
+        res,
+        `You can upload up to ${supportUploadConfig.MAX_IMAGE_COUNT} images.`,
+        400,
+      );
+    }
+
+    if (videoFiles.length > supportUploadConfig.MAX_VIDEO_COUNT) {
+      await cleanupUploadedFiles(allFiles);
+      return sendError(
+        res,
+        `You can upload up to ${supportUploadConfig.MAX_VIDEO_COUNT} videos.`,
+        400,
+      );
+    }
+
+    const ticket = await SupportTicketModel.findOne({ ticketId, userId });
+    if (!ticket) {
+      await cleanupUploadedFiles(allFiles);
+      return sendError(res, "Support ticket not found.", 404);
+    }
+
+    const images = imageFiles.map((file) => toPublicFileUrl(req, file.path));
+    const videos = videoFiles.map((file) => toPublicFileUrl(req, file.path));
+    const attachments = Array.from(new Set(externalAttachments.filter(Boolean)));
+
+    ticket.messages = normalizeTicketMessages(ticket);
+    ticket.messages.push(
+      buildSupportMessage({
+        authorType: "customer",
+        authorName: ticket.name || "Customer",
+        authorId: userId,
+        authorModel: "User",
+        message,
+        images,
+        videos,
+        attachments,
+      }),
+    );
+    ticket.status = "OPEN";
+    ticket.closedBy = "";
+    ticket.closedAt = null;
+    await ticket.save();
+
+    void captureCrmTouchpointSafely({
+      channel: "support",
+      eventType: "chat_message",
+      userId: ticket.userId || null,
+      email: ticket.email,
+      phone: ticket.phone,
+      name: ticket.name,
+      orderId: ticket.orderId || null,
+      supportTicketId: ticket._id,
+      message,
+      happenedAt: Number.isFinite(ticket.updated_at_ts)
+        ? new Date(ticket.updated_at_ts)
+        : new Date(),
+      idempotencyKey: `crm:support:${ticket._id}:customer-message:${Number(ticket.updated_at_ts || Date.now())}`,
+      metadata: {
+        source: "support_ticket_customer_reply",
+        ticketId: ticket.ticketId,
+        status: ticket.status,
+      },
+    });
+
+    return sendSuccess(res, "Reply sent successfully.", {
+      ticket: sanitizeTicketForResponse(ticket),
+    });
+  } catch (error) {
+    await cleanupUploadedFiles(allFiles);
+    console.error(
+      "replyToMySupportTicket error:",
+      error?.message || "Unexpected error",
+    );
+    return sendError(res, "Failed to send reply.", 500);
+  }
+};
+
+export const closeMySupportTicket = async (req, res) => {
+  try {
+    const userId = req.user;
+    if (!userId) {
+      return sendError(res, "Authentication required.", 401);
+    }
+
+    const ticketId = sanitizeText(req.params.ticketId || "", { maxLength: 40 });
+    if (!ticketId) {
+      return sendError(res, "ticketId is required.", 400);
+    }
+
+    const ticket = await SupportTicketModel.findOne({ ticketId, userId });
+    if (!ticket) {
+      return sendError(res, "Support ticket not found.", 404);
+    }
+
+    ticket.status = "RESOLVED";
+    ticket.closedBy = "customer";
+    ticket.closedAt = Date.now();
+    ticket.messages = normalizeTicketMessages(ticket);
+    ticket.messages.push(
+      buildSupportMessage({
+        authorType: "system",
+        authorName: "System",
+        message: "Customer marked this issue as resolved.",
+      }),
+    );
+    await ticket.save();
+
+    return sendSuccess(res, "Ticket marked as resolved.", {
+      ticket: sanitizeTicketForResponse(ticket),
+    });
+  } catch (error) {
+    console.error(
+      "closeMySupportTicket error:",
+      error?.message || "Unexpected error",
+    );
+    return sendError(res, "Failed to close support ticket.", 500);
   }
 };
 
@@ -1120,6 +1424,34 @@ export const updateSupportTicketAdmin = async (req, res) => {
 
     if (hasReplyField) {
       ticket.adminReply = adminReply;
+      if (adminReply) {
+        const existingMessages = normalizeTicketMessages(ticket);
+        const alreadyExists = existingMessages.some(
+          (entry) =>
+            entry.authorType === "admin" &&
+            String(entry.message || "").trim() === adminReply,
+        );
+        ticket.messages = existingMessages;
+        if (!alreadyExists) {
+          ticket.messages.push(
+            buildSupportMessage({
+              authorType: "admin",
+              authorName: "Customer Care",
+              authorId: req.user || null,
+              authorModel: null,
+              message: adminReply,
+            }),
+          );
+        }
+      }
+    }
+
+    if (isResolvedStatus(ticket.status)) {
+      ticket.closedBy = "admin";
+      ticket.closedAt = Date.now();
+    } else {
+      ticket.closedBy = "";
+      ticket.closedAt = null;
     }
 
     await ticket.save();
