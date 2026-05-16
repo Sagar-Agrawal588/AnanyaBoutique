@@ -26,10 +26,6 @@ import {
 
 const PRODUCTS_PER_PAGE = 24;
 const FALLBACK_POLL_INTERVAL_MS = 45000;
-const CENTERED_LISTING_GRID_CLASS =
-    "flex flex-wrap justify-center gap-4 sm:gap-6 md:gap-8";
-const CENTERED_LISTING_CARD_CLASS =
-    "shrink-0 grow-0 basis-[calc((100%_-_1rem)/2)] sm:basis-[calc((100%_-_1.5rem)/2)] md:basis-[calc((100%_-_4rem)/3)] lg:basis-[calc((100%_-_6rem)/4)]";
 
 const PRICE_FILTERS = [
     { label: "All prices", min: "", max: "" },
@@ -63,12 +59,9 @@ const SORT_OPTIONS = [
 ];
 
 const ProductsGridSkeleton = () => (
-    <div className={CENTERED_LISTING_GRID_CLASS}>
+    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
         {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
-            <div
-                key={i}
-                className={`${CENTERED_LISTING_CARD_CLASS} aspect-3/4 animate-pulse rounded-3xl bg-gray-100`}
-            />
+            <div key={i} className="aspect-3/4 bg-gray-100 animate-pulse rounded-3xl" />
         ))}
     </div>
 );
@@ -607,15 +600,13 @@ function ProductsPageContent() {
                                         {productItems.length} items
                                     </span>
                                 </div>
-                                <div className={CENTERED_LISTING_GRID_CLASS}>
+                                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 md:gap-8">
                                     {productItems.map((product) => (
-                                        <div key={product._id} className={CENTERED_LISTING_CARD_CLASS}>
-                                            <ProductItem
-                                                product={product}
-                                                realtimeManagedExternally
-                                                compactListing
-                                            />
-                                        </div>
+                                        <ProductItem
+                                            key={product._id}
+                                            product={product}
+                                            realtimeManagedExternally
+                                        />
                                     ))}
                                 </div>
                             </div>
@@ -631,15 +622,13 @@ function ProductsPageContent() {
                                     </div>
                                     <div className="h-px flex-1 bg-gradient-to-l from-transparent via-primary/25 to-primary/10" />
                                 </div>
-                                <div className={CENTERED_LISTING_GRID_CLASS}>
+                                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 md:gap-8">
                                     {comboItems.map((product) => (
-                                        <div key={product._id} className={CENTERED_LISTING_CARD_CLASS}>
-                                            <ProductItem
-                                                product={product}
-                                                realtimeManagedExternally
-                                                compactListing
-                                            />
-                                        </div>
+                                        <ProductItem
+                                            key={product._id}
+                                            product={product}
+                                            realtimeManagedExternally
+                                        />
                                     ))}
                                 </div>
                             </div>
