@@ -4,8 +4,10 @@ import {
   normalizeMaintenanceSettings,
   resolveMaintenanceStatus,
 } from "../utils/maintenance.js";
+import { invalidatePublicResponseCache } from "../middlewares/publicResponseCache.js";
 
 const isProduction = process.env.NODE_ENV === "production";
+const SETTINGS_RESPONSE_CACHE_NAMESPACES = ["settings"];
 // Debug-only logging to keep production output clean
 const debugLog = (...args) => {
   if (!isProduction) {
@@ -44,6 +46,17 @@ const FLAVOUR_BUTTON_COLOR_KEYS = new Set(
 const FLAVOUR_BUTTON_TEXT_KEYS = new Set(
   FLAVOUR_BUTTON_SETTING_KEYS.filter((key) => key.endsWith("_text")),
 );
+const HOMEPAGE_TRUST_SETTING_KEYS = [
+  "homepage_trust_1_text",
+  "homepage_trust_2_text",
+  "homepage_trust_3_text",
+  "homepage_trust_4_text",
+];
+const HOMEPAGE_TRUST_TEXT_KEYS = new Set(HOMEPAGE_TRUST_SETTING_KEYS);
+const ALWAYS_ACTIVE_PUBLIC_SETTING_KEYS = [
+  ...FLAVOUR_BUTTON_SETTING_KEYS,
+  ...HOMEPAGE_TRUST_SETTING_KEYS,
+];
 
 const normalizeHexColor = (value) => {
   const raw = String(value || "").trim();
@@ -98,7 +111,7 @@ export const getPublicSettings = async (req, res) => {
       "reviewSettings",
       // Expose SEO settings so the storefront can build sitemap and meta tags
       "seoSettings",
-      ...FLAVOUR_BUTTON_SETTING_KEYS,
+      ...ALWAYS_ACTIVE_PUBLIC_SETTING_KEYS,
     ];
 
     const settings = await SettingsModel.find({
@@ -106,13 +119,13 @@ export const getPublicSettings = async (req, res) => {
         {
           key: {
             $in: publicKeys.filter(
-              (key) => !FLAVOUR_BUTTON_SETTING_KEYS.includes(key),
+              (key) => !ALWAYS_ACTIVE_PUBLIC_SETTING_KEYS.includes(key),
             ),
           },
           isActive: true,
         },
         {
-          key: { $in: FLAVOUR_BUTTON_SETTING_KEYS },
+          key: { $in: ALWAYS_ACTIVE_PUBLIC_SETTING_KEYS },
         },
       ],
     }).select("key value -_id");
@@ -383,6 +396,10 @@ export const updateSetting = async (req, res) => {
       req.body.value = String(req.body.value ?? "").trim();
     }
 
+    if (HOMEPAGE_TRUST_TEXT_KEYS.has(key)) {
+      req.body.value = String(req.body.value ?? "").trim();
+    }
+
     if (FLAVOUR_BUTTON_COLOR_KEYS.has(key)) {
       const rawColor = String(req.body.value ?? "").trim();
       if (!rawColor) {
@@ -403,6 +420,12 @@ export const updateSetting = async (req, res) => {
     if (FLAVOUR_BUTTON_SETTING_KEYS.includes(key)) {
       // Flavour button settings are public storefront controls and should
       // always stay active so client consumers receive updated values.
+      req.body.isActive = true;
+    }
+
+    if (HOMEPAGE_TRUST_SETTING_KEYS.includes(key)) {
+      // Homepage trust pills are storefront content controls and should also
+      // remain active so the client always receives the latest admin copy.
       req.body.isActive = true;
     }
 
@@ -484,6 +507,7 @@ export const updateSetting = async (req, res) => {
 
     debugLog(`✓ Setting "${key}" updated/created by admin`);
 
+    await invalidatePublicResponseCache(SETTINGS_RESPONSE_CACHE_NAMESPACES);
     res.status(200).json({
       error: false,
       success: true,
@@ -552,6 +576,7 @@ export const createSetting = async (req, res) => {
 
     debugLog(`✓ Setting "${key}" created by admin`);
 
+    await invalidatePublicResponseCache(SETTINGS_RESPONSE_CACHE_NAMESPACES);
     res.status(201).json({
       error: false,
       success: true,
@@ -593,6 +618,7 @@ export const deleteSetting = async (req, res) => {
       "reviewSettings",
       "seoSettings",
       ...FLAVOUR_BUTTON_SETTING_KEYS,
+      ...HOMEPAGE_TRUST_SETTING_KEYS,
     ];
     if (protectedKeys.includes(key)) {
       return res.status(400).json({
@@ -614,6 +640,7 @@ export const deleteSetting = async (req, res) => {
 
     debugLog(`✓ Setting "${key}" deleted`);
 
+    await invalidatePublicResponseCache(SETTINGS_RESPONSE_CACHE_NAMESPACES);
     res.status(200).json({
       error: false,
       success: true,
@@ -666,6 +693,7 @@ export const updateHeaderSettings = async (req, res) => {
         runValidators: true,
       },
     );
+    await invalidatePublicResponseCache(SETTINGS_RESPONSE_CACHE_NAMESPACES);
 
     return res.status(200).json({
       error: false,

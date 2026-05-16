@@ -6,9 +6,7 @@ import dynamic from "next/dynamic";
 const HomeComboDeals = dynamic(() => import("@/components/HomeComboDeals"), {
   loading: () => null,
 });
-const PopularProducts = dynamic(() => import("@/components/PopularProducts"), {
-  loading: () => null,
-});
+// PopularProducts removed from homepage per layout change; replaced by CatSlider
 const MembershipCTA = dynamic(() => import("@/components/MembershipCTA"), {
   loading: () => null,
 });
@@ -96,21 +94,22 @@ export default async function Home() {
   ]);
 
   return (
-    <>
-      <div
-        className="sliderWrapper pb-0 w-full overflow-x-hidden"
-        style={{
-          background: "var(--flavor-gradient)",
-          transition: "background 0.5s cubic-bezier(0.4, 0, 0.2, 1)",
-        }}
-      >
+    <main
+      className="sliderWrapper relative w-full overflow-x-hidden pb-0"
+      style={{
+        background:
+          "linear-gradient(180deg, #fffdf9 0%, var(--flavor-light, #f7f1ef) 16%, #fffaf2 42%, #ffffff 100%)",
+        transition: "background 0.5s cubic-bezier(0.4, 0, 0.2, 1)",
+      }}
+    >
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-0 h-[140rem] bg-[radial-gradient(circle_at_top,rgba(255,241,214,0.5),transparent_46%)]" />
+      <div className="relative z-10">
         <HomeSlider initialSlides={homeSlides} />
-        <CatSlider />
         <Banners initialBanners={banners} />
-        <PopularProducts />
+        <CatSlider />
         <HomeComboDeals />
         <MembershipCTA />
       </div>
-    </>
+    </main>
   );
 }
