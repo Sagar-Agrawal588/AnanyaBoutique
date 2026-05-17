@@ -34,6 +34,7 @@ jobs:
   backend-tests:
     name: Backend Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 8
     needs: validate-env
     defaults:
       run:
@@ -62,7 +63,7 @@ jobs:
         run: npm ci
 
       - name: Run tests
-        run: npm test -- --test-concurrency=1
+        run: npm test
 
   client-quality:
     name: Client Build
