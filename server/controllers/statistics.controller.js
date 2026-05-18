@@ -3,6 +3,7 @@ import OrderModel from "../models/order.model.js";
 import ProductModel from "../models/product.model.js";
 import UserModel from "../models/user.model.js";
 import { ORDER_STATUS } from "../utils/orderStatus.js";
+import cache from "../services/cache.service.js";
 
 const getEffectiveAmountExpression = {
   $cond: [{ $gt: ["$finalAmount", 0] }, "$finalAmount", "$totalAmt"],
@@ -42,6 +43,11 @@ const FAILED_ORDER_STATUSES = [
 export const getDashboardStats = async (req, res) => {
   try {
     const { period = "month" } = req.query; // month, quarter, year, allTime
+    const cacheKey = `statistics:dashboard:period=${String(period || "").trim()}`;
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      return res.status(200).json({ error: false, success: true, data: cached });
+    }
     const orderBaseFilter = { purchaseOrder: null };
     const successfulOrdersFilter = {
       ...orderBaseFilter,
@@ -88,11 +94,11 @@ export const getDashboardStats = async (req, res) => {
       pendingOrders,
       successfulOrders,
       failedOrders,
-      totalRevenue,
+      revenueAgg,
       totalUsers,
       totalProducts,
       totalCategories,
-      averageOrderValue,
+      // averageOrderValue,
       ordersInPeriod,
       recentOrders,
       lowStockAggregation,
@@ -101,6 +107,7 @@ export const getDashboardStats = async (req, res) => {
       OrderModel.countDocuments(pendingOrdersFilter),
       OrderModel.countDocuments(successfulOrdersFilter),
       OrderModel.countDocuments(failedOrdersFilter),
+      // Combined revenue + avg aggregate
       OrderModel.aggregate([
         { $match: revenueFilter },
         { $addFields: { effectiveAmount: getEffectiveAmountExpression } },
@@ -108,6 +115,7 @@ export const getDashboardStats = async (req, res) => {
           $group: {
             _id: null,
             total: { $sum: "$effectiveAmount" },
+            average: { $avg: "$effectiveAmount" },
           },
         },
       ]),
@@ -201,10 +209,17 @@ export const getDashboardStats = async (req, res) => {
     ]);
 
     const lowStockCount = lowStockAggregation?.[0]?.lowStockCount || 0;
+    const totalRevenue = revenueAgg?.[0]?.total || 0;
+    const averageOrderValue = parseFloat((revenueAgg?.[0]?.average || 0).toFixed(2));
 
     // Monthly sales aggregation for dashboard graph
+    // Limit monthly sales to requested date range to avoid full-collection scan
+    const monthlyMatch = {
+      ...revenueFilter,
+      createdAt: { $gte: startDate },
+    };
     const monthlySales = await OrderModel.aggregate([
-      { $match: revenueFilter },
+      { $match: monthlyMatch },
       { $addFields: { effectiveAmount: getEffectiveAmountExpression } },
       {
         $group: {
@@ -219,28 +234,27 @@ export const getDashboardStats = async (req, res) => {
       { $sort: { "_id.year": 1, "_id.month": 1 } },
     ]);
 
-    res.status(200).json({
-      error: false,
-      success: true,
-      data: {
-        totalOrders,
-        pendingOrders,
-        successfulOrders,
-        failedOrders,
-        totalRevenue: totalRevenue[0]?.total || 0,
-        totalUsers,
-        totalProducts,
-        totalCategories,
-        averageOrderValue: parseFloat(
-          (averageOrderValue[0]?.average || 0).toFixed(2),
-        ),
-        ordersInPeriod,
-        period,
-        lowStockCount,
-        recentOrders,
-        monthlySales, // <-- Add this line
-      },
-    });
+    const responsePayload = {
+      totalOrders,
+      pendingOrders,
+      successfulOrders,
+      failedOrders,
+      totalRevenue,
+      totalUsers,
+      totalProducts,
+      totalCategories,
+      averageOrderValue,
+      ordersInPeriod,
+      period,
+      lowStockCount,
+      recentOrders,
+      monthlySales,
+    };
+
+    // Cache result for 60 seconds
+    cache.set(cacheKey, responsePayload, 60);
+
+    return res.status(200).json({ error: false, success: true, data: responsePayload });
   } catch (error) {
     console.error("Error fetching dashboard stats:", error);
     res.status(500).json({

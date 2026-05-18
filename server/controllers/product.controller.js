@@ -21,6 +21,7 @@ import {
   normalizeVariantWeight,
 } from "../utils/weightNormalization.js";
 import { invalidatePublicResponseCache } from "../middlewares/publicResponseCache.js";
+import cache from "../services/cache.service.js";
 
 const isProduction = process.env.NODE_ENV === "production";
 const PRODUCT_RESPONSE_CACHE_NAMESPACES = ["products"];
@@ -1730,6 +1731,7 @@ export const createProduct = async (req, res) => {
       $inc: { productCount: 1 },
     });
     await invalidateProductResponseCache(CATALOG_RESPONSE_CACHE_NAMESPACES);
+    await cache.delPrefix("statistics:dashboard");
 
     res.status(201).json({
       error: false,
@@ -1986,6 +1988,7 @@ export const updateProduct = async (req, res) => {
       source: "ADMIN_PRODUCT_UPDATE",
     });
     await invalidateProductResponseCache(CATALOG_RESPONSE_CACHE_NAMESPACES);
+    await cache.delPrefix("statistics:dashboard");
 
     res.status(200).json({
       error: false,
@@ -2031,6 +2034,7 @@ export const deleteProduct = async (req, res) => {
 
     await ProductModel.findByIdAndDelete(id);
     await invalidateProductResponseCache(CATALOG_RESPONSE_CACHE_NAMESPACES);
+    await cache.delPrefix("statistics:dashboard");
 
     res.status(200).json({
       error: false,
@@ -2130,6 +2134,7 @@ export const bulkUpdateProducts = async (req, res) => {
       }
     }
     await invalidateProductResponseCache(CATALOG_RESPONSE_CACHE_NAMESPACES);
+    await cache.delPrefix("statistics:dashboard");
 
     res.status(200).json({
       error: false,
@@ -2266,6 +2271,7 @@ export const addReview = async (req, res) => {
 
     await product.save();
     await invalidateProductResponseCache(PRODUCT_RESPONSE_CACHE_NAMESPACES);
+    await cache.delPrefix("statistics:dashboard");
 
     res.status(201).json({
       error: false,
@@ -2322,6 +2328,7 @@ export const deleteReview = async (req, res) => {
     product.reviews.pull(reviewId);
     await product.save();
     await invalidateProductResponseCache(PRODUCT_RESPONSE_CACHE_NAMESPACES);
+    await cache.delPrefix("statistics:dashboard");
 
     res.status(200).json({
       error: false,

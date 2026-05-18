@@ -3,6 +3,7 @@ import {
   ensureAnalyticsIndexes,
   getAnalyticsDb,
 } from "../services/analytics/analyticsDb.service.js";
+import cache from "../services/cache.service.js";
 import { getAnalyticsCollection } from "../services/analytics/collectionResolver.service.js";
 import {
   getSessionProductInteractions,
@@ -2973,7 +2974,14 @@ export const getAdminAnalyticsOverview = async (req, res) => {
     const db = await getAnalyticsDb();
     const { from, to } = resolveDateRange(req.query);
 
+    const cacheKey = `analytics:overview:from=${from.toISOString()}:to=${to.toISOString()}`;
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      return res.status(200).json({ success: true, error: false, data: { ...cached, from: from.toISOString(), to: to.toISOString() } });
+    }
+
     const overview = await getOverviewData(db, from, to);
+    cache.set(cacheKey, overview, 60);
 
     return res.status(200).json({
       success: true,
@@ -3002,7 +3010,14 @@ export const getAdminAnalyticsCharts = async (req, res) => {
       .trim()
       .toLowerCase();
 
+    const cacheKey = `analytics:charts:from=${from.toISOString()}:to=${to.toISOString()}:interval=${interval}`;
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      return res.status(200).json({ success: true, error: false, data: { ...cached, interval, from: from.toISOString(), to: to.toISOString() } });
+    }
+
     const chartData = await getChartData(db, from, to, interval);
+    cache.set(cacheKey, chartData, 60);
 
     return res.status(200).json({
       success: true,
@@ -3351,7 +3366,14 @@ export const getBehaviorAnalyticsOverview = async (req, res) => {
     const db = await getAnalyticsDb();
     const { from, to } = resolveDateRange(req.query);
 
+    const cacheKey = `behavior:overview:from=${from.toISOString()}:to=${to.toISOString()}`;
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      return res.status(200).json({ success: true, error: false, data: { ...cached, from: from.toISOString(), to: to.toISOString() } });
+    }
+
     const overview = await getOverviewData(db, from, to);
+    cache.set(cacheKey, overview, 60);
 
     return res.status(200).json({
       success: true,
@@ -3379,7 +3401,14 @@ export const getBehaviorAnalyticsEngagement = async (req, res) => {
     const db = await getAnalyticsDb();
     const { from, to } = resolveDateRange(req.query);
 
+    const cacheKey = `behavior:engagement:from=${from.toISOString()}:to=${to.toISOString()}`;
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      return res.status(200).json({ success: true, error: false, data: { ...cached, from: from.toISOString(), to: to.toISOString() } });
+    }
+
     const engagement = await getEngagementData(db, from, to);
+    cache.set(cacheKey, engagement, 60);
 
     return res.status(200).json({
       success: true,
@@ -3408,7 +3437,14 @@ export const getBehaviorAnalyticsPerformance = async (req, res) => {
     await ensureAnalyticsIndexes();
     const db = await getAnalyticsDb();
 
+    const cacheKey = `behavior:performance`;
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      return res.status(200).json({ success: true, error: false, data: cached });
+    }
+
     const performance = await getPerformanceData(db);
+    cache.set(cacheKey, performance, 60);
 
     return res.status(200).json({
       success: true,
