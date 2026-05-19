@@ -10,6 +10,7 @@ import {
   sendError,
   sendSuccess,
 } from "../utils/errorHandler.js";
+import cache from "../services/cache.service.js";
 import {
   createOrderReportWriter,
   ORDER_REPORT_COLUMNS,
@@ -569,6 +570,15 @@ export const getOrdersReport = asyncHandler(async (req, res) => {
     };
     const searchMatch = buildSearchMatch(searchTerm);
 
+    const cacheKey = `reports:orders:start=${startDate.toISOString()}:end=${endDate.toISOString()}:page=${page}:limit=${limit}:search=${encodeURIComponent(
+      searchTerm,
+    )}:includeRto=${includeRto}`;
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      logger.debug("getOrdersReport", "Returning cached report");
+      return sendSuccess(res, cached, "Order report loaded");
+    }
+
     const reportPipeline = [
       { $match: reportMatch },
       { $unwind: "$products" },
@@ -680,24 +690,23 @@ export const getOrdersReport = asyncHandler(async (req, res) => {
       endDate,
     });
 
-    return sendSuccess(
-      res,
-      {
-        orders,
-        pagination: {
-          page,
-          limit,
-          total,
-          totalPages: Math.ceil(total / limit) || 1,
-        },
-        chart: { interval, data: chartData },
-        range: {
-          startDate: startDate.toISOString(),
-          endDate: endDate.toISOString(),
-        },
+    const payload = {
+      orders,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit) || 1,
       },
-      "Order report loaded",
-    );
+      chart: { interval, data: chartData },
+      range: {
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString(),
+      },
+    };
+
+    cache.set(cacheKey, payload, 60);
+    return sendSuccess(res, payload, "Order report loaded");
   } catch (error) {
     if (error instanceof AppError) {
       return sendError(res, error);

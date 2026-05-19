@@ -1,4 +1,5 @@
 import { getIO } from "./socket.js";
+import { invalidateAdminReadCaches } from "../utils/adminCacheInvalidation.js";
 
 export const emitOrderStatusUpdate = (order, source = "SYSTEM") => {
   const io = getIO();
@@ -55,4 +56,13 @@ export const emitOrderStatusUpdate = (order, source = "SYSTEM") => {
   }
   io.to("admin:orders").emit("order:update", payload);
   io.to("admin:orders").emit("order.updated", payload);
+
+  // Invalidate related admin/read caches so dashboard/analytics reflect recent order changes.
+  try {
+    invalidateAdminReadCaches();
+  } catch (e) {
+    // Best-effort; don't crash the emitter on cache errors
+    // eslint-disable-next-line no-console
+    console.warn("orderEvents: cache invalidation failed", e?.message || e);
+  }
 };

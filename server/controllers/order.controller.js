@@ -114,6 +114,7 @@ import {
   normalizeOrderStatus,
   ORDER_STATUS,
 } from "../utils/orderStatus.js";
+import cache from "../services/cache.service.js";
 import {
   resolveOrderAwb,
   resolveOrderTrackingUrl,
@@ -4899,36 +4900,36 @@ export const getOrderStats = asyncHandler(async (req, res) => {
 
     logger.info("getOrderStats", "Statistics calculated");
 
-    return sendSuccess(
-      res,
-      {
-        orders: {
-          total: stats[0],
-          byStatus: {
-            pending: stats[1],
-            pending_payment: stats[2],
-            accepted: stats[3],
-            in_warehouse: stats[4],
-            shipped: stats[5],
-            out_for_delivery: stats[6],
-            delivered: stats[7],
-            completed: stats[7],
-            cancelled: stats[8],
-            confirmed: stats[3],
-          },
-        },
-        payments: {
-          paid: stats[9],
-          failed: stats[10],
-          pending: stats[11],
-        },
-        revenue: {
-          paid: stats[12][0]?.total || 0,
-          failed: stats[13][0]?.total || 0,
+    const resultPayload = {
+      orders: {
+        total: stats[0],
+        byStatus: {
+          pending: stats[1],
+          pending_payment: stats[2],
+          accepted: stats[3],
+          in_warehouse: stats[4],
+          shipped: stats[5],
+          out_for_delivery: stats[6],
+          delivered: stats[7],
+          completed: stats[7],
+          cancelled: stats[8],
+          confirmed: stats[3],
         },
       },
-      "Statistics retrieved successfully",
-    );
+      payments: {
+        paid: stats[9],
+        failed: stats[10],
+        pending: stats[11],
+      },
+      revenue: {
+        paid: stats[12][0]?.total || 0,
+        failed: stats[13][0]?.total || 0,
+      },
+    };
+
+    cache.set("orders:stats", resultPayload, 60);
+
+    return sendSuccess(res, resultPayload, "Statistics retrieved successfully");
   } catch (error) {
     if (error instanceof AppError) {
       return sendError(res, error);
@@ -4947,6 +4948,13 @@ export const getOrderStats = asyncHandler(async (req, res) => {
 export const getDashboardStats = asyncHandler(async (req, res) => {
   try {
     logger.debug("getDashboardStats", "Calculating dashboard statistics");
+
+    const cacheKey = `orders:dashboard`;
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      logger.debug("getDashboardStats", "Returning cached dashboard stats");
+      return sendSuccess(res, cached, "Dashboard data retrieved successfully");
+    }
 
     const [
       totalOrders,
@@ -4988,24 +4996,24 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
 
     logger.info("getDashboardStats", "Dashboard statistics calculated");
 
-    return sendSuccess(
-      res,
-      {
-        totals: {
-          orders: totalOrders,
-          products: totalProducts,
-          categories: totalCategories,
-          users: totalUsers,
-          revenue: totalRevenue[0]?.total || 0,
-        },
-        alerts: {
-          pendingOrders,
-          pendingPayments,
-        },
-        recentOrders,
+    const payload = {
+      totals: {
+        orders: totalOrders,
+        products: totalProducts,
+        categories: totalCategories,
+        users: totalUsers,
+        revenue: totalRevenue[0]?.total || 0,
       },
-      "Dashboard data retrieved successfully",
-    );
+      alerts: {
+        pendingOrders,
+        pendingPayments,
+      },
+      recentOrders,
+    };
+
+    cache.set(cacheKey, payload, 60);
+
+    return sendSuccess(res, payload, "Dashboard data retrieved successfully");
   } catch (error) {
     if (error instanceof AppError) {
       return sendError(res, error);

@@ -11,7 +11,7 @@ import {
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { FiArrowUpRight } from "react-icons/fi";
+import { FiArrowUpRight, FiMaximize2, FiMinimize2 } from "react-icons/fi";
 import { Swiper, SwiperSlide } from "swiper/react";
 
 import "swiper/css";
@@ -53,6 +53,11 @@ const formatSlides = (slides = []) =>
     cta: slide.buttonText || "Shop Now",
     link: slide.buttonLink || "/products",
     backgroundColor: slide.backgroundColor || "#f5f5f5",
+    stayDurationMs: Number(slide.stayDurationMs || 0) || 5600,
+    offerEnabled: Boolean(slide.offerEnabled),
+    offerBadgeText: slide.offerBadgeText || "",
+    offerEndsAt: slide.offerEndsAt || null,
+    offerTimerPosition: slide.offerTimerPosition || "top-right",
   }));
 
 const HERO_TRUST_DEFAULTS = [
@@ -75,11 +80,39 @@ const HERO_STATS = [
   { label: "Everyday Use", value: "Snack + Fitness" },
 ];
 
+const getOfferTimeLeft = (endsAt, nowMs) => {
+  const endMs = new Date(endsAt || "").getTime();
+  const remainingMs = endMs - nowMs;
+  if (!Number.isFinite(endMs) || remainingMs <= 0) return "";
+  const totalSeconds = Math.floor(remainingMs / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) return `${hours}h ${String(minutes).padStart(2, "0")}m`;
+  return `${minutes}m ${String(seconds).padStart(2, "0")}s`;
+};
+
+const getTimerPositionClass = (position) => {
+  switch (position) {
+    case "top-left":
+      return "left-4 top-4 sm:left-6 sm:top-6";
+    case "bottom-left":
+      return "bottom-24 left-4 sm:bottom-28 sm:left-6";
+    case "bottom-right":
+      return "bottom-24 right-4 sm:bottom-28 sm:right-6";
+    case "top-right":
+    default:
+      return "right-4 top-4 sm:right-6 sm:top-6";
+  }
+};
+
 const HomeSlider = ({ initialSlides = [] }) => {
   const { homeSlides = [], fetchHomeSlides } = useProducts();
   const { settings } = useSettings();
   const [activeIndex, setActiveIndex] = useState(0);
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+  const [isPanelMinimized, setIsPanelMinimized] = useState(false);
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
   const displaySlides = useMemo(() => {
     if (homeSlides?.length > 0) {
@@ -94,6 +127,13 @@ const HomeSlider = ({ initialSlides = [] }) => {
   }, [homeSlides, initialSlides]);
 
   const motionEnabled = !prefersReducedMotion;
+  const panelSettings = settings?.homeSlidePanelSettings || {};
+  const showPanel = panelSettings.enabled !== false;
+  const panelMinimizeEnabled = panelSettings.minimizeEnabled !== false;
+  const panelRestoreMs =
+    Math.max(Number(panelSettings.restoreAfterSeconds || 60), 5) * 1000;
+  const minimizedLabel =
+    String(panelSettings.minimizedLabel || "").trim() || "Show details";
   const heroTrustItems = useMemo(
     () =>
       HERO_TRUST_SETTING_KEYS.map(
@@ -129,6 +169,23 @@ const HomeSlider = ({ initialSlides = [] }) => {
     }
   }, [fetchHomeSlides, homeSlides?.length, initialSlides?.length]);
 
+  useEffect(() => {
+    const hasActiveOffer = displaySlides.some(
+      (slide) => slide.offerEnabled && slide.offerEndsAt,
+    );
+    if (!hasActiveOffer) return undefined;
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [displaySlides]);
+
+  useEffect(() => {
+    if (!isPanelMinimized) return undefined;
+    const timer = window.setTimeout(() => {
+      setIsPanelMinimized(false);
+    }, panelRestoreMs);
+    return () => window.clearTimeout(timer);
+  }, [isPanelMinimized, panelRestoreMs]);
+
   return (
     <section className="relative overflow-hidden rounded-b-[1.5rem] bg-[#1a120d] shadow-[0_40px_120px_rgba(26,18,13,0.16)] md:rounded-b-[3rem]">
       <Swiper
@@ -160,6 +217,7 @@ const HomeSlider = ({ initialSlides = [] }) => {
           <SwiperSlide
             key={`${slide.title || "slide"}-${index}`}
             className="relative h-full w-full"
+            data-swiper-autoplay={slide.stayDurationMs || undefined}
           >
             <div className="relative h-full w-full overflow-hidden">
               <motion.div
@@ -236,8 +294,37 @@ const HomeSlider = ({ initialSlides = [] }) => {
               <div className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-[#1d140f]/60 to-transparent" />
             </div>
 
+            {slide.offerEnabled && getOfferTimeLeft(slide.offerEndsAt, nowMs) ? (
+              <div
+                className={`pointer-events-none absolute z-30 ${getTimerPositionClass(
+                  slide.offerTimerPosition,
+                )}`}
+              >
+                <div className="rounded-2xl border border-white/20 bg-black/48 px-3 py-2 text-right text-white shadow-xl backdrop-blur-md">
+                  <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#ffe2a8]">
+                    {slide.offerBadgeText || "Offer ends in"}
+                  </p>
+                  <p className="mt-0.5 text-sm font-black">
+                    {getOfferTimeLeft(slide.offerEndsAt, nowMs)}
+                  </p>
+                </div>
+              </div>
+            ) : null}
+
+            {showPanel ? (
             <div className="home-slide-content-layer pointer-events-none absolute inset-0">
               <div className="mx-auto flex h-full max-w-7xl items-end px-4 pb-28 pt-8 sm:pb-32 md:items-center md:pb-20 md:pt-24">
+                {isPanelMinimized ? (
+                  <button
+                    type="button"
+                    onClick={() => setIsPanelMinimized(false)}
+                    className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-white/20 bg-black/52 px-4 py-3 text-sm font-black text-white shadow-xl backdrop-blur-md transition hover:bg-black/64"
+                    aria-label="Show home slide details"
+                  >
+                    <FiMaximize2 />
+                    {minimizedLabel}
+                  </button>
+                ) : (
                 <motion.div
                   key={`hero-panel-${activeIndex}-${index}`}
                   initial={
@@ -255,7 +342,7 @@ const HomeSlider = ({ initialSlides = [] }) => {
                       ? { duration: 0.28, ease: [0.22, 1, 0.36, 1] }
                       : { duration: 0.18 }
                   }
-                  className="pointer-events-auto relative w-full max-w-[22.5rem] overflow-hidden rounded-[1.35rem] border border-white/18 bg-[linear-gradient(145deg,rgba(255,255,255,0.17)_0%,rgba(255,255,255,0.08)_46%,rgba(255,255,255,0.06)_100%)] px-3.5 py-3.5 text-white shadow-[0_32px_90px_-44px_rgba(0,0,0,0.82)] backdrop-blur-[4px] sm:max-w-[35rem] sm:rounded-[2rem] sm:px-6 sm:py-6 sm:backdrop-blur-md md:rounded-[2.25rem] md:px-8 md:py-8"
+                  className="pointer-events-auto relative w-full max-w-[22.5rem] overflow-hidden rounded-[1.35rem] border border-white/24 bg-[linear-gradient(145deg,rgba(44,30,22,0.82)_0%,rgba(62,43,32,0.74)_46%,rgba(88,62,46,0.68)_100%)] px-3.5 py-3.5 text-white shadow-[0_32px_90px_-44px_rgba(0,0,0,0.82)] backdrop-blur-[6px] sm:max-w-[35rem] sm:rounded-[2rem] sm:px-6 sm:py-6 sm:backdrop-blur-md md:rounded-[2.25rem] md:px-8 md:py-8"
                 >
                   <div className="pointer-events-none absolute inset-0">
                     <div className="absolute left-[-8%] top-[-16%] h-28 w-32 rounded-full bg-white/24 blur-2xl" />
@@ -264,6 +351,16 @@ const HomeSlider = ({ initialSlides = [] }) => {
                   </div>
 
                   <div className="relative z-10">
+                    {panelMinimizeEnabled ? (
+                      <button
+                        type="button"
+                        onClick={() => setIsPanelMinimized(true)}
+                        className="absolute right-0 top-0 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/18 bg-white/12 text-white transition hover:bg-white/20"
+                        aria-label="Minimize home slide details"
+                      >
+                        <FiMinimize2 />
+                      </button>
+                    ) : null}
                     <span className="inline-flex items-center rounded-full border border-white/15 bg-[rgba(121,80,41,0.24)] px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.16em] text-white/90 sm:px-3 sm:text-[11px] sm:tracking-[0.22em]">
                       Bestseller Range
                     </span>
@@ -310,8 +407,10 @@ const HomeSlider = ({ initialSlides = [] }) => {
                     </div>
                   </div>
                 </motion.div>
+                )}
               </div>
             </div>
+            ) : null}
           </SwiperSlide>
         ))}
       </Swiper>

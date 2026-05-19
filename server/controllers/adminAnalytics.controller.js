@@ -3,6 +3,7 @@ import {
   ensureAnalyticsIndexes,
   getAnalyticsDb,
 } from "../services/analytics/analyticsDb.service.js";
+import cache from "../services/cache.service.js";
 import { getAnalyticsCollection } from "../services/analytics/collectionResolver.service.js";
 import {
   getSessionProductInteractions,
@@ -640,8 +641,7 @@ const getOverviewData = async (db, from, to) => {
   const [
     sessionOverviewRows,
     rawSessionOverviewRows,
-    purchasesDistinctSessions,
-    revenueAggregation,
+    purchaseSummaryRows,
     totalPageViewRows,
     visitorSegmentRows,
   ] = await Promise.all([
@@ -841,36 +841,8 @@ const getOverviewData = async (db, from, to) => {
         {
           $addFields: {
             timestampDate: toDateExpression("$timestamp"),
-          },
-        },
-        {
-          $match: {
-            timestampDate: {
-              $gte: from,
-              $lte: to,
-            },
-            sessionId: { $nin: [null, ""] },
-          },
-        },
-        {
-          $group: {
-            _id: "$sessionId",
-          },
-        },
-        {
-          $group: {
-            _id: null,
-            count: { $sum: 1 },
-          },
-        },
-      ])
-      .toArray(),
-    purchases
-      .aggregate([
-        {
-          $addFields: {
-            timestampDate: toDateExpression("$timestamp"),
             amountValue: toNumberExpression("$amount", 0),
+            sessionIdText: toTrimmedStringExpression("$sessionId"),
           },
         },
         {
@@ -882,9 +854,15 @@ const getOverviewData = async (db, from, to) => {
           },
         },
         {
-          $group: {
-            _id: null,
-            revenue: { $sum: "$amountValue" },
+          $facet: {
+            sessionsWithPurchase: [
+              { $match: { sessionIdText: { $ne: "" } } },
+              { $group: { _id: "$sessionIdText" } },
+              { $group: { _id: null, count: { $sum: 1 } } },
+            ],
+            revenue: [
+              { $group: { _id: null, revenue: { $sum: "$amountValue" } } },
+            ],
           },
         },
       ])
@@ -1010,6 +988,7 @@ const getOverviewData = async (db, from, to) => {
 
   const overviewRow = sessionOverviewRows?.[0] || {};
   const rawOverviewRow = rawSessionOverviewRows?.[0] || {};
+  const purchaseSummary = purchaseSummaryRows?.[0] || {};
   let totalSessions = Number(overviewRow.totalSessions || 0);
   let activeUsers = Number(overviewRow.activeUsers || 0);
   let bounceSessions = Number(overviewRow.bounceSessions || 0);
@@ -1019,9 +998,9 @@ const getOverviewData = async (db, from, to) => {
   const rawBounceSessions = Number(rawOverviewRow.bounceSessions || 0);
   const rawAvgActiveTimeMs = Number(rawOverviewRow.avgActiveTimeMs || 0);
   const sessionsWithPurchase = Number(
-    purchasesDistinctSessions?.[0]?.count || 0,
+    purchaseSummary?.sessionsWithPurchase?.[0]?.count || 0,
   );
-  const revenue = Number(revenueAggregation?.[0]?.revenue || 0);
+  const revenue = Number(purchaseSummary?.revenue?.[0]?.revenue || 0);
   let totalPageViews = Number(totalPageViewRows?.[0]?.count || 0);
   let newVisitors = Number(visitorSegmentRows?.[0]?.newVisitors || 0);
   let returningVisitors = Number(
@@ -1052,6 +1031,13 @@ const getOverviewData = async (db, from, to) => {
     const fallbackPageViewRows = await events
       .aggregate([
         {
+          $match: {
+            eventType: {
+              $in: ["page_view_started", "page_view_ended", "page_view"],
+            },
+          },
+        },
+        {
           $addFields: {
             timestampDate: toDateExpression("$timestamp"),
           },
@@ -1061,9 +1047,6 @@ const getOverviewData = async (db, from, to) => {
             timestampDate: {
               $gte: from,
               $lte: to,
-            },
-            eventType: {
-              $in: ["page_view_started", "page_view_ended", "page_view"],
             },
           },
         },
@@ -1193,6 +1176,8 @@ const getChartData = async (db, from, to, interval = "day") => {
     await resolveCollections(db);
   const bucketFormat = toBucketFormat(interval);
   const productCollectionName = productEvents.collectionName;
+  const productViewMatch =
+    productCollectionName === "product_events" ? { eventType: "product_view" } : null;
 
   const visitorsOverTime = await events
     .aggregate([
@@ -1268,6 +1253,7 @@ const getChartData = async (db, from, to, interval = "day") => {
 
   const topProductsViewed = await productEvents
     .aggregate([
+      ...(productViewMatch ? [{ $match: productViewMatch }] : []),
       {
         $addFields: {
           timestampDate: toDateExpression("$timestamp"),
@@ -1279,11 +1265,6 @@ const getChartData = async (db, from, to, interval = "day") => {
             $gte: from,
             $lte: to,
           },
-          ...(productCollectionName === "product_events"
-            ? {
-                eventType: "product_view",
-              }
-            : {}),
         },
       },
       {
@@ -1330,6 +1311,13 @@ const getChartData = async (db, from, to, interval = "day") => {
   const trafficSources = await events
     .aggregate([
       {
+        $match: {
+          eventType: {
+            $in: ["page_view_started", "page_view_ended", "page_view"],
+          },
+        },
+      },
+      {
         $addFields: {
           timestampDate: toDateExpression("$timestamp"),
         },
@@ -1339,9 +1327,6 @@ const getChartData = async (db, from, to, interval = "day") => {
           timestampDate: {
             $gte: from,
             $lte: to,
-          },
-          eventType: {
-            $in: ["page_view_started", "page_view_ended", "page_view"],
           },
         },
       },
@@ -1365,6 +1350,11 @@ const getChartData = async (db, from, to, interval = "day") => {
   if (revenueOverTimeRows.length === 0) {
     revenueOverTimeRows = await events
       .aggregate([
+        {
+          $match: {
+            eventType: "purchase_completed",
+          },
+        },
         {
           $addFields: {
             timestampDate: toDateExpression("$timestamp"),
@@ -1390,7 +1380,6 @@ const getChartData = async (db, from, to, interval = "day") => {
               $gte: from,
               $lte: to,
             },
-            eventType: "purchase_completed",
           },
         },
         {
@@ -1413,6 +1402,11 @@ const getChartData = async (db, from, to, interval = "day") => {
   if (topProductsViewedRows.length === 0) {
     topProductsViewedRows = await events
       .aggregate([
+        {
+          $match: {
+            eventType: "product_view",
+          },
+        },
         {
           $addFields: {
             timestampDate: toDateExpression("$timestamp"),
@@ -1451,7 +1445,6 @@ const getChartData = async (db, from, to, interval = "day") => {
               $gte: from,
               $lte: to,
             },
-            eventType: "product_view",
           },
         },
         {
@@ -1472,6 +1465,11 @@ const getChartData = async (db, from, to, interval = "day") => {
   if (topSearchedKeywordsRows.length === 0) {
     topSearchedKeywordsRows = await events
       .aggregate([
+        {
+          $match: {
+            eventType: { $in: ["search", "search_query"] },
+          },
+        },
         {
           $addFields: {
             timestampDate: toDateExpression("$timestamp"),
@@ -1499,7 +1497,6 @@ const getChartData = async (db, from, to, interval = "day") => {
               $gte: from,
               $lte: to,
             },
-            eventType: { $in: ["search", "search_query"] },
           },
         },
         {
@@ -1732,6 +1729,11 @@ const getEngagementData = async (db, from, to) => {
     events
       .aggregate([
         {
+          $match: {
+            eventType: "scroll_depth",
+          },
+        },
+        {
           $addFields: {
             timestampDate: toDateExpression("$timestamp"),
           },
@@ -1742,7 +1744,6 @@ const getEngagementData = async (db, from, to) => {
               $gte: from,
               $lte: to,
             },
-            eventType: "scroll_depth",
           },
         },
         {
@@ -1768,6 +1769,11 @@ const getEngagementData = async (db, from, to) => {
     events
       .aggregate([
         {
+          $match: {
+            eventType: "section_visible_duration",
+          },
+        },
+        {
           $addFields: {
             timestampDate: toDateExpression("$timestamp"),
             sectionName: {
@@ -1785,7 +1791,6 @@ const getEngagementData = async (db, from, to) => {
               $gte: from,
               $lte: to,
             },
-            eventType: "section_visible_duration",
             sectionName: { $nin: [null, ""] },
           },
         },
@@ -1807,6 +1812,11 @@ const getEngagementData = async (db, from, to) => {
     productEvents
       .aggregate([
         {
+          $match: {
+            eventType: "hover_duration",
+          },
+        },
+        {
           $addFields: {
             timestampDate: toDateExpression("$timestamp"),
           },
@@ -1817,7 +1827,6 @@ const getEngagementData = async (db, from, to) => {
               $gte: from,
               $lte: to,
             },
-            eventType: "hover_duration",
             hoverDurationMs: { $gt: 0 },
           },
         },
@@ -1831,6 +1840,7 @@ const getEngagementData = async (db, from, to) => {
       .toArray(),
     events
       .aggregate([
+        { $match: clickFamilyMatch },
         {
           $addFields: {
             timestampDate: toDateExpression("$timestamp"),
@@ -1851,7 +1861,6 @@ const getEngagementData = async (db, from, to) => {
               $gte: from,
               $lte: to,
             },
-            ...clickFamilyMatch,
           },
         },
         {
@@ -1972,6 +1981,20 @@ const getEngagementData = async (db, from, to) => {
     events
       .aggregate([
         {
+          $match: {
+            $and: [
+              { eventType: { $ne: "rage_click" } },
+              {
+                $or: [
+                  { eventType: { $in: CLICK_INTERACTION_EVENT_TYPES } },
+                  { eventType: { $regex: CLICK_INTERACTION_EVENT_REGEX } },
+                  { eventType: { $regex: /^product_cta_/i } },
+                ],
+              },
+            ],
+          },
+        },
+        {
           $addFields: {
             timestampDate: toDateExpression("$timestamp"),
             userType: {
@@ -2072,16 +2095,6 @@ const getEngagementData = async (db, from, to) => {
               $gte: from,
               $lte: to,
             },
-            $and: [
-              { eventType: { $ne: "rage_click" } },
-              {
-                $or: [
-                  { eventType: { $in: CLICK_INTERACTION_EVENT_TYPES } },
-                  { eventType: { $regex: CLICK_INTERACTION_EVENT_REGEX } },
-                  { eventType: { $regex: /^product_cta_/i } },
-                ],
-              },
-            ],
           },
         },
         {
@@ -2194,6 +2207,13 @@ const getEngagementData = async (db, from, to) => {
     events
       .aggregate([
         {
+          $match: {
+            eventType: {
+              $in: ["add_to_cart", "checkout_started", "purchase_completed"],
+            },
+          },
+        },
+        {
           $addFields: {
             timestampDate: toDateExpression("$timestamp"),
             userType: {
@@ -2213,9 +2233,6 @@ const getEngagementData = async (db, from, to) => {
             timestampDate: {
               $gte: from,
               $lte: to,
-            },
-            eventType: {
-              $in: ["add_to_cart", "checkout_started", "purchase_completed"],
             },
             sessionId: { $nin: [null, ""] },
             productId: { $nin: [null, ""] },
@@ -2262,6 +2279,19 @@ const getEngagementData = async (db, from, to) => {
   const movementEventRows = await events
     .aggregate([
       {
+        $match: {
+          eventType: {
+            $in: [
+              "button_hover_start",
+              "button_hover_end",
+              "button_hover_duration",
+              "button_focus",
+              "button_blur",
+            ],
+          },
+        },
+      },
+      {
         $addFields: {
           timestampDate: toDateExpression("$timestamp"),
           userType: {
@@ -2280,15 +2310,6 @@ const getEngagementData = async (db, from, to) => {
           timestampDate: {
             $gte: from,
             $lte: to,
-          },
-          eventType: {
-            $in: [
-              "button_hover_start",
-              "button_hover_end",
-              "button_hover_duration",
-              "button_focus",
-              "button_blur",
-            ],
           },
         },
       },
@@ -2311,6 +2332,19 @@ const getEngagementData = async (db, from, to) => {
 
   const movementTargetRows = await events
     .aggregate([
+      {
+        $match: {
+          eventType: {
+            $in: [
+              "button_hover_start",
+              "button_hover_end",
+              "button_hover_duration",
+              "button_focus",
+              "button_blur",
+            ],
+          },
+        },
+      },
       {
         $addFields: {
           timestampDate: toDateExpression("$timestamp"),
@@ -2363,15 +2397,6 @@ const getEngagementData = async (db, from, to) => {
           timestampDate: {
             $gte: from,
             $lte: to,
-          },
-          eventType: {
-            $in: [
-              "button_hover_start",
-              "button_hover_end",
-              "button_hover_duration",
-              "button_focus",
-              "button_blur",
-            ],
           },
         },
       },
@@ -2872,6 +2897,13 @@ const getPerformanceData = async (db) => {
     events
       .aggregate([
         {
+          $match: {
+            eventType: {
+              $in: liveButtonEventTypes,
+            },
+          },
+        },
+        {
           $addFields: {
             timestampDate: toDateExpression("$timestamp"),
           },
@@ -2881,9 +2913,6 @@ const getPerformanceData = async (db) => {
             timestampDate: {
               $gte: hourAgo,
               $lte: now,
-            },
-            eventType: {
-              $in: liveButtonEventTypes,
             },
           },
         },
@@ -2973,7 +3002,14 @@ export const getAdminAnalyticsOverview = async (req, res) => {
     const db = await getAnalyticsDb();
     const { from, to } = resolveDateRange(req.query);
 
+    const cacheKey = `analytics:overview:from=${from.toISOString()}:to=${to.toISOString()}`;
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      return res.status(200).json({ success: true, error: false, data: { ...cached, from: from.toISOString(), to: to.toISOString() } });
+    }
+
     const overview = await getOverviewData(db, from, to);
+    cache.set(cacheKey, overview, 60);
 
     return res.status(200).json({
       success: true,
@@ -3002,7 +3038,14 @@ export const getAdminAnalyticsCharts = async (req, res) => {
       .trim()
       .toLowerCase();
 
+    const cacheKey = `analytics:charts:from=${from.toISOString()}:to=${to.toISOString()}:interval=${interval}`;
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      return res.status(200).json({ success: true, error: false, data: { ...cached, interval, from: from.toISOString(), to: to.toISOString() } });
+    }
+
     const chartData = await getChartData(db, from, to, interval);
+    cache.set(cacheKey, chartData, 60);
 
     return res.status(200).json({
       success: true,
@@ -3351,7 +3394,14 @@ export const getBehaviorAnalyticsOverview = async (req, res) => {
     const db = await getAnalyticsDb();
     const { from, to } = resolveDateRange(req.query);
 
+    const cacheKey = `behavior:overview:from=${from.toISOString()}:to=${to.toISOString()}`;
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      return res.status(200).json({ success: true, error: false, data: { ...cached, from: from.toISOString(), to: to.toISOString() } });
+    }
+
     const overview = await getOverviewData(db, from, to);
+    cache.set(cacheKey, overview, 60);
 
     return res.status(200).json({
       success: true,
@@ -3379,7 +3429,14 @@ export const getBehaviorAnalyticsEngagement = async (req, res) => {
     const db = await getAnalyticsDb();
     const { from, to } = resolveDateRange(req.query);
 
+    const cacheKey = `behavior:engagement:from=${from.toISOString()}:to=${to.toISOString()}`;
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      return res.status(200).json({ success: true, error: false, data: { ...cached, from: from.toISOString(), to: to.toISOString() } });
+    }
+
     const engagement = await getEngagementData(db, from, to);
+    cache.set(cacheKey, engagement, 60);
 
     return res.status(200).json({
       success: true,
@@ -3408,7 +3465,14 @@ export const getBehaviorAnalyticsPerformance = async (req, res) => {
     await ensureAnalyticsIndexes();
     const db = await getAnalyticsDb();
 
+    const cacheKey = `behavior:performance`;
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      return res.status(200).json({ success: true, error: false, data: cached });
+    }
+
     const performance = await getPerformanceData(db);
+    cache.set(cacheKey, performance, 60);
 
     return res.status(200).json({
       success: true,
