@@ -3,19 +3,18 @@ import { useAdmin } from "@/context/AdminContext";
 import { useAdminRealtime } from "@/hooks/useAdminRealtime";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 import { useLiveRefreshSetting } from "@/hooks/useLiveRefreshSetting";
-import { hasAdminPermission } from "@/utils/adminPermissions";
 import {
   API_BASE_URL,
   deleteData,
   getData,
   patchData,
-  postData,
 } from "@/utils/api";
 import { withAdminBasePath } from "@/utils/basePath";
 import { Button } from "@mui/material";
 import MenuItem from "@mui/material/MenuItem";
 import Pagination from "@mui/material/Pagination";
 import Select from "@mui/material/Select";
+import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "react-hot-toast";
@@ -753,7 +752,7 @@ const OrderRow = ({ order, index, token }) => {
     }
   };
 
-  const fetchOrderReviews = async () => {
+  const fetchOrderReviews = useCallback(async () => {
     if (!token || !order?._id) return;
     setReviewsLoading(true);
     try {
@@ -768,11 +767,11 @@ const OrderRow = ({ order, index, token }) => {
       }
     } catch (error) {
       console.error("Failed to fetch order reviews:", error);
-      setOrderReviews([]);
+        setOrderReviews([]);
     } finally {
       setReviewsLoading(false);
     }
-  };
+  }, [order?._id, token]);
 
   const handleDeleteReview = async (reviewId) => {
     if (!reviewId) return;
@@ -861,7 +860,7 @@ const OrderRow = ({ order, index, token }) => {
     } else {
       setOrderReviews([]);
     }
-  }, [expandIndex, token, order?._id]);
+  }, [expandIndex, fetchOrderReviews]);
 
   return (
     <>
@@ -882,11 +881,13 @@ const OrderRow = ({ order, index, token }) => {
         </td>
         <td className="text-[14px] text-gray-600 font-[500] px-4 py-2">
           <div className="flex items-center gap-3 max-w-[170px] min-w-0">
-            <div className="rounded-full w-[50px] h-[50px] overflow-hidden bg-gray-200">
-              <img
+            <div className="relative h-[50px] w-[50px] overflow-hidden rounded-full bg-gray-200">
+              <Image
                 src={order?.user?.avatar || "/Profile1.png"}
-                alt="user"
-                className="w-full h-full object-cover"
+                alt={customerName ? `${customerName} avatar` : "Customer avatar"}
+                fill
+                sizes="50px"
+                className="object-cover"
               />
             </div>
             <div className="info flex flex-col gap-0 min-w-0">
@@ -964,13 +965,15 @@ const OrderRow = ({ order, index, token }) => {
                   key={idx}
                   className="flex items-start gap-3 bg-white p-3 rounded-lg shadow-sm"
                 >
-                  <div className="img rounded-md overflow-hidden w-[80px] h-[80px] bg-gray-100">
-                    <img
+                  <div className="img relative h-[80px] w-[80px] overflow-hidden rounded-md bg-gray-100">
+                    <Image
                       src={
                         product?.image || withAdminBasePath("/placeholder.png")
                       }
-                      alt="product"
-                      className="w-full h-full object-cover"
+                      alt={product?.productTitle || "Product"}
+                      fill
+                      sizes="80px"
+                      className="object-cover"
                     />
                   </div>
                   <div className="info flex flex-col">
@@ -1336,7 +1339,7 @@ const OrdersTable = ({ orders, token }) => (
 );
 
 const Orders = () => {
-  const { token, isAuthenticated, loading, admin } = useAdmin();
+  const { token, isAuthenticated, loading } = useAdmin();
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -1347,12 +1350,6 @@ const Orders = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [backfillingPaymentIds, setBackfillingPaymentIds] = useState(false);
-  const [repairingPaidOrders, setRepairingPaidOrders] = useState(false);
-  const canRunOrderMaintenanceActions = hasAdminPermission(
-    admin,
-    "manage_shipping",
-  );
   const { intervalMs } = useLiveRefreshSetting();
   const refreshConfig = useMemo(
     () => ({
@@ -1495,84 +1492,6 @@ const Orders = () => {
     router.replace(query ? `/orders?${query}` : "/orders");
   };
 
-  const handleRepairPaidOrders = async () => {
-    if (!token) {
-      toast.error("Admin session missing");
-      return;
-    }
-    const confirmed =
-      typeof window === "undefined"
-        ? true
-        : window.confirm(
-            "Repair paid orders missing shipment/invoice? This may take a minute.",
-          );
-    if (!confirmed) return;
-
-    setRepairingPaidOrders(true);
-    try {
-      const response = await postData(
-        "/api/orders/admin/repair-paid?limit=50",
-        {},
-        token,
-      );
-      if (response?.success) {
-        const stats = response?.data || {};
-        toast.success(
-          `Repair completed: ${stats.repaired || 0} repaired, ${stats.skipped || 0} skipped.`,
-        );
-        fetchOrders();
-      } else {
-        toast.error(response?.message || "Repair failed");
-      }
-    } catch (error) {
-      toast.error("Repair failed");
-    } finally {
-      setRepairingPaidOrders(false);
-    }
-  };
-
-  const handleBackfillSuccessfulPaymentIds = async () => {
-    if (!token) {
-      toast.error("Admin session missing");
-      return;
-    }
-
-    const confirmed =
-      typeof window === "undefined"
-        ? true
-        : window.confirm(
-            "Backfill Payment App Txn IDs for successful orders only? This updates payment ID only when provider transaction IDs already exist.",
-          );
-    if (!confirmed) return;
-
-    setBackfillingPaymentIds(true);
-    try {
-      const response = await postData(
-        "/api/orders/admin/backfill-payment-ids?limit=250",
-        {},
-        token,
-      );
-
-      if (response?.success) {
-        const stats = response?.data || {};
-        const updated = Number(stats?.updated || 0);
-        const skipped = Number(stats?.skipped || 0);
-        const remaining = Number(stats?.remaining || 0);
-
-        toast.success(
-          `Backfill completed: ${updated} updated, ${skipped} skipped, ${remaining} remaining.`,
-        );
-        fetchOrders();
-      } else {
-        toast.error(response?.message || "Backfill failed");
-      }
-    } catch {
-      toast.error("Backfill failed");
-    } finally {
-      setBackfillingPaymentIds(false);
-    }
-  };
-
   if (loading || !isAuthenticated) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -1599,42 +1518,6 @@ const Orders = () => {
             </p>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
-            {canRunOrderMaintenanceActions ? (
-              <>
-                <Button
-                  variant="outlined"
-                  size="small"
-                  onClick={handleBackfillSuccessfulPaymentIds}
-                  disabled={backfillingPaymentIds || repairingPaidOrders}
-                  sx={{
-                    textTransform: "none",
-                    borderRadius: "10px",
-                    px: 2,
-                    py: 0.8,
-                  }}
-                >
-                  {backfillingPaymentIds
-                    ? "Backfilling Txn IDs..."
-                    : "Backfill Successful Txn IDs"}
-                </Button>
-                <Button
-                  variant="outlined"
-                  size="small"
-                  onClick={handleRepairPaidOrders}
-                  disabled={backfillingPaymentIds || repairingPaidOrders}
-                  sx={{
-                    textTransform: "none",
-                    borderRadius: "10px",
-                    px: 2,
-                    py: 0.8,
-                  }}
-                >
-                  {repairingPaidOrders
-                    ? "Repairing Paid Orders..."
-                    : "Repair Paid Orders"}
-                </Button>
-              </>
-            ) : null}
             <Button
               variant="outlined"
               size="small"

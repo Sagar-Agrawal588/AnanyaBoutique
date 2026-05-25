@@ -1,14 +1,12 @@
 "use client";
 
-import SeoImage from "@/components/SeoImage";
+import ResponsiveMediaImage from "@/components/ResponsiveMediaImage";
 import { useSettings } from "@/context/SettingsContext";
 import { useProducts } from "@/context/ProductContext";
 import {
   getHeroImageUrl,
   getHeroMobileImageUrl,
-  isCloudinaryUrl,
 } from "@/utils/imageUtils";
-import { motion } from "framer-motion";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -22,7 +20,6 @@ import { Swiper, SwiperSlide } from "swiper/react";
 import "swiper/css";
 import "swiper/css/effect-fade";
 import "swiper/css/pagination";
-
 import { Autoplay, EffectFade, Pagination } from "swiper/modules";
 
 const fallbackSlides = [
@@ -82,7 +79,13 @@ const formatSlides = (slides = []) =>
   slides.map((slide) => ({
     image: slide.image,
     mobileImage: slide.mobileImage || slide.image,
-    title: normalizeSlideText(slide.title, "Featured Pick"),
+    desktopImageScale: Math.max(Number(slide.desktopImageScale) || 1.08, 1),
+    desktopImagePositionX: Number(slide.desktopImagePositionX) || 50,
+    desktopImagePositionY: Number(slide.desktopImagePositionY) || 50,
+    mobileImageScale: Math.max(Number(slide.mobileImageScale) || 1.04, 1),
+    mobileImagePositionX: Number(slide.mobileImagePositionX) || 50,
+    mobileImagePositionY: Number(slide.mobileImagePositionY) || 50,
+    title: normalizeSlideText(slide.title, ""),
     subtitle: normalizeSlideText(slide.subtitle || slide.description, ""),
     cta: normalizeSlideText(slide.buttonText, "Shop Now"),
     link: normalizeSlideLink(slide.buttonLink),
@@ -107,6 +110,11 @@ const HERO_STATS = [
   { label: "Clean Label", value: "No Nasties" },
   { label: "Everyday Use", value: "Snack + Fitness" },
 ];
+
+const hasNarrativeContent = (slide) =>
+  Boolean(
+    String(slide?.title || "").trim() || String(slide?.subtitle || "").trim(),
+  );
 
 const getOfferTimeLeft = (endsAt, nowMs) => {
   if (!Number.isFinite(nowMs)) return "";
@@ -182,6 +190,7 @@ const HomeSlider = ({ initialSlides = [], initialSettings = null }) => {
   const motionEnabled = !prefersReducedMotion;
   const hasMultipleSlides = displaySlides.length > 1;
   const activeSlide = displaySlides[activeIndex] || displaySlides[0] || null;
+  const activeSlideHasNarrative = hasNarrativeContent(activeSlide);
   const heroTrustItems = useMemo(
     () =>
       HERO_TRUST_SETTING_KEYS.map(
@@ -265,10 +274,10 @@ const HomeSlider = ({ initialSlides = [], initialSettings = null }) => {
   };
 
   return (
-    <section className="relative z-10 px-3 sm:px-4 md:px-0">
+    <section className="relative z-10 px-0">
       <div className="w-full">
-        <div className="overflow-hidden rounded-[1.6rem] bg-[#120c09] shadow-[0_32px_90px_rgba(26,18,13,0.16)] sm:rounded-[2rem] md:rounded-none">
-          <div className="relative aspect-[4/3] w-full sm:aspect-[5/4] md:aspect-[16/9]">
+        <div className="overflow-hidden rounded-[1.6rem] bg-[#f3ece4] shadow-[0_32px_90px_rgba(26,18,13,0.16)] sm:rounded-[2rem] md:rounded-none">
+          <div className="relative aspect-video w-full">
             <Swiper
               speed={motionEnabled ? 850 : 500}
               spaceBetween={0}
@@ -307,98 +316,45 @@ const HomeSlider = ({ initialSlides = [], initialSettings = null }) => {
                   className="relative h-full w-full"
                   data-swiper-autoplay={slide.stayDurationMs || 5600}
                 >
-                  <div className="relative h-full w-full overflow-hidden bg-[#120c09]">
-                    <motion.div
+                  <div className="relative h-full w-full overflow-hidden bg-[#f3ece4]">
+                    <div
                       className="absolute inset-0 z-0"
-                      initial={false}
-                      animate={{ scale: motionEnabled ? 1.02 : 1 }}
-                      transition={
-                        motionEnabled
-                          ? {
-                              duration: Math.max(
-                                (slide.stayDurationMs || 5600) / 1000,
-                                0.2,
-                              ),
-                              ease: "easeOut",
-                            }
-                          : { duration: 0.18 }
-                      }
                     >
                       {(() => {
                         const desktopSrc = getHeroImageUrl(slide.image);
                         const mobileSrc = getHeroMobileImageUrl(
                           slide.mobileImage || slide.image,
                         );
-                        const desktopCloudinary = isCloudinaryUrl(desktopSrc);
-                        const mobileCloudinary = isCloudinaryUrl(mobileSrc);
 
                         return (
-                          <>
-                            <div
-                              className="absolute inset-0 hidden md:block"
-                              style={{
-                                backgroundColor:
-                                  slide.backgroundColor || "#f5f5f5",
-                              }}
-                            >
-                              <div
-                                aria-hidden="true"
-                                className="absolute inset-0 scale-110 bg-cover bg-center opacity-70 blur-2xl"
-                                style={{
-                                  backgroundImage: `url("${desktopSrc}")`,
-                                }}
-                              />
-                              <SeoImage
-                                src={desktopSrc}
-                                fallbackAlt={slide.title}
-                                fill
-                                priority={index === 0}
-                                sizes="100vw"
-                                fetchPriority={index === 0 ? "high" : undefined}
-                                loading={index === 0 ? "eager" : "lazy"}
-                                unoptimized={desktopCloudinary}
-                                className="object-cover object-center"
-                              />
-                            </div>
-                            <div
-                              className="absolute inset-0 md:hidden"
-                              style={{
-                                backgroundColor:
-                                  slide.backgroundColor || "#f5f5f5",
-                              }}
-                            >
-                              <div
-                                aria-hidden="true"
-                                className="absolute inset-0 scale-110 bg-cover bg-top opacity-75 blur-2xl"
-                                style={{
-                                  backgroundImage: `url("${mobileSrc}")`,
-                                }}
-                              />
-                              <SeoImage
-                                src={mobileSrc}
-                                fallbackAlt={slide.title}
-                                fill
-                                priority={index === 0}
-                                sizes="100vw"
-                                fetchPriority={index === 0 ? "high" : undefined}
-                                loading={index === 0 ? "eager" : "lazy"}
-                                unoptimized={mobileCloudinary}
-                                className="object-contain object-top"
-                              />
-                            </div>
-                          </>
+                          <ResponsiveMediaImage
+                            desktopSrc={desktopSrc}
+                            mobileSrc={mobileSrc}
+                            alt={slide.title}
+                            className="absolute inset-0"
+                            imgClassName="transition-transform duration-700 ease-out"
+                            desktopProfile="heroDesktop"
+                            mobileProfile="heroMobile"
+                            desktopPosition={`${slide.desktopImagePositionX}% ${slide.desktopImagePositionY}%`}
+                            mobilePosition={`${slide.mobileImagePositionX}% ${slide.mobileImagePositionY}%`}
+                            desktopScale={slide.desktopImageScale}
+                            mobileScale={slide.mobileImageScale}
+                            backgroundColor={slide.backgroundColor || "#f5f5f5"}
+                            loading={index === 0 ? "eager" : "lazy"}
+                            fetchPriority={index === 0 ? "high" : "auto"}
+                          />
                         );
                       })()}
-                    </motion.div>
+                    </div>
 
                     <div
                       className="absolute inset-0 z-10"
                       style={{
                         background:
-                          "linear-gradient(90deg, rgba(12,9,7,0.76) 0%, rgba(12,9,7,0.48) 24%, rgba(12,9,7,0.14) 58%, rgba(12,9,7,0.24) 100%), linear-gradient(to top, rgba(0,0,0,0.42) 0%, rgba(0,0,0,0.08) 42%, transparent 72%)",
+                          "linear-gradient(90deg, rgba(12,9,7,0.68) 0%, rgba(12,9,7,0.4) 24%, rgba(12,9,7,0.1) 58%, rgba(12,9,7,0.14) 100%), linear-gradient(to top, rgba(24,16,11,0.2) 0%, rgba(24,16,11,0.04) 28%, transparent 58%)",
                       }}
                     />
-                    <div className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-[#1d140f]/50 to-transparent" />
+                    <div className="absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-[#1d140f]/14 to-transparent" />
 
                     {slide.offerEnabled &&
                     getOfferTimeLeft(slide.offerEndsAt, nowMs) ? (
@@ -465,7 +421,7 @@ const HomeSlider = ({ initialSlides = [], initialSettings = null }) => {
 
             <div className="pointer-events-none absolute inset-0 z-20 hidden md:block">
               <div className="flex h-full items-center px-6 py-8 lg:px-10 xl:px-14">
-                {!isHeroPanelDismissed && activeSlide ? (
+                {!isHeroPanelDismissed && activeSlide && activeSlideHasNarrative ? (
                   <div
                     key={`hero-panel-${activeIndex}`}
                     className="pointer-events-auto relative max-w-[24rem] overflow-hidden rounded-[1.5rem] border border-white/14 bg-[linear-gradient(150deg,rgba(20,14,10,0.78)_0%,rgba(20,14,10,0.48)_100%)] px-5 py-5 text-white shadow-[0_26px_70px_-38px_rgba(0,0,0,0.82)] backdrop-blur-sm lg:max-w-[28rem] lg:rounded-[1.8rem] lg:px-6 lg:py-6"
@@ -484,13 +440,17 @@ const HomeSlider = ({ initialSlides = [], initialSettings = null }) => {
                         Bestseller Range
                       </span>
 
-                      <h1 className="mt-4 max-w-[14ch] text-[2rem] font-black leading-[0.92] tracking-[-0.05em] text-white drop-shadow-[0_12px_32px_rgba(0,0,0,0.28)] lg:text-[2.5rem]">
-                        {activeSlide.title}
-                      </h1>
+                      {activeSlide.title ? (
+                        <h1 className="mt-4 max-w-[14ch] text-[2rem] font-black leading-[0.92] tracking-[-0.05em] text-white drop-shadow-[0_12px_32px_rgba(0,0,0,0.28)] lg:text-[2.5rem]">
+                          {activeSlide.title}
+                        </h1>
+                      ) : null}
 
-                      <p className="mt-3 max-w-[28rem] text-sm font-medium leading-6 text-white/78 lg:text-[15px]">
-                        {activeSlide.subtitle}
-                      </p>
+                      {activeSlide.subtitle ? (
+                        <p className="mt-3 max-w-[28rem] text-sm font-medium leading-6 text-white/78 lg:text-[15px]">
+                          {activeSlide.subtitle}
+                        </p>
+                      ) : null}
 
                       <div className="mt-5 flex flex-wrap items-center gap-3">
                         <Link
@@ -526,7 +486,7 @@ const HomeSlider = ({ initialSlides = [], initialSettings = null }) => {
                       </div>
                     </div>
                   </div>
-                ) : (
+                ) : activeSlideHasNarrative ? (
                   <button
                     type="button"
                     onClick={() => setIsHeroPanelDismissed(false)}
@@ -534,81 +494,84 @@ const HomeSlider = ({ initialSlides = [], initialSettings = null }) => {
                   >
                     Show slide details
                   </button>
-                )}
+                ) : null}
               </div>
             </div>
-          </div>
-        </div>
-
-        <div className="relative z-20 mx-auto -mt-14 max-w-7xl px-4 md:hidden">
-          {isHeroPanelDismissed ? (
-            <button
-              type="button"
-              onClick={() => setIsHeroPanelDismissed(false)}
-              className="inline-flex items-center rounded-full border border-[#2c1e15]/12 bg-[#1a120d] px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_26px_rgba(0,0,0,0.12)]"
-            >
-              Show slide details
-            </button>
-          ) : activeSlide ? (
-            <div className="rounded-[1.45rem] border border-[#2c1e15]/10 bg-white p-4 shadow-[0_18px_50px_rgba(26,18,13,0.08)]">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <span className="inline-flex items-center rounded-full bg-[#f3ebe5] px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-[#7c5b49]">
-                    Bestseller Range
-                  </span>
-                  <h1 className="mt-3 text-[1.55rem] font-black leading-[0.96] tracking-[-0.04em] text-[#2d1a11]">
-                    {activeSlide.title}
-                  </h1>
-                </div>
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-4 pb-14 md:hidden">
+              {activeSlideHasNarrative && isHeroPanelDismissed ? (
                 <button
                   type="button"
-                  onClick={() => setIsHeroPanelDismissed(true)}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#2c1e15]/10 bg-[#f7f2ed] text-[#2d1a11]"
-                  aria-label="Hide slide details"
+                  onClick={() => setIsHeroPanelDismissed(false)}
+                  className="pointer-events-auto inline-flex items-center rounded-full border border-white/16 bg-[rgba(20,14,10,0.7)] px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_26px_rgba(0,0,0,0.18)] backdrop-blur-sm"
                 >
-                  <FiX size={15} />
+                  Show slide details
                 </button>
-              </div>
+              ) : activeSlide && activeSlideHasNarrative ? (
+                <div className="pointer-events-auto rounded-[1.35rem] border border-white/14 bg-[linear-gradient(150deg,rgba(255,255,255,0.94)_0%,rgba(255,249,242,0.88)_100%)] p-4 text-[#2d1a11] shadow-[0_18px_50px_rgba(26,18,13,0.12)] backdrop-blur-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <span className="inline-flex items-center rounded-full bg-[#f3ebe5] px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-[#7c5b49]">
+                        Bestseller Range
+                      </span>
+                      {activeSlide.title ? (
+                        <h1 className="mt-3 text-[1.4rem] font-black leading-[0.96] tracking-[-0.04em] text-[#2d1a11]">
+                          {activeSlide.title}
+                        </h1>
+                      ) : null}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsHeroPanelDismissed(true)}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#2c1e15]/10 bg-[#f7f2ed] text-[#2d1a11]"
+                      aria-label="Hide slide details"
+                    >
+                      <FiX size={15} />
+                    </button>
+                  </div>
 
-              <p className="mt-3 text-sm leading-6 text-[#6a5447]">
-                {activeSlide.subtitle}
-              </p>
+                  {activeSlide.subtitle ? (
+                    <p className="mt-3 text-sm leading-6 text-[#6a5447]">
+                      {activeSlide.subtitle}
+                    </p>
+                  ) : null}
 
-              <div className="mt-4 flex flex-wrap gap-3">
-                <Link
-                  href={activeSlide.link}
-                  className="inline-flex items-center gap-2 rounded-full bg-[#2d1a11] px-5 py-3 text-sm font-bold text-white"
-                >
-                  {activeSlide.cta}
-                  <FiArrowUpRight size={16} />
-                </Link>
-                <Link
-                  href="/products"
-                  className="inline-flex items-center gap-2 rounded-full border border-[#2d1a11]/12 bg-[#fffaf6] px-4 py-3 text-sm font-semibold text-[#2d1a11]"
-                >
-                  View catalog
-                </Link>
-              </div>
+                  <div className="mt-4 flex flex-wrap gap-3">
+                    <Link
+                      href={activeSlide.link}
+                      className="inline-flex items-center gap-2 rounded-full bg-[#2d1a11] px-5 py-3 text-sm font-bold text-white"
+                    >
+                      {activeSlide.cta}
+                      <FiArrowUpRight size={16} />
+                    </Link>
+                    <Link
+                      href="/products"
+                      className="inline-flex items-center gap-2 rounded-full border border-[#2d1a11]/12 bg-[#fffaf6] px-4 py-3 text-sm font-semibold text-[#2d1a11]"
+                    >
+                      View catalog
+                    </Link>
+                  </div>
+                </div>
+              ) : null}
             </div>
-          ) : null}
-        </div>
 
-        {heroTrustItems.length ? (
-          <div className="relative z-20 mx-auto mt-3 max-w-7xl px-4 sm:mt-4 md:-mt-6">
-            <div className="mx-auto w-full max-w-5xl rounded-[1.4rem] border border-white/16 bg-[rgba(18,12,9,0.78)] px-2.5 py-3 text-white/88 shadow-[0_18px_55px_rgba(0,0,0,0.22)] backdrop-blur-xl md:max-w-fit md:rounded-full md:px-4">
-              <div className="flex items-center gap-1 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden md:flex-wrap md:justify-center md:gap-2 md:overflow-visible">
-                {heroTrustItems.map((item) => (
-                  <span
-                    key={item}
-                    className="rounded-full bg-white/10 px-2.5 py-1.5 text-[8px] font-extrabold uppercase tracking-[0.12em] sm:px-4 sm:py-2 sm:text-[11px] sm:tracking-[0.2em]"
-                  >
-                    {item}
-                  </span>
-                ))}
+            {heroTrustItems.length ? (
+              <div className="pointer-events-none absolute inset-x-0 bottom-3 z-30 flex justify-center px-4">
+                <div className="pointer-events-auto mx-auto w-full max-w-5xl rounded-[1.4rem] border border-white/16 bg-[rgba(18,12,9,0.78)] px-2.5 py-3 text-white/88 shadow-[0_18px_55px_rgba(0,0,0,0.22)] backdrop-blur-xl md:max-w-fit md:rounded-full md:px-4">
+                  <div className="flex items-center gap-1 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden md:flex-wrap md:justify-center md:gap-2 md:overflow-visible">
+                    {heroTrustItems.map((item) => (
+                      <span
+                        key={item}
+                        className="rounded-full bg-white/10 px-2.5 py-1.5 text-[8px] font-extrabold uppercase tracking-[0.12em] sm:px-4 sm:py-2 sm:text-[11px] sm:tracking-[0.2em]"
+                      >
+                        {item}
+                      </span>
+                    ))}
+                  </div>
+                </div>
               </div>
-            </div>
+            ) : null}
           </div>
-        ) : null}
+        </div>
       </div>
 
       <style jsx global>{`
