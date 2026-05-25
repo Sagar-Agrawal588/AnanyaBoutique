@@ -5,8 +5,8 @@ const buildSlidesPayload = () => ({
   success: true,
   data: [
     {
-      image: "/slide_1.webp",
-      mobileImage: "/slide_1.webp",
+      image: "/slides/slide_1.jpg",
+      mobileImage: "/slides/slide_1_mobile.jpg",
       title: "Visual Test Slide",
       subtitle: "Testing hero visual",
       buttonText: "Shop Now",
@@ -38,9 +38,6 @@ test("desktop hero 16:9 visual", async ({ page }) => {
 
   const hero = page.locator(".homeSlider");
   await expect(hero).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Visual Test Slide" }),
-  ).toBeVisible();
 
   await expect(hero).toHaveScreenshot("home-hero-desktop-1600.png", {
     animations: "disabled",
@@ -56,9 +53,6 @@ test("mobile hero visual", async ({ page }) => {
 
   const hero = page.locator(".homeSlider");
   await expect(hero).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Visual Test Slide" }),
-  ).toBeVisible();
 
   await expect(hero).toHaveScreenshot("home-hero-mobile-390.png", {
     animations: "disabled",

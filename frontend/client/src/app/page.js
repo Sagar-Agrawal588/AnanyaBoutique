@@ -1,30 +1,12 @@
 import { headers } from "next/headers";
 import HomeSlider from "@/components/HomeSlider";
+import Banners from "@/components/Banners";
+import CatSlider from "@/components/CatSlider";
+import HomeComboDeals from "@/components/HomeComboDeals";
 import dynamic from "next/dynamic";
-const Banners = dynamic(() => import("@/components/Banners"), {
-  loading: () => null,
-});
-const CatSlider = dynamic(() => import("@/components/CatSlider"), {
-  loading: () => null,
-});
-const HomeComboDeals = dynamic(() => import("@/components/HomeComboDeals"), {
-  loading: () => null,
-});
-const HomeCustomerReviews = dynamic(
-  () => import("@/components/HomeCustomerReviews"),
-  {
-    loading: () => null,
-  },
-);
 
 const OfferCountdownStrip = dynamic(
   () => import("@/components/OfferCountdownStrip"),
-  {
-    loading: () => null,
-  },
-);
-const WhatsAppFloatingButton = dynamic(
-  () => import("@/components/WhatsAppFloatingButton"),
   {
     loading: () => null,
   },
@@ -77,10 +59,6 @@ const sanitizeOrigin = (value) => {
 };
 
 const getRequestOrigin = async () => {
-  if (process.env.NODE_ENV === "production") {
-    return "";
-  }
-
   try {
     const headerStore = await headers();
     const host = String(
@@ -101,7 +79,10 @@ const getRequestOrigin = async () => {
 
 const getHomepageBaseCandidates = (requestOrigin = "") => {
   if (process.env.NODE_ENV === "production") {
-    return [API_BASE_URL].filter(Boolean);
+    return [requestOrigin, API_BASE_URL].filter(
+      (candidate, index, arr) =>
+        candidate && arr.indexOf(candidate) === index,
+    );
   }
 
   const candidates = [requestOrigin, LOCAL_DEV_API_BASE_URL, API_BASE_URL].filter(
@@ -170,11 +151,6 @@ const getHomepageCombos = async (requestOrigin = "") => {
   return Array.isArray(payload?.data?.items) ? payload.data.items.slice(0, 4) : [];
 };
 
-const deferredSectionStyle = {
-  contentVisibility: "auto",
-  containIntrinsicSize: "900px",
-};
-
 export default async function Home() {
   const requestOrigin = await getRequestOrigin();
   const [
@@ -184,7 +160,6 @@ export default async function Home() {
     homepageCategories,
     homepagePopularProducts,
     homepageCombos,
-    featuredReviews,
   ] = await Promise.all([
     getHomepageData("/api/home-slides", requestOrigin),
     getHomepageData("/api/banners", requestOrigin),
@@ -192,7 +167,6 @@ export default async function Home() {
     getHomepageCategories(requestOrigin),
     getHomepagePopularProducts(requestOrigin),
     getHomepageCombos(requestOrigin),
-    getHomepageData("/api/reviews/featured/home?limit=6", requestOrigin),
   ]);
 
   return (
@@ -213,27 +187,15 @@ export default async function Home() {
         <OfferCountdownStrip
           initialConfig={homepageSettings?.offerCountdownSettings || null}
         />
-        <div style={deferredSectionStyle}>
-          <Banners initialBanners={banners} />
-        </div>
-        <div style={deferredSectionStyle}>
-          <CatSlider
-            initialCategories={homepageCategories}
-            initialPopularProducts={homepagePopularProducts}
-            initialPopularCombos={homepageCombos}
-          />
-        </div>
-        <div style={deferredSectionStyle}>
-          <HomeComboDeals initialCombos={homepageCombos} />
-        </div>
-        <div style={deferredSectionStyle}>
-          <HomeCustomerReviews initialReviews={featuredReviews} />
-        </div>
-        <div style={deferredSectionStyle}>
-          <MembershipCTA />
-        </div>
+        <Banners initialBanners={banners} />
+        <CatSlider
+          initialCategories={homepageCategories}
+          initialPopularProducts={homepagePopularProducts}
+          initialPopularCombos={homepageCombos}
+        />
+        <HomeComboDeals initialCombos={homepageCombos} />
+        <MembershipCTA />
       </div>
-      <WhatsAppFloatingButton />
     </main>
   );
 }

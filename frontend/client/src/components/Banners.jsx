@@ -1,13 +1,17 @@
 "use client";
 
-import ResponsiveMediaImage from "@/components/ResponsiveMediaImage";
 import useSeoAlt from "@/hooks/useSeoAlt";
 import {
   fetchDataFromApi,
   PUBLIC_SECTION_REQUEST_TIMEOUT_MS,
 } from "@/utils/api";
-import { getBannerImageUrl, getMobileBannerImageUrl } from "@/utils/imageUtils";
+import {
+  getBannerImageUrl,
+  getMobileBannerImageUrl,
+  isCloudinaryUrl,
+} from "@/utils/imageUtils";
 import { motion } from "framer-motion";
+import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -87,17 +91,26 @@ const BannerMedia = ({ banner, isMuted }) => {
   if (banner.image) {
     return (
       <div className="relative h-56 w-full overflow-hidden rounded-[1.7rem] sm:h-64 md:h-72">
-        <ResponsiveMediaImage
-          desktopSrc={desktopSrc}
-          mobileSrc={mobileSrc}
-          alt={desktopAlt || mobileAlt}
-          className="absolute inset-0"
-          imgClassName="transition-transform duration-700 group-hover:scale-105"
-          desktopProfile="bannerDesktop"
-          mobileProfile="bannerMobile"
-          loading="lazy"
-          fetchPriority="auto"
-        />
+        <div className="absolute inset-0 hidden md:block">
+          <Image
+            src={desktopSrc}
+            alt={desktopAlt}
+            fill
+            sizes="100vw"
+            unoptimized={isCloudinaryUrl(desktopSrc)}
+            className="object-cover transition-transform duration-700 group-hover:scale-105"
+          />
+        </div>
+        <div className="absolute inset-0 md:hidden">
+          <Image
+            src={mobileSrc}
+            alt={mobileAlt}
+            fill
+            sizes="100vw"
+            unoptimized={isCloudinaryUrl(mobileSrc)}
+            className="object-cover transition-transform duration-700 group-hover:scale-105"
+          />
+        </div>
       </div>
     );
   }

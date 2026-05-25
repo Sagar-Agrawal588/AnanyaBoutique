@@ -9,7 +9,10 @@ import { useCart } from "@/context/CartContext";
 import { useWishlist } from "@/context/WishlistContext";
 import useSeoAlt from "@/hooks/useSeoAlt";
 import { resolveAvailability } from "@/utils/productAvailability";
-import { buildProductHref } from "@/utils/productRouting";
+import {
+  buildProductHref,
+  getPublicProductIdentifier,
+} from "@/utils/productRouting";
 import { subscribeToStockUpdates } from "@/realtime/stockSocket";
 import { applyStockUpdateToProduct } from "@/utils/stockRealtime";
 import {
@@ -295,7 +298,6 @@ const ProductItem = (props) => {
           ? `/product/${encodeURIComponent(String(productCardId))}`
           : "/products",
       });
-  const productReviewsHref = `${productHref}#reviews`;
 
   const renderStars = () => {
     const stars = [];
@@ -333,7 +335,7 @@ const ProductItem = (props) => {
       <Link
         href={productHref}
         aria-label={`Open ${displayProductName || productData.name}`}
-        className="absolute inset-0 z-10 rounded-[inherit]"
+        className="absolute inset-0 z-0 rounded-[inherit]"
       >
         <span className="sr-only">{displayProductName || productData.name}</span>
       </Link>
@@ -345,7 +347,7 @@ const ProductItem = (props) => {
         cardImage
         aspect={compactListing ? "aspect-square sm:aspect-square" : "aspect-square"}
         fit="cover"
-        className={compactListing ? "relative mb-1.5 w-full bg-[#f5f5f5] sm:mb-3" : "relative mb-3 w-full bg-[#f5f5f5]"}
+        className={compactListing ? "relative z-10 mb-1.5 w-full bg-[#f5f5f5] sm:mb-3" : "relative z-10 mb-3 w-full bg-[#f5f5f5]"}
         imgClassName={`object-cover transition-all duration-300 ${
           isOutOfStock
             ? "grayscale-[0.45] saturate-50 opacity-70"
@@ -364,7 +366,7 @@ const ProductItem = (props) => {
         {/* Wishlist Button */}
         <button
           onClick={handleWishlistClick}
-          className={`absolute right-2 top-2 z-20 flex items-center justify-center rounded-full bg-white/80 text-gray-400 shadow-sm backdrop-blur-sm transition-all hover:bg-red-50 hover:text-red-500 active:scale-95 ${
+          className={`absolute right-2 top-2 z-10 flex items-center justify-center rounded-full bg-white/80 text-gray-400 shadow-sm backdrop-blur-sm transition-all hover:bg-red-50 hover:text-red-500 active:scale-95 ${
             compactListing ? "h-7 w-7 sm:h-8 sm:w-8" : "h-8 w-8"
           }`}
         >
@@ -377,11 +379,8 @@ const ProductItem = (props) => {
 
         {/* Share Button */}
         <div
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-          }}
-          className="absolute right-2 top-12 z-20"
+          onClick={(e) => e.preventDefault()}
+          className="absolute right-2 top-12 z-10"
         >
           <ShareButton
             productId={productCardId}
@@ -412,7 +411,7 @@ const ProductItem = (props) => {
       </ProductImage>
 
       {/* Content */}
-      <div className="relative flex flex-1 flex-col">
+      <div className="relative z-10 flex flex-1 flex-col">
         <p className={compactListing ? "mb-0.5 min-h-[20px] text-[8px] font-semibold uppercase tracking-[0.15em] text-gray-400 line-clamp-2 sm:mb-1 sm:min-h-0 sm:text-[10px]" : "mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-gray-400"}>
           {productData.brand}
         </p>
@@ -440,23 +439,12 @@ const ProductItem = (props) => {
         )}
 
         {/* Rating */}
-        <Link
-          href={productReviewsHref}
-          onClick={(event) => event.stopPropagation()}
-          aria-label={`Jump to ratings and reviews for ${displayProductName || productData.name}`}
-          className={`relative z-20 w-fit rounded-md transition hover:opacity-80 ${
-            compactListing
-              ? "mt-1 flex items-center gap-1 sm:mt-2"
-              : "mt-2 flex items-center gap-1"
-          }`}
-        >
-          <div className={compactListing ? "flex text-[10px] sm:text-xs" : "flex text-xs"}>
-            {renderStars()}
-          </div>
+        <div className={compactListing ? "mt-1 flex items-center gap-1 sm:mt-2" : "mt-2 flex items-center gap-1"}>
+          <div className={compactListing ? "flex text-[10px] sm:text-xs" : "flex text-xs"}>{renderStars()}</div>
           <span className="text-[10px] text-gray-400">
             ({displayReviewCount})
           </span>
-        </Link>
+        </div>
 
         {lowStockLabel ? (
           <div className={compactListing ? "mt-1 sm:mt-2" : "mt-2"}>
@@ -479,22 +467,20 @@ const ProductItem = (props) => {
 
           <div className={compactListing ? "mt-2 sm:mt-3 sm:min-h-11" : "mt-3 min-h-11"}>
             {showNotifyAction ? (
-              <div className="relative z-20">
-                <StockNotificationButton
-                  productId={productCardId}
-                  productName={displayProductName || productData.name}
-                  variantId={notifyVariantId}
-                  variantName={notifyVariantName}
-                  initialRequested={notifyRequested}
-                  compact
-                  className={
-                    compactListing
-                      ? "max-sm:min-h-9 max-sm:rounded-xl max-sm:px-2 max-sm:py-1.5 max-sm:text-[11px] max-sm:leading-tight"
-                      : ""
-                  }
-                  preventNavigation
-                />
-              </div>
+              <StockNotificationButton
+                productId={productCardId}
+                productName={displayProductName || productData.name}
+                variantId={notifyVariantId}
+                variantName={notifyVariantName}
+                initialRequested={notifyRequested}
+                compact
+                className={
+                  compactListing
+                    ? "max-sm:min-h-9 max-sm:rounded-xl max-sm:px-2 max-sm:py-1.5 max-sm:text-[11px] max-sm:leading-tight"
+                    : ""
+                }
+                preventNavigation
+              />
             ) : (
               <button
                 onClick={handleAddToCart}
@@ -506,7 +492,7 @@ const ProductItem = (props) => {
                       : `Add ${displayProductName || productData.name} to cart`
                 }
                 disabled={isAddingToCart || (!alreadyInCart && isOutOfStock)}
-                className={`relative z-20 inline-flex w-full items-center justify-center gap-2 font-semibold transition disabled:cursor-not-allowed disabled:opacity-70 ${
+                className={`inline-flex w-full items-center justify-center gap-2 font-semibold transition disabled:cursor-not-allowed disabled:opacity-70 ${
                   compactListing
                     ? "min-h-9 rounded-xl px-2 py-1.5 text-[12px] sm:min-h-11 sm:rounded-2xl sm:px-4 sm:py-3 sm:text-sm"
                     : "min-h-11 rounded-2xl px-4 py-3 text-sm"
