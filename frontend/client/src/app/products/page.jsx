@@ -26,7 +26,7 @@ import {
     FiX,
 } from "react-icons/fi";
 
-const PRODUCTS_PER_PAGE = 24;
+const PRODUCTS_PER_PAGE = 8;
 const FALLBACK_POLL_INTERVAL_MS = 45000;
 
 const PRICE_FILTERS = [
@@ -71,7 +71,9 @@ const ProductsGridSkeleton = () => (
 function ProductsPageContent() {
     const [products, setProducts] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [loadingMore, setLoadingMore] = useState(false);
     const [fetchError, setFetchError] = useState("");
+    const [paginationError, setPaginationError] = useState("");
     const [page, setPage] = useState(1);
     const [pages, setPages] = useState(1);
     const [totalProducts, setTotalProducts] = useState(0);
@@ -82,6 +84,7 @@ function ProductsPageContent() {
     const loaderRef = useRef(null);
     const fallbackPollRef = useRef(null);
     const latestLoadRequestRef = useRef(0);
+    const loadingMoreRef = useRef(false);
 
     // Get search term from URL
     const urlSearchTerm = searchParams.get("search") || searchParams.get("q") || "";
@@ -237,10 +240,16 @@ function ProductsPageContent() {
         preserveCurrent = false,
         skipCache = false,
     } = {}) => {
+        if (targetPage > 1 && loadingMoreRef.current) return;
         const requestId = latestLoadRequestRef.current + 1;
         latestLoadRequestRef.current = requestId;
         if (showLoader && targetPage === 1) setLoading(true);
-        setFetchError("");
+        if (targetPage > 1) {
+            loadingMoreRef.current = true;
+            setLoadingMore(true);
+        }
+        if (targetPage === 1) setFetchError("");
+        setPaginationError("");
         try {
             const queryString = buildQueryString(targetPage, limitOverride);
             const query = queryString ? `?${queryString}` : "";
@@ -270,26 +279,37 @@ function ProductsPageContent() {
             const resolvedTotalProducts = Number(
                 res?.totalProducts || normalized.length,
             );
+            const resolvedTotalPages = Number(
+                res?.totalPages || res?.pages || 0,
+            );
             setTotalProducts(resolvedTotalProducts);
             setPages(
                 Math.max(
-                    Math.ceil(resolvedTotalProducts / PRODUCTS_PER_PAGE) || 1,
+                    resolvedTotalPages ||
+                        Math.ceil(resolvedTotalProducts / limitOverride) ||
+                        targetPage,
                     1,
                 ),
             );
+            setPage(Number(res?.currentPage || targetPage) || targetPage);
         } catch (error) {
             if (requestId !== latestLoadRequestRef.current) return;
 
             console.warn("Error loading products:", error?.message || error);
-            if (targetPage === 1 && !preserveCurrent) {
+            if (targetPage > 1) {
+                setPaginationError(
+                    error?.message ||
+                        "Unable to load more products right now. Please try again.",
+                );
+            } else if (!preserveCurrent) {
                 setProducts([]);
                 setPages(1);
                 setTotalProducts(0);
+                setFetchError(
+                    error?.message ||
+                        "Unable to load products right now. Please check API server connectivity.",
+                );
             }
-            setFetchError(
-                error?.message ||
-                    "Unable to load products right now. Please check API server connectivity.",
-            );
         } finally {
             if (
                 requestId === latestLoadRequestRef.current &&
@@ -297,6 +317,12 @@ function ProductsPageContent() {
                 targetPage === 1
             ) {
                 setLoading(false);
+            }
+            if (targetPage > 1) {
+                loadingMoreRef.current = false;
+            }
+            if (requestId === latestLoadRequestRef.current && targetPage > 1) {
+                setLoadingMore(false);
             }
         }
     }, [buildQueryString]);
@@ -331,8 +357,15 @@ function ProductsPageContent() {
     }, [syncLoadedProducts]);
 
     useEffect(() => {
-        void loadProducts({ targetPage: page, replace: page === 1 });
-    }, [loadProducts, page]);
+        loadingMoreRef.current = false;
+        setLoadingMore(false);
+        setPage(1);
+        setPages(1);
+        setProducts([]);
+        setTotalProducts(0);
+        setPaginationError("");
+        void loadProducts({ targetPage: 1, replace: true });
+    }, [loadProducts]);
 
     useEffect(() => () => {
         stopFallbackPolling();
@@ -369,42 +402,29 @@ function ProductsPageContent() {
         };
     }, [startFallbackPolling, stopFallbackPolling, syncLoadedProducts]);
 
-    useEffect(() => {
-        setPage(1);
-        setPages(1);
-        setProducts([]);
-        setTotalProducts(0);
-    }, [
-        activeSearchTerm,
-        urlCategory,
-        urlBestSeller,
-        urlNewArrivals,
-        urlPriceDrop,
-        urlMinDiscount,
-        urlMinPrice,
-        urlMaxPrice,
-        urlFlavor,
-        urlProductType,
-        urlSortBy,
-        urlOrder,
-    ]);
+    const loadNextPage = useCallback(() => {
+        if (loading || loadingMoreRef.current || fetchError) return;
+        if (page >= pages) return;
+        void loadProducts({
+            targetPage: page + 1,
+            replace: false,
+            showLoader: false,
+        });
+    }, [fetchError, loadProducts, loading, page, pages]);
 
     useEffect(() => {
         if (!loaderRef.current) return;
         const observer = new IntersectionObserver(
             (entries) => {
                 if (!entries[0].isIntersecting) return;
-                if (loading) return;
-                if (fetchError) return;
-                if (page >= pages) return;
-                setPage((prev) => prev + 1);
+                loadNextPage();
             },
-            { rootMargin: "220px" },
+            { rootMargin: "360px 0px" },
         );
 
         observer.observe(loaderRef.current);
         return () => observer.disconnect();
-    }, [loading, fetchError, page, pages]);
+    }, [loadNextPage]);
 
     const handleSearchSubmit = (event) => {
         event.preventDefault();
@@ -723,15 +743,30 @@ function ProductsPageContent() {
                                 </div>
                             </div>
                         ) : null}
-                        <div ref={loaderRef} />
+                        <div
+                            ref={loaderRef}
+                            aria-hidden="true"
+                            className="h-8 w-full"
+                        />
                         {page < pages ? (
                             <div className="text-center">
+                                {loadingMore ? (
+                                    <p className="text-sm font-semibold text-gray-500">
+                                        Loading more products...
+                                    </p>
+                                ) : null}
+                                {paginationError ? (
+                                    <p className="mb-3 text-sm font-semibold text-red-600">
+                                        {paginationError}
+                                    </p>
+                                ) : null}
                                 <button
                                     type="button"
-                                    onClick={() => setPage((prev) => prev + 1)}
-                                    className="rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100"
+                                    onClick={loadNextPage}
+                                    disabled={loadingMore}
+                                    className="rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
                                 >
-                                    Load more products
+                                    {loadingMore ? "Loading..." : "Load more products"}
                                 </button>
                             </div>
                         ) : null}
