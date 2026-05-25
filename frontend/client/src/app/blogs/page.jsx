@@ -1,7 +1,6 @@
 "use client";
 
 import { fetchDataFromApi, postData } from "@/utils/api";
-import { extractImageCandidatesFromBlogHtml } from "@/utils/blogHtml";
 import { motion } from "framer-motion";
 import Image from "next/image";
 import Link from "next/link";
@@ -161,30 +160,25 @@ export default function BlogPage() {
   const otherBlogs = blogs.slice(1);
 
   const resolveBlogHref = (blog) => `/blogs/${blog.slug || blog._id}`;
-  const getBlogPreviewImage = (blog) => {
-    if (blog?.image) return blog.image;
-    return extractImageCandidatesFromBlogHtml(blog?.contentHtml || "")?.[0] || "";
-  };
-  const hasBlogMedia = (blog) => Boolean(blog?.videoUrl || getBlogPreviewImage(blog));
+  const hasBlogMedia = (blog) => Boolean(blog?.videoUrl || blog?.image);
   const renderBlogMedia = (blog, className = "") => {
-    const previewImage = getBlogPreviewImage(blog);
     if (blog.videoUrl) {
       return (
         <video
           src={blog.videoUrl}
           controls
           playsInline
-          poster={previewImage || undefined}
+          poster={blog.image || undefined}
           preload="metadata"
           className={className}
         />
       );
     }
 
-    if (previewImage) {
+    if (blog.image) {
       return (
         <Image
-          src={previewImage}
+          src={blog.image}
           alt={blog.title}
           width={960}
           height={540}
