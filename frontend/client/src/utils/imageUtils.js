@@ -51,8 +51,7 @@ const RESPONSIVE_IMAGE_PROFILES = {
     widths: [960, 1280, 1600, 1920, 2200],
     width: 1920,
     height: 1080,
-    crop: "fill",
-    gravity: "auto",
+    crop: "limit",
     quality: "auto:good",
     sizes: "100vw",
   },
@@ -60,8 +59,7 @@ const RESPONSIVE_IMAGE_PROFILES = {
     widths: [480, 720, 960, 1280],
     width: 1280,
     height: 720,
-    crop: "fill",
-    gravity: "auto",
+    crop: "limit",
     quality: "auto:good",
     sizes: "100vw",
   },
@@ -325,16 +323,14 @@ export const getHeroImageUrl = (imageUrl) =>
   getOptimizedImageUrl(imageUrl, {
     width: 1920,
     height: 1080,
-    crop: "fill",
-    gravity: "auto",
+    crop: "limit",
   });
 
 export const getHeroMobileImageUrl = (imageUrl) =>
   getOptimizedImageUrl(imageUrl, {
     width: 1280,
     height: 720,
-    crop: "fill",
-    gravity: "auto",
+    crop: "limit",
   });
 
 export const getCategoryImageUrl = (imageUrl) =>

@@ -216,12 +216,12 @@ const Banners = ({ initialBanners = [] }) => {
                 Featured Offers
               </span>
               <h2
-                className="text-[1.9rem] font-black tracking-[-0.04em] sm:text-[2.2rem]"
+                className="text-[1.75rem] font-black leading-tight tracking-[-0.03em] sm:text-[2.2rem]"
                 style={{ color: "var(--color-primary)" }}
               >
                 Fresh Picks For You
               </h2>
-              <p className="text-sm font-medium leading-relaxed text-slate-600 sm:text-base">
+              <p className="max-w-2xl text-sm font-medium leading-relaxed text-slate-600 sm:text-base">
                 Swipe through high-conviction campaigns, bundles, and brand
                 stories styled like a cleaner ecommerce showcase.
               </p>
@@ -323,11 +323,11 @@ const Banners = ({ initialBanners = [] }) => {
                           </div>
 
                           <div className="absolute bottom-0 left-0 z-10 w-full p-5 sm:p-7">
-                            <h3 className="mb-2 text-2xl font-black leading-tight text-white drop-shadow-sm sm:text-3xl">
+                            <h3 className="mb-2 max-w-[min(20rem,calc(100%_-_3.5rem))] break-words text-[1.35rem] font-black leading-[1.05] text-white drop-shadow-sm sm:max-w-sm sm:text-3xl">
                               {banner.title}
                             </h3>
                             {banner.subtitle ? (
-                              <p className="mb-4 max-w-xs text-sm font-medium text-gray-200 drop-shadow-sm sm:text-base">
+                              <p className="mb-4 max-w-[min(18rem,calc(100%_-_2rem))] text-sm font-medium leading-snug text-gray-200 drop-shadow-sm sm:max-w-xs sm:text-base">
                                 {banner.subtitle}
                               </p>
                             ) : null}

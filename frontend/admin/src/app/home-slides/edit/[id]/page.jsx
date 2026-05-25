@@ -563,6 +563,8 @@ const EditHomeSlide = () => {
         <HomeSlideFrameControls
           values={frameSettings}
           onChange={updateFrameSetting}
+          desktopAsset={image}
+          mobileAsset={mobileImage}
         />
 
         <div className="mt-8 flex gap-3">

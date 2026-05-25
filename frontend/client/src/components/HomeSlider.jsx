@@ -79,10 +79,10 @@ const formatSlides = (slides = []) =>
   slides.map((slide) => ({
     image: slide.image,
     mobileImage: slide.mobileImage || slide.image,
-    desktopImageScale: Math.max(Number(slide.desktopImageScale) || 1.08, 1),
+    desktopImageScale: 1,
     desktopImagePositionX: Number(slide.desktopImagePositionX) || 50,
     desktopImagePositionY: Number(slide.desktopImagePositionY) || 50,
-    mobileImageScale: Math.max(Number(slide.mobileImageScale) || 1.04, 1),
+    mobileImageScale: 1,
     mobileImagePositionX: Number(slide.mobileImagePositionX) || 50,
     mobileImagePositionY: Number(slide.mobileImagePositionY) || 50,
     title: normalizeSlideText(slide.title, ""),
@@ -277,7 +277,7 @@ const HomeSlider = ({ initialSlides = [], initialSettings = null }) => {
     <section className="relative z-10 px-0">
       <div className="w-full">
         <div className="overflow-hidden rounded-[1.6rem] bg-[#f3ece4] shadow-[0_32px_90px_rgba(26,18,13,0.16)] sm:rounded-[2rem] md:rounded-none">
-          <div className="relative aspect-video w-full">
+          <div className="relative h-[clamp(17.5rem,72vw,30rem)] w-full md:h-[100svh]">
             <Swiper
               speed={motionEnabled ? 850 : 500}
               spaceBetween={0}
@@ -339,6 +339,7 @@ const HomeSlider = ({ initialSlides = [], initialSettings = null }) => {
                             mobilePosition={`${slide.mobileImagePositionX}% ${slide.mobileImagePositionY}%`}
                             desktopScale={slide.desktopImageScale}
                             mobileScale={slide.mobileImageScale}
+                            objectFit="fill"
                             backgroundColor={slide.backgroundColor || "#f5f5f5"}
                             loading={index === 0 ? "eager" : "lazy"}
                             fetchPriority={index === 0 ? "high" : "auto"}
@@ -351,7 +352,7 @@ const HomeSlider = ({ initialSlides = [], initialSettings = null }) => {
                       className="absolute inset-0 z-10"
                       style={{
                         background:
-                          "linear-gradient(90deg, rgba(12,9,7,0.68) 0%, rgba(12,9,7,0.4) 24%, rgba(12,9,7,0.1) 58%, rgba(12,9,7,0.14) 100%), linear-gradient(to top, rgba(24,16,11,0.2) 0%, rgba(24,16,11,0.04) 28%, transparent 58%)",
+                          "linear-gradient(90deg, rgba(12,9,7,0.54) 0%, rgba(12,9,7,0.32) 24%, rgba(12,9,7,0.08) 58%, rgba(12,9,7,0.12) 100%), linear-gradient(to top, rgba(24,16,11,0.22) 0%, rgba(24,16,11,0.04) 28%, transparent 58%)",
                       }}
                     />
                     <div className="absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-[#1d140f]/14 to-transparent" />
@@ -424,7 +425,7 @@ const HomeSlider = ({ initialSlides = [], initialSettings = null }) => {
                 {!isHeroPanelDismissed && activeSlide && activeSlideHasNarrative ? (
                   <div
                     key={`hero-panel-${activeIndex}`}
-                    className="pointer-events-auto relative max-w-[24rem] overflow-hidden rounded-[1.5rem] border border-white/14 bg-[linear-gradient(150deg,rgba(20,14,10,0.78)_0%,rgba(20,14,10,0.48)_100%)] px-5 py-5 text-white shadow-[0_26px_70px_-38px_rgba(0,0,0,0.82)] backdrop-blur-sm lg:max-w-[28rem] lg:rounded-[1.8rem] lg:px-6 lg:py-6"
+                    className="pointer-events-auto relative max-w-[24rem] overflow-hidden rounded-[1.5rem] border border-white/30 bg-[linear-gradient(145deg,rgba(32,23,17,0.64)_0%,rgba(32,23,17,0.42)_52%,rgba(255,255,255,0.12)_100%)] px-5 py-5 text-white shadow-[0_26px_70px_-38px_rgba(0,0,0,0.82),inset_0_1px_0_rgba(255,255,255,0.2)] backdrop-blur-2xl backdrop-saturate-150 lg:max-w-[28rem] lg:rounded-[1.8rem] lg:px-6 lg:py-6"
                   >
                     <button
                       type="button"
@@ -436,7 +437,7 @@ const HomeSlider = ({ initialSlides = [], initialSettings = null }) => {
                     </button>
 
                     <div className="relative z-10">
-                      <span className="inline-flex items-center rounded-full border border-white/12 bg-[rgba(121,80,41,0.2)] px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-white/88">
+                      <span className="inline-flex items-center rounded-full border border-white/26 bg-white/12 px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-white/88 shadow-[inset_0_1px_0_rgba(255,255,255,0.18)] backdrop-blur-md">
                         Bestseller Range
                       </span>
 
@@ -473,7 +474,7 @@ const HomeSlider = ({ initialSlides = [], initialSettings = null }) => {
                         {HERO_STATS.map((item) => (
                           <div
                             key={item.label}
-                            className="rounded-[1rem] border border-white/10 bg-white/6 px-4 py-3"
+                            className="rounded-[1rem] border border-white/16 bg-white/10 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] backdrop-blur-md"
                           >
                             <p className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-white/56">
                               {item.label}
@@ -507,10 +508,10 @@ const HomeSlider = ({ initialSlides = [], initialSettings = null }) => {
                   Show slide details
                 </button>
               ) : activeSlide && activeSlideHasNarrative ? (
-                <div className="pointer-events-auto rounded-[1.35rem] border border-white/14 bg-[linear-gradient(150deg,rgba(255,255,255,0.94)_0%,rgba(255,249,242,0.88)_100%)] p-4 text-[#2d1a11] shadow-[0_18px_50px_rgba(26,18,13,0.12)] backdrop-blur-sm">
+                <div className="pointer-events-auto rounded-[1.35rem] border border-white/60 bg-[linear-gradient(145deg,rgba(255,255,255,0.78)_0%,rgba(255,249,242,0.64)_100%)] p-4 text-[#2d1a11] shadow-[0_18px_50px_rgba(26,18,13,0.14),inset_0_1px_0_rgba(255,255,255,0.82)] backdrop-blur-2xl backdrop-saturate-150">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <span className="inline-flex items-center rounded-full bg-[#f3ebe5] px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-[#7c5b49]">
+                      <span className="inline-flex items-center rounded-full border border-white/60 bg-white/46 px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-[#7c5b49] shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] backdrop-blur-md">
                         Bestseller Range
                       </span>
                       {activeSlide.title ? (
@@ -538,14 +539,14 @@ const HomeSlider = ({ initialSlides = [], initialSettings = null }) => {
                   <div className="mt-4 flex flex-wrap gap-3">
                     <Link
                       href={activeSlide.link}
-                      className="inline-flex items-center gap-2 rounded-full bg-[#2d1a11] px-5 py-3 text-sm font-bold text-white"
+                      className="inline-flex items-center gap-2 rounded-full bg-[#2d1a11] px-4 py-2.5 text-sm font-bold text-white sm:px-5 sm:py-3"
                     >
                       {activeSlide.cta}
                       <FiArrowUpRight size={16} />
                     </Link>
                     <Link
                       href="/products"
-                      className="inline-flex items-center gap-2 rounded-full border border-[#2d1a11]/12 bg-[#fffaf6] px-4 py-3 text-sm font-semibold text-[#2d1a11]"
+                      className="inline-flex items-center gap-2 rounded-full border border-[#2d1a11]/12 bg-white/54 px-4 py-2.5 text-sm font-semibold text-[#2d1a11] shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] backdrop-blur-md sm:py-3"
                     >
                       View catalog
                     </Link>

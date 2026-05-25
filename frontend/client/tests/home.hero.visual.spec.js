@@ -31,13 +31,17 @@ const mockHomeSlides = async (page) => {
   });
 };
 
-test("desktop hero 16:9 visual", async ({ page }) => {
+test("desktop hero fills the full viewport-height frame", async ({ page }) => {
   await mockHomeSlides(page);
   await page.setViewportSize({ width: 1600, height: 900 });
   await page.goto("/", { waitUntil: "domcontentloaded" });
 
   const hero = page.locator(".homeSlider");
   await expect(hero).toBeVisible();
+  const heroBox = await hero.boundingBox();
+  expect(heroBox).not.toBeNull();
+  expect(heroBox.height).toBeGreaterThanOrEqual(900 - 1);
+  expect(heroBox.height).toBeLessThanOrEqual(900 + 1);
   await expect(
     page.getByRole("heading", { name: "Visual Test Slide" }),
   ).toBeVisible();
