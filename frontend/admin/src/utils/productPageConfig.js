@@ -1,32 +1,8 @@
-const LEGACY_STORY_COPY = new Set(
-  [
-    "Product Story",
-    "A cleaner product story with the important buying details kept close to the decision point.",
-    "A cleaner product story with the key buying details kept close to the decision point.",
-    "Keep the product story, pricing, trust cues, and delivery context in one calm layout without pushing the buying actions too far away.",
-    "The refreshed detail page keeps product story, trust cues, pricing, and delivery context in one calm layout without pushing the buying actions too far away.",
-  ].map((value) => String(value || "").trim().toLowerCase()),
-);
-
-const normalizeComparableText = (value) =>
-  String(value || "")
-    .trim()
-    .toLowerCase();
-
-const sanitizeStoryField = (value) => {
-  const trimmed = String(value || "").trim();
-  return LEGACY_STORY_COPY.has(normalizeComparableText(trimmed)) ? "" : trimmed;
-};
-
 const DEFAULT_PRODUCT_PAGE_CONFIG = {
   hero: {
-    showStoryCard: true,
     showInsightCards: true,
     showDeliveryPreview: true,
     showSupportCards: true,
-    storyEyebrow: "",
-    storyTitle: "",
-    storyDescription: "",
     priceCardEyebrow: "Price Focus",
     priceCardDescription:
       "Clean, high-contrast pricing with supporting variant context.",
@@ -163,9 +139,6 @@ export const mergeProductPageConfig = (value = {}) => {
     hero: {
       ...defaults.hero,
       ...(source.hero || {}),
-      storyEyebrow: sanitizeStoryField(source?.hero?.storyEyebrow),
-      storyTitle: sanitizeStoryField(source?.hero?.storyTitle),
-      storyDescription: sanitizeStoryField(source?.hero?.storyDescription),
       supportCards: mergeCardArray(
         defaults.hero.supportCards,
         source?.hero?.supportCards,
@@ -181,7 +154,9 @@ export const mergeProductPageConfig = (value = {}) => {
       ...(source.descriptionSection || {}),
       showFeaturedBannerImage:
         source?.descriptionSection?.showFeaturedBannerImage !== false,
-      extraParagraphs: Array.isArray(source?.descriptionSection?.extraParagraphs)
+      extraParagraphs: Array.isArray(
+        source?.descriptionSection?.extraParagraphs,
+      )
         ? source.descriptionSection.extraParagraphs
         : defaults.descriptionSection.extraParagraphs,
     },

@@ -1,11 +1,9 @@
 "use client";
 
-import { API_BASE_URL } from "@/utils/api";
+import { fetchDataFromApi } from "@/utils/api";
 import { CircularProgress } from "@mui/material";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-
-const API_URL = API_BASE_URL.endsWith("/api") ? API_BASE_URL : `${API_BASE_URL}/api`;
 
 const THEME_PRESETS = {
   mint: {
@@ -72,7 +70,13 @@ const THEME_PRESETS = {
 
 const DEFAULT_CONTENT = {
   theme: { style: "mint", layout: "glass" },
-  sections: { hero: true, standard: true, whyUs: true, values: true, cta: true },
+  sections: {
+    hero: true,
+    standard: true,
+    whyUs: true,
+    values: true,
+    cta: true,
+  },
   hero: {
     badge: "About Us",
     title: "Nutrition without the",
@@ -97,7 +101,8 @@ const GlassCard = ({ className = "", children }) => (
   </div>
 );
 
-const DIRECT_IMAGE_EXTENSION_RE = /\.(avif|bmp|gif|ico|jpe?g|jfif|png|svg|webp)(\?.*)?$/i;
+const DIRECT_IMAGE_EXTENSION_RE =
+  /\.(avif|bmp|gif|ico|jpe?g|jfif|png|svg|webp)(\?.*)?$/i;
 const FREEIMAGE_HOSTS = new Set([
   "freeimage.host",
   "www.freeimage.host",
@@ -159,7 +164,13 @@ const buildImageCandidates = (rawUrl) => {
   return Array.from(candidates);
 };
 
-const AboutSectionImage = ({ src, alt, className, loading = "lazy", placeholder }) => {
+const AboutSectionImage = ({
+  src,
+  alt,
+  className,
+  loading = "lazy",
+  placeholder,
+}) => {
   const candidates = useMemo(() => buildImageCandidates(src), [src]);
   const [activeIndex, setActiveIndex] = useState(0);
   const [allFailed, setAllFailed] = useState(false);
@@ -204,25 +215,18 @@ export default function AboutUsPage() {
   useEffect(() => {
     const fetchContent = async () => {
       try {
-        const response = await fetch(`${API_URL}/about/public`, {
-          cache: "no-store",
+        const response = await fetchDataFromApi("/api/about/public", {
+          skipCache: true,
         });
-
-        if (!response.ok) {
-          const text = await response.text();
-          throw new Error(
-            `Request failed: ${response.status} ${response.statusText}${text ? ` | ${text}` : ""}`,
-          );
-        }
-
-        const data = await response.json();
-        if (data?.success && data?.data) {
-          setContent(data.data);
+        if (response?.success && response?.data) {
+          setContent(response.data);
         } else {
+          setContent(DEFAULT_CONTENT);
           setError("Unable to load content");
         }
       } catch (err) {
         console.error("AboutUsPage fetch error:", err);
+        setContent(DEFAULT_CONTENT);
         setError("Unable to load content");
       } finally {
         setLoading(false);
@@ -251,19 +255,6 @@ export default function AboutUsPage() {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <CircularProgress />
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh] px-4">
-        <div className="max-w-xl w-full bg-white border border-gray-200 rounded-2xl p-6 text-center shadow-sm">
-          <p className="text-gray-700 font-semibold">{error}</p>
-          <p className="text-sm text-gray-500 mt-2">
-            Check backend, API URL and CORS settings.
-          </p>
-        </div>
       </div>
     );
   }
@@ -542,7 +533,10 @@ export default function AboutUsPage() {
 
             <div className="mt-7 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
               {whyUs.features.map((feature, idx) => (
-                <GlassCard key={`${feature?.title || "feature"}-${idx}`} className="p-6">
+                <GlassCard
+                  key={`${feature?.title || "feature"}-${idx}`}
+                  className="p-6"
+                >
                   <div className="flex items-start gap-3">
                     <div className="text-2xl">{feature?.icon}</div>
                     <div>
@@ -575,7 +569,10 @@ export default function AboutUsPage() {
 
             <div className="mt-7 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
               {values.items.map((item, idx) => (
-                <GlassCard key={`${item?.title || "value"}-${idx}`} className="p-6">
+                <GlassCard
+                  key={`${item?.title || "value"}-${idx}`}
+                  className="p-6"
+                >
                   <div className="font-bold text-gray-900">{item?.title}</div>
                   <div className="mt-2 text-sm text-gray-600 leading-relaxed">
                     {item?.description}
@@ -627,4 +624,3 @@ export default function AboutUsPage() {
     </main>
   );
 }
-

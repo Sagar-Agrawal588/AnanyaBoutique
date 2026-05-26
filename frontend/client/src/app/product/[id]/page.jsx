@@ -774,7 +774,7 @@ const ProductDetailPage = () => {
   const showShippingSection =
     pageConfig?.tabs?.showShipping !== false &&
     pageConfig?.shippingSection?.show !== false;
-  const showHeroStoryCard = pageConfig?.hero?.showStoryCard !== false;
+  const showHeroStoryCard = false;
   const showHeroInsightCards = pageConfig?.hero?.showInsightCards !== false;
   const showHeroSupportCards = pageConfig?.hero?.showSupportCards !== false;
   const showHeroDeliveryPreview =
@@ -2098,50 +2098,6 @@ const ProductDetailPage = () => {
                     </>
                   ) : null}
                 </div>
-
-                {showHeroStoryCard ? (
-                  <div className="product-story-card product-reveal product-reveal-delay-2 rounded-[30px] border border-[#86614f] bg-[linear-gradient(155deg,_#3d2316_0%,_#6a4331_52%,_#8c634f_100%)] p-6 text-white shadow-[0_28px_60px_-45px_rgba(61,35,22,0.92)] lg:flex lg:h-full lg:flex-col">
-                    {showStoryHeader ? (
-                      <>
-                        {storyEyebrowText ? (
-                          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#f1d9c9]">
-                            {storyEyebrowText}
-                          </p>
-                        ) : null}
-                        {storyTitleText ? (
-                          <h2 className="mt-3 text-2xl font-semibold leading-tight">
-                            {storyTitleText}
-                          </h2>
-                        ) : null}
-                        {storyDescriptionText ? (
-                          <p className="mt-4 text-sm leading-6 text-[#f8ebe2]">
-                            {storyDescriptionText}
-                          </p>
-                        ) : null}
-                      </>
-                    ) : null}
-                    <div
-                      className={`grid gap-3 ${showStoryHeader ? "mt-6" : ""}`}
-                    >
-                      {detailCards.slice(0, 2).map((card) => (
-                        <div
-                          key={card.label}
-                          className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3"
-                        >
-                          <p className="text-[11px] uppercase tracking-[0.16em] text-[#bad8e2]">
-                            {card.label}
-                          </p>
-                          <p className="mt-1 text-lg font-semibold">
-                            {card.value}
-                          </p>
-                          <p className="text-xs text-[#d9edf2]">
-                            {card.helper}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
               </div>
             </div>
 

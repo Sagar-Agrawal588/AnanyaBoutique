@@ -116,29 +116,27 @@ const BLOG_MEDIA_VARIANTS = {
       "relative aspect-[4/3] overflow-hidden rounded-[1.5rem] bg-gradient-to-br from-slate-100 via-white to-slate-100 p-3",
     frame:
       "relative h-full w-full overflow-hidden rounded-[1.2rem] border border-white/70 shadow-[0_18px_50px_rgba(15,23,42,0.12)]",
-    media:
-      "h-full w-full object-contain transition-transform duration-500",
+    media: "h-full w-full object-contain transition-transform duration-500",
   },
   featured: {
     shell:
       "relative min-h-[260px] sm:min-h-[360px] lg:min-h-full overflow-hidden bg-gradient-to-br from-slate-100 via-white to-indigo-50 p-4 sm:p-6",
     frame:
       "relative h-full w-full overflow-hidden rounded-[1.75rem] border border-white/70 shadow-[0_22px_60px_rgba(15,23,42,0.14)]",
-    media:
-      "h-full w-full object-contain transition-transform duration-500",
+    media: "h-full w-full object-contain transition-transform duration-500",
   },
   grid: {
     shell:
       "relative aspect-[4/3] overflow-hidden bg-gradient-to-br from-slate-100 via-white to-slate-100 p-3",
     frame:
       "relative h-full w-full overflow-hidden rounded-[1.2rem] border border-white/70 shadow-[0_18px_50px_rgba(15,23,42,0.12)]",
-    media:
-      "h-full w-full object-contain transition-transform duration-500",
+    media: "h-full w-full object-contain transition-transform duration-500",
   },
 };
 
 export default function BlogPage() {
   const [blogs, setBlogs] = useState([]);
+  const [blogsLoading, setBlogsLoading] = useState(true);
   const [pageConfig, setPageConfig] = useState(DEFAULT_PAGE);
   const [newsletterEmail, setNewsletterEmail] = useState("");
   const [newsletterStatus, setNewsletterStatus] = useState(null);
@@ -163,9 +161,12 @@ export default function BlogPage() {
   const resolveBlogHref = (blog) => `/blogs/${blog.slug || blog._id}`;
   const getBlogPreviewImage = (blog) => {
     if (blog?.image) return blog.image;
-    return extractImageCandidatesFromBlogHtml(blog?.contentHtml || "")?.[0] || "";
+    return (
+      extractImageCandidatesFromBlogHtml(blog?.contentHtml || "")?.[0] || ""
+    );
   };
-  const hasBlogMedia = (blog) => Boolean(blog?.videoUrl || getBlogPreviewImage(blog));
+  const hasBlogMedia = (blog) =>
+    Boolean(blog?.videoUrl || getBlogPreviewImage(blog));
   const renderBlogMedia = (blog, className = "") => {
     const previewImage = getBlogPreviewImage(blog);
     if (blog.videoUrl) {
@@ -199,8 +200,7 @@ export default function BlogPage() {
   const renderBlogMediaSurface = (blog, variant = "grid") => {
     if (!hasBlogMedia(blog)) return null;
 
-    const styles =
-      BLOG_MEDIA_VARIANTS[variant] || BLOG_MEDIA_VARIANTS.grid;
+    const styles = BLOG_MEDIA_VARIANTS[variant] || BLOG_MEDIA_VARIANTS.grid;
     const mediaTone = blog?.videoUrl ? "bg-black" : "bg-white";
 
     return (
@@ -210,25 +210,6 @@ export default function BlogPage() {
         </div>
       </div>
     );
-  };
-
-  const resolveBlogApiBaseUrl = () => {
-    const configuredBase = String(
-      process.env.NEXT_PUBLIC_APP_API_URL || process.env.NEXT_PUBLIC_API_URL || "",
-    )
-      .trim()
-      .replace(/^["']|["']$/g, "")
-      .replace(/\/+$/, "");
-
-    if (configuredBase) {
-      return configuredBase;
-    }
-
-    if (typeof window !== "undefined") {
-      return String(window.location.origin || "").replace(/\/+$/, "");
-    }
-
-    return "http://127.0.0.1:8000";
   };
 
   // Email validation helper - matches server-side validation
@@ -337,22 +318,17 @@ export default function BlogPage() {
   useEffect(() => {
     const loadBlogs = async () => {
       try {
-        const response = await fetch(
-          `${resolveBlogApiBaseUrl()}/api/blogs`,
-          {
-            credentials: "include",
-          },
-        );
-        if (!response.ok) {
-          return;
-        }
-
-        const data = await response.json();
-        if (data?.success && Array.isArray(data?.data)) {
-          setBlogs(data.data);
+        setBlogsLoading(true);
+        const response = await fetchDataFromApi("/api/blogs", {
+          skipCache: true,
+        });
+        if (response?.success && Array.isArray(response?.data)) {
+          setBlogs(response.data);
         }
       } catch (error) {
         console.error("Blog list fetch error:", error);
+      } finally {
+        setBlogsLoading(false);
       }
     };
 
@@ -400,7 +376,11 @@ export default function BlogPage() {
 
           {showGrid && (
             <section className="mt-16">
-              {blogs.length === 0 ? (
+              {blogsLoading ? (
+                <div className="rounded-2xl border border-gray-100 bg-gray-50 p-8 text-center text-gray-500">
+                  Loading blogs...
+                </div>
+              ) : blogs.length === 0 ? (
                 <div className="rounded-2xl border border-gray-100 bg-gray-50 p-8 text-center text-gray-600">
                   No blogs yet.
                 </div>
@@ -413,18 +393,14 @@ export default function BlogPage() {
                   className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8"
                 >
                   {blogs.map((blog) => (
-                    <Link
-                      key={blog._id}
-                      href={resolveBlogHref(blog)}
-                    >
+                    <Link key={blog._id} href={resolveBlogHref(blog)}>
                       <motion.article
                         variants={fadeInUp}
                         whileHover={{ y: -5 }}
                         className="group h-full flex flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm hover:shadow-lg transition-all duration-300"
                       >
-                        {hasBlogMedia(blog) && (
-                          renderBlogMediaSurface(blog, "minimal")
-                        )}
+                        {hasBlogMedia(blog) &&
+                          renderBlogMediaSurface(blog, "minimal")}
                         <div className="p-6 flex-1 flex flex-col">
                           <div className="text-xs text-gray-400 font-medium mb-2">
                             {formatDate(blog.createdAt)}
@@ -658,7 +634,11 @@ export default function BlogPage() {
       {showGrid && (
         <section className="py-16 sm:py-24">
           <div className="container mx-auto px-4">
-            {otherBlogs.length === 0 ? (
+            {blogsLoading ? (
+              <div className="text-center py-20 bg-white rounded-3xl shadow-sm border border-gray-100">
+                <p className="text-gray-500 text-lg">Loading blogs...</p>
+              </div>
+            ) : otherBlogs.length === 0 ? (
               <div className="text-center py-20 bg-white rounded-3xl shadow-sm border border-gray-100">
                 <p className="text-gray-500 text-lg">
                   No additional stories to explore yet.
@@ -810,7 +790,8 @@ export default function BlogPage() {
                 {newsletterStatus === "loading" ||
                 newsletterStatus === "success"
                   ? ""
-                  : "→"}              </button>
+                  : "→"}{" "}
+              </button>
             </form>
             {newsletterMessage && (
               <p
@@ -845,4 +826,3 @@ export default function BlogPage() {
     </main>
   );
 }
-
