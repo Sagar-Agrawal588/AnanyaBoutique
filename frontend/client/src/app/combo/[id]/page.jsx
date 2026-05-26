@@ -424,7 +424,7 @@ export default function ComboDetailPage() {
   );
   const heroStatusLabel = getHeroStatusLabel(combo, reviewCount);
   const showReviewsSection = pageConfig?.reviewsSection?.show !== false;
-  const showHeroStoryCard = pageConfig?.hero?.showStoryCard !== false;
+  const showHeroStoryCard = false;
   const showPublicReviewForm =
     showReviewsSection &&
     reviewSettings.allowPublicSubmissions !== false &&
@@ -981,48 +981,6 @@ export default function ComboDetailPage() {
                   />
                 </button>
               </div>
-
-              {pageConfig?.hero?.showStoryCard !== false ? (
-                <div className="product-story-card rounded-[30px] bg-[linear-gradient(180deg,#6a4331_0%,#8c624d_100%)] p-6 text-white shadow-[0_28px_60px_-40px_rgba(44,29,20,0.8)]">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#f6dfcf]">
-                    {mergeTextOverride(
-                      pageConfig?.hero?.storyEyebrow,
-                      "Product Story",
-                    )}
-                  </p>
-                  <h2 className="mt-4 text-[32px] font-semibold leading-[1.12]">
-                    {mergeTextOverride(
-                      pageConfig?.hero?.storyTitle,
-                      "A stronger bundle story with the key actions close to the decision point.",
-                    )}
-                  </h2>
-                  <p className="mt-5 text-[15px] leading-8 text-[#f7ebdf]">
-                    {mergeTextOverride(
-                      pageConfig?.hero?.storyDescription,
-                      "Use the combo story card to explain why the bundle exists, what makes the pairings useful, and why this storefront layout should feel more intentional.",
-                    )}
-                  </p>
-
-                  <div className="mt-6 space-y-3">
-                    {detailCards.slice(0, 2).map((card, index) => (
-                      <div
-                        key={`story-card-${index}`}
-                        className="rounded-[22px] border border-white/12 bg-white/12 p-4"
-                      >
-                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#f3d9c7]">
-                          {card.label}
-                        </p>
-                        <p className="mt-2 text-[18px] font-semibold text-white">
-                          {card.value}
-                        </p>
-                        <p className="mt-1 text-sm text-[#f7ebdf]">
-                          {card.helper}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
             </div>
 
             {images.length > 1 ? (
@@ -1079,30 +1037,16 @@ export default function ComboDetailPage() {
           </div>
 
           <div className="product-reveal product-reveal-delay-1 rounded-[36px] border border-[#ecd8c9] bg-white/92 p-6 shadow-[0_34px_90px_-55px_rgba(44,29,20,0.35)] sm:p-8 xl:sticky xl:top-[calc(var(--header-height,80px)+20px)]">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#7b6355]">
-                  {combo?.brand || "Combo Deal"}
-                </p>
-                <h1 className="mt-3 text-[28px] font-semibold leading-[1.08] text-[#24150f] sm:text-[42px]">
-                  {combo?.name || "Combo Deal"}
-                </h1>
-              </div>
-              <ShareButton
-                productId={comboId}
-                productName={combo?.name || "Combo Deal"}
-                productDetails={{
-                  brand: combo?.brand,
-                  price: comboPrice,
-                  originalPrice: originalTotal,
-                  sku: combo?.sku,
-                }}
-                variant="icon"
-                showLabel={false}
-              />
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#7b6355]">
+                {combo?.brand || "Combo Deal"}
+              </p>
+              <h1 className="mt-3 text-[28px] font-semibold leading-[1.08] text-[#24150f] sm:text-[42px]">
+                {combo?.name || "Combo Deal"}
+              </h1>
             </div>
 
-            <div className="mt-5 flex flex-wrap items-center gap-3">
+            <div className="mt-5 flex flex-wrap items-center gap-2 sm:gap-3">
               <button
                 type="button"
                 onClick={scrollToReviews}
@@ -1125,6 +1069,23 @@ export default function ComboDetailPage() {
               </button>
               <div className="rounded-full border border-[#ecd8c9] bg-[#fbf7f2] px-4 py-2 text-sm font-medium text-[#6c4a3a]">
                 {heroStatusLabel}
+              </div>
+              <div className="flex items-center">
+                <ShareButton
+                  productId={comboId}
+                  productName={combo?.name || "Combo Deal"}
+                  productDetails={{
+                    brand: combo?.brand,
+                    price: comboPrice,
+                    originalPrice: originalTotal,
+                    sku: combo?.sku,
+                  }}
+                  variant="icon"
+                  showLabel={false}
+                  iconSizeClass="h-11 w-11"
+                  iconGlyphClass="h-4 w-4"
+                  className="shrink-0"
+                />
               </div>
             </div>
 

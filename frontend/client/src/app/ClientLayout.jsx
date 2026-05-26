@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { usePathname } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { Toaster } from "react-hot-toast";
+import { FiChevronUp } from "react-icons/fi";
 import ErrorBoundary from "../components/ErrorBoundary";
 import Footer from "../components/Footer";
 import Header from "../components/Header";
@@ -67,6 +68,7 @@ const ACTIVE_STATUS_POLL_INTERVAL_MS = toPollIntervalMs(
   30 * 1000,
 );
 const COUNTDOWN_TICK_MS = 1000;
+const BACK_TO_TOP_SCROLL_PX = 480;
 
 const buildStatusUrlCandidates = () => {
   const path = "/api/settings/maintenance-status";
@@ -194,6 +196,7 @@ const MaintenanceScreen = ({ brandName, status, loading, remainingTimeMs }) => {
 
 const ClientShell = ({ children, isAffiliateRoute, enhancementsReady }) => {
   const { storeInfo } = useSettings();
+  const [showBackToTop, setShowBackToTop] = useState(false);
   const [maintenanceStatus, setMaintenanceStatus] = useState({
     isMaintenanceMode: false,
     maintenanceEnabled: false,
@@ -299,6 +302,25 @@ const ClientShell = ({ children, isAffiliateRoute, enhancementsReady }) => {
   ]);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleScroll = () => {
+      setShowBackToTop(window.scrollY >= BACK_TO_TOP_SCROLL_PX);
+    };
+    handleScroll();
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    window.addEventListener("resize", handleScroll);
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      window.removeEventListener("resize", handleScroll);
+    };
+  }, []);
+
+  const handleBackToTop = () => {
+    if (typeof window === "undefined") return;
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  useEffect(() => {
     if (
       !maintenanceStatus?.isMaintenanceMode ||
       !maintenanceStatus?.showCountdown
@@ -358,6 +380,19 @@ const ClientShell = ({ children, isAffiliateRoute, enhancementsReady }) => {
           <NotificationHandler />
         </>
       ) : null}
+      {showBackToTop ? (
+        <button
+          type="button"
+          onClick={handleBackToTop}
+          aria-label="Back to top"
+          className="group fixed bottom-5 right-5 z-[1200] flex h-12 w-12 items-center justify-center rounded-full border border-[#eaded5] bg-white/95 text-[#2f1b12] shadow-[0_18px_40px_-24px_rgba(47,27,18,0.55)] backdrop-blur transition hover:-translate-y-0.5"
+        >
+          <span className="pointer-events-none absolute right-full mr-3 rounded-full bg-[#2f1b12] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-white opacity-0 translate-x-2 transition group-hover:translate-x-0 group-hover:opacity-100">
+            Back to top
+          </span>
+          <FiChevronUp className="text-xl" />
+        </button>
+      ) : null}
       <CartDrawer />
     </>
   );
@@ -370,7 +405,64 @@ export default function ClientLayout({ children }) {
 
   useEffect(() => {
     if (isAffiliateRoute) return;
-    startStockSocket();
+
+    let socketStarted = false;
+    let idleId = null;
+    let timeoutId = null;
+
+    const startSocketWhenReady = () => {
+      if (socketStarted || document.hidden) return;
+      socketStarted = true;
+      startStockSocket();
+      window.removeEventListener("pointerdown", startSocketWhenReady);
+      window.removeEventListener("keydown", startSocketWhenReady);
+      window.removeEventListener("scroll", startSocketWhenReady);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        startSocketWhenReady();
+      }
+    };
+
+    window.addEventListener("pointerdown", startSocketWhenReady, {
+      once: true,
+      passive: true,
+    });
+    window.addEventListener("keydown", startSocketWhenReady, {
+      once: true,
+      passive: true,
+    });
+    window.addEventListener("scroll", startSocketWhenReady, {
+      once: true,
+      passive: true,
+    });
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    if (
+      typeof window !== "undefined" &&
+      typeof window.requestIdleCallback === "function"
+    ) {
+      idleId = window.requestIdleCallback(startSocketWhenReady, {
+        timeout: 1800,
+      });
+    } else {
+      timeoutId = window.setTimeout(startSocketWhenReady, 900);
+    }
+
+    return () => {
+      if (idleId !== null) {
+        window.cancelIdleCallback(idleId);
+      }
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+      }
+      window.removeEventListener("pointerdown", startSocketWhenReady);
+      window.removeEventListener("keydown", startSocketWhenReady);
+      window.removeEventListener("scroll", startSocketWhenReady);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   }, [isAffiliateRoute]);
 
   useEffect(() => {

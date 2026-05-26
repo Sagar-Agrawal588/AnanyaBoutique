@@ -3,7 +3,7 @@
 import ComboCard from "@/components/ComboCard";
 import { fetchDataFromApi } from "@/utils/api";
 import { trackEvent } from "@/utils/analyticsTracker";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const CENTERED_COMBO_GRID_CLASS = "flex flex-wrap justify-center gap-4 sm:gap-6";
 const CENTERED_COMBO_CARD_CLASS =
@@ -17,15 +17,18 @@ export default function ComboDealsPage() {
   const [loading, setLoading] = useState(false);
   const viewTracker = useRef(new Set());
   const loaderRef = useRef(null);
+  const loadingNextPageRef = useRef(false);
 
-  const buildQuery = (pageNumber = 1) => {
+  const buildQuery = useCallback((pageNumber = 1) => {
     const params = new URLSearchParams();
     params.set("page", String(pageNumber));
     params.set("limit", "12");
     return params.toString();
-  };
+  }, []);
 
-  const fetchCombos = async ({ reset = false, nextPage = 1 } = {}) => {
+  const fetchCombos = useCallback(async ({ reset = false, nextPage = 1 } = {}) => {
+    if (!reset && loadingNextPageRef.current) return;
+    loadingNextPageRef.current = true;
     setLoading(true);
     try {
       const response = await fetchDataFromApi(`/api/combos?${buildQuery(nextPage)}`);
@@ -34,7 +37,16 @@ export default function ComboDealsPage() {
           ? response.data.items
           : response?.data?.items || [];
 
-        setCombos((prev) => (reset ? combosList : [...prev, ...combosList]));
+        setCombos((prev) => {
+          const merged = reset ? combosList : [...prev, ...combosList];
+          const seen = new Set();
+          return merged.filter((combo) => {
+            const comboId = String(combo?._id || combo?.id || combo?.slug || "").trim();
+            if (!comboId || seen.has(comboId)) return false;
+            seen.add(comboId);
+            return true;
+          });
+        });
         setPage(response.data?.page || nextPage);
         setPages(response.data?.pages || 1);
         setTotal(Number(response.data?.total || combosList.length));
@@ -50,13 +62,14 @@ export default function ComboDealsPage() {
         setTotal(0);
       }
     } finally {
+      loadingNextPageRef.current = false;
       setLoading(false);
     }
-  };
+  }, [buildQuery]);
 
   useEffect(() => {
     fetchCombos({ reset: true, nextPage: 1 });
-  }, []);
+  }, [fetchCombos]);
 
   useEffect(() => {
     combos.forEach((combo) => {
@@ -82,12 +95,12 @@ export default function ComboDealsPage() {
         if (page >= pages) return;
         fetchCombos({ reset: false, nextPage: page + 1 });
       },
-      { rootMargin: "200px" },
+      { rootMargin: "360px 0px" },
     );
 
     observer.observe(loaderRef.current);
     return () => observer.disconnect();
-  }, [loaderRef, loading, page, pages]);
+  }, [fetchCombos, loading, page, pages]);
 
   const hasCombos = combos.length > 0;
   const renderedCombos = useMemo(() => {
@@ -159,7 +172,7 @@ export default function ComboDealsPage() {
           )}
         </section>
 
-        <div ref={loaderRef} />
+        <div ref={loaderRef} aria-hidden="true" className="h-8 w-full" />
         {loading && hasCombos && (
           <p className="text-sm text-gray-500 text-center">Loading more combos...</p>
         )}

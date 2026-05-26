@@ -1,13 +1,18 @@
 "use client";
 
+import ResponsiveMediaImage from "@/components/ResponsiveMediaImage";
 import useSeoAlt from "@/hooks/useSeoAlt";
-import { FLAVORS, MyContext } from "@/context/ThemeContext";
-import { fetchDataFromApi } from "@/utils/api";
-import { getBannerImageUrl, isCloudinaryUrl } from "@/utils/imageUtils";
+import {
+  fetchDataFromApi,
+  PUBLIC_SECTION_REQUEST_TIMEOUT_MS,
+} from "@/utils/api";
+import {
+  getBannerImageUrl,
+  getMobileBannerImageUrl,
+} from "@/utils/imageUtils";
 import { motion } from "framer-motion";
-import Image from "next/image";
 import Link from "next/link";
-import { useContext, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   FiChevronLeft,
   FiChevronRight,
@@ -51,7 +56,7 @@ const BannerMedia = ({ banner, isMuted }) => {
 
   const desktopSrc = banner.image ? getBannerImageUrl(banner.image) : null;
   const mobileSrc = banner.image
-    ? getBannerImageUrl(banner.mobileImage || banner.image)
+    ? getMobileBannerImageUrl(banner.mobileImage || banner.image)
     : null;
   const desktopAlt = useSeoAlt(desktopSrc || banner.title, banner.title);
   const mobileAlt = useSeoAlt(mobileSrc || banner.title, banner.title);
@@ -85,26 +90,17 @@ const BannerMedia = ({ banner, isMuted }) => {
   if (banner.image) {
     return (
       <div className="relative h-56 w-full overflow-hidden rounded-[1.7rem] sm:h-64 md:h-72">
-        <div className="absolute inset-0 hidden md:block">
-          <Image
-            src={desktopSrc}
-            alt={desktopAlt}
-            fill
-            sizes="100vw"
-            unoptimized={isCloudinaryUrl(desktopSrc)}
-            className="object-cover transition-transform duration-700 group-hover:scale-105"
-          />
-        </div>
-        <div className="absolute inset-0 md:hidden">
-          <Image
-            src={mobileSrc}
-            alt={mobileAlt}
-            fill
-            sizes="100vw"
-            unoptimized={isCloudinaryUrl(mobileSrc)}
-            className="object-cover transition-transform duration-700 group-hover:scale-105"
-          />
-        </div>
+        <ResponsiveMediaImage
+          desktopSrc={desktopSrc}
+          mobileSrc={mobileSrc}
+          alt={desktopAlt || mobileAlt}
+          className="absolute inset-0"
+          imgClassName="transition-transform duration-700 group-hover:scale-105"
+          desktopProfile="bannerDesktop"
+          mobileProfile="bannerMobile"
+          loading="lazy"
+          fetchPriority="auto"
+        />
       </div>
     );
   }
@@ -120,8 +116,6 @@ const Banners = ({ initialBanners = [] }) => {
   const scrollerRef = useRef(null);
   const scrollFrameRef = useRef(0);
   const activeBannerIndexRef = useRef(0);
-  const context = useContext(MyContext);
-  const flavor = context?.flavor || FLAVORS.creamy;
 
   useEffect(() => {
     if (initialBanners.length > 0) {
@@ -132,7 +126,9 @@ const Banners = ({ initialBanners = [] }) => {
 
     const fetchBanners = async () => {
       try {
-        const response = await fetchDataFromApi("/api/banners");
+        const response = await fetchDataFromApi("/api/banners", {
+          timeoutMs: PUBLIC_SECTION_REQUEST_TIMEOUT_MS,
+        });
         if (response.success && response.data) setBanners(response.data);
       } catch (error) {
         console.error("Failed to fetch banners:", error);
@@ -204,15 +200,15 @@ const Banners = ({ initialBanners = [] }) => {
   };
 
   return (
-    <section className="relative z-20 -mt-7 bg-transparent pb-8 sm:-mt-10 sm:pb-12 md:-mt-14 md:pb-14">
-      <div className="mx-auto max-w-7xl px-4">
-        <div className="overflow-hidden rounded-[2rem] border border-white/80 bg-white/88 p-4 shadow-[0_30px_80px_rgba(90,58,34,0.10)] backdrop-blur-xl sm:rounded-[2.4rem] sm:p-5 lg:p-6">
+    <section className="relative z-20 mt-0 bg-transparent pb-8 sm:mt-1 sm:pb-12 md:-mt-2 md:pb-14">
+      <div className="mx-auto max-w-7xl px-4 xl:px-6">
+        <div className="mx-auto overflow-hidden rounded-[2rem] border border-white/85 bg-white/90 p-4 shadow-[0_28px_75px_rgba(90,58,34,0.10)] backdrop-blur-xl sm:rounded-[2.4rem] sm:p-5 md:max-w-[900px] md:rounded-[2.25rem] lg:max-w-[980px] lg:rounded-[2.6rem] lg:border-white/90 lg:p-6 lg:shadow-[0_34px_90px_rgba(90,58,34,0.12)] xl:max-w-[1020px] xl:px-7 xl:py-6">
           <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
             <div className="max-w-2xl space-y-2">
               <span
                 className="inline-flex items-center rounded-full border px-4 py-2 text-[11px] font-extrabold uppercase tracking-[0.24em]"
                 style={{
-                  backgroundColor: flavor.glass,
+                  backgroundColor: "var(--flavor-glass, rgba(90,58,46,0.24))",
                   borderColor: "rgba(255,255,255,0.75)",
                   color: "var(--color-primary)",
                 }}
@@ -220,12 +216,12 @@ const Banners = ({ initialBanners = [] }) => {
                 Featured Offers
               </span>
               <h2
-                className="text-[1.9rem] font-black tracking-[-0.04em] sm:text-[2.2rem]"
+                className="text-[1.75rem] font-black leading-tight tracking-[-0.03em] sm:text-[2.2rem]"
                 style={{ color: "var(--color-primary)" }}
               >
                 Fresh Picks For You
               </h2>
-              <p className="text-sm font-medium leading-relaxed text-slate-600 sm:text-base">
+              <p className="max-w-2xl text-sm font-medium leading-relaxed text-slate-600 sm:text-base">
                 Swipe through high-conviction campaigns, bundles, and brand
                 stories styled like a cleaner ecommerce showcase.
               </p>
@@ -298,7 +294,7 @@ const Banners = ({ initialBanners = [] }) => {
                     <div className="relative">
                       <Link
                         href={bannerLink}
-                        className="group relative block rounded-[1.8rem]"
+                        className="group relative block rounded-[1.95rem] lg:rounded-[2.2rem]"
                         data-track="banner_click"
                         data-track-click="banner_click"
                         data-track-target-type="banner"
@@ -311,14 +307,14 @@ const Banners = ({ initialBanners = [] }) => {
                         <motion.div
                           whileHover={{ y: -4 }}
                           transition={{ duration: 0.24 }}
-                          className="relative overflow-hidden rounded-[1.8rem] border border-black/5 bg-white shadow-[0_18px_44px_rgba(90,58,34,0.10)]"
+                          className="relative overflow-hidden rounded-[1.8rem] border border-black/5 bg-white shadow-[0_18px_44px_rgba(90,58,34,0.10)] lg:rounded-[2.1rem] lg:shadow-[0_22px_52px_rgba(90,58,34,0.12)]"
                         >
                           <BannerMedia
                             banner={banner}
                             isMuted={activeAudioBannerId !== banner._id}
                           />
 
-                          <div className="pointer-events-none absolute inset-0 rounded-[1.8rem] bg-gradient-to-t from-black/78 via-black/24 to-transparent" />
+                          <div className="pointer-events-none absolute inset-0 rounded-[1.8rem] bg-gradient-to-t from-black/78 via-black/24 to-transparent lg:rounded-[2.1rem]" />
 
                           <div className="absolute left-0 right-0 top-0 flex items-center justify-between p-4 sm:p-5">
                             <span className="rounded-full border border-white/18 bg-white/12 px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.22em] text-white/88 backdrop-blur-md">
@@ -327,11 +323,11 @@ const Banners = ({ initialBanners = [] }) => {
                           </div>
 
                           <div className="absolute bottom-0 left-0 z-10 w-full p-5 sm:p-7">
-                            <h3 className="mb-2 text-2xl font-black leading-tight text-white drop-shadow-sm sm:text-3xl">
+                            <h3 className="mb-2 max-w-[min(20rem,calc(100%_-_3.5rem))] break-words text-[1.35rem] font-black leading-[1.05] text-white drop-shadow-sm sm:max-w-sm sm:text-3xl">
                               {banner.title}
                             </h3>
                             {banner.subtitle ? (
-                              <p className="mb-4 max-w-xs text-sm font-medium text-gray-200 drop-shadow-sm sm:text-base">
+                              <p className="mb-4 max-w-[min(18rem,calc(100%_-_2rem))] text-sm font-medium leading-snug text-gray-200 drop-shadow-sm sm:max-w-xs sm:text-base">
                                 {banner.subtitle}
                               </p>
                             ) : null}

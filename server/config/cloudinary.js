@@ -13,17 +13,31 @@ const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.join(__dirname, "../.env") });
 const isProduction = process.env.NODE_ENV === "production";
 const mediaStorageProvider = String(
-  process.env.MEDIA_STORAGE_PROVIDER || "cloudinary",
+  process.env.MEDIA_STORAGE_PROVIDER || "firebase",
 )
   .trim()
   .toLowerCase();
-const useGcsMediaStorage = ["gcs", "google-cloud-storage", "google_storage"].includes(
-  mediaStorageProvider,
-);
+const gcsProviderAliases = [
+  "firebase",
+  "firebase-storage",
+  "firebase_storage",
+  "gcs",
+  "google-cloud-storage",
+  "google_storage",
+];
+const firebaseProjectId = String(process.env.FIREBASE_PROJECT_ID || "").trim();
+const inferredFirebaseBucketName = String(
+  process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET ||
+    process.env.FIREBASE_STORAGE_BUCKET ||
+    (firebaseProjectId ? `${firebaseProjectId}.appspot.com` : "") ||
+    "",
+)
+  .trim()
+  .replace(/^gs:\/\//i, "");
 const gcsMediaBucketName = String(
   process.env.GCS_MEDIA_BUCKET ||
     process.env.GOOGLE_CLOUD_STORAGE_BUCKET ||
-    process.env.FIREBASE_STORAGE_BUCKET ||
+    inferredFirebaseBucketName ||
     "",
 )
   .trim()
@@ -33,6 +47,14 @@ const gcsPublicBaseUrl = String(process.env.GCS_MEDIA_PUBLIC_BASE_URL || "")
   .replace(/\/+$/, "");
 const gcsMakePublic =
   String(process.env.GCS_MEDIA_MAKE_PUBLIC || "false").toLowerCase() === "true";
+const cloudinaryConfigured = Boolean(
+  process.env.CLOUDINARY_CLOUD_NAME &&
+    process.env.CLOUDINARY_API_KEY &&
+    process.env.CLOUDINARY_API_SECRET,
+);
+const prefersGcsMediaStorage = gcsProviderAliases.includes(mediaStorageProvider);
+const useGcsMediaStorage =
+  prefersGcsMediaStorage && (Boolean(gcsMediaBucketName) || !cloudinaryConfigured);
 const gcsStorage = useGcsMediaStorage ? new Storage() : null;
 // Debug-only logging to keep production output clean
 const debugLog = (...args) => {
@@ -52,8 +74,17 @@ const debugLog = (...args) => {
  * - No local storage needed
  */
 
+if (prefersGcsMediaStorage && !gcsMediaBucketName && cloudinaryConfigured) {
+  debugLog(
+    "Media storage fallback:",
+    "Firebase Storage selected but no bucket is configured, falling back to Cloudinary.",
+  );
+}
+
 // Debug: Log Cloudinary config status
-debugLog("Cloudinary Config:", {
+debugLog("Media Storage Config:", {
+  provider: useGcsMediaStorage ? "firebase" : "cloudinary",
+  firebase_bucket: gcsMediaBucketName ? "Set" : "Missing",
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME ? "✓ Set" : "✗ Missing",
   api_key: process.env.CLOUDINARY_API_KEY ? "✓ Set" : "✗ Missing",
   api_secret: process.env.CLOUDINARY_API_SECRET ? "✓ Set" : "✗ Missing",
@@ -74,6 +105,16 @@ const MIME_EXTENSION_MAP = {
   "image/svg+xml": "svg",
   "video/mp4": "mp4",
   "video/webm": "webm",
+};
+
+const isLikelyMissingBucketError = (error) => {
+  const message = String(error?.message || "").toLowerCase();
+  const code = String(error?.code || "").toLowerCase();
+  return (
+    message.includes("specified bucket does not exist") ||
+    message.includes("bucket") && message.includes("not exist") ||
+    code === "404"
+  );
 };
 
 const normalizeFolder = (folder = "buyonegram") =>
@@ -113,6 +154,12 @@ const extractGcsObjectPath = (value = "") => {
       const [bucket, ...objectParts] = pathname.split("/");
       return bucket === gcsMediaBucketName ? objectParts.join("/") : "";
     }
+    if (parsed.hostname === "firebasestorage.googleapis.com") {
+      const objectPathMatch = parsed.pathname.match(/^\/v0\/b\/([^/]+)\/o\/(.+)$/i);
+      if (!objectPathMatch) return "";
+      const [, bucket, objectPath] = objectPathMatch;
+      return bucket === gcsMediaBucketName ? decodeURIComponent(objectPath) : "";
+    }
     if (gcsPublicBaseUrl && normalized.startsWith(`${gcsPublicBaseUrl}/`)) {
       return decodeURIComponent(normalized.slice(gcsPublicBaseUrl.length + 1));
     }
@@ -132,7 +179,7 @@ const uploadToGcsMediaStorage = async (
     return {
       success: false,
       error:
-        "GCS media storage selected but GCS_MEDIA_BUCKET is not configured",
+        "Firebase Storage selected but FIREBASE_STORAGE_BUCKET or GCS_MEDIA_BUCKET is not configured",
     };
   }
 
@@ -181,7 +228,21 @@ export const uploadToCloudinary = async (
 ) => {
   try {
     if (useGcsMediaStorage) {
-      return await uploadToGcsMediaStorage(file, folder, { mimeType });
+      try {
+        return await uploadToGcsMediaStorage(file, folder, { mimeType });
+      } catch (error) {
+        if (!cloudinaryConfigured || !isLikelyMissingBucketError(error)) {
+          return {
+            success: false,
+            error: error?.message || "Firebase Storage upload failed",
+          };
+        }
+
+        console.warn(
+          "Firebase Storage upload failed; falling back to Cloudinary:",
+          error?.message || error,
+        );
+      }
     }
 
     // Verify Cloudinary is configured
@@ -294,9 +355,23 @@ export const uploadVideoToCloudinary = async (
 ) => {
   try {
     if (useGcsMediaStorage) {
-      return await uploadToGcsMediaStorage(file, folder, {
-        mimeType,
-      });
+      try {
+        return await uploadToGcsMediaStorage(file, folder, {
+          mimeType,
+        });
+      } catch (error) {
+        if (!cloudinaryConfigured || !isLikelyMissingBucketError(error)) {
+          return {
+            success: false,
+            error: error?.message || "Firebase Storage upload failed",
+          };
+        }
+
+        console.warn(
+          "Firebase Storage video upload failed; falling back to Cloudinary:",
+          error?.message || error,
+        );
+      }
     }
 
     // Verify Cloudinary is configured
@@ -362,16 +437,28 @@ export const deleteFromCloudinary = async (publicId) => {
   try {
     if (useGcsMediaStorage) {
       const objectPath = extractGcsObjectPath(publicId);
-      if (!objectPath || !gcsMediaBucketName) {
-        return { success: false, error: "Could not determine GCS object path" };
+      if (objectPath && gcsMediaBucketName) {
+        try {
+          await gcsStorage
+            .bucket(gcsMediaBucketName)
+            .file(objectPath)
+            .delete({ ignoreNotFound: true });
+
+          return { success: true, result: "ok" };
+        } catch (error) {
+          if (!cloudinaryConfigured || !isLikelyMissingBucketError(error)) {
+            return {
+              success: false,
+              error: error?.message || "Failed to delete from Firebase Storage",
+            };
+          }
+
+          console.warn(
+            "Firebase Storage delete failed; falling back to Cloudinary:",
+            error?.message || error,
+          );
+        }
       }
-
-      await gcsStorage
-        .bucket(gcsMediaBucketName)
-        .file(objectPath)
-        .delete({ ignoreNotFound: true });
-
-      return { success: true, result: "ok" };
     }
 
     const result = await cloudinary.uploader.destroy(publicId);

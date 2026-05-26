@@ -220,19 +220,12 @@ export default function ProductPageSettingsSection({
             Hero And Top Blocks
           </h4>
           <p className="text-sm text-gray-500">
-            Manage the story card, generated info cards, delivery preview, and
-            trust cards near the buy box.
+            Manage generated info cards, delivery preview, and trust cards near
+            the buy box.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-          <ToggleField
-            label="Show Story Card"
-            checked={productPage.hero.showStoryCard}
-            onChange={(nextValue) =>
-              updateSectionField("hero", "showStoryCard", nextValue)
-            }
-          />
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           <ToggleField
             label="Show Insight Cards"
             checked={productPage.hero.showInsightCards}
@@ -254,48 +247,6 @@ export default function ProductPageSettingsSection({
               updateSectionField("hero", "showSupportCards", nextValue)
             }
           />
-        </div>
-
-        <div className="mt-5 rounded-lg border border-gray-200 bg-white p-4">
-          <div className="mb-4">
-            <h5 className="text-sm font-semibold text-gray-800">
-              Story Card
-            </h5>
-            <p className="text-xs text-gray-500">
-              Every visible line in the story card can be controlled here.
-              Leave any field blank to hide it. If description is blank, the
-              product&apos;s main Product Story text is used instead.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <TextField
-              label="Story Eyebrow"
-              value={productPage.hero.storyEyebrow}
-              onChange={(nextValue) =>
-                updateSectionField("hero", "storyEyebrow", nextValue)
-              }
-            />
-            <TextField
-              label="Story Title"
-              value={productPage.hero.storyTitle}
-              onChange={(nextValue) =>
-                updateSectionField("hero", "storyTitle", nextValue)
-              }
-            />
-          </div>
-
-          <div className="mt-4">
-            <TextAreaField
-              label="Story Description"
-              value={productPage.hero.storyDescription}
-              onChange={(nextValue) =>
-                updateSectionField("hero", "storyDescription", nextValue)
-              }
-              rows={3}
-              hint="Optional override for the story paragraph inside the card."
-            />
-          </div>
         </div>
 
         <div className="mt-5 rounded-lg border border-gray-200 bg-white p-4">
@@ -394,7 +345,11 @@ export default function ProductPageSettingsSection({
                 label="Variant Card Description"
                 value={productPage.hero.variantCardDescription}
                 onChange={(nextValue) =>
-                  updateSectionField("hero", "variantCardDescription", nextValue)
+                  updateSectionField(
+                    "hero",
+                    "variantCardDescription",
+                    nextValue,
+                  )
                 }
                 rows={3}
               />
@@ -412,7 +367,11 @@ export default function ProductPageSettingsSection({
                 label="Social Proof Description"
                 value={productPage.hero.socialProofDescription}
                 onChange={(nextValue) =>
-                  updateSectionField("hero", "socialProofDescription", nextValue)
+                  updateSectionField(
+                    "hero",
+                    "socialProofDescription",
+                    nextValue,
+                  )
                 }
                 rows={3}
               />

@@ -33,10 +33,15 @@ const StockNotificationButton = ({
   const [emailError, setEmailError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [requested, setRequested] = useState(Boolean(initialRequested));
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     setRequested(Boolean(initialRequested));
   }, [initialRequested]);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const helperLabel = useMemo(() => {
     const normalizedVariant = String(variantName || "").trim();
@@ -46,7 +51,6 @@ const StockNotificationButton = ({
 
   const stopNavigation = (event) => {
     if (!preventNavigation) return;
-    event.preventDefault();
     event.stopPropagation();
   };
 
@@ -146,6 +150,7 @@ const StockNotificationButton = ({
         <span>{buttonCopy}</span>
       </button>
 
+      {mounted ? (
       <Dialog
         open={dialogOpen}
         onClose={() => {
@@ -208,6 +213,7 @@ const StockNotificationButton = ({
           </button>
         </DialogActions>
       </Dialog>
+      ) : null}
     </>
   );
 };

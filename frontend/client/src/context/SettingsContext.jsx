@@ -154,7 +154,8 @@ const defaultSettings = {
   storeInfo: {
     name: "HealthyOneGram",
     email: "healthyonegram.com",
-    phone: "+91 9876541234",
+    phone: "+91 8619641968",
+    whatsapp: "+918619641968",
     address: "",
     gstNumber: "",
     currency: "INR",
@@ -176,6 +177,22 @@ const defaultSettings = {
   offerTitle: "Special Offer!",
   offerDescription: "Use this code to get a discount on your order!",
   offerDiscountText: "Get Discount",
+  offerCountdownSettings: {
+    enabled: false,
+    title: "Limited time offer",
+    subtitle: "Fresh deals are live now.",
+    couponCode: "",
+    discountText: "",
+    endsAt: null,
+    ctaLabel: "Shop offers",
+    ctaHref: "/products",
+  },
+  homeSlidePanelSettings: {
+    enabled: true,
+    minimizeEnabled: true,
+    minimizedLabel: "Show details",
+    restoreAfterSeconds: 60,
+  },
   // Traffic notice
   highTrafficNotice: {
     enabled: true,
@@ -454,6 +471,8 @@ export const SettingsProvider = ({ children }) => {
       offerTitle: settings.offerTitle,
       offerDescription: settings.offerDescription,
       offerDiscountText: settings.offerDiscountText,
+      offerCountdownSettings: settings.offerCountdownSettings,
+      homeSlidePanelSettings: settings.homeSlidePanelSettings,
       // Other flags
       highTrafficNotice: settings.highTrafficNotice,
       maintenanceMode: Boolean(
