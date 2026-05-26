@@ -201,8 +201,8 @@ const Banners = ({ initialBanners = [] }) => {
 
   return (
     <section className="relative z-20 mt-0 bg-transparent pb-8 sm:mt-1 sm:pb-12 md:-mt-2 md:pb-14">
-      <div className="mx-auto max-w-7xl px-4">
-        <div className="overflow-hidden rounded-[2rem] border border-white/80 bg-white/88 p-4 shadow-[0_30px_80px_rgba(90,58,34,0.10)] backdrop-blur-xl sm:rounded-[2.4rem] sm:p-5 lg:p-6">
+      <div className="mx-auto max-w-7xl px-4 xl:px-6">
+        <div className="mx-auto overflow-hidden rounded-[2rem] border border-white/85 bg-white/90 p-4 shadow-[0_28px_75px_rgba(90,58,34,0.10)] backdrop-blur-xl sm:rounded-[2.4rem] sm:p-5 md:max-w-[900px] md:rounded-[2.25rem] lg:max-w-[980px] lg:rounded-[2.6rem] lg:border-white/90 lg:p-6 lg:shadow-[0_34px_90px_rgba(90,58,34,0.12)] xl:max-w-[1020px] xl:px-7 xl:py-6">
           <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
             <div className="max-w-2xl space-y-2">
               <span
@@ -294,7 +294,7 @@ const Banners = ({ initialBanners = [] }) => {
                     <div className="relative">
                       <Link
                         href={bannerLink}
-                        className="group relative block rounded-[1.8rem]"
+                        className="group relative block rounded-[1.95rem] lg:rounded-[2.2rem]"
                         data-track="banner_click"
                         data-track-click="banner_click"
                         data-track-target-type="banner"
@@ -307,14 +307,14 @@ const Banners = ({ initialBanners = [] }) => {
                         <motion.div
                           whileHover={{ y: -4 }}
                           transition={{ duration: 0.24 }}
-                          className="relative overflow-hidden rounded-[1.8rem] border border-black/5 bg-white shadow-[0_18px_44px_rgba(90,58,34,0.10)]"
+                          className="relative overflow-hidden rounded-[1.8rem] border border-black/5 bg-white shadow-[0_18px_44px_rgba(90,58,34,0.10)] lg:rounded-[2.1rem] lg:shadow-[0_22px_52px_rgba(90,58,34,0.12)]"
                         >
                           <BannerMedia
                             banner={banner}
                             isMuted={activeAudioBannerId !== banner._id}
                           />
 
-                          <div className="pointer-events-none absolute inset-0 rounded-[1.8rem] bg-gradient-to-t from-black/78 via-black/24 to-transparent" />
+                          <div className="pointer-events-none absolute inset-0 rounded-[1.8rem] bg-gradient-to-t from-black/78 via-black/24 to-transparent lg:rounded-[2.1rem]" />
 
                           <div className="absolute left-0 right-0 top-0 flex items-center justify-between p-4 sm:p-5">
                             <span className="rounded-full border border-white/18 bg-white/12 px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.22em] text-white/88 backdrop-blur-md">

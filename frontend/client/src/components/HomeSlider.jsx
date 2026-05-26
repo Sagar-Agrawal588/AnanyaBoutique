@@ -14,6 +14,8 @@ import "swiper/css/effect-fade";
 import "swiper/css/pagination";
 import { Autoplay, EffectFade, Pagination } from "swiper/modules";
 
+const HERO_PANEL_REOPEN_DELAY_MS = 4200;
+
 const fallbackSlides = [
   {
     image: "/slide_1.webp",
@@ -68,9 +70,10 @@ const normalizeSlideLink = (value) => {
 };
 
 const formatSlides = (slides = []) =>
-  slides.map((slide) => ({
-    image: slide.image,
-    mobileImage: slide.mobileImage || slide.image,
+  slides
+    .map((slide) => ({
+      image: slide.image,
+      mobileImage: slide.mobileImage || slide.image,
     desktopImageScale: 1,
     desktopImagePositionX: Number(slide.desktopImagePositionX) || 50,
     desktopImagePositionY: Number(slide.desktopImagePositionY) || 50,
@@ -95,7 +98,8 @@ const formatSlides = (slides = []) =>
     offerBadgeText: slide.offerBadgeText || "",
     offerEndsAt: slide.offerEndsAt || null,
     offerTimerPosition: slide.offerTimerPosition || "top-right",
-  }));
+    }))
+    .filter((slide) => String(slide.image || slide.mobileImage || "").trim());
 
 const HERO_STATS = [
   { label: "Best Seller", value: "Top Rated" },
@@ -166,17 +170,20 @@ const HomeSlider = ({ initialSlides = [], initialSettings = null }) => {
   const [isHeroPanelDismissed, setIsHeroPanelDismissed] = useState(false);
   const [nowMs, setNowMs] = useState(null);
   const swiperRef = useRef(null);
+  const heroPanelReopenTimerRef = useRef(null);
 
   const displaySlides = useMemo(() => {
     if (homeSlides?.length > 0) {
-      return formatSlides(homeSlides);
+      const formatted = formatSlides(homeSlides);
+      if (formatted.length) return formatted;
     }
 
     if (initialSlides.length > 0) {
-      return formatSlides(initialSlides);
+      const formatted = formatSlides(initialSlides);
+      if (formatted.length) return formatted;
     }
 
-    return fallbackSlides;
+    return formatSlides(fallbackSlides);
   }, [homeSlides, initialSlides]);
 
   const motionEnabled = !prefersReducedMotion;
@@ -257,6 +264,33 @@ const HomeSlider = ({ initialSlides = [], initialSettings = null }) => {
     );
   }, [displaySlides.length]);
 
+  useEffect(() => {
+    setIsHeroPanelDismissed(false);
+  }, [activeIndex]);
+
+  useEffect(() => {
+    if (heroPanelReopenTimerRef.current) {
+      window.clearTimeout(heroPanelReopenTimerRef.current);
+      heroPanelReopenTimerRef.current = null;
+    }
+
+    if (!isHeroPanelDismissed || !activeSlideHasNarrative) {
+      return undefined;
+    }
+
+    heroPanelReopenTimerRef.current = window.setTimeout(() => {
+      setIsHeroPanelDismissed(false);
+      heroPanelReopenTimerRef.current = null;
+    }, HERO_PANEL_REOPEN_DELAY_MS);
+
+    return () => {
+      if (heroPanelReopenTimerRef.current) {
+        window.clearTimeout(heroPanelReopenTimerRef.current);
+        heroPanelReopenTimerRef.current = null;
+      }
+    };
+  }, [activeSlideHasNarrative, isHeroPanelDismissed]);
+
   const handlePreviousSlide = () => {
     swiperRef.current?.slidePrev();
   };
@@ -266,10 +300,10 @@ const HomeSlider = ({ initialSlides = [], initialSettings = null }) => {
   };
 
   return (
-    <section className="relative z-10 px-0">
+    <section className="relative z-10 px-0 xl:px-6">
       <div className="w-full">
-        <div className="overflow-hidden rounded-[1.6rem] bg-[#f3ece4] shadow-[0_32px_90px_rgba(26,18,13,0.16)] sm:rounded-[2rem] md:rounded-none">
-          <div className="relative w-full aspect-[16/9] md:aspect-auto md:h-[100svh]">
+        <div className="overflow-hidden rounded-[1.6rem] bg-[#f3ece4] shadow-[0_32px_90px_rgba(26,18,13,0.16)] sm:rounded-[2rem] md:mx-auto md:max-w-[900px] md:rounded-[2.25rem] lg:max-w-[980px] lg:rounded-[2.6rem] xl:max-w-[1020px]">
+          <div className="relative w-full aspect-[16/9] md:aspect-auto md:h-[clamp(360px,39vw,470px)] lg:h-[clamp(390px,37vw,520px)] xl:h-[clamp(410px,35vw,540px)]">
             <Swiper
               speed={motionEnabled ? 850 : 500}
               spaceBetween={0}
@@ -322,14 +356,14 @@ const HomeSlider = ({ initialSlides = [], initialSettings = null }) => {
                             mobileSrc={mobileSrc}
                             alt={slide.title}
                             className="absolute inset-0"
-                            imgClassName="transition-transform duration-700 ease-out"
+                            imgClassName="home-slider-media"
                             desktopProfile="heroDesktop"
                             mobileProfile="heroMobile"
                             desktopPosition={`${slide.desktopImagePositionX}% ${slide.desktopImagePositionY}%`}
                             mobilePosition={`${slide.mobileImagePositionX}% ${slide.mobileImagePositionY}%`}
                             desktopScale={slide.desktopImageScale}
                             mobileScale={slide.mobileImageScale}
-                            objectFit="cover"
+                            objectFit="contain"
                             backgroundColor={slide.backgroundColor || "#f5f5f5"}
                             loading={index === 0 ? "eager" : "lazy"}
                             fetchPriority={index === 0 ? "high" : "auto"}
@@ -408,18 +442,82 @@ const HomeSlider = ({ initialSlides = [], initialSettings = null }) => {
                 </button>
               </>
             ) : null}
+
+            {activeSlide && activeSlideHasNarrative && !isHeroPanelDismissed ? (
+              <div className="pointer-events-none absolute inset-x-0 bottom-4 z-30 hidden px-4 md:block lg:px-5">
+                <div className="pointer-events-auto max-w-[360px] overflow-hidden rounded-[1.65rem] border border-white/24 bg-[linear-gradient(160deg,rgba(255,255,255,0.26)_0%,rgba(255,255,255,0.10)_45%,rgba(32,23,17,0.22)_100%)] px-4 py-4 text-white shadow-[0_20px_54px_rgba(15,10,7,0.22)] backdrop-blur-[22px] backdrop-saturate-[1.6] xl:max-w-[380px]">
+                  <button
+                    type="button"
+                    onClick={() => setIsHeroPanelDismissed(true)}
+                    className="absolute right-3 top-3 inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/16 bg-white/12 text-white/84 transition hover:bg-white/20"
+                    aria-label="Hide slide details"
+                  >
+                    <FiX size={14} />
+                  </button>
+
+                  <span className="inline-flex items-center rounded-full border border-white/24 bg-white/10 px-3 py-1 text-[9px] font-black uppercase tracking-[0.2em] text-white/88 shadow-[inset_0_1px_0_rgba(255,255,255,0.18)]">
+                    Bestseller Range
+                  </span>
+
+                  {activeSlide.title ? (
+                    <h1 className="mt-3 max-w-[12ch] text-[1.45rem] font-black leading-[0.95] tracking-[-0.04em] text-white xl:text-[1.55rem]">
+                      {activeSlide.title}
+                    </h1>
+                  ) : null}
+
+                  {activeSlide.subtitle ? (
+                    <p className="mt-2 max-w-[21rem] text-[13px] font-medium leading-5 text-white/74 xl:text-sm xl:leading-6">
+                      {activeSlide.subtitle}
+                    </p>
+                  ) : null}
+
+                  <div className="mt-3.5 flex flex-wrap items-center gap-2.5">
+                    <Link
+                      href={activeSlide.link}
+                      className="inline-flex items-center gap-2 rounded-full bg-white px-3.5 py-2.5 text-[13px] font-bold text-[#352116] shadow-[0_14px_36px_-24px_rgba(255,255,255,0.5)] transition duration-300 hover:-translate-y-0.5 hover:bg-[#fff6ea]"
+                    >
+                      {activeSlide.cta}
+                      <FiArrowUpRight size={16} />
+                    </Link>
+
+                    <Link
+                      href="/products"
+                      className="inline-flex items-center gap-2 rounded-full border border-white/18 bg-white/8 px-3.5 py-2.5 text-[13px] font-semibold text-white/92 transition duration-300 hover:bg-white/14"
+                    >
+                      View catalog
+                    </Link>
+                  </div>
+
+                  <div className="mt-3.5 grid grid-cols-3 gap-2">
+                    {HERO_STATS.map((item) => (
+                      <div
+                        key={item.label}
+                        className="rounded-[0.9rem] border border-white/14 bg-white/8 px-2.5 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]"
+                      >
+                        <p className="text-[9px] font-extrabold uppercase tracking-[0.18em] text-white/56">
+                          {item.label}
+                        </p>
+                        <p className="mt-1 text-[12px] font-semibold leading-tight text-white/88 xl:text-[13px]">
+                          {item.value}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
 
       {heroTrustItems.length ? (
         <div className="mt-1 flex justify-center px-4 md:mt-2">
-          <div className="mx-auto w-full max-w-5xl rounded-[1.4rem] border border-white/16 bg-[rgba(18,12,9,0.78)] px-2.5 py-3 text-white/88 shadow-[0_18px_55px_rgba(0,0,0,0.22)] backdrop-blur-xl md:max-w-fit md:rounded-full md:px-4">
-            <div className="flex items-center gap-1 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden md:flex-wrap md:justify-center md:gap-2 md:overflow-visible">
+          <div className="mx-auto w-full max-w-5xl rounded-[1.4rem] border border-white/16 bg-[rgba(18,12,9,0.78)] px-2.5 py-3 text-white/88 shadow-[0_18px_55px_rgba(0,0,0,0.22)] backdrop-blur-xl md:max-w-fit md:rounded-full md:px-3.5 md:py-2.5">
+            <div className="flex items-center gap-1 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden md:flex-wrap md:justify-center md:gap-1.5 md:overflow-visible">
               {heroTrustItems.map((item) => (
                 <span
                   key={item}
-                  className="rounded-full bg-white/10 px-2.5 py-1.5 text-[8px] font-extrabold uppercase tracking-[0.12em] sm:px-4 sm:py-2 sm:text-[11px] sm:tracking-[0.2em]"
+                  className="rounded-full bg-white/10 px-2.5 py-1.5 text-[8px] font-extrabold uppercase tracking-[0.12em] sm:px-4 sm:py-2 sm:text-[11px] sm:tracking-[0.2em] md:px-3.5 md:py-1.5"
                 >
                   {item}
                 </span>
@@ -429,80 +527,17 @@ const HomeSlider = ({ initialSlides = [], initialSettings = null }) => {
         </div>
       ) : null}
 
-      <div className="mt-3 md:mt-5">
+      <div className="mt-3 md:mx-auto md:mt-5 md:max-w-[1000px] lg:max-w-[1080px]">
         {activeSlideHasNarrative && isHeroPanelDismissed ? (
           <button
             type="button"
             onClick={() => setIsHeroPanelDismissed(false)}
-            className="inline-flex items-center rounded-full border border-[#2c1e15]/10 bg-white/90 px-4 py-2 text-sm font-semibold text-[#2d1a11] shadow-[0_10px_26px_rgba(26,18,13,0.12)] backdrop-blur-sm"
+            className="inline-flex items-center rounded-full border border-[#2c1e15]/10 bg-white/90 px-4 py-2 text-sm font-semibold text-[#2d1a11] shadow-[0_10px_26px_rgba(26,18,13,0.12)] backdrop-blur-sm md:hidden"
           >
             Show slide details
           </button>
         ) : activeSlide && activeSlideHasNarrative ? (
           <>
-            <div
-              key={`hero-panel-${activeIndex}`}
-              className="relative hidden overflow-hidden rounded-[1.6rem] border border-[#2c1e15]/10 bg-[linear-gradient(145deg,rgba(32,23,17,0.72)_0%,rgba(32,23,17,0.48)_60%,rgba(255,255,255,0.12)_100%)] px-6 py-6 text-white shadow-[0_26px_70px_-38px_rgba(0,0,0,0.5)] backdrop-blur-2xl backdrop-saturate-150 md:block"
-            >
-              <button
-                type="button"
-                onClick={() => setIsHeroPanelDismissed(true)}
-                className="absolute right-6 top-6 inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/14 bg-black/20 text-white/84 transition hover:bg-black/35"
-                aria-label="Hide hero details"
-              >
-                <FiX size={15} />
-              </button>
-
-              <span className="inline-flex items-center rounded-full border border-white/26 bg-white/12 px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-white/88 shadow-[inset_0_1px_0_rgba(255,255,255,0.18)] backdrop-blur-md">
-                Bestseller Range
-              </span>
-
-              {activeSlide.title ? (
-                <h1 className="mt-4 max-w-[18ch] text-[2rem] font-black leading-[0.96] tracking-[-0.04em] text-white">
-                  {activeSlide.title}
-                </h1>
-              ) : null}
-
-              {activeSlide.subtitle ? (
-                <p className="mt-3 max-w-[34rem] text-sm font-medium leading-6 text-white/78">
-                  {activeSlide.subtitle}
-                </p>
-              ) : null}
-
-              <div className="mt-5 flex flex-wrap items-center gap-3">
-                <Link
-                  href={activeSlide.link}
-                  className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-bold text-[#352116] shadow-[0_18px_45px_-30px_rgba(255,255,255,0.4)] transition duration-300 hover:-translate-y-0.5 hover:bg-[#fff6ea]"
-                >
-                  {activeSlide.cta}
-                  <FiArrowUpRight size={16} />
-                </Link>
-
-                <Link
-                  href="/products"
-                  className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/8 px-4 py-3 text-sm font-semibold text-white/90 transition duration-300 hover:bg-white/14"
-                >
-                  View catalog
-                </Link>
-              </div>
-
-              <div className="mt-5 grid grid-cols-2 gap-3 xl:grid-cols-3">
-                {HERO_STATS.map((item) => (
-                  <div
-                    key={item.label}
-                    className="rounded-[1rem] border border-white/16 bg-white/10 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] backdrop-blur-md"
-                  >
-                    <p className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-white/56">
-                      {item.label}
-                    </p>
-                    <p className="mt-1 text-sm font-semibold text-white/88">
-                      {item.value}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
-
             <div className="rounded-[1.35rem] border border-[#2c1e15]/10 bg-[linear-gradient(145deg,rgba(255,255,255,0.78)_0%,rgba(255,249,242,0.64)_100%)] p-4 text-[#2d1a11] shadow-[0_18px_50px_rgba(26,18,13,0.14),inset_0_1px_0_rgba(255,255,255,0.82)] backdrop-blur-2xl backdrop-saturate-150 md:hidden">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -566,6 +601,18 @@ const HomeSlider = ({ initialSlides = [], initialSettings = null }) => {
           height: 100% !important;
           width: 100% !important;
           object-fit: cover !important;
+          object-position: center center !important;
+          transform: none !important;
+        }
+
+        .homeSlider .home-slider-media {
+          transition: none !important;
+        }
+
+        @media (min-width: 768px) {
+          .homeSlider .responsive-media__img {
+            object-fit: contain !important;
+          }
         }
 
         .homeSlider .swiper-pagination {
