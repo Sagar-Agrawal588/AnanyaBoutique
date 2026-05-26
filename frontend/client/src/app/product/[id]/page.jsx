@@ -670,9 +670,11 @@ const ProductDetailPage = () => {
   const storyTitleText = pageConfig?.hero?.storyTitle || "";
   const storyDescriptionOverride = pageConfig?.hero?.storyDescription || "";
   const storyDescriptionText = storyDescriptionOverride || productStoryText;
-  const showStoryHeader = [storyEyebrowText, storyTitleText, storyDescriptionText].some(
-    Boolean,
-  );
+  const showStoryHeader = [
+    storyEyebrowText,
+    storyTitleText,
+    storyDescriptionText,
+  ].some(Boolean);
   const fallbackDescriptionParagraphs =
     productDescriptionParagraphs.length > 0
       ? []
@@ -728,8 +730,7 @@ const ProductDetailPage = () => {
     ...images.map((src) => ({ type: "image", src })),
     ...videos.map((src) => ({ type: "video", src })),
   ];
-  const activeGalleryItem =
-    galleryItems[activeImageIndex] ||
+  const activeGalleryItem = galleryItems[activeImageIndex] ||
     galleryItems[0] || { type: "image", src: "/product_1.webp" };
   const activeImage = activeGalleryItem.src;
   const isActiveVideo = activeGalleryItem.type === "video";
@@ -2119,7 +2120,9 @@ const ProductDetailPage = () => {
                         ) : null}
                       </>
                     ) : null}
-                    <div className={`grid gap-3 ${showStoryHeader ? "mt-6" : ""}`}>
+                    <div
+                      className={`grid gap-3 ${showStoryHeader ? "mt-6" : ""}`}
+                    >
                       {detailCards.slice(0, 2).map((card) => (
                         <div
                           key={card.label}
@@ -2216,7 +2219,7 @@ const ProductDetailPage = () => {
                 {product?.name || product?.title}
               </h1>
 
-              <div className="mt-4 flex flex-wrap items-center gap-3">
+              <div className="mt-4 flex flex-wrap items-center gap-2 sm:gap-3">
                 <button
                   type="button"
                   onClick={scrollToReviews}
@@ -2238,13 +2241,14 @@ const ProductDetailPage = () => {
                   <MdVerified className="text-base" />
                   {heroStatusLabel}
                 </div>
-                <div className="ml-auto">
+                <div className="flex items-center">
                   <ShareButton
                     productId={productId || DEMO_PRODUCT_ID}
                     productName={product?.name || product?.title}
                     variant="icon"
                     iconSizeClass="h-11 w-11"
                     iconGlyphClass="h-4 w-4"
+                    className="shrink-0"
                   />
                 </div>
               </div>

@@ -6,10 +6,7 @@ import {
   fetchDataFromApi,
   PUBLIC_SECTION_REQUEST_TIMEOUT_MS,
 } from "@/utils/api";
-import {
-  getBannerImageUrl,
-  getMobileBannerImageUrl,
-} from "@/utils/imageUtils";
+import { getBannerImageUrl, getMobileBannerImageUrl } from "@/utils/imageUtils";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";

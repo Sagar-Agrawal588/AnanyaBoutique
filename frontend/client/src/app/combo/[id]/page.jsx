@@ -1079,30 +1079,16 @@ export default function ComboDetailPage() {
           </div>
 
           <div className="product-reveal product-reveal-delay-1 rounded-[36px] border border-[#ecd8c9] bg-white/92 p-6 shadow-[0_34px_90px_-55px_rgba(44,29,20,0.35)] sm:p-8 xl:sticky xl:top-[calc(var(--header-height,80px)+20px)]">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#7b6355]">
-                  {combo?.brand || "Combo Deal"}
-                </p>
-                <h1 className="mt-3 text-[28px] font-semibold leading-[1.08] text-[#24150f] sm:text-[42px]">
-                  {combo?.name || "Combo Deal"}
-                </h1>
-              </div>
-              <ShareButton
-                productId={comboId}
-                productName={combo?.name || "Combo Deal"}
-                productDetails={{
-                  brand: combo?.brand,
-                  price: comboPrice,
-                  originalPrice: originalTotal,
-                  sku: combo?.sku,
-                }}
-                variant="icon"
-                showLabel={false}
-              />
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#7b6355]">
+                {combo?.brand || "Combo Deal"}
+              </p>
+              <h1 className="mt-3 text-[28px] font-semibold leading-[1.08] text-[#24150f] sm:text-[42px]">
+                {combo?.name || "Combo Deal"}
+              </h1>
             </div>
 
-            <div className="mt-5 flex flex-wrap items-center gap-3">
+            <div className="mt-5 flex flex-wrap items-center gap-2 sm:gap-3">
               <button
                 type="button"
                 onClick={scrollToReviews}
@@ -1125,6 +1111,23 @@ export default function ComboDetailPage() {
               </button>
               <div className="rounded-full border border-[#ecd8c9] bg-[#fbf7f2] px-4 py-2 text-sm font-medium text-[#6c4a3a]">
                 {heroStatusLabel}
+              </div>
+              <div className="flex items-center">
+                <ShareButton
+                  productId={comboId}
+                  productName={combo?.name || "Combo Deal"}
+                  productDetails={{
+                    brand: combo?.brand,
+                    price: comboPrice,
+                    originalPrice: originalTotal,
+                    sku: combo?.sku,
+                  }}
+                  variant="icon"
+                  showLabel={false}
+                  iconSizeClass="h-11 w-11"
+                  iconGlyphClass="h-4 w-4"
+                  className="shrink-0"
+                />
               </div>
             </div>
 
