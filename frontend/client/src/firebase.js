@@ -1,4 +1,4 @@
-import { initializeApp } from "firebase/app";
+import { getApps, initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 
 const resolveFirebaseAuthDomain = () =>
@@ -33,7 +33,7 @@ if (process.env.NODE_ENV === "development") {
 }
 
 export const firebaseApp = isFirebaseConfigured
-  ? initializeApp(firebaseConfig)
+  ? getApps()[0] || initializeApp(firebaseConfig)
   : null;
 
 export const db = firebaseApp ? getFirestore(firebaseApp) : null;

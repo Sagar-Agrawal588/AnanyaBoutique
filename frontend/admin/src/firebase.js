@@ -1,4 +1,4 @@
-import { initializeApp } from "firebase/app";
+import { getApps, initializeApp } from "firebase/app";
 
 const resolveFirebaseAuthDomain = () =>
   String(process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "").trim();
@@ -31,5 +31,5 @@ if (process.env.NODE_ENV === "development") {
 }
 
 export const firebaseApp = requiredFirebaseKeys.every(Boolean)
-  ? initializeApp(firebaseConfig)
+  ? getApps()[0] || initializeApp(firebaseConfig)
   : null;

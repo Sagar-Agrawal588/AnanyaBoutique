@@ -10,6 +10,13 @@ const normalizeBaseUrl = (value) =>
 
 const resolveSocketUrl = () => {
   const fallbackApiUrl = normalizeBaseUrl(API_BASE_URL);
+  if (fallbackApiUrl.startsWith("/")) {
+    return normalizeBaseUrl(
+      process.env.NEXT_PUBLIC_BACKEND_URL ||
+        process.env.NEXT_PUBLIC_APP_API_URL ||
+        process.env.NEXT_PUBLIC_API_URL,
+    );
+  }
   return fallbackApiUrl.replace(/\/api$/i, "");
 };
 

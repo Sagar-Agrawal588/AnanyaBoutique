@@ -48,6 +48,8 @@ const pickFirstLiveApiUrl = (...values) => {
   return "";
 };
 
+const BROWSER_API_PROXY_BASE_URL = "/api/backend";
+
 const resolveConfiguredEnvBaseUrl = () => {
   const localDevBaseUrl = sanitizeBaseUrl(
     process.env.NEXT_PUBLIC_LOCAL_API_URL,
@@ -164,7 +166,7 @@ const resolveApiBaseUrl = () => {
       HEALTHY_ONE_GRAM_HOSTS.has(hostname) ||
       hostname.endsWith(".hosted.app")
     ) {
-      return DEFAULT_PRODUCTION_API_URL || origin;
+      return BROWSER_API_PROXY_BASE_URL;
     }
 
     return DEFAULT_PRODUCTION_API_URL || origin || LOCAL_API_FALLBACK;

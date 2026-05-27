@@ -11,6 +11,7 @@ const DEFAULT_PRODUCTION_API_URL = String(
 )
   .trim()
   .replace(/\/+$/, "");
+const BROWSER_API_PROXY_BASE_URL = "/api/backend";
 const LEGACY_PRODUCTION_API_URLS = new Set([
   "https://healthy-one-gram.el.r.appspot.com",
   "https://healthy-one-gram.appspot.com",
@@ -172,11 +173,11 @@ const resolveApiBaseUrl = () => {
     }
 
     if (HEALTHY_ONE_GRAM_HOSTS.has(hostname)) {
-      return envBaseUrl || DEFAULT_PRODUCTION_API_URL || origin;
+      return BROWSER_API_PROXY_BASE_URL;
     }
 
     if (hostname.endsWith(".hosted.app")) {
-      return envBaseUrl || DEFAULT_PRODUCTION_API_URL || origin;
+      return BROWSER_API_PROXY_BASE_URL;
     }
 
     if (envBaseUrl) {
