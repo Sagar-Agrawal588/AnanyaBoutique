@@ -1,13 +1,6 @@
 name: Deploy Client (App Engine)
 
 on:
-  push:
-    branches:
-      - main
-      - master
-    paths:
-      - "frontend/client/**"
-      - ".github/workflows/deploy-client.yml"
   workflow_dispatch:
 
 permissions:
@@ -24,6 +17,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Await required CI checks
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          node scripts/await-required-checks.mjs \
+            --check "Validate Env Examples" \
+            --check "Backend Tests" \
+            --check "Client Build" \
+            --check "Admin Build"
+
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
@@ -33,6 +36,9 @@ jobs:
         uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Validate App Engine target project
+        run: gcloud app describe --project="${{ secrets.GCP_PROJECT_ID }}"
 
       - name: Prune old App Engine versions (client)
         env:
@@ -122,7 +128,7 @@ jobs:
 
           site_url = os.environ.get("NEXT_PUBLIC_SITE_URL", "").strip()
           if not site_url:
-              site_url = "https://client-dot-healthy-one-gram.el.r.appspot.com"
+              site_url = "https://healthyonegram.com"
 
           firebase_core_keys = [
               "NEXT_PUBLIC_FIREBASE_API_KEY",

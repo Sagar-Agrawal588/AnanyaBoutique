@@ -1,23 +1,7 @@
 import { initializeApp } from "firebase/app";
 
-const resolveFirebaseAuthDomain = () => {
-  const configuredAuthDomain = String(
-    process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "",
-  ).trim();
-
-  if (typeof window !== "undefined") {
-    const host = String(window.location.hostname || "").trim().toLowerCase();
-    if (
-      host === "healthyonegram.com" ||
-      host === "www.healthyonegram.com" ||
-      host.endsWith(".healthyonegram.com")
-    ) {
-      return "healthyonegram.com";
-    }
-  }
-
-  return configuredAuthDomain;
-};
+const resolveFirebaseAuthDomain = () =>
+  String(process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "").trim();
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -29,11 +13,23 @@ const firebaseConfig = {
   measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
 
-console.log("Firebase Config Loaded:", {
-  apiKey: firebaseConfig.apiKey ? "✓ Present" : "✗ Missing",
-  authDomain: firebaseConfig.authDomain ? "✓ Present" : "✗ Missing",
-  projectId: firebaseConfig.projectId ? "✓ Present" : "✗ Missing",
-  appId: firebaseConfig.appId ? "✓ Present" : "✗ Missing",
-});
+const requiredFirebaseKeys = [
+  firebaseConfig.apiKey,
+  firebaseConfig.authDomain,
+  firebaseConfig.projectId,
+  firebaseConfig.messagingSenderId,
+  firebaseConfig.appId,
+];
 
-export const firebaseApp = initializeApp(firebaseConfig);
+if (process.env.NODE_ENV === "development") {
+  console.log("Firebase Config Loaded:", {
+    apiKey: firebaseConfig.apiKey ? "Present" : "Missing",
+    authDomain: firebaseConfig.authDomain ? "Present" : "Missing",
+    projectId: firebaseConfig.projectId ? "Present" : "Missing",
+    appId: firebaseConfig.appId ? "Present" : "Missing",
+  });
+}
+
+export const firebaseApp = requiredFirebaseKeys.every(Boolean)
+  ? initializeApp(firebaseConfig)
+  : null;

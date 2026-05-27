@@ -9,12 +9,8 @@ const normalizeBaseUrl = (value) =>
     .replace(/\/+$/, "");
 
 const resolveSocketUrl = () => {
-  const explicitApiUrl =
-    normalizeBaseUrl(process.env.NEXT_PUBLIC_APP_API_URL) ||
-    normalizeBaseUrl(process.env.NEXT_PUBLIC_API_URL);
   const fallbackApiUrl = normalizeBaseUrl(API_BASE_URL);
-  const base = explicitApiUrl || fallbackApiUrl;
-  return base.replace(/\/api$/i, "");
+  return fallbackApiUrl.replace(/\/api$/i, "");
 };
 
 const SOCKET_URL = resolveSocketUrl();
