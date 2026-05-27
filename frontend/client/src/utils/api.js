@@ -148,7 +148,7 @@ const resolveApiBaseUrl = () => {
     }
 
     if (HEALTHY_ONE_GRAM_HOSTS.has(hostname)) {
-      return envBaseUrl || origin || DEFAULT_PRODUCTION_API_URL;
+      return envBaseUrl || DEFAULT_PRODUCTION_API_URL || origin;
     }
 
     if (hostname.endsWith(".hosted.app")) {
@@ -321,6 +321,9 @@ const getApiBaseCandidates = () => {
   }
 
   candidates.push(resolvedBase);
+  if (DEFAULT_PRODUCTION_API_URL) {
+    candidates.push(sanitizeBaseUrl(DEFAULT_PRODUCTION_API_URL));
+  }
 
   return [...new Set(candidates.filter(Boolean))];
 };

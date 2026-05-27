@@ -5,6 +5,7 @@ const HEALTHY_ONE_GRAM_HOSTS = new Set([
   "www.healthyonegram.com",
 ]);
 
+const DEFAULT_PRODUCTION_API_URL = "https://healthy-one-gram.el.r.appspot.com";
 const LOCAL_API_FALLBACK = "http://localhost:8000";
 const REQUEST_TIMEOUT_MS = 12000;
 const LOCAL_API_FALLBACKS = [
@@ -95,16 +96,19 @@ const getAlternateApiBaseUrls = () => {
       return candidates;
     }
 
-    // On live deployments we may have either:
-    // 1. a same-domain `/api` proxy, or
-    // 2. a dedicated backend host from NEXT_PUBLIC_API_URL.
-    // Try whichever wasn't selected as the primary base.
+    // On hosted production deployments, always prefer the dedicated backend.
+    // Falling back to the frontend origin turns `/api/...` requests into Next.js
+    // 404s when no same-domain rewrite exists.
     pushCandidate(envBaseUrl);
-    pushCandidate(browserOriginBaseUrl);
+    pushCandidate(DEFAULT_PRODUCTION_API_URL);
+    if (HEALTHY_ONE_GRAM_HOSTS.has(hostname)) {
+      pushCandidate(browserOriginBaseUrl);
+    }
     return candidates;
   }
 
   pushCandidate(envBaseUrl);
+  pushCandidate(DEFAULT_PRODUCTION_API_URL);
   return candidates;
 };
 
@@ -125,19 +129,21 @@ const resolveApiBaseUrl = () => {
       return LOCAL_API_FALLBACK;
     }
 
-    // In deployed admin, an explicit backend URL must win. Falling back to the
-    // current origin on healthyonegram.com can hit the Next.js app itself,
-    // which produces `/api/... route not found` errors instead of reaching the
-    // Express backend.
+    // In deployed admin, the dedicated backend must win. Falling back to the
+    // frontend origin can hit the Next.js app itself and produce `/api/...`
+    // 404s instead of reaching the Express backend.
     if (isHttpUrl(envBaseUrl)) {
       return envBaseUrl;
     }
 
-    if (HEALTHY_ONE_GRAM_HOSTS.has(hostname)) {
-      return origin;
+    if (
+      HEALTHY_ONE_GRAM_HOSTS.has(hostname) ||
+      hostname.endsWith(".hosted.app")
+    ) {
+      return DEFAULT_PRODUCTION_API_URL;
     }
 
-    return origin || LOCAL_API_FALLBACK;
+    return DEFAULT_PRODUCTION_API_URL || origin || LOCAL_API_FALLBACK;
   }
 
   if (isHttpUrl(envBaseUrl)) {
@@ -145,7 +151,7 @@ const resolveApiBaseUrl = () => {
   }
 
   if (process.env.NODE_ENV === "production") {
-    return "https://healthyonegram.com";
+    return DEFAULT_PRODUCTION_API_URL;
   }
 
   return LOCAL_API_FALLBACK;
