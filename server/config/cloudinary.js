@@ -26,9 +26,14 @@ const gcsProviderAliases = [
   "google_storage",
 ];
 const firebaseProjectId = String(process.env.FIREBASE_PROJECT_ID || "").trim();
+const firebaseClientEmail = String(process.env.FIREBASE_CLIENT_EMAIL || "").trim();
+const firebasePrivateKey = String(process.env.FIREBASE_PRIVATE_KEY || "")
+  .replace(/^\s*"|"\s*$/g, "")
+  .replace(/\\n/g, "\n");
 const inferredFirebaseBucketName = String(
   process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET ||
     process.env.FIREBASE_STORAGE_BUCKET ||
+    (firebaseProjectId ? `${firebaseProjectId}.firebasestorage.app` : "") ||
     (firebaseProjectId ? `${firebaseProjectId}.appspot.com` : "") ||
     "",
 )
@@ -53,9 +58,19 @@ const cloudinaryConfigured = Boolean(
     process.env.CLOUDINARY_API_SECRET,
 );
 const prefersGcsMediaStorage = gcsProviderAliases.includes(mediaStorageProvider);
-const useGcsMediaStorage =
-  prefersGcsMediaStorage && (Boolean(gcsMediaBucketName) || !cloudinaryConfigured);
-const gcsStorage = useGcsMediaStorage ? new Storage() : null;
+const useGcsMediaStorage = prefersGcsMediaStorage;
+const gcsStorage =
+  useGcsMediaStorage && firebaseProjectId && firebaseClientEmail && firebasePrivateKey
+    ? new Storage({
+        projectId: firebaseProjectId,
+        credentials: {
+          client_email: firebaseClientEmail,
+          private_key: firebasePrivateKey,
+        },
+      })
+    : useGcsMediaStorage
+      ? new Storage()
+      : null;
 // Debug-only logging to keep production output clean
 const debugLog = (...args) => {
   if (!isProduction) {
@@ -74,10 +89,10 @@ const debugLog = (...args) => {
  * - No local storage needed
  */
 
-if (prefersGcsMediaStorage && !gcsMediaBucketName && cloudinaryConfigured) {
+if (prefersGcsMediaStorage && !gcsMediaBucketName) {
   debugLog(
-    "Media storage fallback:",
-    "Firebase Storage selected but no bucket is configured, falling back to Cloudinary.",
+    "Media storage config:",
+    "Firebase Storage selected but no bucket is configured.",
   );
 }
 
@@ -131,12 +146,18 @@ const bufferFromUploadInput = (file) => {
   return Buffer.from(raw, "base64");
 };
 
-const getGcsPublicUrl = (objectPath) => {
+const buildFirebaseDownloadUrl = (objectPath, token) =>
+  `https://firebasestorage.googleapis.com/v0/b/${gcsMediaBucketName}/o/${encodeURIComponent(
+    objectPath,
+  )}?alt=media&token=${token}`;
+
+const getGcsPublicUrl = (objectPath, token = "") => {
   const encodedPath = objectPath
     .split("/")
     .map((part) => encodeURIComponent(part))
     .join("/");
   if (gcsPublicBaseUrl) return `${gcsPublicBaseUrl}/${encodedPath}`;
+  if (token) return buildFirebaseDownloadUrl(objectPath, token);
   return `https://storage.googleapis.com/${gcsMediaBucketName}/${encodedPath}`;
 };
 
@@ -191,12 +212,16 @@ const uploadToGcsMediaStorage = async (
   const bucket = gcsStorage.bucket(gcsMediaBucketName);
   const targetFile = bucket.file(objectPath);
   const buffer = bufferFromUploadInput(file);
+  const downloadToken = randomUUID();
 
   await targetFile.save(buffer, {
     resumable: false,
     metadata: {
       contentType: normalizedMimeType,
       cacheControl: "public, max-age=31536000, immutable",
+      metadata: {
+        firebaseStorageDownloadTokens: downloadToken,
+      },
     },
   });
 
@@ -206,7 +231,7 @@ const uploadToGcsMediaStorage = async (
 
   return {
     success: true,
-    url: getGcsPublicUrl(objectPath),
+    url: getGcsPublicUrl(objectPath, gcsMakePublic ? "" : downloadToken),
     publicId: objectPath,
     width: null,
     height: null,
@@ -228,21 +253,7 @@ export const uploadToCloudinary = async (
 ) => {
   try {
     if (useGcsMediaStorage) {
-      try {
-        return await uploadToGcsMediaStorage(file, folder, { mimeType });
-      } catch (error) {
-        if (!cloudinaryConfigured || !isLikelyMissingBucketError(error)) {
-          return {
-            success: false,
-            error: error?.message || "Firebase Storage upload failed",
-          };
-        }
-
-        console.warn(
-          "Firebase Storage upload failed; falling back to Cloudinary:",
-          error?.message || error,
-        );
-      }
+      return await uploadToGcsMediaStorage(file, folder, { mimeType });
     }
 
     // Verify Cloudinary is configured
@@ -355,23 +366,9 @@ export const uploadVideoToCloudinary = async (
 ) => {
   try {
     if (useGcsMediaStorage) {
-      try {
-        return await uploadToGcsMediaStorage(file, folder, {
-          mimeType,
-        });
-      } catch (error) {
-        if (!cloudinaryConfigured || !isLikelyMissingBucketError(error)) {
-          return {
-            success: false,
-            error: error?.message || "Firebase Storage upload failed",
-          };
-        }
-
-        console.warn(
-          "Firebase Storage video upload failed; falling back to Cloudinary:",
-          error?.message || error,
-        );
-      }
+      return await uploadToGcsMediaStorage(file, folder, {
+        mimeType,
+      });
     }
 
     // Verify Cloudinary is configured

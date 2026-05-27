@@ -1,10 +1,10 @@
 "use client";
 
 import BlogHtmlDocumentFrame from "@/components/BlogHtmlDocumentFrame";
+import BlogMediaAsset from "@/components/BlogMediaAsset";
 import { useProducts } from "@/context/ProductContext";
 import { fetchDataFromApi } from "@/utils/api";
 import { extractImageCandidatesFromBlogHtml } from "@/utils/blogHtml";
-import Image from "next/image";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -38,6 +38,25 @@ const BLOG_CONTENT_FONT_FAMILIES = {
   "clean-serif": '"Palatino Linotype", "Book Antiqua", Georgia, serif',
   "compact-sans": '"Trebuchet MS", "Segoe UI", Arial, sans-serif',
 };
+
+const BlogMediaFallback = ({
+  title = "",
+  className = "",
+  eyebrow = "Blog Cover",
+}) => (
+  <div
+    className={`flex h-full w-full items-center justify-center bg-gradient-to-br from-slate-100 via-white to-slate-200 p-6 text-center ${className}`}
+  >
+    <div>
+      <p className="text-[0.65rem] font-semibold uppercase tracking-[0.28em] text-slate-400">
+        {eyebrow}
+      </p>
+      <p className="mt-3 line-clamp-3 text-sm font-semibold text-slate-600">
+        {title || "Media unavailable"}
+      </p>
+    </div>
+  </div>
+);
 
 const BLOG_CONTENT_FONT_FAMILY_LABELS = {
   "modern-sans": "Modern Sans",
@@ -417,13 +436,16 @@ export default function BlogDetailPage() {
                 ) : shouldRenderImage(blog) ? (
                   <div className="border-b border-slate-100 bg-white p-3 md:p-4">
                     <div className="overflow-hidden rounded-[24px] bg-white">
-                      <Image
+                      <BlogMediaAsset
                         src={getBlogPreviewImage(blog)}
                         alt={blog.title}
-                        width={1600}
-                        height={900}
-                        sizes="(max-width: 1024px) 100vw, 66vw"
                         className="max-h-[70vh] w-full object-contain"
+                        fallback={
+                          <BlogMediaFallback
+                            title={blog.title}
+                            className="max-h-[70vh] min-h-[240px]"
+                          />
+                        }
                       />
                     </div>
                   </div>
@@ -529,13 +551,17 @@ export default function BlogDetailPage() {
                           </div>
                         ) : shouldRenderImage(relatedBlog) ? (
                           <div className="mb-3 overflow-hidden rounded-2xl bg-white">
-                            <Image
+                            <BlogMediaAsset
                               src={getBlogPreviewImage(relatedBlog)}
                               alt={relatedBlog.title}
-                              width={720}
-                              height={288}
-                              sizes="(max-width: 1024px) 100vw, 24vw"
                               className="h-36 w-full bg-white object-contain transition-transform duration-300 group-hover:scale-[1.03]"
+                              fallback={
+                                <BlogMediaFallback
+                                  title={relatedBlog.title}
+                                  eyebrow="Related Story"
+                                  className="h-36"
+                                />
+                              }
                             />
                           </div>
                         ) : null}

@@ -2,8 +2,8 @@
 
 import { fetchDataFromApi, postData } from "@/utils/api";
 import { extractImageCandidatesFromBlogHtml } from "@/utils/blogHtml";
+import BlogMediaAsset from "@/components/BlogMediaAsset";
 import { motion } from "framer-motion";
-import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
@@ -134,6 +134,21 @@ const BLOG_MEDIA_VARIANTS = {
   },
 };
 
+const BlogMediaFallback = ({ title = "", className = "" }) => (
+  <div
+    className={`flex h-full w-full items-center justify-center bg-gradient-to-br from-slate-100 via-white to-slate-200 p-6 text-center ${className}`}
+  >
+    <div>
+      <p className="text-[0.65rem] font-semibold uppercase tracking-[0.28em] text-slate-400">
+        Blog Cover
+      </p>
+      <p className="mt-3 line-clamp-3 text-sm font-semibold text-slate-600">
+        {title || "Media unavailable"}
+      </p>
+    </div>
+  </div>
+);
+
 export default function BlogPage() {
   const [blogs, setBlogs] = useState([]);
   const [blogsLoading, setBlogsLoading] = useState(true);
@@ -184,13 +199,13 @@ export default function BlogPage() {
 
     if (previewImage) {
       return (
-        <Image
+        <BlogMediaAsset
           src={previewImage}
           alt={blog.title}
-          width={960}
-          height={540}
-          sizes="(max-width: 1024px) 100vw, 50vw"
           className={className}
+          fallback={
+            <BlogMediaFallback title={blog.title} className={className} />
+          }
         />
       );
     }
