@@ -1,9 +1,6 @@
 "use client";
 
-import {
-  fetchDataFromApi,
-  PUBLIC_SECTION_REQUEST_TIMEOUT_MS,
-} from "@/utils/api";
+import { fetchDataFromApi, PUBLIC_SECTION_REQUEST_TIMEOUT_MS } from "@/utils/api";
 import {
   createContext,
   useCallback,
@@ -20,25 +17,6 @@ import {
  */
 
 const ProductContext = createContext();
-
-const resolveBlogApiBaseUrl = () => {
-  const configuredBase = String(
-    process.env.NEXT_PUBLIC_APP_API_URL || process.env.NEXT_PUBLIC_API_URL || "",
-  )
-    .trim()
-    .replace(/^['"]|['"]$/g, "")
-    .replace(/\/+$/, "");
-
-  if (configuredBase) {
-    return configuredBase;
-  }
-
-  if (typeof window !== "undefined") {
-    return String(window.location.origin || "").replace(/\/+$/, "");
-  }
-
-  return "http://127.0.0.1:8000";
-};
 
 export const ProductProvider = ({ children }) => {
   const [products, setProducts] = useState([]);
@@ -143,16 +121,11 @@ export const ProductProvider = ({ children }) => {
 
   const fetchBlogs = useCallback(async () => {
     try {
-      const response = await fetch(
-        `${resolveBlogApiBaseUrl()}/api/blogs`,
-        {
-          credentials: "include",
-        },
-      );
-      const data = await response.json();
-      if (response.ok && data?.error !== true) {
+      const data = await fetchDataFromApi("/api/blogs", {
+        timeoutMs: PUBLIC_SECTION_REQUEST_TIMEOUT_MS,
+      });
+      if (data?.error !== true) {
         setBlogs(Array.isArray(data?.data) ? data.data : []);
-        return data;
       }
 
       return data;

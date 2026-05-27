@@ -8,7 +8,7 @@ import {
 import { isProductOutOfStock } from "@/utils/productAvailability";
 import { fetchDataFromApi } from "@/utils/api";
 import { applyStockUpdateToProductCollection } from "@/utils/stockRealtime";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
     Suspense,
     startTransition,
@@ -81,6 +81,7 @@ function ProductsPageContent() {
     const [showSort, setShowSort] = useState(false);
     const searchParams = useSearchParams();
     const router = useRouter();
+    const pathname = usePathname();
     const loaderRef = useRef(null);
     const fallbackPollRef = useRef(null);
     const latestLoadRequestRef = useRef(0);
@@ -103,6 +104,10 @@ function ProductsPageContent() {
     const [activeSearchTerm, setActiveSearchTerm] = useState(urlSearchTerm);
     const lastAppliedUrlSearchRef = useRef(urlSearchTerm);
     const pendingUrlSearchRef = useRef(null);
+    const legacyProductSlug = useMemo(() => {
+        const match = String(pathname || "").match(/^\/products\/([^/?#]+)\/?$/);
+        return match?.[1] ? decodeURIComponent(match[1]) : "";
+    }, [pathname]);
     const isComboCategory = (category) => {
         const name = String(category?.name || "").toLowerCase();
         const slug = String(category?.slug || "").toLowerCase();
@@ -123,6 +128,11 @@ function ProductsPageContent() {
     };
 
     useEffect(() => {
+        if (legacyProductSlug) {
+            router.replace(`/product/${encodeURIComponent(legacyProductSlug)}`);
+            return;
+        }
+
         if (!urlCategory) return;
         let isActive = true;
         const checkCategory = async () => {
@@ -145,7 +155,7 @@ function ProductsPageContent() {
         return () => {
             isActive = false;
         };
-    }, [urlCategory, router]);
+    }, [legacyProductSlug, urlCategory, router]);
 
     // Sync state with URL when URL changes (e.g. from header search).
     // Ignore URL writes started by this input so delayed route updates cannot
@@ -357,6 +367,7 @@ function ProductsPageContent() {
     }, [syncLoadedProducts]);
 
     useEffect(() => {
+        if (legacyProductSlug) return;
         loadingMoreRef.current = false;
         setLoadingMore(false);
         setPage(1);
@@ -365,7 +376,7 @@ function ProductsPageContent() {
         setTotalProducts(0);
         setPaginationError("");
         void loadProducts({ targetPage: 1, replace: true });
-    }, [loadProducts]);
+    }, [legacyProductSlug, loadProducts]);
 
     useEffect(() => () => {
         stopFallbackPolling();
@@ -637,7 +648,12 @@ function ProductsPageContent() {
                 </div>
 
                 {/* Products Grid */}
-                {loading ? (
+                {legacyProductSlug ? (
+                    <div className="text-center py-20 bg-white/70 backdrop-blur-xl rounded-[40px] border border-gray-100">
+                        <h3 className="text-xl font-bold text-gray-900 mb-2">Opening product...</h3>
+                        <p className="text-gray-500">Taking you to the product detail page.</p>
+                    </div>
+                ) : loading ? (
                     <ProductsGridSkeleton />
                 ) : fetchError ? (
                     <div className="text-center py-20 bg-red-50/80 backdrop-blur-xl rounded-[40px] border border-red-200">

@@ -1,36 +1,39 @@
 import { headers } from "next/headers";
 import HomeSlider from "@/components/HomeSlider";
-import dynamic from "next/dynamic";
-const Banners = dynamic(() => import("@/components/Banners"), {
+import nextDynamic from "next/dynamic";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+const Banners = nextDynamic(() => import("@/components/Banners"), {
   loading: () => null,
 });
-const CatSlider = dynamic(() => import("@/components/CatSlider"), {
+const CatSlider = nextDynamic(() => import("@/components/CatSlider"), {
   loading: () => null,
 });
-const HomeComboDeals = dynamic(() => import("@/components/HomeComboDeals"), {
+const HomeComboDeals = nextDynamic(() => import("@/components/HomeComboDeals"), {
   loading: () => null,
 });
-const HomeCustomerReviews = dynamic(
+const HomeCustomerReviews = nextDynamic(
   () => import("@/components/HomeCustomerReviews"),
   {
     loading: () => null,
   },
 );
 
-const OfferCountdownStrip = dynamic(
+const OfferCountdownStrip = nextDynamic(
   () => import("@/components/OfferCountdownStrip"),
   {
     loading: () => null,
   },
 );
-const WhatsAppFloatingButton = dynamic(
+const WhatsAppFloatingButton = nextDynamic(
   () => import("@/components/WhatsAppFloatingButton"),
   {
     loading: () => null,
   },
 );
 // PopularProducts removed from homepage per layout change; replaced by CatSlider
-const MembershipCTA = dynamic(() => import("@/components/MembershipCTA"), {
+const MembershipCTA = nextDynamic(() => import("@/components/MembershipCTA"), {
   loading: () => null,
 });
 

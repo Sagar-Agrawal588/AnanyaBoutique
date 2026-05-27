@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { Toaster } from "react-hot-toast";
 import { FiChevronUp } from "react-icons/fi";
+import ClientCacheGuard from "../components/ClientCacheGuard";
 import ErrorBoundary from "../components/ErrorBoundary";
 import Footer from "../components/Footer";
 import Header from "../components/Header";
@@ -501,6 +502,7 @@ export default function ClientLayout({ children }) {
 
   return (
     <div className="overflow-x-hidden w-full max-w-full">
+      <ClientCacheGuard />
       <style>{`body { font-family: inherit; }`}</style>
       <Toaster
         position="top-right"
