@@ -5,7 +5,17 @@ const HEALTHY_ONE_GRAM_HOSTS = new Set([
   "www.healthyonegram.com",
 ]);
 
-const DEFAULT_PRODUCTION_API_URL = "https://healthy-one-gram.el.r.appspot.com";
+const DEFAULT_PRODUCTION_API_URL = String(
+  process.env.NEXT_PUBLIC_BACKEND_URL || "",
+)
+  .trim()
+  .replace(/\/+$/, "");
+const LEGACY_PRODUCTION_API_URLS = new Set([
+  "https://healthy-one-gram.el.r.appspot.com",
+  "https://healthy-one-gram.appspot.com",
+  "https://client-dot-healthy-one-gram.el.r.appspot.com",
+  "https://admin-dot-healthy-one-gram.el.r.appspot.com",
+]);
 const LOCAL_API_FALLBACK = "http://localhost:8000";
 const REQUEST_TIMEOUT_MS = 12000;
 const LOCAL_API_FALLBACKS = [
@@ -25,19 +35,33 @@ const sanitizeBaseUrl = (value) =>
 
 const isHttpUrl = (value) => /^https?:\/\//i.test(String(value || ""));
 
+const isLegacyProductionApiUrl = (value) =>
+  LEGACY_PRODUCTION_API_URLS.has(sanitizeBaseUrl(value));
+
+const pickFirstLiveApiUrl = (...values) => {
+  for (const value of values) {
+    const normalized = sanitizeBaseUrl(value);
+    if (!isHttpUrl(normalized)) continue;
+    if (isLegacyProductionApiUrl(normalized)) continue;
+    return normalized;
+  }
+  return "";
+};
+
 const resolveConfiguredEnvBaseUrl = () => {
   const localDevBaseUrl = sanitizeBaseUrl(
     process.env.NEXT_PUBLIC_LOCAL_API_URL,
   );
   const envCandidates = [
     localDevBaseUrl,
+    process.env.NEXT_PUBLIC_BACKEND_URL,
     process.env.NEXT_PUBLIC_APP_API_URL,
     process.env.NEXT_PUBLIC_API_URL,
   ]
     .map(sanitizeBaseUrl)
     .filter(Boolean);
 
-  return envCandidates.find(isHttpUrl) || "";
+  return pickFirstLiveApiUrl(...envCandidates);
 };
 
 const isNetworkLevelError = (error) => {
@@ -140,7 +164,7 @@ const resolveApiBaseUrl = () => {
       HEALTHY_ONE_GRAM_HOSTS.has(hostname) ||
       hostname.endsWith(".hosted.app")
     ) {
-      return DEFAULT_PRODUCTION_API_URL;
+      return DEFAULT_PRODUCTION_API_URL || origin;
     }
 
     return DEFAULT_PRODUCTION_API_URL || origin || LOCAL_API_FALLBACK;
@@ -151,7 +175,7 @@ const resolveApiBaseUrl = () => {
   }
 
   if (process.env.NODE_ENV === "production") {
-    return DEFAULT_PRODUCTION_API_URL;
+    return DEFAULT_PRODUCTION_API_URL || "";
   }
 
   return LOCAL_API_FALLBACK;

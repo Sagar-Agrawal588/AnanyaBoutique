@@ -341,7 +341,8 @@ const Sidebar = ({ isOpen = false, onClose }) => {
             alt="Logo"
             width={140}
             height={40}
-            className="h-10 w-auto"
+            className="h-10"
+            style={{ width: "auto" }}
             loading="eager"
           />
         </Link>

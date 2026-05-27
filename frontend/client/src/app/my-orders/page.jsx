@@ -70,14 +70,14 @@ const getApiBaseCandidates = () => {
 
   if (typeof window !== "undefined") {
     const origin = sanitizeBaseUrl(window.location.origin);
-    if (origin) {
-      candidates.push(origin);
-    }
-    // Keep a same-origin relative fallback so Next.js rewrites can proxy /api calls.
-    candidates.push("");
-
     const host = String(window.location.hostname || "").toLowerCase();
-    if (host === "localhost" || host === "127.0.0.1") {
+    const isLocalhost = host === "localhost" || host === "127.0.0.1";
+    if (isLocalhost) {
+      if (origin) {
+        candidates.push(origin);
+      }
+      // Keep a same-origin relative fallback so Next.js rewrites can proxy /api calls.
+      candidates.push("");
       candidates.push(...LOCAL_API_FALLBACKS.map(sanitizeBaseUrl));
     }
   }
@@ -104,12 +104,20 @@ const fetchWithApiFallback = async (path, options = {}) => {
 
     try {
       const response = await fetch(url, options);
-      if (response.ok) return response;
+      const contentType = String(
+        response.headers.get("content-type") || "",
+      ).toLowerCase();
+      const looksLikeJson = contentType.includes("application/json");
+      const looksLikeHtml =
+        contentType.includes("text/html") || contentType.includes("text/plain");
+
+      if (response.ok && looksLikeJson) return response;
 
       lastResponse = response;
       const shouldTryNext =
         !isLast &&
-        (response.status === 404 ||
+        (looksLikeHtml ||
+          response.status === 404 ||
           response.status === 401 ||
           response.status >= 500);
       if (!shouldTryNext) {

@@ -6,7 +6,17 @@ const HEALTHY_ONE_GRAM_HOSTS = new Set([
   "www.healthyonegram.com",
 ]);
 
-const DEFAULT_PRODUCTION_API_URL = "https://healthy-one-gram.el.r.appspot.com";
+const DEFAULT_PRODUCTION_API_URL = String(
+  process.env.NEXT_PUBLIC_BACKEND_URL || "",
+)
+  .trim()
+  .replace(/\/+$/, "");
+const LEGACY_PRODUCTION_API_URLS = new Set([
+  "https://healthy-one-gram.el.r.appspot.com",
+  "https://healthy-one-gram.appspot.com",
+  "https://client-dot-healthy-one-gram.el.r.appspot.com",
+  "https://admin-dot-healthy-one-gram.el.r.appspot.com",
+]);
 
 const LOCAL_API_FALLBACKS = [
   "http://127.0.0.1:8000",
@@ -55,6 +65,19 @@ const sanitizeBaseUrl = (value) =>
     .replace(/\/+$/, "");
 
 const isHttpUrl = (value) => /^https?:\/\//i.test(String(value || ""));
+
+const isLegacyProductionApiUrl = (value) =>
+  LEGACY_PRODUCTION_API_URLS.has(sanitizeBaseUrl(value));
+
+const pickFirstLiveApiUrl = (...values) => {
+  for (const value of values) {
+    const normalized = sanitizeBaseUrl(value);
+    if (!isHttpUrl(normalized)) continue;
+    if (isLegacyProductionApiUrl(normalized)) continue;
+    return normalized;
+  }
+  return "";
+};
 
 const isLocalhostUrl = (value) => {
   try {
@@ -124,13 +147,14 @@ const resolveApiBaseUrl = () => {
     "";
   const envCandidates = [
     localDevBaseUrl,
+    process.env.NEXT_PUBLIC_BACKEND_URL,
     process.env.NEXT_PUBLIC_APP_API_URL,
     process.env.NEXT_PUBLIC_API_URL,
   ]
     .map(sanitizeBaseUrl)
     .filter(Boolean);
 
-  const envBaseUrl = envCandidates.find(isHttpUrl) || "";
+  const envBaseUrl = pickFirstLiveApiUrl(...envCandidates);
 
   if (typeof window !== "undefined") {
     const hostname = String(window.location.hostname || "").toLowerCase();
@@ -152,7 +176,7 @@ const resolveApiBaseUrl = () => {
     }
 
     if (hostname.endsWith(".hosted.app")) {
-      return envBaseUrl || DEFAULT_PRODUCTION_API_URL;
+      return envBaseUrl || DEFAULT_PRODUCTION_API_URL || origin;
     }
 
     if (envBaseUrl) {
@@ -172,7 +196,7 @@ const resolveApiBaseUrl = () => {
   }
 
   if (process.env.NODE_ENV === "production") {
-    return DEFAULT_PRODUCTION_API_URL;
+    return DEFAULT_PRODUCTION_API_URL || "";
   }
 
   return preferredLocalFallback || "http://localhost:8001";

@@ -13,6 +13,16 @@ const sanitizeBaseUrl = (value) =>
 
 const isHttpUrl = (value) => /^https?:\/\//i.test(String(value || ""));
 
+const LEGACY_PRODUCTION_API_URLS = new Set([
+  "https://healthy-one-gram.el.r.appspot.com",
+  "https://healthy-one-gram.appspot.com",
+  "https://client-dot-healthy-one-gram.el.r.appspot.com",
+  "https://admin-dot-healthy-one-gram.el.r.appspot.com",
+]);
+
+const isLegacyProductionApiUrl = (value) =>
+  LEGACY_PRODUCTION_API_URLS.has(sanitizeBaseUrl(value));
+
 const stripApiSuffix = (value) => {
   const baseUrl = sanitizeBaseUrl(value);
   return baseUrl.endsWith("/api") ? baseUrl.slice(0, -4) : baseUrl;
@@ -44,10 +54,12 @@ const resolveSocketBaseUrls = () => {
   const pushCandidate = (value) => {
     const normalized = normalizeSocketBaseUrl(value);
     if (!isHttpUrl(normalized) || candidates.includes(normalized)) return;
+    if (isLegacyProductionApiUrl(normalized)) return;
     candidates.push(normalized);
   };
 
   pushCandidate(API_BASE_URL);
+  pushCandidate(process.env.NEXT_PUBLIC_BACKEND_URL);
   pushCandidate(process.env.NEXT_PUBLIC_APP_API_URL);
   pushCandidate(process.env.NEXT_PUBLIC_API_URL);
 
