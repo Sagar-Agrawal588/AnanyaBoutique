@@ -5,6 +5,7 @@ import { useProducts } from "@/context/ProductContext";
 import { useShippingDisplayCharge } from "@/hooks/useShippingDisplayCharge";
 import { round2 } from "@/utils/gst";
 import { getImageUrl } from "@/utils/imageUtils";
+import { DEFAULT_PRODUCT_IMAGE } from "@/utils/mediaDefaults";
 import Link from "next/link";
 import {
   MdAdd,
@@ -133,7 +134,7 @@ export default function CartPage() {
           combo?.comboImages?.[0] ||
           comboItems?.[0]?.image ||
           item?.image ||
-          "/product_1.webp",
+          DEFAULT_PRODUCT_IMAGE,
         price,
         originalPrice,
         brand: "Combo Deal",
@@ -169,7 +170,7 @@ export default function CartPage() {
         product?.thumbnail ||
         product?.images?.[0] ||
         item?.image ||
-        "/product_1.webp",
+        DEFAULT_PRODUCT_IMAGE,
       price,
       originalPrice,
       brand: product?.brand || item?.brand || "BOG",

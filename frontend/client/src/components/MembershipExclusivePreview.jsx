@@ -2,8 +2,12 @@
 
 import ExclusivePreviewCard from "@/components/ExclusivePreviewCard";
 import useMembership from "@/hooks/useMembership";
-import { resolveMembershipTheme } from "@/utils/membershipTheme";
 import { fetchDataFromApi } from "@/utils/api";
+import {
+  DEFAULT_BANNER_IMAGES,
+  DEFAULT_PRODUCT_IMAGE,
+} from "@/utils/mediaDefaults";
+import { resolveMembershipTheme } from "@/utils/membershipTheme";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FaCrown } from "react-icons/fa";
@@ -13,25 +17,25 @@ const TEASER_PRODUCTS = [
     _id: "teaser-1",
     name: "Elite Protein Shaker",
     brand: "Members Series",
-    image: "/product_1.webp",
+    image: DEFAULT_PRODUCT_IMAGE,
   },
   {
     _id: "teaser-2",
     name: "Recovery Blend Box",
     brand: "Members Series",
-    image: "/product_2.png",
+    image: DEFAULT_BANNER_IMAGES[0],
   },
   {
     _id: "teaser-3",
     name: "Performance Stack Kit",
     brand: "Members Series",
-    image: "/product_3.png",
+    image: DEFAULT_BANNER_IMAGES[1],
   },
   {
     _id: "teaser-4",
     name: "Night Wellness Pack",
     brand: "Members Series",
-    image: "/product_4.png",
+    image: DEFAULT_BANNER_IMAGES[2],
   },
 ];
 

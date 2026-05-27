@@ -1,6 +1,7 @@
 "use client";
 
 import { getImageUrl, getResponsiveImageSet } from "@/utils/imageUtils";
+import { DEFAULT_PRODUCT_IMAGE } from "@/utils/mediaDefaults";
 import { useEffect, useMemo, useState } from "react";
 
 const ProductImage = ({
@@ -42,7 +43,7 @@ const ProductImage = ({
       {...props}
     >
       <img
-        src={resolvedSrc || "/product_1.png"}
+        src={resolvedSrc || DEFAULT_PRODUCT_IMAGE}
         srcSet={responsiveImage?.srcSet}
         sizes={responsiveImage?.sizes}
         alt={alt}

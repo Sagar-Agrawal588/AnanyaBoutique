@@ -9,6 +9,7 @@ import {
   getResponseErrorMessage,
   parseJsonSafely,
 } from "@/utils/safeJsonFetch";
+import { DEFAULT_PRODUCT_IMAGE } from "@/utils/mediaDefaults";
 import Cookies from "js-cookie";
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { toast } from "react-hot-toast";
@@ -238,7 +239,7 @@ const buildComboCartPayload = (combo, quantity = 1) => {
     combo?.thumbnail ||
     combo?.image ||
     combo?.comboImages?.[0] ||
-    "/product_1.webp";
+    DEFAULT_PRODUCT_IMAGE;
   const items = (Array.isArray(combo?.items) ? combo.items : []).map(
     (item) => ({
       productId: String(item?.productId || item?.product || "").trim(),

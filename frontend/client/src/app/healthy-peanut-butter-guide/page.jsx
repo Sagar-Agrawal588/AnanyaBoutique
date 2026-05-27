@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { DEFAULT_HOME_SLIDES } from "@/utils/mediaDefaults";
 
 const siteUrl = String(
   process.env.NEXT_PUBLIC_SITE_URL || "https://healthyonegram.com",
@@ -10,7 +11,7 @@ const siteUrl = String(
 
 const pagePath = "/healthy-peanut-butter-guide";
 const pageUrl = `${siteUrl}${pagePath}`;
-const heroImage = "/slide_1.webp";
+const heroImage = DEFAULT_HOME_SLIDES[0];
 
 export const metadata = {
   title: "Healthy Peanut Butter Guide | Healthy One Gram",

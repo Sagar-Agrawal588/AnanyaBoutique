@@ -29,6 +29,8 @@ let resetStockNotificationQueueForTests;
 let initSocket;
 
 const TEST_SECRET = "reservation_integration_secret_1234567890";
+const DEFAULT_PRODUCT_IMAGE =
+  "https://firebasestorage.googleapis.com/v0/b/studio-8452116634-cdb59.firebasestorage.app/o/buyonegram%2Fsystem%2Fproduct-default.webp?alt=media&token=2239320a-df4e-40bf-8c08-597f825fa257";
 const SOCKET_CONNECT_TIMEOUT_MS = process.env.CI ? 15000 : 8000;
 const SOCKET_EVENT_TIMEOUT_MS = process.env.CI ? 12000 : 5000;
 const MONGO_SELECTION_TIMEOUT_MS = process.env.CI ? 15000 : 5000;
@@ -107,8 +109,8 @@ const createProduct = async ({
     stock,
     stock_quantity: stock,
     reserved_quantity: 0,
-    images: ["/product_1.webp"],
-    thumbnail: "/product_1.webp",
+    images: [DEFAULT_PRODUCT_IMAGE],
+    thumbnail: DEFAULT_PRODUCT_IMAGE,
   });
 
 const createOrderLine = (product, quantity = 1) => ({
@@ -116,7 +118,7 @@ const createOrderLine = (product, quantity = 1) => ({
   productTitle: String(product?.name || "Reservation Product"),
   quantity,
   price: Number(product?.price || 0),
-  image: "/product_1.webp",
+  image: DEFAULT_PRODUCT_IMAGE,
   subTotal: Number(product?.price || 0) * quantity,
 });
 

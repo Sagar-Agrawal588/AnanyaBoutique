@@ -5,6 +5,7 @@ import {
   fetchDataFromApi,
   PUBLIC_SECTION_REQUEST_TIMEOUT_MS,
 } from "@/utils/api";
+import { DEFAULT_PRODUCT_IMAGE } from "@/utils/mediaDefaults";
 import { useContext, useEffect, useRef, useState } from "react";
 import { FiChevronLeft, FiChevronRight } from "react-icons/fi";
 import { Autoplay, Navigation } from "swiper/modules";
@@ -47,7 +48,7 @@ const resolveComboImage = (combo) =>
   combo?.image ||
   combo?.images?.[0] ||
   combo?.comboImages?.[0] ||
-  "/product_1.webp";
+  DEFAULT_PRODUCT_IMAGE;
 
 const toComboCardPayload = (combo) => {
   const price = toNumber(

@@ -10,6 +10,7 @@ import {
   patchData,
 } from "@/utils/api";
 import { withAdminBasePath } from "@/utils/basePath";
+import { ADMIN_PLACEHOLDER_IMAGE } from "@/utils/mediaDefaults";
 import { Button } from "@mui/material";
 import MenuItem from "@mui/material/MenuItem";
 import Pagination from "@mui/material/Pagination";
@@ -967,9 +968,7 @@ const OrderRow = ({ order, index, token }) => {
                 >
                   <div className="img relative h-[80px] w-[80px] overflow-hidden rounded-md bg-gray-100">
                     <Image
-                      src={
-                        product?.image || withAdminBasePath("/placeholder.png")
-                      }
+                      src={product?.image || ADMIN_PLACEHOLDER_IMAGE}
                       alt={product?.productTitle || "Product"}
                       fill
                       sizes="80px"

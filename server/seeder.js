@@ -24,6 +24,19 @@ const FORCE_HOMEPAGE_MEDIA_RESET =
   cliArgs.has("--force-homepage-media-reset") ||
   cliArgs.has("--replace-homepage-media");
 
+const FIREBASE_DEFAULT_PRODUCT_IMAGE =
+  "https://firebasestorage.googleapis.com/v0/b/studio-8452116634-cdb59.firebasestorage.app/o/buyonegram%2Fsystem%2Fproduct-default.webp?alt=media&token=2239320a-df4e-40bf-8c08-597f825fa257";
+const FIREBASE_DEFAULT_HOME_SLIDES = [
+  "https://firebasestorage.googleapis.com/v0/b/studio-8452116634-cdb59.firebasestorage.app/o/buyonegram%2Fsystem%2Fhome-slide-default-1.webp?alt=media&token=65e6ee68-27f4-4421-837e-7e1543cf92e5",
+  "https://firebasestorage.googleapis.com/v0/b/studio-8452116634-cdb59.firebasestorage.app/o/buyonegram%2Fsystem%2Fhome-slide-default-2.webp?alt=media&token=a03fee1f-c1a9-4d77-af0a-49829ac48fb6",
+  "https://firebasestorage.googleapis.com/v0/b/studio-8452116634-cdb59.firebasestorage.app/o/buyonegram%2Fsystem%2Fhome-slide-default-3.webp?alt=media&token=033b528f-b621-40eb-a07e-85e82b58164d",
+];
+const FIREBASE_DEFAULT_BANNERS = [
+  "https://firebasestorage.googleapis.com/v0/b/studio-8452116634-cdb59.firebasestorage.app/o/buyonegram%2Fsystem%2Fbanner-default-1.webp?alt=media&token=42c36dc4-fed0-4d78-a67c-73a9a2174064",
+  "https://firebasestorage.googleapis.com/v0/b/studio-8452116634-cdb59.firebasestorage.app/o/buyonegram%2Fsystem%2Fbanner-default-2.webp?alt=media&token=639fa7fc-a2c3-4207-b6de-d59fadd24862",
+  "https://firebasestorage.googleapis.com/v0/b/studio-8452116634-cdb59.firebasestorage.app/o/buyonegram%2Fsystem%2Fbanner-default-3.webp?alt=media&token=40643a56-a74e-42da-a78d-2591044935c8",
+];
+
 /**
  * Database Seeder
  *
@@ -45,10 +58,10 @@ const connectDB = async () => {
 };
 
 const SEED_PUBLIC_IMAGES = [
-  "/prodImage1.webp",
-  "/prodImage2.webp",
-  "/prodImage3.webp",
-  "/product_1.webp",
+  FIREBASE_DEFAULT_BANNERS[0],
+  FIREBASE_DEFAULT_BANNERS[1],
+  FIREBASE_DEFAULT_BANNERS[2],
+  FIREBASE_DEFAULT_PRODUCT_IMAGE,
 ];
 
 const resolveSeedPublicImage = (index = 0) =>
@@ -88,7 +101,7 @@ const categories = [
     slug: "classic-peanut-butter",
     description: "Traditional creamy and crunchy peanut butter",
     icon: "🥜",
-    image: "/product_1.webp",
+    image: FIREBASE_DEFAULT_PRODUCT_IMAGE,
     isFeatured: true,
     isActive: true,
     sortOrder: 1,
@@ -98,7 +111,7 @@ const categories = [
     slug: "flavored-peanut-butter",
     description: "Unique flavored peanut butter varieties",
     icon: "🍫",
-    image: "/product_1.webp",
+    image: FIREBASE_DEFAULT_PRODUCT_IMAGE,
     isFeatured: true,
     isActive: true,
     sortOrder: 2,
@@ -108,7 +121,7 @@ const categories = [
     slug: "organic-natural",
     description: "100% organic and all-natural peanut butter",
     icon: "🌿",
-    image: "/product_1.webp",
+    image: FIREBASE_DEFAULT_PRODUCT_IMAGE,
     isFeatured: true,
     isActive: true,
     sortOrder: 3,
@@ -118,7 +131,7 @@ const categories = [
     slug: "protein-peanut-butter",
     description: "High protein peanut butter for fitness enthusiasts",
     icon: "💪",
-    image: "/product_1.webp",
+    image: FIREBASE_DEFAULT_PRODUCT_IMAGE,
     isFeatured: true,
     isActive: true,
     sortOrder: 4,
@@ -128,7 +141,7 @@ const categories = [
     slug: "gift-packs",
     description: "Peanut butter gift sets and combos",
     icon: "🎁",
-    image: "/product_1.webp",
+    image: FIREBASE_DEFAULT_PRODUCT_IMAGE,
     isFeatured: false,
     isActive: true,
     sortOrder: 5,
@@ -406,7 +419,7 @@ const homeSlides = [
     subtitle: "100% Natural",
     description:
       "Made from premium hand-picked peanuts. No added sugar, no preservatives. Just pure, delicious peanut butter.",
-    image: "/slide_1.webp",
+    image: FIREBASE_DEFAULT_HOME_SLIDES[0],
     buttonText: "Shop Now",
     buttonLink: "/products",
     textPosition: "left",
@@ -418,7 +431,7 @@ const homeSlides = [
     subtitle: "Bestseller",
     description:
       "Rich dark chocolate meets creamy peanut butter. Try our most loved flavor today!",
-    image: "/slide_2.webp",
+    image: FIREBASE_DEFAULT_HOME_SLIDES[1],
     buttonText: "Try Now",
     buttonLink: "/product/chocolate-peanut-butter",
     textPosition: "center",
@@ -430,7 +443,7 @@ const homeSlides = [
     subtitle: "32g Protein",
     description:
       "High protein peanut butter for fitness enthusiasts. Power up your gains!",
-    image: "/slide_3.webp",
+    image: FIREBASE_DEFAULT_HOME_SLIDES[2],
     buttonText: "Shop Protein",
     buttonLink: "/products?category=protein-peanut-butter",
     textPosition: "right",
@@ -444,7 +457,7 @@ const banners = [
   {
     title: "Free Delivery",
     subtitle: "On orders above ₹499",
-    image: "/prodImage1.webp",
+    image: FIREBASE_DEFAULT_BANNERS[0],
     link: "/products",
     position: "home-top",
     isActive: true,
@@ -453,7 +466,7 @@ const banners = [
   {
     title: "Subscribe & Save 10%",
     subtitle: "Monthly peanut butter delivery",
-    image: "/prodImage2.webp",
+    image: FIREBASE_DEFAULT_BANNERS[1],
     link: "/subscribe",
     position: "home-middle",
     isActive: true,
@@ -492,7 +505,7 @@ const seedProducts = async (createdCategories) => {
       discount: Math.round(
         ((product.originalPrice - product.price) / product.originalPrice) * 100,
       ),
-      // Use local images from client public folder - admin can upload custom images
+      // Seed with Firebase-hosted defaults so live never depends on repo-local media.
       images: [seededImage],
       thumbnail: seededImage,
       category: categoryMap[product.categorySlug],

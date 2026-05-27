@@ -2,6 +2,7 @@
 import { useAdmin } from "@/context/AdminContext";
 import { deleteData, getData } from "@/utils/api";
 import { withAdminBasePath } from "@/utils/basePath";
+import { ADMIN_PLACEHOLDER_IMAGE } from "@/utils/mediaDefaults";
 import { getImageUrl } from "@/utils/imageUtils";
 import { Button } from "@mui/material";
 import Rating from "@mui/material/Rating";
@@ -199,7 +200,7 @@ const ViewProduct = () => {
                 onError={(e) => {
                   if (e.currentTarget.dataset.fallbackApplied) return;
                   e.currentTarget.dataset.fallbackApplied = "true";
-                  e.currentTarget.src = withAdminBasePath("/placeholder.png");
+                  e.currentTarget.src = ADMIN_PLACEHOLDER_IMAGE;
                 }}
               />
             </div>
@@ -222,8 +223,7 @@ const ViewProduct = () => {
                       onError={(e) => {
                         if (e.currentTarget.dataset.fallbackApplied) return;
                         e.currentTarget.dataset.fallbackApplied = "true";
-                        e.currentTarget.src =
-                          withAdminBasePath("/placeholder.png");
+                        e.currentTarget.src = ADMIN_PLACEHOLDER_IMAGE;
                       }}
                     />
                   </button>

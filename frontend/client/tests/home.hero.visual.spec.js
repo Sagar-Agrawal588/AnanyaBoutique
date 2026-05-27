@@ -1,12 +1,15 @@
 const { test, expect } = require("@playwright/test");
 
+const DEFAULT_HOME_SLIDE =
+  "https://firebasestorage.googleapis.com/v0/b/studio-8452116634-cdb59.firebasestorage.app/o/buyonegram%2Fsystem%2Fhome-slide-default-1.webp?alt=media&token=65e6ee68-27f4-4421-837e-7e1543cf92e5";
+
 const buildSlidesPayload = () => ({
   error: false,
   success: true,
   data: [
     {
-      image: "/slide_1.webp",
-      mobileImage: "/slide_1.webp",
+      image: DEFAULT_HOME_SLIDE,
+      mobileImage: DEFAULT_HOME_SLIDE,
       title: "Visual Test Slide",
       subtitle: "Testing hero visual",
       buttonText: "Shop Now",

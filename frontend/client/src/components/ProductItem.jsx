@@ -9,6 +9,7 @@ import { useCart } from "@/context/CartContext";
 import { useWishlist } from "@/context/WishlistContext";
 import useSeoAlt from "@/hooks/useSeoAlt";
 import { resolveAvailability } from "@/utils/productAvailability";
+import { DEFAULT_PRODUCT_IMAGE } from "@/utils/mediaDefaults";
 import { buildProductHref } from "@/utils/productRouting";
 import { subscribeToStockUpdates } from "@/realtime/stockSocket";
 import { applyStockUpdateToProduct } from "@/utils/stockRealtime";
@@ -98,7 +99,7 @@ const ProductItem = (props) => {
       brand: brand || "Buy One Gram",
       price: price || 349,
       originalPrice: originalPrice || 499,
-      images: [image || "/product_1.webp"],
+      images: [image || DEFAULT_PRODUCT_IMAGE],
       rating: rating || 0,
       discount: discount || 30,
     };

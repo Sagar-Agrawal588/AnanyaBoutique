@@ -1,4 +1,5 @@
 import { getImageUrl, getResponsiveImageSet } from "@/utils/imageUtils";
+import { DEFAULT_PRODUCT_IMAGE } from "@/utils/mediaDefaults";
 import { useEffect, useState } from "react";
 
 const resolveSrcSet = (candidate) => candidate?.srcSet || candidate?.src || "";
@@ -80,7 +81,7 @@ export default function ResponsiveMediaImage({
         <div
           aria-hidden="true"
           className="responsive-media__ambient"
-          style={{ backgroundImage: `url("${fallbackSrc || "/product_1.webp"}")` }}
+          style={{ backgroundImage: `url("${fallbackSrc || DEFAULT_PRODUCT_IMAGE}")` }}
         />
       ) : null}
       <picture className="responsive-media__picture">
@@ -99,7 +100,7 @@ export default function ResponsiveMediaImage({
           />
         ) : null}
         <img
-          src={fallbackSrc || "/product_1.webp"}
+          src={fallbackSrc || DEFAULT_PRODUCT_IMAGE}
           alt={alt}
           loading={loading}
           fetchPriority={fetchPriority}

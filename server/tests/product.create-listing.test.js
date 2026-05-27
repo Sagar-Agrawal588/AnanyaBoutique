@@ -11,6 +11,8 @@ import {
 } from "../controllers/product.controller.js";
 
 let mongoServer;
+const DEFAULT_PRODUCT_IMAGE =
+  "https://firebasestorage.googleapis.com/v0/b/studio-8452116634-cdb59.firebasestorage.app/o/buyonegram%2Fsystem%2Fproduct-default.webp?alt=media&token=2239320a-df4e-40bf-8c08-597f825fa257";
 
 const createMockRes = () => {
   const result = {
@@ -55,8 +57,8 @@ test("newly created product appears in listings and product detail even when opt
       name: "Backend Created Test Product",
       category: String(category._id),
       price: 449,
-      images: ["/product_1.webp"],
-      thumbnail: "/product_1.webp",
+      images: [DEFAULT_PRODUCT_IMAGE],
+      thumbnail: DEFAULT_PRODUCT_IMAGE,
       stock: 8,
     },
   };

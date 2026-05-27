@@ -3,6 +3,7 @@
 import LockOverlay from "@/components/LockOverlay";
 import PremiumBadge from "@/components/PremiumBadge";
 import { getImageUrl } from "@/utils/imageUtils";
+import { DEFAULT_PRODUCT_IMAGE } from "@/utils/mediaDefaults";
 import { resolveMembershipTheme } from "@/utils/membershipTheme";
 import { HiArrowUpRight } from "react-icons/hi2";
 
@@ -22,7 +23,7 @@ const ExclusivePreviewCard = ({
   const resolvedTheme = theme || resolveMembershipTheme("mint");
   const imageSrc = getImageUrl(
     product?.images?.[0] || product?.thumbnail || product?.image,
-    "/product_placeholder.png",
+    DEFAULT_PRODUCT_IMAGE,
   );
 
   return (

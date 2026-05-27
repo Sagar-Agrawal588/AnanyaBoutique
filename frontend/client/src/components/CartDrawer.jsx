@@ -5,6 +5,7 @@ import { useShippingDisplayCharge } from "@/hooks/useShippingDisplayCharge";
 import { fetchDataFromApi } from "@/utils/api";
 import { round2 } from "@/utils/gst";
 import { getImageUrl } from "@/utils/imageUtils";
+import { DEFAULT_PRODUCT_IMAGE } from "@/utils/mediaDefaults";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -32,7 +33,7 @@ const CartDrawer = () => {
   const [upsellLoading, setUpsellLoading] = useState(false);
   const [upsellCombo, setUpsellCombo] = useState(null);
   const [upsellProducts, setUpsellProducts] = useState([]);
-  const COMBO_FALLBACK_IMAGE = "/product_1.webp";
+  const COMBO_FALLBACK_IMAGE = DEFAULT_PRODUCT_IMAGE;
 
   const subtotal = round2(cartSubTotalAmount || 0);
   const shippingCost = 0;
@@ -156,11 +157,11 @@ const CartDrawer = () => {
     return {
       id: productId || item?._id || item?.id,
       name: product?.name || item?.name || "Product",
-      image:
-        product?.thumbnail ||
-        product?.images?.[0] ||
-        item?.image ||
-        "/product_1.webp",
+        image:
+          product?.thumbnail ||
+          product?.images?.[0] ||
+          item?.image ||
+          DEFAULT_PRODUCT_IMAGE,
       price: Number(item?.price ?? product?.price ?? 0),
       originalPrice: Number(item?.originalPrice ?? product?.originalPrice ?? 0),
       brand: product?.brand || "BOG",
@@ -630,7 +631,7 @@ const CartDrawer = () => {
                               upsellProductData?.image ||
                                 upsellProductEntity?.thumbnail ||
                                 upsellProductEntity?.images?.[0] ||
-                                "/product_1.webp",
+                                DEFAULT_PRODUCT_IMAGE,
                             )}
                             alt={
                               upsellProductEntity?.name || "Product suggestion"

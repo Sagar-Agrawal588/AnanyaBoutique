@@ -15,6 +15,7 @@ import { useSettings } from "@/context/SettingsContext";
 import { MyContext } from "@/context/ThemeProvider";
 import useIndiaPincodeLookup from "@/hooks/useIndiaPincodeLookup";
 import { useShippingDisplayCharge } from "@/hooks/useShippingDisplayCharge";
+import { DEFAULT_PRODUCT_IMAGE } from "@/utils/mediaDefaults";
 import {
   applyGoogleLocationToForm,
   applyPincodeLookupToForm,
@@ -251,7 +252,7 @@ const Checkout = () => {
           combo?.comboImages?.[0] ||
           comboItems?.[0]?.image ||
           item?.image ||
-          "/product_1.webp",
+          DEFAULT_PRODUCT_IMAGE,
         price: resolvedComboPrice,
         quantity: item?.quantity || 1,
         demandStatus: "NORMAL",
@@ -342,7 +343,7 @@ const Checkout = () => {
         product?.images?.[0] ||
         item.image ||
         item.images?.[0] ||
-        "/product_1.webp",
+        DEFAULT_PRODUCT_IMAGE,
       price: item.price || product?.price || 0,
       quantity: item.quantity || 1,
       demandStatus: product?.demandStatus || item.demandStatus || "NORMAL",

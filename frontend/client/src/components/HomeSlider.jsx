@@ -4,6 +4,7 @@ import ResponsiveMediaImage from "@/components/ResponsiveMediaImage";
 import { useProducts } from "@/context/ProductContext";
 import { useSettings } from "@/context/SettingsContext";
 import { getHeroImageUrl, getHeroMobileImageUrl } from "@/utils/imageUtils";
+import { DEFAULT_HOME_SLIDES } from "@/utils/mediaDefaults";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FiArrowLeft, FiArrowRight, FiArrowUpRight, FiX } from "react-icons/fi";
@@ -18,7 +19,7 @@ const HERO_PANEL_REOPEN_DELAY_MS = 4200;
 
 const fallbackSlides = [
   {
-    image: "/slide_1.webp",
+    image: DEFAULT_HOME_SLIDES[0],
     title: "Pure Nutrition",
     subtitle: "100% Natural Peanut Butter",
     cta: "Shop Now",
@@ -26,7 +27,7 @@ const fallbackSlides = [
     stayDurationMs: 5600,
   },
   {
-    image: "/slide_2.webp",
+    image: DEFAULT_HOME_SLIDES[1],
     title: "Fuel Your Fitness",
     subtitle: "High Protein | No Sugar",
     cta: "Explore",
@@ -34,7 +35,7 @@ const fallbackSlides = [
     stayDurationMs: 5600,
   },
   {
-    image: "/slide_3.webp",
+    image: DEFAULT_HOME_SLIDES[2],
     title: "Clean Eating",
     subtitle: "No Palm Oil | No Preservatives",
     cta: "Discover",

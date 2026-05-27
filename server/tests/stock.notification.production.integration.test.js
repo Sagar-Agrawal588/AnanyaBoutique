@@ -30,6 +30,8 @@ let drainStockNotificationQueueForTests;
 let resetStockNotificationQueueForTests;
 
 const TEST_SECRET = "stock_notification_prod_secret_1234567890";
+const DEFAULT_PRODUCT_IMAGE =
+  "https://firebasestorage.googleapis.com/v0/b/studio-8452116634-cdb59.firebasestorage.app/o/buyonegram%2Fsystem%2Fproduct-default.webp?alt=media&token=2239320a-df4e-40bf-8c08-597f825fa257";
 
 const startServer = async (app) =>
   new Promise((resolve) => {
@@ -63,8 +65,8 @@ const createProduct = async ({
     stock,
     stock_quantity: stock,
     reserved_quantity: 0,
-    images: ["/product_1.webp"],
-    thumbnail: "/product_1.webp",
+    images: [DEFAULT_PRODUCT_IMAGE],
+    thumbnail: DEFAULT_PRODUCT_IMAGE,
   });
 
 const createUser = async ({
@@ -96,7 +98,7 @@ const createOrderLine = (product, quantity = 1) => ({
   productTitle: String(product?.name || "Queue Product"),
   quantity,
   price: Number(product?.price || 0),
-  image: "/product_1.webp",
+  image: DEFAULT_PRODUCT_IMAGE,
   subTotal: Number(product?.price || 0) * quantity,
 });
 

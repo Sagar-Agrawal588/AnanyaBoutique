@@ -36,7 +36,6 @@ const nextConfig = {
     return [
       { source: "/logo.png", destination: "/admin/logo.png" },
       { source: "/profile.png", destination: "/admin/profile.png" },
-      { source: "/placeholder.png", destination: "/admin/placeholder.png" },
       { source: "/pattern.png", destination: "/admin/pattern.png" },
     ];
   },
@@ -49,6 +48,11 @@ const nextConfig = {
       {
         protocol: "https",
         hostname: "res.cloudinary.com",
+        pathname: "/**",
+      },
+      {
+        protocol: "https",
+        hostname: "firebasestorage.googleapis.com",
         pathname: "/**",
       },
       {

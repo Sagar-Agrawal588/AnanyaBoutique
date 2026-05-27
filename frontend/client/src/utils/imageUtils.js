@@ -8,9 +8,13 @@
  */
 
 import { API_BASE_URL } from "@/utils/api";
+import {
+  DEFAULT_PRODUCT_IMAGE,
+  resolveLegacyLocalMedia,
+} from "@/utils/mediaDefaults";
 
 const API_URL = API_BASE_URL;
-const DEFAULT_PLACEHOLDER = "/product_1.png";
+const DEFAULT_PLACEHOLDER = DEFAULT_PRODUCT_IMAGE;
 const CLOUDINARY_TRANSFORM_TOKEN_PATTERN =
   /(?:^|,)(?:c|w|h|g|q|f|dpr|ar|x|y|z|bo|e|fl)_[^,/]+/i;
 
@@ -151,9 +155,13 @@ const buildCloudinaryUrl = (imageUrl, transformations = []) => {
 
 const resolveBaseImageUrl = (imageUrl, fallback = DEFAULT_PLACEHOLDER) => {
   const normalizedValue = normalizeImageInput(imageUrl);
-  if (!normalizedValue) return fallback;
+  if (!normalizedValue) return resolveLegacyLocalMedia(fallback) || fallback;
 
   const normalizedPath = normalizedValue.replace(/\\/g, "/");
+  const resolvedLegacyMedia = resolveLegacyLocalMedia(normalizedPath);
+  if (resolvedLegacyMedia) {
+    return resolvedLegacyMedia;
+  }
 
   if (normalizedPath.startsWith("data:")) {
     return normalizedPath;
@@ -202,7 +210,7 @@ const resolveBaseImageUrl = (imageUrl, fallback = DEFAULT_PLACEHOLDER) => {
     return `/${normalizedPath}`;
   }
 
-  return fallback;
+  return resolveLegacyLocalMedia(fallback) || fallback;
 };
 
 /**

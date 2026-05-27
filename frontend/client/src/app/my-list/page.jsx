@@ -3,6 +3,7 @@
 import AccountSidebar from "@/components/AccountSiderbar";
 import { useCart } from "@/context/CartContext";
 import { useWishlist } from "@/context/WishlistContext";
+import { DEFAULT_PRODUCT_IMAGE } from "@/utils/mediaDefaults";
 import { Alert, Button, CircularProgress, Snackbar } from "@mui/material";
 import Rating from "@mui/material/Rating";
 import Link from "next/link";
@@ -208,7 +209,7 @@ const MyWishlistPage = () => {
                     entity.comboThumbnail ||
                     entity.image ||
                     entity.thumbnail ||
-                    "/product_1.webp";
+                    DEFAULT_PRODUCT_IMAGE;
                   const itemLink =
                     itemType === "combo"
                       ? `/combo/${itemId}`

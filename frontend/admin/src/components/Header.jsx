@@ -4,6 +4,7 @@ import { useAdminRealtime } from "@/hooks/useAdminRealtime";
 import { useOrderNotifications } from "@/hooks/useOrderNotifications";
 import { hasAdminPermission } from "@/utils/adminPermissions";
 import { withAdminBasePath } from "@/utils/basePath";
+import { ADMIN_PLACEHOLDER_IMAGE } from "@/utils/mediaDefaults";
 import { Avatar, Badge, Button, Menu, MenuItem, Tooltip } from "@mui/material";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -104,7 +105,7 @@ const Header = ({ onMenuClick }) => {
           </Badge>
         </Tooltip>
         <Button onClick={handleProfileClick}>
-          <Avatar src={withAdminBasePath("/placeholder.png")} />
+          <Avatar src={ADMIN_PLACEHOLDER_IMAGE} />
         </Button>
       </div>
 

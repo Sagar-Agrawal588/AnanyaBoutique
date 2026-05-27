@@ -8,6 +8,7 @@ import {
   calculateOrderTotals,
 } from "@/utils/calculateOrderTotals.mjs";
 import { getImageUrl } from "@/utils/imageUtils";
+import { DEFAULT_PRODUCT_IMAGE } from "@/utils/mediaDefaults";
 import {
   buildOrderProductDescriptor,
   resolveOrderPaymentMethodLabel,
@@ -316,7 +317,7 @@ const resolveComboImage = (combo = {}) => {
     comboItems?.[0]?.thumbnail ||
     "";
 
-  return getImageUrl(primaryImage, "/placeholder.png");
+  return getImageUrl(primaryImage, DEFAULT_PRODUCT_IMAGE);
 };
 
 const resolveOrderItemImage = (item = {}) => {
@@ -337,13 +338,13 @@ const resolveOrderItemImage = (item = {}) => {
     productRef?.images?.[0] ||
     "";
 
-  return getImageUrl(primaryImage, "/placeholder.png");
+  return getImageUrl(primaryImage, DEFAULT_PRODUCT_IMAGE);
 };
 
 const handleOrderImageFallback = (event) => {
   if (!event?.currentTarget) return;
   event.currentTarget.onerror = null;
-  event.currentTarget.src = "/placeholder.png";
+  event.currentTarget.src = DEFAULT_PRODUCT_IMAGE;
 };
 
 /**

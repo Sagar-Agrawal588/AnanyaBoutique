@@ -1,3 +1,5 @@
+import { DEFAULT_BANNER_IMAGES } from "@/utils/mediaDefaults";
+
 const DEFAULT_SITE_URL = "https://healthyonegram.com";
 const DEMO_PRODUCT_ID = "demo-live";
 const SERVER_FETCH_TIMEOUT_MS = 3000;
@@ -192,7 +194,7 @@ export async function generateMetadata({ params }) {
     const description =
       "Preview the upgraded storefront product detail experience with demo data, richer visuals, and conversion-focused layout blocks.";
     const url = `${siteUrl}/product/${DEMO_PRODUCT_ID}`;
-    const imageUrl = `${siteUrl}/prodImage1.webp`;
+    const imageUrl = DEFAULT_BANNER_IMAGES[0];
 
     return {
       title,

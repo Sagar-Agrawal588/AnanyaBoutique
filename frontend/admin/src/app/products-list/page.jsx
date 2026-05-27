@@ -2,6 +2,7 @@
 import { useAdmin } from "@/context/AdminContext";
 import { useAdminRealtime } from "@/hooks/useAdminRealtime";
 import { withAdminBasePath } from "@/utils/basePath";
+import { ADMIN_PLACEHOLDER_IMAGE } from "@/utils/mediaDefaults";
 import { deleteData, getData, patchData } from "@/utils/api";
 import { getImageUrl } from "@/utils/imageUtils";
 import { Button, Chip } from "@mui/material";
@@ -453,9 +454,7 @@ const ProductsListContent = () => {
                               onError={(e) => {
                                 if (e.currentTarget.dataset.fallbackApplied) return;
                                 e.currentTarget.dataset.fallbackApplied = "true";
-                                e.currentTarget.src = withAdminBasePath(
-                                  "/placeholder.png",
-                                );
+                                e.currentTarget.src = ADMIN_PLACEHOLDER_IMAGE;
                               }}
                             />
                           </div>

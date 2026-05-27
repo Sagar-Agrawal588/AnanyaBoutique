@@ -2,6 +2,7 @@
 
 import SeoImg from "@/components/SeoImg";
 import { getImageUrl } from "@/utils/imageUtils";
+import { DEFAULT_PRODUCT_IMAGE } from "@/utils/mediaDefaults";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import "swiper/css";
@@ -15,7 +16,11 @@ import { Swiper, SwiperSlide } from "swiper/react";
  * @param {string[]} props.images - Array of image URLs
  */
 const ProductZoom = ({
-  images = ["/product_1.webp", "/product_1.webp", "/product_1.webp"],
+  images = [
+    DEFAULT_PRODUCT_IMAGE,
+    DEFAULT_PRODUCT_IMAGE,
+    DEFAULT_PRODUCT_IMAGE,
+  ],
   productId = "",
   zoomType = "product",
 }) => {

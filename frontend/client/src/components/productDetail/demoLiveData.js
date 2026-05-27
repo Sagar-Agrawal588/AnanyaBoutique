@@ -1,5 +1,10 @@
 "use client";
 
+import {
+  DEFAULT_BANNER_IMAGES,
+  DEFAULT_PRODUCT_IMAGE,
+} from "@/utils/mediaDefaults";
+
 export const DEMO_PRODUCT_ID = "demo-live";
 
 const demoProduct = {
@@ -62,10 +67,10 @@ const demoProduct = {
     },
   ],
   images: [
-    "/prodImage1.webp",
-    "/prodImage2.webp",
-    "/prodImage3.webp",
-    "/product_1.webp",
+    DEFAULT_BANNER_IMAGES[0],
+    DEFAULT_BANNER_IMAGES[1],
+    DEFAULT_BANNER_IMAGES[2],
+    DEFAULT_PRODUCT_IMAGE,
   ],
 };
 

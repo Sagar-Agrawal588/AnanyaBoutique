@@ -4,6 +4,7 @@ import ProductPageSettingsSection from "@/components/ProductPageSettingsSection"
 import UploadBox from "@/components/UploadBox";
 import { useAdmin } from "@/context/AdminContext";
 import { withAdminBasePath } from "@/utils/basePath";
+import { ADMIN_PLACEHOLDER_IMAGE } from "@/utils/mediaDefaults";
 import {
   createDefaultProductPageConfig,
   mergeProductPageConfig,
@@ -198,7 +199,7 @@ const buildItemsPreview = (items = []) => {
 };
 
 const resolveSuggestionImage = (suggestion) => {
-  if (!suggestion) return withAdminBasePath("/placeholder.png");
+  if (!suggestion) return ADMIN_PLACEHOLDER_IMAGE;
   const items = Array.isArray(suggestion.items)
     ? suggestion.items
     : Array.isArray(suggestion.itemsSnapshot)
@@ -208,7 +209,7 @@ const resolveSuggestionImage = (suggestion) => {
     suggestion.thumbnail ||
     suggestion.image ||
     items.find((item) => item?.image)?.image ||
-    withAdminBasePath("/placeholder.png")
+    ADMIN_PLACEHOLDER_IMAGE
   );
 };
 

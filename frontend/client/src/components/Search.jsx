@@ -1,6 +1,7 @@
 "use client";
 
 import { fetchDataFromApi } from "@/utils/api";
+import { DEFAULT_PRODUCT_IMAGE } from "@/utils/mediaDefaults";
 import { trackEvent } from "@/utils/analyticsTracker";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -270,7 +271,7 @@ const Search = ({
                       src={
                         product.thumbnail ||
                         product.images?.[0] ||
-                        "/product_placeholder.png"
+                        DEFAULT_PRODUCT_IMAGE
                       }
                       alt={product.name}
                       className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"

@@ -1,5 +1,8 @@
 const { test, expect } = require("@playwright/test");
 
+const DEFAULT_PRODUCT_IMAGE =
+  "https://firebasestorage.googleapis.com/v0/b/studio-8452116634-cdb59.firebasestorage.app/o/buyonegram%2Fsystem%2Fproduct-default.webp?alt=media&token=2239320a-df4e-40bf-8c08-597f825fa257";
+
 const mockCommonPublicApis = async (page) => {
   await page.route("**/api/settings/header", async (route, request) => {
     if (request.method() !== "GET") {
@@ -145,7 +148,7 @@ test("products page renders reserved stock as unavailable and blocks purchase", 
             discount: 13,
             rating: 4.8,
             reviewCount: 11,
-            images: ["/product_1.webp"],
+            images: [DEFAULT_PRODUCT_IMAGE],
             stock_quantity: 1,
             reserved_quantity: 1,
             available_quantity: 0,
@@ -162,7 +165,7 @@ test("products page renders reserved stock as unavailable and blocks purchase", 
             discount: 11,
             rating: 4.6,
             reviewCount: 8,
-            images: ["/product_1.webp"],
+            images: [DEFAULT_PRODUCT_IMAGE],
             stock_quantity: 1,
             reserved_quantity: 0,
             available_quantity: 1,

@@ -498,7 +498,11 @@ productSchema.virtual("discountPercentage").get(function () {
 
 // Virtual for main image
 productSchema.virtual("image").get(function () {
-  return this.thumbnail || this.images[0] || "/product_placeholder.png";
+  return (
+    this.thumbnail ||
+    this.images[0] ||
+    "https://firebasestorage.googleapis.com/v0/b/studio-8452116634-cdb59.firebasestorage.app/o/buyonegram%2Fsystem%2Fproduct-default.webp?alt=media&token=2239320a-df4e-40bf-8c08-597f825fa257"
+  );
 });
 
 // Pre-validate middleware – runs BEFORE Mongoose checks `required` etc.

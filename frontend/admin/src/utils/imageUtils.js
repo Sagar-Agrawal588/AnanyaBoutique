@@ -9,6 +9,10 @@
 
 import { API_BASE_URL } from "@/utils/api";
 import { withAdminBasePath } from "@/utils/basePath";
+import {
+  ADMIN_PLACEHOLDER_IMAGE,
+  resolveLegacyLocalMedia,
+} from "@/utils/mediaDefaults";
 
 const API_URL = API_BASE_URL;
 const sanitizeBaseUrl = (value) =>
@@ -48,12 +52,16 @@ const normalizeImageInput = (imageValue) => {
  */
 export const getImageUrl = (
   imageUrl,
-  fallback = withAdminBasePath("/placeholder.png"),
+  fallback = ADMIN_PLACEHOLDER_IMAGE,
 ) => {
   const normalizedValue = normalizeImageInput(imageUrl);
-  if (!normalizedValue) return fallback;
+  if (!normalizedValue) return resolveLegacyLocalMedia(fallback) || fallback;
 
   const normalizedPath = normalizedValue.replace(/\\/g, "/");
+  const resolvedLegacyMedia = resolveLegacyLocalMedia(normalizedPath);
+  if (resolvedLegacyMedia) {
+    return resolvedLegacyMedia;
+  }
 
   // Data URI
   if (normalizedPath.startsWith("data:")) {
@@ -90,15 +98,18 @@ export const getImageUrl = (
     if (STORE_PUBLIC_BASE_URL) {
       return `${STORE_PUBLIC_BASE_URL}${normalizedPath}`;
     }
-    return withAdminBasePath(normalizedPath);
+    return resolveLegacyLocalMedia(normalizedPath) || withAdminBasePath(normalizedPath);
   }
 
   // Fallback for values like "product_1.png"
   if (!normalizedPath.includes("/")) {
-    return withAdminBasePath(`/${normalizedPath}`);
+    return (
+      resolveLegacyLocalMedia(normalizedPath) ||
+      withAdminBasePath(`/${normalizedPath}`)
+    );
   }
 
-  return fallback;
+  return resolveLegacyLocalMedia(fallback) || fallback;
 };
 
 /**
@@ -111,7 +122,7 @@ export const getOptimizedImageUrl = (
   imageUrl,
   { width = 400, height = 400, quality = "auto", format = "auto" } = {},
 ) => {
-  if (!imageUrl) return withAdminBasePath("/placeholder.png");
+  if (!imageUrl) return ADMIN_PLACEHOLDER_IMAGE;
 
   // Only apply transformations to Cloudinary URLs
   if (imageUrl.includes("res.cloudinary.com")) {

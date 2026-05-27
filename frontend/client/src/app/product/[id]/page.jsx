@@ -28,6 +28,7 @@ import { normalizePincode } from "@/utils/addressForm";
 import { trackEvent } from "@/utils/analyticsTracker";
 import { fetchDataFromApi, postData } from "@/utils/api";
 import { getImageUrl } from "@/utils/imageUtils";
+import { DEFAULT_PRODUCT_IMAGE } from "@/utils/mediaDefaults";
 import { sanitizeHTML } from "@/utils/sanitize";
 import {
   applyStockUpdateToProduct,
@@ -731,7 +732,7 @@ const ProductDetailPage = () => {
     ...videos.map((src) => ({ type: "video", src })),
   ];
   const activeGalleryItem = galleryItems[activeImageIndex] ||
-    galleryItems[0] || { type: "image", src: "/product_1.webp" };
+    galleryItems[0] || { type: "image", src: DEFAULT_PRODUCT_IMAGE };
   const activeImage = activeGalleryItem.src;
   const isActiveVideo = activeGalleryItem.type === "video";
   const visibleGalleryItems = galleryItems.slice(0, 4);
