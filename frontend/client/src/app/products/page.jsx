@@ -643,7 +643,7 @@ function ProductsPageContent() {
                     <div className="text-center py-20 bg-red-50/80 backdrop-blur-xl rounded-[40px] border border-red-200">
                         <h3 className="text-xl font-bold text-red-800 mb-2">Unable to load products</h3>
                         <p className="text-red-700">{fetchError}</p>
-                        <p className="text-red-600 text-sm mt-2">Start backend API on localhost:8001 or localhost:8000.</p>
+                        <p className="text-red-600 text-sm mt-2">Check that the backend API is reachable from the deployed site.</p>
                     </div>
                 ) : products.length > 0 ? (
                     <div className="space-y-6">

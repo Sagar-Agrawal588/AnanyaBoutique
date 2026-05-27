@@ -1,13 +1,11 @@
 "use client";
 
-import { API_BASE_URL } from "@/utils/api";
+import { postData } from "@/utils/api";
 
 import { useEffect, useState } from "react";
 import { Button, CircularProgress, TextField } from "@mui/material";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FiLock } from "react-icons/fi";
-
-const API_URL = API_BASE_URL;
 
 const INFLUENCER_TOKEN_KEY = "influencerToken";
 const INFLUENCER_REFRESH_TOKEN_KEY = "influencerRefreshToken";
@@ -96,18 +94,18 @@ const InfluencerLoginPage = () => {
 
     setLoading(true);
     try {
-      const response = await fetch(`${API_URL}/api/influencers/login`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
+      const result = await postData(
+        "/api/influencers/login",
+        {
           code: form.code.trim(),
           password: form.password,
-        }),
-      });
-
-      const result = await response.json();
+        },
+        {
+          headers: {
+            "Content-Type": "application/json",
+          },
+        },
+      );
 
       if (!result.success) {
         throw new Error(result.message || "Login failed");
@@ -144,18 +142,18 @@ const InfluencerLoginPage = () => {
 
     setResetLoading(true);
     try {
-      const response = await fetch(`${API_URL}/api/influencers/forgot-password`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
+      const result = await postData(
+        "/api/influencers/forgot-password",
+        {
           code: resetForm.code.trim(),
           email: resetForm.email.trim(),
-        }),
-      });
-
-      const result = await response.json();
+        },
+        {
+          headers: {
+            "Content-Type": "application/json",
+          },
+        },
+      );
 
       if (!result.success) {
         throw new Error(result.message || "Failed to request OTP");
@@ -199,21 +197,21 @@ const InfluencerLoginPage = () => {
 
     setResetLoading(true);
     try {
-      const response = await fetch(`${API_URL}/api/influencers/reset-password`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
+      const result = await postData(
+        "/api/influencers/reset-password",
+        {
           code: resetForm.code.trim(),
           email: resetForm.email.trim(),
           otp: resetForm.otp.trim(),
           newPassword: resetForm.newPassword,
           confirmPassword: resetForm.confirmPassword,
-        }),
-      });
-
-      const result = await response.json();
+        },
+        {
+          headers: {
+            "Content-Type": "application/json",
+          },
+        },
+      );
 
       if (!result.success) {
         throw new Error(result.message || "Failed to reset password");
@@ -244,7 +242,7 @@ const InfluencerLoginPage = () => {
     <section className="relative flex min-h-[calc(100vh-var(--header-height,128px))] items-center justify-center overflow-hidden bg-[#f6efe4] px-4 py-10">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(189,122,6,0.14),transparent_34%),radial-gradient(circle_at_78%_72%,rgba(36,21,15,0.12),transparent_30%)]" />
       <div className="relative grid w-full max-w-5xl overflow-hidden rounded-[34px] border border-[#e6d8ca] bg-white/95 shadow-[0_30px_90px_-60px_rgba(83,52,28,0.85)] lg:grid-cols-[0.95fr_1.05fr]">
-        <div className="hidden bg-gradient-to-br from-[#281710] via-[#6f4a32] to-[#bd7a06] p-8 text-white lg:flex lg:flex-col lg:justify-between">
+        <div className="hidden bg-linear-to-br from-[#281710] via-[#6f4a32] to-[#bd7a06] p-8 text-white lg:flex lg:flex-col lg:justify-between">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.24em] text-amber-100">
               Collaborator Program

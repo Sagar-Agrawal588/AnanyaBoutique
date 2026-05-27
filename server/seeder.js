@@ -17,6 +17,12 @@ import {
   upsertComboItems,
 } from "./services/combos/combo.service.js";
 import { normalizeManagerPermissions } from "./utils/adminPermissions.js";
+const cliArgs = new Set(process.argv.slice(2));
+const SHOULD_DESTROY_DATA =
+  cliArgs.has("-d") || cliArgs.has("--destroy");
+const FORCE_HOMEPAGE_MEDIA_RESET =
+  cliArgs.has("--force-homepage-media-reset") ||
+  cliArgs.has("--replace-homepage-media");
 
 /**
  * Database Seeder
@@ -674,12 +680,28 @@ const seedCombos = async (createdProducts = []) => {
 
 // Seed home slides
 const seedSlides = async () => {
+  const existingCount = await HomeSlideModel.countDocuments();
+  if (existingCount > 0 && !FORCE_HOMEPAGE_MEDIA_RESET) {
+    console.log(
+      `Skipping home slide seed because ${existingCount} slide(s) already exist. Use --force-homepage-media-reset to replace them with default seeded slides.`,
+    );
+    return;
+  }
+
   await HomeSlideModel.deleteMany({});
   const createdSlides = await HomeSlideModel.insertMany(homeSlides);
   console.log(`✅ ${createdSlides.length} home slides seeded`);
 };
 
 const seedBanners = async () => {
+  const existingCount = await BannerModel.countDocuments();
+  if (existingCount > 0 && !FORCE_HOMEPAGE_MEDIA_RESET) {
+    console.log(
+      `Skipping banner seed because ${existingCount} banner(s) already exist. Use --force-homepage-media-reset to replace them with default seeded banners.`,
+    );
+    return;
+  }
+
   await BannerModel.deleteMany({});
   const createdBanners = await BannerModel.insertMany(banners);
   console.log(`✅ ${createdBanners.length} banners seeded`);
@@ -847,7 +869,7 @@ const destroyData = async () => {
 };
 
 // Check command line arguments
-if (process.argv[2] === "-d" || process.argv[2] === "--destroy") {
+if (SHOULD_DESTROY_DATA) {
   destroyData();
 } else {
   seedDatabase();

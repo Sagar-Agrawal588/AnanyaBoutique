@@ -54,6 +54,8 @@ const clearBannerPublicCache = () => {
   bannerInFlightRequests.clear();
 };
 
+export { clearBannerPublicCache };
+
 /**
  * Banner Controller
  *

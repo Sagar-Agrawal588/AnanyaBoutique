@@ -7,6 +7,7 @@ import SettingsModel from "../models/settings.model.js";
 import UserModel from "../models/user.model.js";
 import { captureCrmTouchpointSafely } from "../services/crm/crmTracking.service.js";
 import { logger } from "../utils/errorHandler.js";
+import { publishNewsletterJob } from "../pubsub/newsletterPubSub.js";
 
 const isProduction = process.env.NODE_ENV === "production";
 // Debug-only logging to keep production output clean
@@ -769,118 +770,30 @@ export const sendNewsletterBroadcast = async (req, res) => {
     if (status === "active") query.isActive = true;
     if (status === "inactive") query.isActive = false;
 
-    const subscribers = await Newsletter.find(query)
-      .select("email isActive")
-      .lean();
+    // Instead of sending inline, enqueue a background job to process the broadcast.
+    const jobPayload = {
+      subject: template.subject,
+      html: template.html,
+      status: status,
+      attachments: attachments.map((item) => ({
+        filename: item.filename,
+        content: Buffer.isBuffer(item.content)
+          ? item.content.toString("base64")
+          : String(item.content || ""),
+        contentType: item.contentType,
+      })),
+      requestedBy: req.user ? (req.user.id || req.user) : null,
+      requestedAt: new Date().toISOString(),
+    };
 
-    if (!subscribers.length) {
-      return res.status(200).json({
-        success: true,
-        message: "No subscribers available for broadcast",
-        data: {
-          attempted: 0,
-          sent: 0,
-          failed: 0,
-        },
-      });
-    }
+    // Publish job to Pub/Sub for background processing
+    const topicResult = await publishNewsletterJob(jobPayload);
 
-    let sent = 0;
-    let failed = 0;
-
-    for (const subscriber of subscribers) {
-      const email = String(subscriber?.email || "")
-        .trim()
-        .toLowerCase();
-      if (!email || !isValidEmail(email)) {
-        failed += 1;
-        continue;
-      }
-
-      const user = await UserModel.findOne({
-        email: {
-          $regex: `^${email.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
-          $options: "i",
-        },
-      })
-        .select("_id email_opt_out notificationSettings")
-        .lean();
-
-      if (
-        user?.email_opt_out === true ||
-        user?.notificationSettings?.promotionalEmails === false ||
-        user?.notificationSettings?.emailNotifications === false
-      ) {
-        await EmailLogModel.create({
-          user_id: user?._id || null,
-          to_email: email,
-          email_type: "newsletter",
-          template_type: "newsletterEmailTemplate",
-          subject: template.subject,
-          status: "skipped",
-          error_message: "User opted out from promotional emails",
-        });
-        continue;
-      }
-
-      const emailLog = await EmailLogModel.create({
-        user_id: user?._id || null,
-        to_email: email,
-        email_type: "newsletter",
-        template_type: "newsletterEmailTemplate",
-        subject: template.subject,
-        status: "queued",
-      });
-
-      const result = await sendEmail({
-        to: email,
-        subject: template.subject,
-        html: appendNewsletterUnsubscribeFooter(
-          renderBroadcastHtml(template.html, email),
-          email,
-        ),
-        text: template.subject,
-        context: "newsletter.broadcast",
-        attachments,
-        headers: buildNewsletterUnsubscribeHeaders(email),
-      });
-
-      if (result?.success) {
-        sent += 1;
-        await EmailLogModel.updateOne(
-          { _id: emailLog._id },
-          {
-            $set: {
-              status: "sent",
-              sent_at: new Date(),
-              provider_message_id: String(result?.messageId || ""),
-            },
-          },
-        );
-      } else {
-        failed += 1;
-        await EmailLogModel.updateOne(
-          { _id: emailLog._id },
-          {
-            $set: {
-              status: "failed",
-              error_message: String(result?.error || "Failed to send").slice(
-                0,
-                1000,
-              ),
-            },
-          },
-        );
-      }
-    }
-
-    return res.status(200).json({
+    return res.status(202).json({
       success: true,
-      message: "Newsletter broadcast processed",
+      message: "Newsletter broadcast queued",
       data: {
-        attempted: subscribers.length,
-        sent,
-        failed,
+        messageId: topicResult?.messageId || null,
         attachments: attachments.map((item) => item.filename),
       },
     });

@@ -767,7 +767,7 @@ const getOverviewData = async (db, from, to) => {
             },
           },
         },
-      ])
+      ], { allowDiskUse: true })
       .toArray(),
     events
       .aggregate([
@@ -834,7 +834,7 @@ const getOverviewData = async (db, from, to) => {
             },
           },
         },
-      ])
+      ], { allowDiskUse: true })
       .toArray(),
     purchases
       .aggregate([
@@ -865,7 +865,7 @@ const getOverviewData = async (db, from, to) => {
             ],
           },
         },
-      ])
+      ], { allowDiskUse: true })
       .toArray(),
     pageViews
       .aggregate([
@@ -896,7 +896,7 @@ const getOverviewData = async (db, from, to) => {
         {
           $count: "count",
         },
-      ])
+      ], { allowDiskUse: true })
       .toArray(),
     sessions
       .aggregate([
@@ -982,7 +982,7 @@ const getOverviewData = async (db, from, to) => {
             totalVisitorIdentities: 1,
           },
         },
-      ])
+      ], { allowDiskUse: true })
       .toArray(),
   ]);
 
@@ -1216,7 +1216,7 @@ const getChartData = async (db, from, to, interval = "day") => {
         },
       },
       { $sort: { _id: 1 } },
-    ])
+    ], { allowDiskUse: true })
     .toArray();
 
   const revenueOverTime = await purchases
@@ -1248,7 +1248,7 @@ const getChartData = async (db, from, to, interval = "day") => {
         },
       },
       { $sort: { _id: 1 } },
-    ])
+    ], { allowDiskUse: true })
     .toArray();
 
   const topProductsViewed = await productEvents
@@ -1278,7 +1278,7 @@ const getChartData = async (db, from, to, interval = "day") => {
       },
       { $sort: { views: -1 } },
       { $limit: 10 },
-    ])
+    ], { allowDiskUse: true })
     .toArray();
 
   const topSearchedKeywords = await searchEvents
@@ -1305,7 +1305,7 @@ const getChartData = async (db, from, to, interval = "day") => {
       { $match: { _id: { $nin: [null, ""] } } },
       { $sort: { searches: -1 } },
       { $limit: 15 },
-    ])
+    ], { allowDiskUse: true })
     .toArray();
 
   const trafficSources = await events
@@ -1339,7 +1339,7 @@ const getChartData = async (db, from, to, interval = "day") => {
       { $match: { _id: { $nin: [null, "", "direct"] } } },
       { $sort: { visits: -1 } },
       { $limit: 10 },
-    ])
+    ], { allowDiskUse: true })
     .toArray();
 
   let visitorsOverTimeRows = visitorsOverTime;

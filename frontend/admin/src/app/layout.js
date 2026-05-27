@@ -16,7 +16,8 @@ const geistMono = Geist_Mono({
 });
 
 const adminUrl = String(
-  process.env.NEXT_PUBLIC_ADMIN_URL || "https://healthyonegram.com/admin",
+  process.env.NEXT_PUBLIC_ADMIN_URL ||
+    "https://healthyonegram-admin--studio-8452116634-cdb59.us-central1.hosted.app/admin",
 )
   .trim()
   .replace(/^["']|["']$/g, "")

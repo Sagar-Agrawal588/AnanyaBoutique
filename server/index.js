@@ -160,8 +160,10 @@ const configuredCorsOrigins = [
 const defaultProductionCorsOrigins = [
   "https://healthyonegram.com",
   "https://www.healthyonegram.com",
+  "https://healthyonegram-client--studio-8452116634-cdb59.us-central1.hosted.app",
   "https://client-dot-healthy-one-gram.el.r.appspot.com",
   "https://admin-dot-healthy-one-gram.el.r.appspot.com",
+  "https://healthyonegram-admin--studio-8452116634-cdb59.us-central1.hosted.app",
 ].map(normalizeOrigin);
 const defaultDevCorsOrigins = [
   "http://localhost:3000",
@@ -262,6 +264,7 @@ import trackingRouter from "./routes/tracking.route.js";
 import uploadRouter from "./routes/upload.route.js";
 import userRouter from "./routes/user.route.js";
 import userLocationLogRouter from "./routes/userLocationLog.route.js";
+import internalRouter from "./routes/internal.route.js";
 import vendorRouter from "./routes/vendor.routes.js";
 import webhookRouter from "./routes/webhook.route.js";
 import wishlistRouter from "./routes/wishlist.route.js";
@@ -695,6 +698,7 @@ app.use("/api/cart", generalLimiter, cartRouter);
 app.use("/api/combos", generalLimiter, comboRouter);
 app.use("/api/wishlist", generalLimiter, wishlistRouter);
 app.use("/api/upload", uploadLimiter, uploadRouter);
+app.use("/api/internal", generalLimiter, internalRouter);
 app.use("/api/membership/page", generalLimiter, membershipPageRouter);
 app.use(
   "/api/membership/home-content",

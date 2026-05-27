@@ -62,8 +62,60 @@ const normalizeOptionalImageUrl = (value) => {
   }
 };
 
-const DEFAULT_LOGO_URL = "https://healthyonegram.com/logo-og-v2.png";
-const DEFAULT_HERO_URL = "https://healthyonegram.com/logo-header.png";
+const normalizeClientBaseUrl = (raw) => {
+  const normalized = String(raw || "").trim().replace(/\/+$/, "");
+  if (!normalized) return "";
+
+  try {
+    const parsed = new URL(normalized);
+    const hostname = String(parsed.hostname || "").toLowerCase();
+
+    if (
+      (hostname === "localhost" || hostname === "127.0.0.1") &&
+      (parsed.port === "3001" || parsed.port === "3002")
+    ) {
+      parsed.port = "3000";
+    } else if (/^admin-dot-/i.test(parsed.hostname)) {
+      parsed.hostname = parsed.hostname.replace(/^admin-dot-/i, "client-dot-");
+    } else if (/^admin\./i.test(parsed.hostname)) {
+      parsed.hostname = parsed.hostname.replace(/^admin\./i, "");
+    }
+
+    if (/^\/admin(?:\/|$)/i.test(parsed.pathname)) {
+      parsed.pathname = parsed.pathname.replace(/^\/admin(?:\/|$)/i, "/");
+    }
+
+    return `${parsed.protocol}//${parsed.host}${parsed.pathname}`.replace(
+      /\/+$/,
+      "",
+    );
+  } catch {
+    return normalized.replace(/\/admin(?:\/.*)?$/i, "");
+  }
+};
+
+const getNewsletterAssetBaseUrl = () => {
+  const configuredBase = [
+    process.env.NEXT_PUBLIC_CLIENT_URL,
+    process.env.NEXT_PUBLIC_SITE_URL,
+  ]
+    .map(normalizeClientBaseUrl)
+    .find(Boolean);
+
+  if (configuredBase) return configuredBase;
+
+  if (typeof window !== "undefined") {
+    const localOrigin = normalizeClientBaseUrl(window.location.origin);
+    if (localOrigin) {
+      return localOrigin;
+    }
+  }
+
+  return "https://healthyonegram.com";
+};
+
+const DEFAULT_LOGO_URL = `${getNewsletterAssetBaseUrl()}/logo-og-v2.png`;
+const DEFAULT_HERO_URL = `${getNewsletterAssetBaseUrl()}/logo-header.png`;
 
 const buildSimpleNewsletterHtml = ({
   title,
@@ -91,10 +143,14 @@ const buildSimpleNewsletterHtml = ({
 
   const showCta = String(ctaLabel || "").trim() && String(ctaUrl || "").trim();
   const siteUrl = resolveSiteUrl(ctaUrl);
-  const resolvedLogoUrl = resolveImageUrl(logoUrl, `${siteUrl}/logo-og-v2.png`);
+  const assetBaseUrl = getNewsletterAssetBaseUrl() || siteUrl;
+  const resolvedLogoUrl = resolveImageUrl(
+    logoUrl,
+    `${assetBaseUrl}/logo-og-v2.png`,
+  );
   const resolvedHeroImageUrl = resolveImageUrl(
     heroImageUrl,
-    `${siteUrl}/logo-header.png`,
+    `${assetBaseUrl}/logo-header.png`,
   );
 
   return `
@@ -450,13 +506,14 @@ const NewsletterPage = () => {
   }, [editorMode, simpleTemplate]);
 
   const previewSiteUrl = resolveSiteUrl(simpleTemplate.ctaUrl);
+  const previewAssetBaseUrl = getNewsletterAssetBaseUrl() || previewSiteUrl;
   const previewLogoUrl = resolveImageUrl(
     simpleTemplate.logoUrl,
-    `${previewSiteUrl}/logo-og-v2.png`,
+    `${previewAssetBaseUrl}/logo-og-v2.png`,
   );
   const previewHeroUrl = resolveImageUrl(
     simpleTemplate.heroImageUrl,
-    `${previewSiteUrl}/logo-header.png`,
+    `${previewAssetBaseUrl}/logo-header.png`,
   );
   const stockNotificationEmailCount =
     Array.isArray(emailLogSummary?.byType)
@@ -1114,7 +1171,7 @@ const NewsletterPage = () => {
                             alt="Logo preview"
                             className="max-h-12 max-w-full object-contain"
                             onError={(event) => {
-                              event.currentTarget.src = `${previewSiteUrl}/logo-og-v2.png`;
+                              event.currentTarget.src = `${previewAssetBaseUrl}/logo-og-v2.png`;
                             }}
                           />
                         ) : (
@@ -1133,7 +1190,7 @@ const NewsletterPage = () => {
                             alt="Hero preview"
                             className="w-full h-full object-contain"
                             onError={(event) => {
-                              event.currentTarget.src = `${previewSiteUrl}/logo-header.png`;
+                              event.currentTarget.src = `${previewAssetBaseUrl}/logo-header.png`;
                             }}
                           />
                         ) : (

@@ -6,6 +6,8 @@ const HEALTHY_ONE_GRAM_HOSTS = new Set([
   "www.healthyonegram.com",
 ]);
 
+const DEFAULT_PRODUCTION_API_URL = "https://healthy-one-gram.el.r.appspot.com";
+
 const LOCAL_API_FALLBACKS = [
   "http://127.0.0.1:8000",
   "http://127.0.0.1:8001",
@@ -115,7 +117,9 @@ const resolveApiBaseUrl = () => {
     process.env.NEXT_PUBLIC_LOCAL_API_URL,
   );
   const preferredLocalFallback =
-    normalizeLocalFallbacks().find((candidate) => candidate.endsWith(":8001")) ||
+    normalizeLocalFallbacks().find((candidate) =>
+      candidate.endsWith(":8001"),
+    ) ||
     normalizeLocalFallbacks()[0] ||
     "";
   const envCandidates = [
@@ -144,14 +148,23 @@ const resolveApiBaseUrl = () => {
     }
 
     if (HEALTHY_ONE_GRAM_HOSTS.has(hostname)) {
-      return origin;
+      return envBaseUrl || origin || DEFAULT_PRODUCTION_API_URL;
+    }
+
+    if (hostname.endsWith(".hosted.app")) {
+      return envBaseUrl || DEFAULT_PRODUCTION_API_URL;
     }
 
     if (envBaseUrl) {
       return envBaseUrl;
     }
 
-    return origin || normalizeLocalFallbacks()[0] || "http://localhost:8001";
+    return (
+      DEFAULT_PRODUCTION_API_URL ||
+      origin ||
+      normalizeLocalFallbacks()[0] ||
+      "http://localhost:8001"
+    );
   }
 
   if (envBaseUrl) {
@@ -159,7 +172,7 @@ const resolveApiBaseUrl = () => {
   }
 
   if (process.env.NODE_ENV === "production") {
-    return "https://healthyonegram.com";
+    return DEFAULT_PRODUCTION_API_URL;
   }
 
   return preferredLocalFallback || "http://localhost:8001";
@@ -255,7 +268,11 @@ const refreshAccessToken = async () => {
 
 axiosClient.interceptors.request.use((config) => {
   const accessToken = getStoredAccessToken();
-  if (accessToken) {
+  const existingAuthorization = String(
+    config?.headers?.Authorization || config?.headers?.authorization || "",
+  ).trim();
+
+  if (accessToken && !existingAuthorization) {
     config.headers = config.headers || {};
     config.headers.Authorization = `Bearer ${accessToken}`;
   }
@@ -330,7 +347,11 @@ const requestWithRetry = async (config, fallbackMessage) => {
       }
       return response.data;
     } catch (error) {
-      if (error?.response?.status === 401 && !requestConfig._retry) {
+      if (
+        error?.response?.status === 401 &&
+        !requestConfig._retry &&
+        requestConfig.skipAuthRefresh !== true
+      ) {
         requestConfig._retry = true;
         const newToken = await refreshAccessToken();
         if (newToken) {
@@ -410,6 +431,8 @@ export const fetchDataFromApi = async (url, options = {}) => {
     {
       method: "get",
       url: normalizedUrl,
+      headers: options?.headers || {},
+      skipAuthRefresh: options?.skipAuthRefresh === true,
       timeout: Number.isFinite(Number(options?.timeoutMs))
         ? Math.max(Number(options.timeoutMs), 1)
         : undefined,

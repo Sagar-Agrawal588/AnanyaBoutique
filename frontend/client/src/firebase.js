@@ -11,9 +11,10 @@ const resolveFirebaseAuthDomain = () => {
     if (
       host === "healthyonegram.com" ||
       host === "www.healthyonegram.com" ||
-      host.endsWith(".healthyonegram.com")
+      host.endsWith(".healthyonegram.com") ||
+      host.endsWith(".hosted.app")
     ) {
-      return "healthyonegram.com";
+      return configuredAuthDomain || host;
     }
   }
 

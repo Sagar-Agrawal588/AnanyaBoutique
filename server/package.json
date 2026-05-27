@@ -26,6 +26,8 @@
     "migrate:payment-cleanup": "node migrations/2026-02-payment-provider-cleanup.mjs",
     "repair:order-identity-indexes": "node scripts/repairOrderIdentityIndexes.mjs",
     "cleanup:demo-orders": "node scripts/removeDemoOrders.mjs",
+    "media:list-firebase": "node scripts/listFirebaseMedia.mjs",
+    "media:download-firebase": "node scripts/downloadFirebaseMedia.mjs",
     "backfill:upi-ref": "node scripts/backfillUpiRef.js",
     "backfill:order-utrs": "node scripts/backfillOrderUtrNumbers.mjs",
     "users:ensure-privileged": "node scripts/ensurePrivilegedUsers.mjs",
@@ -36,6 +38,8 @@
     "invoices:regenerate": "node scripts/regenerateAllInvoices.mjs",
     "normalize:variant-weights": "node scripts/normalizeVariantWeights.mjs",
     "cleanup:product-page-config": "node scripts/cleanupProductPageSnapshotOverrides.mjs"
+    ,
+    "worker:newsletter": "node workers/newsletterWorker.js"
   },
   "keywords": [],
   "author": "",

@@ -1,6 +1,6 @@
 "use client";
 
-import { API_BASE_URL } from "@/utils/api";
+import { fetchDataFromApi, postData } from "@/utils/api";
 
 import { useEffect, useEffectEvent, useState } from "react";
 import { Button, CircularProgress } from "@mui/material";
@@ -12,8 +12,6 @@ import {
   FiUser,
 } from "react-icons/fi";
 import { useRouter } from "next/navigation";
-
-const API_URL = API_BASE_URL;
 
 const INFLUENCER_TOKEN_KEY = "influencerToken";
 const INFLUENCER_REFRESH_TOKEN_KEY = "influencerRefreshToken";
@@ -108,20 +106,31 @@ const AffiliatePortalPage = () => {
     window.dispatchEvent(new Event("influencerAuthChanged"));
   };
 
+  const getInfluencerAuthHeaders = () => {
+    if (typeof window === "undefined") return {};
+    const token = localStorage.getItem(INFLUENCER_TOKEN_KEY);
+    if (!token) return {};
+
+    return {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    };
+  };
+
   const refreshAccessToken = useEffectEvent(async () => {
     if (typeof window === "undefined") return null;
     const refreshToken = localStorage.getItem(INFLUENCER_REFRESH_TOKEN_KEY);
     if (!refreshToken) return null;
 
-    const response = await fetch(`${API_URL}/api/influencers/refresh-token`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
+    const result = await postData(
+      "/api/influencers/refresh-token",
+      { refreshToken },
+      {
+        headers: {
+          "Content-Type": "application/json",
+        },
       },
-      body: JSON.stringify({ refreshToken }),
-    });
-
-    const result = await response.json();
+    );
     if (!result?.success || !result?.data?.accessToken) {
       return null;
     }
@@ -130,29 +139,33 @@ const AffiliatePortalPage = () => {
     return result.data.accessToken;
   });
 
-  const fetchPortalDataWithToken = useEffectEvent(async (token, retry = true) => {
+  const fetchPortalDataWithToken = useEffectEvent(async () => {
     setError("");
     setLoading(true);
     try {
-      let response = await fetch(`${API_URL}/api/influencers/portal/me`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+      let result = await fetchDataFromApi("/api/influencers/portal/me", {
+        skipCache: true,
+        dedupe: false,
+        skipAuthRefresh: true,
+        headers: getInfluencerAuthHeaders(),
       });
 
-      if (response.status === 401 && retry) {
+      if (result?.error === true) {
         const newToken = await refreshAccessToken();
         if (!newToken) {
           throw new Error("Session expired. Please login again.");
         }
-        response = await fetch(`${API_URL}/api/influencers/portal/me`, {
+        localStorage.setItem(INFLUENCER_TOKEN_KEY, newToken);
+        result = await fetchDataFromApi("/api/influencers/portal/me", {
+          skipCache: true,
+          dedupe: false,
+          skipAuthRefresh: true,
           headers: {
             Authorization: `Bearer ${newToken}`,
+            "Content-Type": "application/json",
           },
         });
       }
-
-      const result = await response.json();
 
       if (!result.success) {
         throw new Error(result.message || "Failed to load collaborator stats");
@@ -184,7 +197,7 @@ const AffiliatePortalPage = () => {
     }
 
     setHasToken(true);
-    fetchPortalDataWithToken(token);
+    fetchPortalDataWithToken();
   }, []);
 
   const handleLogout = () => {
@@ -229,8 +242,8 @@ const AffiliatePortalPage = () => {
     <section className="relative min-h-[calc(100vh-var(--header-height,128px))] overflow-hidden bg-[#f6efe4] px-4 py-10">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_18%,rgba(189,122,6,0.13),transparent_32%),radial-gradient(circle_at_82%_68%,rgba(36,21,15,0.10),transparent_34%)]" />
       <div className="relative max-w-5xl mx-auto space-y-8">
-        <div className="overflow-hidden rounded-[32px] border border-[#e2d1c0] bg-white shadow-[0_24px_70px_-50px_rgba(83,52,28,0.7)]">
-          <div className="bg-gradient-to-br from-[#2c1a12] via-[#6f4a32] to-[#bd7a06] p-6 text-white">
+        <div className="overflow-hidden rounded-4xl border border-[#e2d1c0] bg-white shadow-[0_24px_70px_-50px_rgba(83,52,28,0.7)]">
+          <div className="bg-linear-to-br from-[#2c1a12] via-[#6f4a32] to-[#bd7a06] p-6 text-white">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="mb-2 text-xs font-black uppercase tracking-[0.22em] text-amber-100">

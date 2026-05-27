@@ -51,6 +51,8 @@ const clearHomeSlidesPublicCache = () => {
   homeSlidesInFlightRequests.clear();
 };
 
+export { clearHomeSlidesPublicCache };
+
 const normalizeStayDurationMs = (durationMs, durationSeconds) => {
   const parsedMilliseconds = Number(durationMs);
   if (Number.isFinite(parsedMilliseconds) && parsedMilliseconds >= 1500) {

@@ -11,6 +11,15 @@ import { API_BASE_URL } from "@/utils/api";
 import { withAdminBasePath } from "@/utils/basePath";
 
 const API_URL = API_BASE_URL;
+const sanitizeBaseUrl = (value) =>
+  String(value || "")
+    .trim()
+    .replace(/^['"]|['"]$/g, "")
+    .replace(/\/+$/, "");
+const STORE_PUBLIC_BASE_URL =
+  sanitizeBaseUrl(process.env.NEXT_PUBLIC_CLIENT_URL) ||
+  sanitizeBaseUrl(process.env.NEXT_PUBLIC_SITE_URL) ||
+  "";
 
 const normalizeImageInput = (imageValue) => {
   if (!imageValue) return "";
@@ -78,6 +87,9 @@ export const getImageUrl = (
 
   // Local public folder image (like /product_1.png)
   if (normalizedPath.startsWith("/")) {
+    if (STORE_PUBLIC_BASE_URL) {
+      return `${STORE_PUBLIC_BASE_URL}${normalizedPath}`;
+    }
     return withAdminBasePath(normalizedPath);
   }
 

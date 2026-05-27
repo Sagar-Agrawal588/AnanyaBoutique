@@ -4,7 +4,7 @@ service: client
 build_env_variables:
   NEXT_PUBLIC_API_URL: "https://healthy-one-gram.el.r.appspot.com"
   NEXT_PUBLIC_APP_API_URL: "https://healthy-one-gram.el.r.appspot.com"
-  NEXT_PUBLIC_SITE_URL: "https://healthyonegram.com"
+  NEXT_PUBLIC_SITE_URL: "https://healthyonegram-client--studio-8452116634-cdb59.us-central1.hosted.app"
   NEXT_PUBLIC_FIREBASE_API_KEY: "SET_OPTIONAL_AT_DEPLOY"
   NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: "SET_OPTIONAL_AT_DEPLOY"
   NEXT_PUBLIC_FIREBASE_PROJECT_ID: "SET_OPTIONAL_AT_DEPLOY"
@@ -18,7 +18,7 @@ build_env_variables:
 env_variables:
   NEXT_PUBLIC_API_URL: "https://healthy-one-gram.el.r.appspot.com"
   NEXT_PUBLIC_APP_API_URL: "https://healthy-one-gram.el.r.appspot.com"
-  NEXT_PUBLIC_SITE_URL: "https://healthyonegram.com"
+  NEXT_PUBLIC_SITE_URL: "https://healthyonegram-client--studio-8452116634-cdb59.us-central1.hosted.app"
   NEXT_PUBLIC_FIREBASE_API_KEY: "SET_OPTIONAL_AT_DEPLOY"
   NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: "SET_OPTIONAL_AT_DEPLOY"
   NEXT_PUBLIC_FIREBASE_PROJECT_ID: "SET_OPTIONAL_AT_DEPLOY"

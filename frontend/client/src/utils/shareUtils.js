@@ -2,6 +2,8 @@
  * Share Utility - Generate product share URLs with UTM tracking
  */
 
+import { resolvePublicSiteUrl } from "@/utils/siteUrl";
+
 export const generateUTMLink = (baseUrl, productId, productName, platform) => {
   const url = new URL(baseUrl);
 
@@ -14,26 +16,8 @@ export const generateUTMLink = (baseUrl, productId, productName, platform) => {
   return url.toString();
 };
 
-const DEFAULT_PUBLIC_SITE_URL = "https://healthyonegram.com";
-
-const sanitizeBaseUrl = (value) =>
-  String(value || "")
-    .trim()
-    .replace(/^['"]|['"]$/g, "")
-    .replace(/\/+$/, "");
-
 const getPublicSiteOrigin = () => {
-  const configured = sanitizeBaseUrl(process.env.NEXT_PUBLIC_SITE_URL);
-  if (configured) return configured;
-
-  if (typeof window === "undefined") return DEFAULT_PUBLIC_SITE_URL;
-
-  const origin = sanitizeBaseUrl(window.location?.origin);
-  const hostname = String(window.location?.hostname || "").toLowerCase();
-  const isLocalhost = hostname === "localhost" || hostname === "127.0.0.1";
-
-  if (!origin || isLocalhost) return DEFAULT_PUBLIC_SITE_URL;
-  return origin;
+  return resolvePublicSiteUrl();
 };
 
 const getProductShareUrl = (productId, productName = "Product") => {

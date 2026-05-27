@@ -2,6 +2,8 @@ runtime: nodejs22
 service: admin
 
 build_env_variables:
+  NEXT_PUBLIC_ADMIN_URL: "https://healthyonegram-admin--studio-8452116634-cdb59.us-central1.hosted.app/admin"
+  NEXT_PUBLIC_CLIENT_URL: "https://healthyonegram-client--studio-8452116634-cdb59.us-central1.hosted.app"
   NEXT_PUBLIC_API_URL: "https://healthy-one-gram.el.r.appspot.com"
   NEXT_PUBLIC_SITE_URL: "https://healthyonegram.com"
   NEXT_PUBLIC_FIREBASE_API_KEY: "SET_OPTIONAL_AT_DEPLOY"
@@ -13,6 +15,8 @@ build_env_variables:
   NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID: "SET_OPTIONAL_AT_DEPLOY"
 
 env_variables:
+  NEXT_PUBLIC_ADMIN_URL: "https://healthyonegram-admin--studio-8452116634-cdb59.us-central1.hosted.app/admin"
+  NEXT_PUBLIC_CLIENT_URL: "https://healthyonegram-client--studio-8452116634-cdb59.us-central1.hosted.app"
   NEXT_PUBLIC_API_URL: "https://healthy-one-gram.el.r.appspot.com"
   NEXT_PUBLIC_SITE_URL: "https://healthyonegram.com"
   NEXT_PUBLIC_FIREBASE_API_KEY: "SET_OPTIONAL_AT_DEPLOY"

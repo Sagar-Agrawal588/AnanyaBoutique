@@ -1,5 +1,6 @@
 import FlavorThemeProvider from "@/context/ThemeContext";
 import ThemeProvider from "@/context/theme-provider";
+import { resolvePublicSiteUrl } from "@/utils/siteUrl";
 import { Inter, Poppins } from "next/font/google";
 import Script from "next/script";
 import ClientLayout from "./ClientLayout.jsx";
@@ -18,13 +19,7 @@ const poppins = Poppins({
   variable: "--font-poppins",
 });
 
-const siteUrl = String(
-  process.env.NEXT_PUBLIC_SITE_URL || "https://healthyonegram.com",
-)
-  .trim()
-  .replace(/^["']|["']$/g, "")
-  .replace(/\/+$/, "");
-const defaultMetadata = {
+const buildDefaultMetadata = (siteUrl) => ({
   metadataBase: new URL(siteUrl),
   title: "Healthy One Gram - Premium Peanut Butter Store",
   description:
@@ -68,7 +63,7 @@ const defaultMetadata = {
     index: true,
     follow: true,
   },
-};
+});
 
 const normalizeApiBase = (value) =>
   String(value || "")
@@ -117,6 +112,12 @@ const headerBackgroundBootstrapScript = `(function () {
 export async function generateMetadata({ request }) {
   try {
     const pathname = request?.nextUrl?.pathname || "/";
+    const requestHost =
+      request?.headers?.get("x-forwarded-host") || request?.headers?.get("host") || "";
+    const requestProtocol =
+      request?.headers?.get("x-forwarded-proto") || "https:";
+    const siteUrl = resolvePublicSiteUrl({ requestHost, requestProtocol });
+    const defaultMetadata = buildDefaultMetadata(siteUrl);
     const apiBase = normalizeApiBase(process.env.NEXT_PUBLIC_API_URL || siteUrl);
     const resp = await fetchWithTimeout(`${apiBase}/api/settings/public`, {
       next: { revalidate: PUBLIC_SETTINGS_REVALIDATE_SECONDS },
