@@ -417,7 +417,10 @@ const baseServerStatusPayload = Object.freeze({
   version: "1.0.0",
 });
 const ACCESS_LOG_SKIP_PATHS = new Set([
+  "/health",
   "/healthz",
+  "/api/health",
+  "/api/healthz",
   "/api/banners",
   "/api/home-slides",
   "/api/settings/maintenance-status",
@@ -470,7 +473,11 @@ const COMPRESSED_ASSET_PATH_REGEX =
   /\.(?:br|gz|zip|7z|rar|png|jpe?g|gif|webp|avif|mp4|webm|mp3|ogg|pdf|woff2?|ttf|otf)$/i;
 
 const isHealthRoute = (requestPath) =>
-  requestPath === "/healthz" || requestPath === "/";
+  requestPath === "/health" ||
+  requestPath === "/healthz" ||
+  requestPath === "/api/health" ||
+  requestPath === "/api/healthz" ||
+  requestPath === "/";
 
 const isPublicGetHeavyBypassPath = (requestPath) => {
   if (!requestPath.startsWith("/api/")) return false;
@@ -537,7 +544,19 @@ app.get("/healthz", (_req, res) => {
   res.status(200).send("ok");
 });
 
+app.get("/health", (_req, res) => {
+  res.set("Cache-Control", "no-store, max-age=0");
+  res.type("text/plain");
+  res.status(200).send("ok");
+});
+
 app.get("/api/healthz", (_req, res) => {
+  res.set("Cache-Control", "no-store, max-age=0");
+  res.type("text/plain");
+  res.status(200).send("ok");
+});
+
+app.get("/api/health", (_req, res) => {
   res.set("Cache-Control", "no-store, max-age=0");
   res.type("text/plain");
   res.status(200).send("ok");
