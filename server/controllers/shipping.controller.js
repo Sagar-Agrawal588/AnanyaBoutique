@@ -19,6 +19,7 @@ import {
   loginXpressbees,
   trackShipment,
 } from "../services/xpressbees.service.js";
+import { pollExpressbeesTracking } from "../services/expressbeesPolling.service.js";
 import {
   getShippingDisplayMetrics,
   getShippingQuote,
@@ -32,6 +33,12 @@ import {
   mapExpressbeesToOrderStatus,
   mapExpressbeesToShipmentStatus,
 } from "../utils/orderStatus.js";
+import {
+  extractManifestId,
+  extractShipmentId,
+  extractTrackingStatus,
+  extractTrackingUrl,
+} from "../utils/xpressbeesTracking.js";
 
 const normalizeShipmentStatus = (status) => {
   const mapped = mapExpressbeesToShipmentStatus(status);
@@ -524,30 +531,46 @@ export const xpressbeesTrackShipment = asyncHandler(async (req, res) => {
     const data = await trackShipment(awb);
 
     if (orderId && data?.status) {
-      const status =
-        data?.data?.status ||
-        data?.data?.status_code ||
-        data?.data?.shipment_status ||
-        data?.data?.current_status ||
-        data?.status_code ||
-        data?.status;
-
-      await syncCarrierStateToOrder({
-        orderId,
-        awb,
-        status,
-        manifestId:
-          data?.data?.manifest_id || data?.data?.manifestId || null,
-        trackingUrl:
-          data?.data?.tracking_url || data?.data?.trackingUrl || null,
-        shipmentId:
-          data?.data?.shipment_id || data?.data?.shipmentId || null,
-        courierName: "Xpressbees",
-        source: "XPRESSBEES_TRACK",
-      });
+      const status = extractTrackingStatus(data);
+      if (status) {
+        await syncCarrierStateToOrder({
+          orderId,
+          awb,
+          status,
+          manifestId: extractManifestId(data),
+          trackingUrl: extractTrackingUrl(data),
+          shipmentId: extractShipmentId(data),
+          courierName: "Xpressbees",
+          source: "XPRESSBEES_TRACK",
+        });
+      }
     }
 
     return sendSuccess(res, data, "Shipment tracking fetched");
+  } catch (error) {
+    return sendError(res, error);
+  }
+});
+
+export const xpressbeesSyncActiveShipments = asyncHandler(async (req, res) => {
+  try {
+    const requestedBatchSize = Number(
+      req.body?.batchSize || req.query?.batchSize || 50,
+    );
+    const batchSize = Number.isFinite(requestedBatchSize)
+      ? Math.min(Math.max(requestedBatchSize, 5), 100)
+      : 50;
+
+    const summary = await pollExpressbeesTracking({
+      batchSize,
+      source: "XPRESSBEES_ADMIN_SYNC",
+    });
+
+    return sendSuccess(
+      res,
+      summary,
+      "Xpressbees active shipment statuses synced",
+    );
   } catch (error) {
     return sendError(res, error);
   }
@@ -595,17 +618,10 @@ export const xpressbeesCancelShipment = asyncHandler(async (req, res) => {
       await syncCarrierStateToOrder({
         orderId,
         awb,
-        status:
-          data?.data?.status ||
-          data?.data?.shipment_status ||
-          data?.status_code ||
-          "cancelled",
-        manifestId:
-          data?.data?.manifest_id || data?.data?.manifestId || null,
-        trackingUrl:
-          data?.data?.tracking_url || data?.data?.trackingUrl || null,
-        shipmentId:
-          data?.data?.shipment_id || data?.data?.shipmentId || null,
+        status: extractTrackingStatus(data) || "cancelled",
+        manifestId: extractManifestId(data),
+        trackingUrl: extractTrackingUrl(data),
+        shipmentId: extractShipmentId(data),
         courierName: "Xpressbees",
         source: "XPRESSBEES_CANCEL",
       });

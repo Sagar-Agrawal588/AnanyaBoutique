@@ -1,7 +1,7 @@
 "use client";
 
 import { useAdmin } from "@/context/AdminContext";
-import { API_BASE_URL, uploadFile } from "@/utils/api";
+import { getData, postData, putData, uploadFile } from "@/utils/api";
 import {
   Alert,
   Button,
@@ -20,64 +20,15 @@ import {
 import { useEffect, useState } from "react";
 import { MdAdd, MdDelete, MdInfo, MdRefresh, MdSave } from "react-icons/md";
 
-const buildApiUrl = (path) => {
-  const safePath = String(path || "").startsWith("/") ? path : `/${path}`;
-  if (!API_BASE_URL) return safePath;
-  return `${API_BASE_URL}${safePath}`;
-};
-
 const getAdminToken = (tokenFromContext) => {
   if (tokenFromContext) return tokenFromContext;
   if (typeof window === "undefined") return null;
   return localStorage.getItem("adminToken");
 };
 
-const readResponseBody = async (response) => {
-  const contentType = response.headers.get("content-type") || "";
-  if (contentType.includes("application/json")) {
-    return response.json();
-  }
-  const text = await response.text();
-  return text ? { message: text } : {};
-};
-
-const apiFetch = async ({ path, method = "GET", token, body }) => {
-  const url = buildApiUrl(path);
-  if (!url) {
-    throw new Error("Missing NEXT_PUBLIC_API_URL");
-  }
-
-  try {
-    const response = await fetch(url, {
-      method,
-      headers: {
-        ...(body ? { "Content-Type": "application/json" } : {}),
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      credentials: "include",
-      body: body ? JSON.stringify(body) : undefined,
-    });
-
-    const data = await readResponseBody(response);
-    if (!response.ok) {
-      const message =
-        data?.message ||
-        data?.error ||
-        response.statusText ||
-        "Request failed";
-      throw new Error(`[${response.status}] ${message}`);
-    }
-
-    return data;
-  } catch (error) {
-    const message = String(error?.message || "");
-    if (message.includes("Failed to fetch")) {
-      throw new Error(
-        `Network error calling ${url}. Check API URL, backend, and CORS.`,
-      );
-    }
-    throw error;
-  }
+const assertApiSuccess = (data, fallbackMessage) => {
+  if (data?.success) return data;
+  throw new Error(data?.message || data?.error || fallbackMessage);
 };
 
 /**
@@ -153,21 +104,21 @@ const AboutPageEditor = () => {
         throw new Error("Admin token missing. Please login again.");
       }
 
-      const data = await apiFetch({
-        path: "/api/about/admin",
-        token: adminToken,
-      });
+      const data = assertApiSuccess(
+        await getData("/api/about/admin", adminToken),
+        "Failed to load about page content.",
+      );
 
       if (data.success && data.data) {
-        setContent({
-          theme: { ...content.theme, ...(data.data.theme || {}) },
-          sections: { ...content.sections, ...(data.data.sections || {}) },
-          hero: { ...content.hero, ...(data.data.hero || {}) },
-          standard: { ...content.standard, ...(data.data.standard || {}) },
-          whyUs: { ...content.whyUs, ...(data.data.whyUs || {}) },
-          values: { ...content.values, ...(data.data.values || {}) },
-          cta: { ...content.cta, ...(data.data.cta || {}) },
-        });
+        setContent((prev) => ({
+          theme: { ...prev.theme, ...(data.data.theme || {}) },
+          sections: { ...prev.sections, ...(data.data.sections || {}) },
+          hero: { ...prev.hero, ...(data.data.hero || {}) },
+          standard: { ...prev.standard, ...(data.data.standard || {}) },
+          whyUs: { ...prev.whyUs, ...(data.data.whyUs || {}) },
+          values: { ...prev.values, ...(data.data.values || {}) },
+          cta: { ...prev.cta, ...(data.data.cta || {}) },
+        }));
       }
     } catch (error) {
       console.error("AboutPageEditor fetchContent error:", error);
@@ -190,12 +141,10 @@ const AboutPageEditor = () => {
         throw new Error("Admin token missing. Please login again.");
       }
 
-      const data = await apiFetch({
-        path: "/api/about/admin",
-        method: "PUT",
-        token: adminToken,
-        body: content,
-      });
+      const data = assertApiSuccess(
+        await putData("/api/about/admin", content, adminToken),
+        "Failed to save about page.",
+      );
 
       if (data.success) {
         setSnackbar({
@@ -227,20 +176,22 @@ const AboutPageEditor = () => {
         throw new Error("Admin token missing. Please login again.");
       }
 
-      const data = await apiFetch({
-        path: "/api/about/admin/reset",
-        method: "POST",
-        token: adminToken,
-      });
+      const data = assertApiSuccess(
+        await postData("/api/about/admin/reset", {}, adminToken),
+        "Failed to reset about page.",
+      );
 
       if (data.success) {
-        setContent({
-          hero: data.data.hero,
-          standard: data.data.standard,
-          whyUs: data.data.whyUs,
-          values: data.data.values,
-          cta: data.data.cta,
-        });
+        setContent((prev) => ({
+          ...prev,
+          theme: { ...prev.theme, ...(data.data.theme || {}) },
+          sections: { ...prev.sections, ...(data.data.sections || {}) },
+          hero: { ...prev.hero, ...(data.data.hero || {}) },
+          standard: { ...prev.standard, ...(data.data.standard || {}) },
+          whyUs: { ...prev.whyUs, ...(data.data.whyUs || {}) },
+          values: { ...prev.values, ...(data.data.values || {}) },
+          cta: { ...prev.cta, ...(data.data.cta || {}) },
+        }));
         setSnackbar({
           open: true,
           message: "About page reset to defaults",

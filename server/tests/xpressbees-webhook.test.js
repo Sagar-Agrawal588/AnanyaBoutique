@@ -9,6 +9,7 @@ import {
   mapExpressbeesToOrderStatus,
   mapExpressbeesToShipmentStatus,
 } from "../utils/orderStatus.js";
+import { extractTrackingStatus } from "../utils/xpressbeesTracking.js";
 
 test("Xpressbees webhook auth validates X-HMAC-SHA256 signature against raw body", () => {
   const secret = "test-webhook-secret";
@@ -79,6 +80,8 @@ test("Xpressbees status codes map to supported order and shipment states", () =>
     { code: "RT-LT", order: ORDER_STATUS.RTO, shipment: "rto_in_transit" },
     { code: "RT-DG", order: ORDER_STATUS.RTO, shipment: "rto_in_transit" },
     { code: "RT-DL", order: ORDER_STATUS.RTO_COMPLETED, shipment: "rto_delivered" },
+    { code: "CN", order: ORDER_STATUS.CANCELLED, shipment: "cancelled" },
+    { code: "CAN", order: ORDER_STATUS.CANCELLED, shipment: "cancelled" },
   ];
 
   for (const testCase of cases) {
@@ -95,3 +98,20 @@ test("Xpressbees status codes map to supported order and shipment states", () =>
   }
 });
 
+test("Xpressbees tracking parser extracts nested cancellation statuses", () => {
+  assert.equal(
+    extractTrackingStatus({
+      status: true,
+      data: { current_status: { status: "Shipment Cancelled" } },
+    }),
+    "Shipment Cancelled",
+  );
+
+  assert.equal(
+    extractTrackingStatus({
+      status: true,
+      data: [{ status: "PP" }, { shipment_status: "CN" }],
+    }),
+    "CN",
+  );
+});

@@ -12,6 +12,7 @@ import {
   xpressbeesNdrList,
   xpressbeesReverseShipment,
   xpressbeesServiceability,
+  xpressbeesSyncActiveShipments,
   xpressbeesTrackShipment,
 } from "../controllers/shipping.controller.js";
 import admin from "../middlewares/admin.js";
@@ -34,6 +35,7 @@ router.get("/xpressbees/couriers", xpressbeesCouriers);
 router.post("/xpressbees/serviceability", xpressbeesServiceability);
 router.post("/xpressbees/book", xpressbeesBookShipment);
 router.get("/xpressbees/track/:awb", xpressbeesTrackShipment);
+router.post("/xpressbees/sync-active", xpressbeesSyncActiveShipments);
 router.post("/xpressbees/manifest", xpressbeesManifest);
 router.post("/xpressbees/cancel", xpressbeesCancelShipment);
 router.get("/xpressbees/ndr", xpressbeesNdrList);

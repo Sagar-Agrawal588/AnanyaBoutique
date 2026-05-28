@@ -11,43 +11,82 @@ import { syncOrderToFirestore } from "../utils/orderFirestoreSync.js";
 import { emitOrderStatusUpdate } from "../realtime/orderEvents.js";
 import { ensureOrderInvoice } from "../controllers/order.controller.js";
 import { syncShipmentStateOnOrder } from "./automatedShipping.service.js";
+import {
+  extractTrackingStatus,
+  extractTrackingUrl,
+} from "../utils/xpressbeesTracking.js";
 
 let pollingTimer = null;
 let pollingInFlight = false;
 
-const isEnabled = () => {
-  const flag = process.env.XPRESSBEES_POLL_ENABLED;
-  if (flag === undefined || flag === null) return false;
-  return String(flag).toLowerCase() === "true";
+const POLL_SOURCE = "XPRESSBEES_POLL";
+
+const hasXpressbeesCredentials = () =>
+  Boolean(
+    String(process.env.XPRESSBEES_TOKEN || "").trim() ||
+      (String(process.env.XPRESSBEES_EMAIL || "").trim() &&
+        String(process.env.XPRESSBEES_PASSWORD || "").trim()),
+  );
+
+const toBooleanFlag = (value, fallback = false) => {
+  const normalized = String(value ?? "")
+    .trim()
+    .toLowerCase();
+  if (!normalized) return fallback;
+  if (["true", "1", "yes", "on"].includes(normalized)) return true;
+  if (["false", "0", "no", "off"].includes(normalized)) return false;
+  return fallback;
 };
 
-const parseTrackingStatus = (data) => {
-  return (
-    data?.data?.status ||
-    data?.data?.status_code ||
-    data?.data?.shipment_status ||
-    data?.data?.current_status ||
-    data?.status_code ||
-    data?.status ||
-    null
-  );
+const isEnabled = () => {
+  const flag = process.env.XPRESSBEES_POLL_ENABLED;
+  if (flag !== undefined && flag !== null) {
+    return toBooleanFlag(flag, false);
+  }
+
+  return process.env.NODE_ENV === "production" && hasXpressbeesCredentials();
 };
 
 const getPollingConfig = () => {
-  const intervalMinutes = Number(process.env.XPRESSBEES_POLL_INTERVAL_MINUTES || 15);
-  const batchSize = Number(process.env.XPRESSBEES_POLL_BATCH_SIZE || 25);
+  const intervalMinutes = Number(process.env.XPRESSBEES_POLL_INTERVAL_MINUTES || 5);
+  const batchSize = Number(process.env.XPRESSBEES_POLL_BATCH_SIZE || 50);
   return {
     intervalMs: Math.max(intervalMinutes, 2) * 60 * 1000,
     batchSize: Math.max(batchSize, 5),
   };
 };
 
-export const pollExpressbeesTracking = async () => {
-  if (pollingInFlight) return;
+export const pollExpressbeesTracking = async (options = {}) => {
+  if (pollingInFlight) {
+    return {
+      alreadyRunning: true,
+      reason: "in_flight",
+      checked: 0,
+      updated: 0,
+      failed: 0,
+      skipped: 0,
+      total: 0,
+    };
+  }
+
   pollingInFlight = true;
+  const summary = {
+    alreadyRunning: false,
+    reason: null,
+    checked: 0,
+    updated: 0,
+    failed: 0,
+    skipped: 0,
+    total: 0,
+  };
 
   try {
-    const { batchSize } = getPollingConfig();
+    const { batchSize: configuredBatchSize } = getPollingConfig();
+    const requestedBatchSize = Number(options.batchSize || configuredBatchSize);
+    const batchSize = Number.isFinite(requestedBatchSize)
+      ? Math.max(Math.floor(requestedBatchSize), 5)
+      : configuredBatchSize;
+    const source = options.source || POLL_SOURCE;
 
     const orders = await OrderModel.find({
       shipping_provider: "XPRESSBEES",
@@ -57,20 +96,38 @@ export const pollExpressbeesTracking = async () => {
           ORDER_STATUS.DELIVERED,
           ORDER_STATUS.COMPLETED,
           ORDER_STATUS.RTO_COMPLETED,
-          ORDER_STATUS.CANCELLED,
         ],
       },
+      $nor: [
+        {
+          order_status: ORDER_STATUS.CANCELLED,
+          shipmentStatus: "cancelled",
+        },
+        {
+          order_status: ORDER_STATUS.CANCELLED,
+          shipment_status: "cancelled",
+        },
+      ],
     })
       .limit(batchSize);
+
+    summary.total = orders.length;
 
     for (const order of orders) {
       try {
         const awb = order.awb_number || order.awbNumber;
-        if (!awb) continue;
+        if (!awb) {
+          summary.skipped += 1;
+          continue;
+        }
 
         const data = await trackShipment(awb);
-        const rawStatus = parseTrackingStatus(data);
-        if (!rawStatus) continue;
+        const rawStatus = extractTrackingStatus(data);
+        summary.checked += 1;
+        if (!rawStatus) {
+          summary.skipped += 1;
+          continue;
+        }
 
         const previousLegacyShipmentStatus = order.shipment_status;
         const previousCanonicalShipmentStatus = order.shipmentStatus;
@@ -78,7 +135,7 @@ export const pollExpressbeesTracking = async () => {
         const mappedOrderStatus = mapExpressbeesToOrderStatus(rawStatus);
         const transition = mappedOrderStatus
           ? applyOrderStatusTransition(order, mappedOrderStatus, {
-              source: "EXPRESSBEES_POLL",
+              source,
             })
           : { updated: false, reason: "no_status" };
 
@@ -86,8 +143,8 @@ export const pollExpressbeesTracking = async () => {
           order,
           awb,
           status: rawStatus,
-          trackingUrl: data?.data?.tracking_url || data?.data?.trackingUrl || null,
-          source: "EXPRESSBEES_POLL",
+          trackingUrl: extractTrackingUrl(data),
+          source,
         });
 
         const shipmentChanged =
@@ -95,6 +152,7 @@ export const pollExpressbeesTracking = async () => {
           previousCanonicalShipmentStatus !== order.shipmentStatus ||
           previousTrackingUrl !== order.trackingUrl;
         if (!transition.updated && !shipmentChanged) {
+          summary.skipped += 1;
           continue;
         }
 
@@ -112,7 +170,8 @@ export const pollExpressbeesTracking = async () => {
           }),
         );
 
-        emitOrderStatusUpdate(order, "EXPRESSBEES_POLL");
+        emitOrderStatusUpdate(order, source);
+        summary.updated += 1;
 
         if (
           ["delivered", "completed"].includes(String(order.order_status || "").toLowerCase()) &&
@@ -128,7 +187,7 @@ export const pollExpressbeesTracking = async () => {
         }
 
         logger.info("expressbeesPoll", "Tracking polled", {
-          source: "EXPRESSBEES_POLL",
+          source,
           orderId: order._id,
           awb,
           status: rawStatus,
@@ -137,6 +196,7 @@ export const pollExpressbeesTracking = async () => {
           transition: transition.reason || (transition.updated ? "updated" : "skipped"),
         });
       } catch (err) {
+        summary.failed += 1;
         logger.error("expressbeesPoll", "Tracking poll failed", {
           orderId: order?._id,
           awb: order?.awb_number,
@@ -144,6 +204,7 @@ export const pollExpressbeesTracking = async () => {
         });
       }
     }
+    return summary;
   } finally {
     pollingInFlight = false;
   }
@@ -151,7 +212,14 @@ export const pollExpressbeesTracking = async () => {
 
 export const startExpressbeesPolling = () => {
   if (!isEnabled()) {
-    logger.info("expressbeesPoll", "Polling disabled");
+    logger.info("expressbeesPoll", "Polling disabled", {
+      configured:
+        process.env.XPRESSBEES_POLL_ENABLED !== undefined
+          ? process.env.XPRESSBEES_POLL_ENABLED
+          : "auto",
+      hasCredentials: hasXpressbeesCredentials(),
+      environment: process.env.NODE_ENV || "development",
+    });
     return null;
   }
 

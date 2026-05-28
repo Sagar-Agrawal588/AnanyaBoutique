@@ -184,6 +184,13 @@ export const normalizeExpressbeesStatus = (status) => {
   if (compactCode === "EX") return ORDER_STATUS.SHIPPED;
   if (compactCode === "OFD") return ORDER_STATUS.OUT_FOR_DELIVERY;
   if (compactCode === "DL") return ORDER_STATUS.DELIVERED;
+  if (
+    ["CN", "CAN", "CANC", "CANCEL", "CANCELLED", "CANCELED"].includes(
+      compactCode,
+    )
+  ) {
+    return ORDER_STATUS.CANCELLED;
+  }
   if (compactCode === "LT" || compactCode === "DG") return "rto_initiated";
   if (compactCode === "RT") return "rto_initiated";
   if (compactCode === "RT-IT" || compactCode === "RTIT") {

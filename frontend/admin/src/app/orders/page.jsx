@@ -8,6 +8,7 @@ import {
   deleteData,
   getData,
   patchData,
+  postData,
 } from "@/utils/api";
 import { withAdminBasePath } from "@/utils/basePath";
 import { ADMIN_PLACEHOLDER_IMAGE } from "@/utils/mediaDefaults";
@@ -17,7 +18,7 @@ import Pagination from "@mui/material/Pagination";
 import Select from "@mui/material/Select";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "react-hot-toast";
 import { FaAngleDown } from "react-icons/fa6";
 import { FiSearch } from "react-icons/fi";
@@ -55,6 +56,12 @@ const SETTLED_PAYMENT_STATUSES = new Set([
   "successful",
 ]);
 const DISPATCHED_ORDER_STATUSES = new Set(["shipped", "out_for_delivery"]);
+const TERMINAL_ORDER_STATUSES = new Set([
+  "cancelled",
+  "delivered",
+  "completed",
+  "rto_completed",
+]);
 
 const ORDER_FILTER_OPTIONS = [
   { value: "all", label: "All Orders" },
@@ -555,6 +562,38 @@ const resolveTrackingUrl = (order = {}) => {
       ? buildXpressbeesTrackingUrl(awb, explicitUrl)
       : explicitUrl;
   }
+};
+
+const resolveOrderAwb = (order = {}) =>
+  String(
+    order?.awbNo ||
+      order?.awb_no ||
+      order?.awbNumber ||
+      order?.awb_number ||
+      order?.shipment?.awbNo ||
+      order?.shipment?.awb_no ||
+      order?.shipment?.awb_number ||
+      order?.shipment?.awb ||
+      order?.shipping?.awbNo ||
+      order?.shipping?.awb_no ||
+      order?.shipping?.awb_number ||
+      order?.shipping?.awb ||
+      "",
+  ).trim();
+
+const shouldSyncXpressbeesOrder = (order = {}) => {
+  const awb = resolveOrderAwb(order);
+  if (!awb) return false;
+
+  const provider = String(
+    order?.shipping_provider || order?.courierName || "",
+  ).toLowerCase();
+  const status = normalizeOrderStatus(order?.order_status || order?.status);
+
+  return (
+    (provider.includes("xpressbees") || provider.includes("xpress")) &&
+    !TERMINAL_ORDER_STATUSES.has(status)
+  );
 };
 
 const OrderRow = ({ order, index, token }) => {
@@ -1351,6 +1390,8 @@ const Orders = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const shippingSyncInFlightRef = useRef(false);
+  const lastShippingSyncAtRef = useRef(0);
   const { intervalMs } = useLiveRefreshSetting();
   const refreshConfig = useMemo(
     () => ({
@@ -1358,6 +1399,34 @@ const Orders = () => {
       fallbackIntervalMs: Math.max(intervalMs * 30, 30000),
     }),
     [intervalMs],
+  );
+
+  const syncActiveXpressbeesShipments = useCallback(
+    async (visibleOrders = []) => {
+      if (!token || shippingSyncInFlightRef.current) return;
+      if (!visibleOrders.some(shouldSyncXpressbeesOrder)) return;
+
+      const now = Date.now();
+      const throttleMs = Math.max(intervalMs * 2, 60000);
+      if (now - lastShippingSyncAtRef.current < throttleMs) return;
+
+      shippingSyncInFlightRef.current = true;
+      lastShippingSyncAtRef.current = now;
+      try {
+        await postData(
+          "/api/shipping/xpressbees/sync-active",
+          { batchSize: 50 },
+          token,
+        );
+      } catch (error) {
+        if (process.env.NODE_ENV !== "production") {
+          console.warn("Xpressbees shipment sync failed.", error);
+        }
+      } finally {
+        shippingSyncInFlightRef.current = false;
+      }
+    },
+    [intervalMs, token],
   );
 
   const fetchOrders = useCallback(
@@ -1415,6 +1484,7 @@ const Orders = () => {
           const nextTotalPages = Number(payload?.pagination?.totalPages || 1);
           setOrders(visibleOrders);
           setTotalPages(nextTotalPages > 0 ? nextTotalPages : 1);
+          void syncActiveXpressbeesShipments(visibleOrders);
         } else {
           // Keep existing rows if request failed; avoid false empty state flashes.
           if (process.env.NODE_ENV !== "production") {
@@ -1436,7 +1506,7 @@ const Orders = () => {
       setIsLoading(false);
       setRefreshing(false);
     },
-    [page, search, statusFilter, token],
+    [page, search, statusFilter, syncActiveXpressbeesShipments, token],
   );
 
   useEffect(() => {
