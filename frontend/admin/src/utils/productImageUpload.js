@@ -1,7 +1,8 @@
 const ASPECT_RATIO_TOLERANCE = 0.18;
+const BYTES_PER_MB = 1024 * 1024;
 
 export const PRODUCT_IMAGE_MAX_FILES = 10;
-export const PRODUCT_IMAGE_MAX_SIZE_BYTES = 5 * 1024 * 1024;
+export const PRODUCT_IMAGE_MAX_SIZE_BYTES = 20 * BYTES_PER_MB;
 
 export const PRODUCT_IMAGE_DESKTOP_SPEC = {
   label: "Desktop storefront",
@@ -16,14 +17,19 @@ export const PRODUCT_IMAGE_MOBILE_SPEC = {
 };
 
 export const PRODUCT_IMAGE_MIN_SPEC = {
-  label: "Minimum accepted",
-  width: 900,
-  height: 900,
+  label: "Recommended minimum",
+  width: 600,
+  height: 600,
 };
 
 const PRODUCT_IMAGE_TARGET_ASPECT_RATIO = 1;
 
 const roundToTwo = (value) => Math.round(Number(value || 0) * 100) / 100;
+
+export const formatFileSize = (bytes) => {
+  const sizeInMb = roundToTwo(Number(bytes || 0) / BYTES_PER_MB);
+  return `${sizeInMb}MB`;
+};
 
 export const formatAspectRatio = (value) => `${roundToTwo(value)}:1`;
 
@@ -75,13 +81,6 @@ export const getProductImageDimensionError = (dimensions) => {
     return "We could not read this image. Please choose another file.";
   }
 
-  if (
-    dimensions.width < PRODUCT_IMAGE_MIN_SPEC.width ||
-    dimensions.height < PRODUCT_IMAGE_MIN_SPEC.height
-  ) {
-    return `${PRODUCT_IMAGE_MIN_SPEC.label} is ${PRODUCT_IMAGE_MIN_SPEC.width} x ${PRODUCT_IMAGE_MIN_SPEC.height}. This file is ${formatImageDimensions(dimensions)}.`;
-  }
-
   return "";
 };
 
@@ -98,6 +97,12 @@ export const getProductImageWarnings = (dimensions) => {
   if (!meetsSpec(dimensions, PRODUCT_IMAGE_DESKTOP_SPEC)) {
     warnings.push(
       `${PRODUCT_IMAGE_DESKTOP_SPEC.label} looks best at ${PRODUCT_IMAGE_DESKTOP_SPEC.width} x ${PRODUCT_IMAGE_DESKTOP_SPEC.height} or larger.`,
+    );
+  }
+
+  if (!meetsSpec(dimensions, PRODUCT_IMAGE_MIN_SPEC)) {
+    warnings.push(
+      `${PRODUCT_IMAGE_MIN_SPEC.label} is ${PRODUCT_IMAGE_MIN_SPEC.width} x ${PRODUCT_IMAGE_MIN_SPEC.height}. This upload is ${formatImageDimensions(dimensions)} and will still upload, but sharper assets look better.`,
     );
   }
 

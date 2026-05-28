@@ -6,6 +6,7 @@ import {
 import { getData, postData } from "@/utils/api";
 import {
   clearAdminSession,
+  clearSharedAuthCookies,
   persistAdminSession,
   readStoredAdminSession,
 } from "@/utils/authSession";
@@ -78,6 +79,7 @@ export const AdminProvider = ({ children }) => {
 
   const logout = useCallback(() => {
     clearAdminSession();
+    clearSharedAuthCookies();
     setAdmin(null);
     setToken(null);
     router.push("/login");
@@ -214,6 +216,11 @@ export const AdminProvider = ({ children }) => {
 
   const login = useCallback(async (email, password, options = {}) => {
     try {
+      clearAdminSession();
+      clearSharedAuthCookies();
+      setAdmin(null);
+      setToken(null);
+
       const rememberMe = options?.rememberMe !== false;
       const response = await postData("/api/admin/login", {
         email,

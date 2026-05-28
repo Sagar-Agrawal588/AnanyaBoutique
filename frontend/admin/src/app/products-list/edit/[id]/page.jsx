@@ -6,6 +6,7 @@ import { getData, putData, uploadFile, uploadVideoFile } from "@/utils/api";
 import { getImageUrl } from "@/utils/imageUtils";
 import {
   buildProductImageAsset,
+  formatFileSize,
   formatImageDimensions,
   getProductImageDimensionError,
   getProductImageQualityLabel,
@@ -289,7 +290,9 @@ const EditProduct = () => {
     const assets = await Promise.all(
       files.slice(0, remainingSlots).map(async (file) => {
         if (file.size > PRODUCT_IMAGE_MAX_SIZE_BYTES) {
-          toast.error(`${file.name}: image size should be less than 5MB`);
+          toast.error(
+            `${file.name}: image size should be less than ${formatFileSize(PRODUCT_IMAGE_MAX_SIZE_BYTES)}`,
+          );
           return null;
         }
 
@@ -979,7 +982,7 @@ const EditProduct = () => {
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-slate-800">
-                    Minimum accepted
+                    Recommended minimum
                   </p>
                   <p className="mt-1 text-xs text-slate-600">
                     {PRODUCT_IMAGE_MIN_SPEC.width} x{" "}
@@ -1070,8 +1073,9 @@ const EditProduct = () => {
               )}
             </div>
             <p className="text-sm text-gray-500">
-              Max {PRODUCT_IMAGE_MAX_FILES} images, 5MB each. Supported: JPG,
-              PNG, WebP
+              Max {PRODUCT_IMAGE_MAX_FILES} images,{" "}
+              {formatFileSize(PRODUCT_IMAGE_MAX_SIZE_BYTES)} each. Supported:
+              JPG, PNG, WebP
             </p>
           </div>
 

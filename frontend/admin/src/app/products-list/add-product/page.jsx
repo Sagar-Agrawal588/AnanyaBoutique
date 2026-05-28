@@ -5,6 +5,7 @@ import { useAdmin } from "@/context/AdminContext";
 import { getData, postData, uploadFile, uploadVideoFile } from "@/utils/api";
 import {
   buildProductImageAsset,
+  formatFileSize,
   formatImageDimensions,
   getProductImageDimensionError,
   getProductImageQualityLabel,
@@ -173,7 +174,9 @@ const AddProduct = () => {
     const assets = await Promise.all(
       files.slice(0, remainingSlots).map(async (file) => {
         if (file.size > PRODUCT_IMAGE_MAX_SIZE_BYTES) {
-          toast.error(`${file.name}: image size should be less than 5MB`);
+          toast.error(
+            `${file.name}: image size should be less than ${formatFileSize(PRODUCT_IMAGE_MAX_SIZE_BYTES)}`,
+          );
           return null;
         }
 
@@ -830,7 +833,7 @@ const AddProduct = () => {
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-slate-800">
-                    Minimum accepted
+                    Recommended minimum
                   </p>
                   <p className="mt-1 text-xs text-slate-600">
                     {PRODUCT_IMAGE_MIN_SPEC.width} x{" "}
@@ -893,8 +896,9 @@ const AddProduct = () => {
               )}
             </div>
             <p className="text-sm text-gray-500">
-              Max {PRODUCT_IMAGE_MAX_FILES} images, 5MB each. Supported: JPG,
-              PNG, WebP
+              Max {PRODUCT_IMAGE_MAX_FILES} images,{" "}
+              {formatFileSize(PRODUCT_IMAGE_MAX_SIZE_BYTES)} each. Supported:
+              JPG, PNG, WebP
             </p>
           </div>
 

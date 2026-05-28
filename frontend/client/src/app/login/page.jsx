@@ -250,6 +250,9 @@ const LoginForm = () => {
       return false;
     }
 
+    clearStoredSession();
+    cookies.remove("actionType");
+
     postData("/api/user/login", formFields)
       .then((res) => {
         console.log("Login response:", res);
