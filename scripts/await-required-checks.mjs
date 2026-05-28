@@ -49,13 +49,28 @@ const isSuccessfulConclusion = (value) =>
   ["success", "neutral", "skipped"].includes(normalizeConclusion(value));
 
 const fetchGithubJson = async ({ url, token }) => {
-  const response = await fetch(url, {
-    headers: {
-      Accept: "application/vnd.github+json",
-      Authorization: `Bearer ${token}`,
-      "X-GitHub-Api-Version": "2022-11-28",
-    },
+  const buildHeaders = (authToken = "") => ({
+    Accept: "application/vnd.github+json",
+    ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+    "X-GitHub-Api-Version": "2022-11-28",
   });
+
+  const response = await fetch(url, {
+    headers: buildHeaders(token),
+  });
+
+  if (
+    !response.ok &&
+    token &&
+    [401, 403, 404].includes(Number(response.status))
+  ) {
+    const retryResponse = await fetch(url, {
+      headers: buildHeaders(""),
+    });
+    if (retryResponse.ok) {
+      return retryResponse.json();
+    }
+  }
 
   if (!response.ok) {
     const text = await response.text();
