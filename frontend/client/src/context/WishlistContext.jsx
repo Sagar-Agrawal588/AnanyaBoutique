@@ -13,7 +13,6 @@ const WishlistContext = createContext();
 const API_URL = API_BASE_URL.endsWith("/api")
   ? API_BASE_URL.slice(0, -4)
   : API_BASE_URL;
-const LOCAL_API_FALLBACKS = ["http://127.0.0.1:8000", "http://127.0.0.1:8001"];
 
 const isNetworkFetchError = (error) =>
   error instanceof TypeError &&
@@ -39,13 +38,6 @@ const normalizeApiPath = (path) => {
 
 const getApiBaseCandidates = () => {
   const candidates = [sanitizeBaseUrl(API_URL)].filter(Boolean);
-
-  if (typeof window !== "undefined") {
-    const hostname = String(window.location.hostname || "").toLowerCase();
-    if (hostname === "localhost" || hostname === "127.0.0.1") {
-      candidates.push(...LOCAL_API_FALLBACKS.map(sanitizeBaseUrl));
-    }
-  }
 
   return [...new Set(candidates.filter(Boolean))];
 };

@@ -4,12 +4,6 @@ import Cookies from "js-cookie";
 const DEFAULT_PRODUCTION_API_URL =
   "https://healthyonegram-api-v2-xb7znoco6a-uc.a.run.app/api";
 
-const LOCAL_API_FALLBACKS = [
-  "http://127.0.0.1:8000",
-  "http://127.0.0.1:8001",
-  "http://127.0.0.1:8002",
-];
-
 const DEFAULT_PUBLIC_GET_CACHE_TTL_MS = Math.max(
   Number.parseInt(
     String(process.env.NEXT_PUBLIC_PUBLIC_GET_CACHE_TTL_MS ?? "15000"),
@@ -91,9 +85,6 @@ const isLocalhostUrl = (value) => {
   }
 };
 
-const normalizeLocalFallbacks = () =>
-  LOCAL_API_FALLBACKS.map(sanitizeBaseUrl).filter(Boolean);
-
 const getConfiguredEnvBaseUrl = ({ includeLocalDevBaseUrl = false } = {}) => {
   const localDevBaseUrl = sanitizeBaseUrl(
     process.env.NEXT_PUBLIC_LOCAL_API_URL,
@@ -149,13 +140,6 @@ export const invalidatePublicGetCache = () => {
 };
 
 const resolveApiBaseUrl = () => {
-  const preferredLocalFallback =
-    normalizeLocalFallbacks().find((candidate) =>
-      candidate.endsWith(":8001"),
-    ) ||
-    normalizeLocalFallbacks()[0] ||
-    "";
-
   if (typeof window !== "undefined") {
     const hostname = String(window.location.hostname || "").toLowerCase();
     const isLocalhost = hostname === "localhost" || hostname === "127.0.0.1";
@@ -164,7 +148,7 @@ const resolveApiBaseUrl = () => {
     });
 
     if (isLocalhost) {
-      return envBaseUrl || preferredLocalFallback || "";
+      return envBaseUrl || DEFAULT_PRODUCTION_API_URL;
     }
 
     return envBaseUrl || DEFAULT_PRODUCTION_API_URL;
@@ -182,7 +166,7 @@ const resolveApiBaseUrl = () => {
     return DEFAULT_PRODUCTION_API_URL;
   }
 
-  return preferredLocalFallback;
+  return DEFAULT_PRODUCTION_API_URL;
 };
 
 export const API_BASE_URL = resolveApiBaseUrl();

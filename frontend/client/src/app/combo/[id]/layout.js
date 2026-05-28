@@ -80,15 +80,8 @@ const getApiCandidates = () => {
     .map(removeApiSuffix)
     .filter(Boolean);
 
-  const localFallbacks =
-    process.env.NODE_ENV === "production"
-      ? []
-      : ["http://127.0.0.1:8002", "http://127.0.0.1:8001"];
-
   return [
-    ...new Set(
-      [...configured, DEFAULT_API_ORIGIN, ...localFallbacks].filter(Boolean),
-    ),
+    ...new Set([...configured, DEFAULT_API_ORIGIN].filter(Boolean)),
   ];
 };
 

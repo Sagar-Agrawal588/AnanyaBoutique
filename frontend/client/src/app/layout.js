@@ -71,6 +71,7 @@ const normalizeApiBase = (value) =>
     .replace(/^["']|["']$/g, "")
     .replace(/\/+$/, "")
     .replace(/\/api$/i, "");
+const DEFAULT_PUBLIC_SITE_URL = "https://healthyonegram.com";
 const DEFAULT_API_BASE_URL = "https://healthyonegram-api-v2-xb7znoco6a-uc.a.run.app";
 const PUBLIC_SETTINGS_REVALIDATE_SECONDS = 300;
 const PUBLIC_SETTINGS_FETCH_TIMEOUT_MS = 2500;
@@ -112,6 +113,8 @@ const headerBackgroundBootstrapScript = `(function () {
 })();`;
 
 export async function generateMetadata({ request }) {
+  let defaultMetadata = buildDefaultMetadata(DEFAULT_PUBLIC_SITE_URL);
+
   try {
     const pathname = request?.nextUrl?.pathname || "/";
     const requestHost =
@@ -119,7 +122,7 @@ export async function generateMetadata({ request }) {
     const requestProtocol =
       request?.headers?.get("x-forwarded-proto") || "https:";
     const siteUrl = resolvePublicSiteUrl({ requestHost, requestProtocol });
-    const defaultMetadata = buildDefaultMetadata(siteUrl);
+    defaultMetadata = buildDefaultMetadata(siteUrl);
     const apiBase = normalizeApiBase(
       process.env.NEXT_PUBLIC_API_URL || DEFAULT_API_BASE_URL,
     );

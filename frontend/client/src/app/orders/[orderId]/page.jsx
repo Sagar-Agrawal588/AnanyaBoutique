@@ -46,11 +46,6 @@ import { io } from "socket.io-client";
 const API_URL = API_BASE_URL.endsWith("/api")
   ? API_BASE_URL
   : `${API_BASE_URL}/api`;
-const LOCAL_API_FALLBACKS = [
-  "http://127.0.0.1:8000",
-  "http://127.0.0.1:8001",
-  "http://127.0.0.1:8002",
-];
 const SOCKET_URL = API_BASE_URL.endsWith("/api")
   ? API_BASE_URL.slice(0, -4)
   : API_BASE_URL;
@@ -83,13 +78,6 @@ const composeApiUrl = (base, path) => {
 
 const getApiBaseCandidates = () => {
   const candidates = [sanitizeBaseUrl(API_BASE_URL)].filter(Boolean);
-
-  if (typeof window !== "undefined") {
-    const host = String(window.location.hostname || "").toLowerCase();
-    if (host === "localhost" || host === "127.0.0.1") {
-      candidates.push(...LOCAL_API_FALLBACKS.map(sanitizeBaseUrl));
-    }
-  }
 
   return [...new Set(candidates.filter(Boolean))];
 };

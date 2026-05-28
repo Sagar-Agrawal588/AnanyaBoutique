@@ -2,7 +2,6 @@ import { API_BASE_URL } from "@/utils/api";
 import { io } from "socket.io-client";
 
 const SOCKET_TRANSPORTS = ["websocket", "polling"];
-const LOCAL_SOCKET_FALLBACK = "http://127.0.0.1:8000";
 const PRODUCTION_SOCKET_FALLBACK =
   "https://healthyonegram-api-v2-xb7znoco6a-uc.a.run.app";
 
@@ -70,9 +69,7 @@ const resolveSocketBaseUrls = () => {
     pushCandidate(PRODUCTION_SOCKET_FALLBACK);
   }
 
-  if (candidates.length === 0) {
-    pushCandidate(LOCAL_SOCKET_FALLBACK);
-  }
+  if (candidates.length === 0) pushCandidate(PRODUCTION_SOCKET_FALLBACK);
 
   return candidates;
 };

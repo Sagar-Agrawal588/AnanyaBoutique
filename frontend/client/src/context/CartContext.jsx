@@ -28,10 +28,6 @@ const API_URL = String(API_BASE_URL || "")
   .trim()
   .replace(/\/+$/, "")
   .replace(/\/api$/i, "");
-const LOCAL_API_FALLBACKS = [
-  "http://127.0.0.1:8000",
-  "http://127.0.0.1:8001",
-];
 
 const buildApiUrlCandidates = (path) => {
   const normalizedPath = String(path || "").startsWith("/")
@@ -42,21 +38,6 @@ const buildApiUrlCandidates = (path) => {
     : `/api${normalizedPath}`;
 
   const candidates = [];
-
-  if (typeof window !== "undefined") {
-    const hostname = String(window.location.hostname || "").toLowerCase();
-    const isLocalhost = hostname === "localhost" || hostname === "127.0.0.1";
-    if (isLocalhost) {
-      LOCAL_API_FALLBACKS.forEach((base) => {
-        const normalizedBase = String(base || "")
-          .trim()
-          .replace(/\/+$/, "");
-        if (normalizedBase) {
-          candidates.push(`${normalizedBase}${apiPath}`);
-        }
-      });
-    }
-  }
 
   if (API_URL) {
     candidates.push(`${API_URL}${apiPath}`);

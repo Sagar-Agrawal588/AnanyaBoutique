@@ -2,13 +2,7 @@ import axios from "axios";
 
 const DEFAULT_PRODUCTION_API_URL =
   "https://healthyonegram-api-v2-xb7znoco6a-uc.a.run.app/api";
-const LOCAL_API_FALLBACK = "http://127.0.0.1:8000";
 const REQUEST_TIMEOUT_MS = 12000;
-const LOCAL_API_FALLBACKS = [
-  "http://127.0.0.1:8000",
-  "http://127.0.0.1:8001",
-  "http://127.0.0.1:8002",
-];
 
 const sanitizeBaseUrl = (value) =>
   String(value || "")
@@ -107,7 +101,6 @@ const getAlternateApiBaseUrls = () => {
 
     if (isLocalhost) {
       pushCandidate(envBaseUrl);
-      LOCAL_API_FALLBACKS.forEach(pushCandidate);
       return candidates;
     }
 
@@ -139,7 +132,7 @@ const resolveApiBaseUrl = () => {
       if (envBaseUrl) {
         return envBaseUrl;
       }
-      return LOCAL_API_FALLBACK;
+      return DEFAULT_PRODUCTION_API_URL;
     }
 
     // In deployed admin, the dedicated backend must win. Falling back to the
@@ -164,7 +157,7 @@ const resolveApiBaseUrl = () => {
     return DEFAULT_PRODUCTION_API_URL;
   }
 
-  return LOCAL_API_FALLBACK;
+  return DEFAULT_PRODUCTION_API_URL;
 };
 
 export const API_BASE_URL = resolveApiBaseUrl();

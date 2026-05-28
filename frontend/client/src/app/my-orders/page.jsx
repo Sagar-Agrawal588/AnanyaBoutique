@@ -31,11 +31,6 @@ import { toast } from "react-hot-toast";
 const API_URL = API_BASE_URL.endsWith("/api")
   ? API_BASE_URL
   : `${API_BASE_URL}/api`;
-const LOCAL_API_FALLBACKS = [
-  "http://127.0.0.1:8000",
-  "http://127.0.0.1:8001",
-  "http://127.0.0.1:8002",
-];
 
 const sanitizeBaseUrl = (value) =>
   String(value || "")
@@ -63,17 +58,7 @@ const composeApiUrl = (base, path) => {
 };
 
 const getApiBaseCandidates = () => {
-  const candidates = [];
-
-  if (typeof window !== "undefined") {
-    const host = String(window.location.hostname || "").toLowerCase();
-    const isLocalhost = host === "localhost" || host === "127.0.0.1";
-    if (isLocalhost) {
-      candidates.push(...LOCAL_API_FALLBACKS.map(sanitizeBaseUrl));
-    }
-  }
-
-  candidates.push(sanitizeBaseUrl(API_BASE_URL));
+  const candidates = [sanitizeBaseUrl(API_BASE_URL)];
 
   return [
     ...new Set(

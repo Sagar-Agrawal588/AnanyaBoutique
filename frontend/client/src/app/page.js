@@ -53,7 +53,7 @@ const API_BASE_URL = sanitizeBaseUrl(
   ),
 );
 const LOCAL_DEV_API_BASE_URL = sanitizeBaseUrl(
-  process.env.NEXT_PUBLIC_LOCAL_API_URL || "http://127.0.0.1:8001",
+  process.env.NEXT_PUBLIC_LOCAL_API_URL,
 );
 const HOMEPAGE_FETCH_TIMEOUT_MS = Math.max(
   Number.parseInt(
