@@ -48,12 +48,7 @@ const normalizeConclusion = (value) =>
 const isSuccessfulConclusion = (value) =>
   ["success", "neutral", "skipped"].includes(normalizeConclusion(value));
 
-const fetchCheckRuns = async ({ owner, repo, sha, token }) => {
-  const url = new URL(
-    `https://api.github.com/repos/${owner}/${repo}/commits/${sha}/check-runs`,
-  );
-  url.searchParams.set("per_page", "100");
-
+const fetchGithubJson = async ({ url, token }) => {
   const response = await fetch(url, {
     headers: {
       Accept: "application/vnd.github+json",
@@ -64,13 +59,72 @@ const fetchCheckRuns = async ({ owner, repo, sha, token }) => {
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(
-      `Unable to fetch check runs (${response.status}): ${text.slice(0, 300)}`,
+    const error = new Error(
+      `GitHub API request failed (${response.status}): ${text.slice(0, 300)}`,
     );
+    error.status = response.status;
+    throw error;
   }
 
-  const payload = await response.json();
+  return response.json();
+};
+
+const fetchCheckRuns = async ({ owner, repo, sha, token }) => {
+  const url = new URL(
+    `https://api.github.com/repos/${owner}/${repo}/commits/${sha}/check-runs`,
+  );
+  url.searchParams.set("per_page", "100");
+
+  const payload = await fetchGithubJson({ url, token });
   return Array.isArray(payload?.check_runs) ? payload.check_runs : [];
+};
+
+const fetchWorkflowJobsForSha = async ({ owner, repo, sha, token }) => {
+  const runsUrl = new URL(
+    `https://api.github.com/repos/${owner}/${repo}/actions/runs`,
+  );
+  runsUrl.searchParams.set("per_page", "100");
+  runsUrl.searchParams.set("exclude_pull_requests", "true");
+
+  const runsPayload = await fetchGithubJson({ url: runsUrl, token });
+  const runs = Array.isArray(runsPayload?.workflow_runs)
+    ? runsPayload.workflow_runs.filter((run) => run?.head_sha === sha)
+    : [];
+  const jobs = [];
+
+  for (const run of runs) {
+    if (!run?.jobs_url) continue;
+    const jobsUrl = new URL(run.jobs_url);
+    jobsUrl.searchParams.set("per_page", "100");
+    const jobsPayload = await fetchGithubJson({ url: jobsUrl, token });
+    for (const job of jobsPayload?.jobs || []) {
+      jobs.push({
+        name: job?.name || run?.name || "",
+        status: job?.status || run?.status || "queued",
+        conclusion: job?.conclusion || run?.conclusion || "",
+        started_at: job?.started_at || run?.run_started_at || run?.created_at,
+        completed_at: job?.completed_at || run?.updated_at,
+        html_url: job?.html_url || run?.html_url || "",
+      });
+    }
+  }
+
+  return jobs;
+};
+
+const fetchRequiredCheckEntries = async ({ owner, repo, sha, token }) => {
+  try {
+    return await fetchCheckRuns({ owner, repo, sha, token });
+  } catch (error) {
+    if (![403, 404].includes(Number(error?.status))) {
+      throw error;
+    }
+
+    console.warn(
+      `[await-required-checks] Check-runs API unavailable (${error.status}); falling back to workflow jobs.`,
+    );
+    return fetchWorkflowJobsForSha({ owner, repo, sha, token });
+  }
 };
 
 const summarizeChecks = (checkRuns, requiredPatterns) =>
@@ -142,7 +196,7 @@ const main = async () => {
   const startTime = Date.now();
 
   while (Date.now() - startTime < timeoutMs) {
-    const checkRuns = await fetchCheckRuns({ owner, repo, sha, token });
+    const checkRuns = await fetchRequiredCheckEntries({ owner, repo, sha, token });
     const summary = summarizeChecks(checkRuns, checks);
 
     console.log(
