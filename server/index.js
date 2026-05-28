@@ -161,8 +161,6 @@ const defaultProductionCorsOrigins = [
   "https://healthyonegram.com",
   "https://www.healthyonegram.com",
   "https://healthyonegram-client--studio-8452116634-cdb59.us-central1.hosted.app",
-  "https://client-dot-healthy-one-gram.el.r.appspot.com",
-  "https://admin-dot-healthy-one-gram.el.r.appspot.com",
   "https://healthyonegram-admin--studio-8452116634-cdb59.us-central1.hosted.app",
 ].map(normalizeOrigin);
 const defaultDevCorsOrigins = [
@@ -855,7 +853,8 @@ connectDb()
 
     startLocationLogRetentionJob();
 
-    const requestedPort = Number(process.env.PORT || 8080);
+    const requestedPort = toPositiveInteger(process.env.PORT, 8000);
+    const listenHost = "0.0.0.0";
     const isLocalEnv = process.env.NODE_ENV !== "production";
     let activePort = requestedPort;
 
@@ -872,7 +871,7 @@ connectDb()
         );
         activePort = fallbackPort;
         setTimeout(() => {
-          server.listen(activePort);
+          server.listen(activePort, listenHost);
         }, 100);
         return;
       }
@@ -881,9 +880,13 @@ connectDb()
       process.exit(1);
     });
 
-    server.listen(activePort, () => {
-      console.log(`Server is running on port ${activePort}`);
-      console.log("API service started");
+    console.log(`[startup] selected PORT=${activePort}`);
+    console.log(`[startup] NODE_ENV=${process.env.NODE_ENV || "development"}`);
+    console.log(`[startup] binding host=${listenHost}`);
+
+    server.listen(activePort, listenHost, () => {
+      console.log(`Server running on port ${activePort}`);
+      console.log("API service started successfully");
     });
 
     try {

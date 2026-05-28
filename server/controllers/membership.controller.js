@@ -619,7 +619,8 @@ export const createMembershipOrder = async (req, res) => {
           : ""),
     )
       .trim()
-      .replace(/\/+$/, "");
+      .replace(/\/+$/, "")
+      .replace(/\/api$/i, "");
 
     const baseMembershipReturnPath = "/membership/checkout";
 

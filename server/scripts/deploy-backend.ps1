@@ -140,7 +140,7 @@ $tempDeployFile = Join-Path $repoRoot "app.deploy.temp.yaml"
 $mongoUri = Read-RequiredSecret -Prompt "Mongo URI (input hidden)"
 $accessTokenSecret = Read-RequiredSecret -Prompt "Access token secret (leave blank to auto-generate)" -GenerateIfEmpty
 $refreshTokenSecret = Read-RequiredSecret -Prompt "Refresh token secret (leave blank to auto-generate)" -GenerateIfEmpty
-$clientUrl = Read-RequiredText -Prompt "Client URL" -DefaultValue "https://client-dot-healthy-one-gram.el.r.appspot.com/"
+$clientUrl = Read-RequiredText -Prompt "Client URL" -DefaultValue "https://healthyonegram.com/"
 $adminUrl = Read-RequiredText -Prompt "Admin URL"
 
 $cloudinaryCloudName = Read-OptionalText -Prompt "Cloudinary cloud name (optional, Enter to skip)"

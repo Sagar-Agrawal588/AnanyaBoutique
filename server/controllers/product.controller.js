@@ -23,6 +23,16 @@ import {
 import { invalidateAdminReadCaches } from "../utils/adminCacheInvalidation.js";
 import { invalidatePublicResponseCache } from "../middlewares/publicResponseCache.js";
 import { getLowStockSummaryUpdate } from "../utils/lowStockSummary.js";
+import {
+  createFirebaseProduct,
+  deleteFirebaseProduct,
+  getFirebaseProductById,
+  getFirebaseProductsResponse,
+  isFirebaseCatalogPrimaryEnabled,
+  updateFirebaseProduct,
+  updateFirebaseProductDemandStatus,
+  updateFirebaseProductStock,
+} from "../services/firebaseCatalog.service.js";
 
 const isProduction = process.env.NODE_ENV === "production";
 const PRODUCT_RESPONSE_CACHE_NAMESPACES = ["products"];
@@ -526,6 +536,11 @@ const resolveComboCardImage = (combo = {}) =>
  */
 export const getProducts = async (req, res) => {
   try {
+    const firebaseResponse = await getFirebaseProductsResponse(req.query);
+    if (firebaseResponse) {
+      return res.status(200).json(firebaseResponse);
+    }
+
     const {
       page = 1,
       limit = 15,
@@ -1171,6 +1186,22 @@ export const getProducts = async (req, res) => {
 export const getProductById = async (req, res) => {
   try {
     const { id } = req.params;
+    const firebaseProduct = await getFirebaseProductById(id);
+    if (firebaseProduct) {
+      return res.status(200).json({
+        error: false,
+        success: true,
+        data: firebaseProduct,
+      });
+    }
+    if (isFirebaseCatalogPrimaryEnabled()) {
+      return res.status(404).json({
+        error: true,
+        success: false,
+        message: "Product not found",
+      });
+    }
+
     const canViewExclusive = await canRequestViewExclusive(req);
 
     // Try to find by ID or slug
@@ -1260,6 +1291,17 @@ export const incrementProductViewCountBestEffort = async (identifier) => {
  */
 export const getFeaturedProducts = async (req, res) => {
   try {
+    const firebaseResponse = await getFirebaseProductsResponse({
+      ...req.query,
+      limit: req.query.limit || 8,
+    });
+    if (firebaseResponse) {
+      return res.status(200).json({
+        ...firebaseResponse,
+        data: firebaseResponse.data,
+      });
+    }
+
     const { limit = 10 } = req.query;
     const canViewExclusive = req?.userIsAdmin === true;
 
@@ -1305,6 +1347,14 @@ export const getFeaturedProducts = async (req, res) => {
  */
 export const getExclusiveProducts = async (req, res) => {
   try {
+    const firebaseResponse = await getFirebaseProductsResponse({
+      ...req.query,
+      isExclusive: true,
+    });
+    if (firebaseResponse) {
+      return res.status(200).json(firebaseResponse);
+    }
+
     const {
       page = 1,
       limit = 15,
@@ -1385,6 +1435,19 @@ export const getExclusiveProducts = async (req, res) => {
  */
 export const getRelatedProducts = async (req, res) => {
   try {
+    const firebaseResponse = await getFirebaseProductsResponse({
+      ...req.query,
+      limit: req.query.limit || 4,
+    });
+    if (firebaseResponse) {
+      return res.status(200).json({
+        ...firebaseResponse,
+        data: firebaseResponse.data.filter(
+          (product) => String(product._id) !== String(req.params.id),
+        ),
+      });
+    }
+
     const { id } = req.params;
     const { limit = 5 } = req.query;
     const canViewExclusive = await canRequestViewExclusive(req);
@@ -1464,6 +1527,19 @@ export const getRelatedProducts = async (req, res) => {
  */
 export const getFrequentlyBoughtProducts = async (req, res) => {
   try {
+    const firebaseResponse = await getFirebaseProductsResponse({
+      ...req.query,
+      limit: req.query.limit || 4,
+    });
+    if (firebaseResponse) {
+      return res.status(200).json({
+        ...firebaseResponse,
+        data: firebaseResponse.data.filter(
+          (product) => String(product._id) !== String(req.params.id),
+        ),
+      });
+    }
+
     const { id } = req.params;
     const { limit = 4 } = req.query;
 
@@ -1501,6 +1577,14 @@ export const getFrequentlyBoughtProducts = async (req, res) => {
  */
 export const getCartUpsellProduct = async (req, res) => {
   try {
+    if (isFirebaseCatalogPrimaryEnabled()) {
+      return res.status(200).json({
+        error: false,
+        success: true,
+        data: null,
+      });
+    }
+
     const cartItems = Array.isArray(req.body?.items) ? req.body.items : [];
     const suggestion = await getCartUpsellProductSuggestion(cartItems, {
       limit: 1,
@@ -1530,6 +1614,17 @@ export const getCartUpsellProduct = async (req, res) => {
  */
 export const createProduct = async (req, res) => {
   try {
+    const firebaseProduct = await createFirebaseProduct(req.body);
+    if (firebaseProduct) {
+      await invalidateProductResponseCache(CATALOG_RESPONSE_CACHE_NAMESPACES);
+      return res.status(201).json({
+        error: false,
+        success: true,
+        message: "Product created successfully",
+        data: firebaseProduct,
+      });
+    }
+
     const {
       name,
       description,
@@ -1792,6 +1887,23 @@ export const updateProduct = async (req, res) => {
   try {
     const { id } = req.params;
     const updateData = req.body;
+    const firebaseProduct = await updateFirebaseProduct(id, updateData);
+    if (firebaseProduct) {
+      await invalidateProductResponseCache(CATALOG_RESPONSE_CACHE_NAMESPACES);
+      return res.status(200).json({
+        error: false,
+        success: true,
+        message: "Product updated successfully",
+        data: firebaseProduct,
+      });
+    }
+    if (firebaseProduct === false) {
+      return res.status(404).json({
+        error: true,
+        success: false,
+        message: "Product not found",
+      });
+    }
 
     // Remove fields that shouldn't be updated directly
     delete updateData._id;
@@ -2041,6 +2153,22 @@ export const updateProduct = async (req, res) => {
 export const deleteProduct = async (req, res) => {
   try {
     const { id } = req.params;
+    const firebaseDeleted = await deleteFirebaseProduct(id);
+    if (firebaseDeleted) {
+      await invalidateProductResponseCache(CATALOG_RESPONSE_CACHE_NAMESPACES);
+      return res.status(200).json({
+        error: false,
+        success: true,
+        message: "Product deleted successfully",
+      });
+    }
+    if (firebaseDeleted === false) {
+      return res.status(404).json({
+        error: true,
+        success: false,
+        message: "Product not found",
+      });
+    }
 
     const product = await ProductModel.findById(id);
     if (!product) {
@@ -2089,6 +2217,28 @@ export const bulkUpdateProducts = async (req, res) => {
         error: true,
         success: false,
         message: "Product IDs are required",
+      });
+    }
+
+    const firebaseResults = [];
+    for (const id of ids) {
+      const updated = await updateFirebaseProduct(id, updateData || {});
+      if (updated) firebaseResults.push(updated);
+    }
+    if (firebaseResults.length > 0) {
+      await invalidateProductResponseCache(CATALOG_RESPONSE_CACHE_NAMESPACES);
+      return res.status(200).json({
+        error: false,
+        success: true,
+        message: `${firebaseResults.length} products updated`,
+        data: { modifiedCount: firebaseResults.length },
+      });
+    }
+    if (isFirebaseCatalogPrimaryEnabled()) {
+      return res.status(404).json({
+        error: true,
+        success: false,
+        message: "No matching Firebase products found",
       });
     }
 
@@ -2186,6 +2336,26 @@ export const updateStock = async (req, res) => {
     const { id } = req.params;
     const { stock, variantId } = req.body;
     const normalizedStock = Number(stock ?? 0);
+    const firebaseProduct = await updateFirebaseProductStock(id, {
+      stock: normalizedStock,
+      variantId,
+    });
+    if (firebaseProduct) {
+      await invalidateProductResponseCache(CATALOG_RESPONSE_CACHE_NAMESPACES);
+      return res.status(200).json({
+        error: false,
+        success: true,
+        message: "Stock updated successfully",
+        data: firebaseProduct,
+      });
+    }
+    if (firebaseProduct === false) {
+      return res.status(404).json({
+        error: true,
+        success: false,
+        message: "Product not found",
+      });
+    }
 
     const product = await ProductModel.findById(id);
     if (!product) {
@@ -2387,6 +2557,27 @@ export const updateDemandStatus = async (req, res) => {
         error: true,
         success: false,
         message: "Invalid demandStatus. Must be 'NORMAL' or 'HIGH'",
+      });
+    }
+
+    const firebaseProduct = await updateFirebaseProductDemandStatus(
+      id,
+      demandStatus,
+    );
+    if (firebaseProduct) {
+      await invalidateProductResponseCache(CATALOG_RESPONSE_CACHE_NAMESPACES);
+      return res.status(200).json({
+        error: false,
+        success: true,
+        message: `Product demand status updated to ${firebaseProduct.demandStatus}`,
+        data: firebaseProduct,
+      });
+    }
+    if (firebaseProduct === false) {
+      return res.status(404).json({
+        error: true,
+        success: false,
+        message: "Product not found",
       });
     }
 

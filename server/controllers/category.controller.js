@@ -1,6 +1,7 @@
 import CategoryModel from "../models/category.model.js";
 import ProductModel from "../models/product.model.js";
 import { invalidatePublicResponseCache } from "../middlewares/publicResponseCache.js";
+import { getFirebaseCategories } from "../services/firebaseCatalog.service.js";
 
 const CATEGORY_RESPONSE_CACHE_NAMESPACES = ["categories", "products", "combos"];
 
@@ -19,6 +20,16 @@ const CATEGORY_RESPONSE_CACHE_NAMESPACES = ["categories", "products", "combos"];
  */
 export const getCategories = async (req, res) => {
   try {
+    const firebaseCategories = await getFirebaseCategories();
+    if (firebaseCategories) {
+      return res.status(200).json({
+        error: false,
+        success: true,
+        data: firebaseCategories,
+        total: firebaseCategories.length,
+      });
+    }
+
     const {
       parent,
       featured,
@@ -83,6 +94,27 @@ export const getCategories = async (req, res) => {
 export const getCategoryById = async (req, res) => {
   try {
     const { id } = req.params;
+    const firebaseCategories = await getFirebaseCategories();
+    if (firebaseCategories) {
+      const category = firebaseCategories.find(
+        (entry) =>
+          String(entry._id) === String(id) ||
+          String(entry.id) === String(id) ||
+          String(entry.slug) === String(id),
+      );
+      if (!category) {
+        return res.status(404).json({
+          error: true,
+          success: false,
+          message: "Category not found",
+        });
+      }
+      return res.status(200).json({
+        error: false,
+        success: true,
+        data: category,
+      });
+    }
 
     let category;
     if (id.match(/^[0-9a-fA-F]{24}$/)) {
@@ -129,6 +161,18 @@ export const getCategoryById = async (req, res) => {
  */
 export const getCategoryTree = async (req, res) => {
   try {
+    const firebaseCategories = await getFirebaseCategories();
+    if (firebaseCategories) {
+      return res.status(200).json({
+        error: false,
+        success: true,
+        data: firebaseCategories.map((category) => ({
+          ...category,
+          children: [],
+        })),
+      });
+    }
+
     const rootCategories = await CategoryModel.find({
       parentCategory: null,
       isActive: true,

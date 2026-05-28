@@ -8,10 +8,12 @@
 # Let Cloud Build install fresh dependencies from package-lock.json.
 node_modules/
 
-# Skip local environment files; App Engine runtime settings come from app.yaml.
+# Skip local environment files; runtime settings must be injected at deploy time.
 .env
 .env.*
 !.env.example
+cloudrun.env.yaml
+*.deploy*.yaml
 
 # Do not upload local test code or API collection assets to production.
 tests/

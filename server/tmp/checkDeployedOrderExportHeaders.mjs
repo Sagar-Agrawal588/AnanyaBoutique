@@ -6,7 +6,7 @@ import UserModel from "../models/user.model.js";
 
 const baseUrl =
   process.env.API_BASE_URL?.trim() ||
-  "https://healthy-one-gram.el.r.appspot.com";
+  "https://healthyonegram-backend-xb7znoco6a-uc.a.run.app";
 const mongoUri =
   process.env.MONGODB_URI?.trim() ||
   process.env.MONGO_URI?.trim() ||

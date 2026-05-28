@@ -93,10 +93,10 @@ const getBackendBaseUrl = () => {
     normalizeBaseUrl(process.env.NEXT_PUBLIC_API_URL);
 
   if (isProduction && isLocalhostBaseUrl(candidate)) {
-    return "https://healthy-one-gram.el.r.appspot.com";
+    return "https://healthyonegram-backend-xb7znoco6a-uc.a.run.app";
   }
 
-  return candidate || "https://healthy-one-gram.el.r.appspot.com";
+  return candidate || "https://healthyonegram-backend-xb7znoco6a-uc.a.run.app";
 };
 
 const normalizePromotionalEmail = (value) =>

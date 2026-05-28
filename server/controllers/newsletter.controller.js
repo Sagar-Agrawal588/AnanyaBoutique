@@ -127,8 +127,12 @@ const getPublicApiUrl = () => {
     process.env.API_BASE_URL ||
     process.env.BACKEND_URL ||
     process.env.SERVER_URL ||
-    "https://healthy-one-gram.el.r.appspot.com";
-  return String(raw).split(",")[0].trim().replace(/\/+$/, "");
+    "https://healthyonegram-backend-xb7znoco6a-uc.a.run.app";
+  return String(raw)
+    .split(",")[0]
+    .trim()
+    .replace(/\/+$/, "")
+    .replace(/\/api$/i, "");
 };
 
 const buildNewsletterUnsubscribeUrl = (email, { confirm = false } = {}) => {

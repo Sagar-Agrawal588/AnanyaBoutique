@@ -2657,7 +2657,8 @@ const getBackendBaseUrl = (req) => {
         : ""),
   )
     .trim()
-    .replace(/\/+$/, "");
+    .replace(/\/+$/, "")
+    .replace(/\/api$/i, "");
 
   if (/^https?:\/\//i.test(configured)) {
     return configured;

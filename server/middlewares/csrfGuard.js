@@ -6,6 +6,18 @@ const CSRF_EXEMPT_PATH_PREFIXES = [
   "/api/orders/webhook",
   "/api/membership/webhook",
 ];
+const CSRF_EXEMPT_PATHS = new Set([
+  "/api/admin/google-login",
+  "/api/admin/login",
+  "/api/influencers/login",
+  "/api/influencers/refresh-token",
+  "/api/user/authWithGoogle",
+  "/api/user/google-login",
+  "/api/user/google-register",
+  "/api/user/login",
+  "/api/user/register",
+  "/api/user/refresh-token",
+]);
 
 const normalizeOrigin = (value) =>
   String(value || "")
@@ -26,6 +38,11 @@ const parseOriginFromReferer = (referer) => {
 const isLocalOrigin = (origin) =>
   /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(normalizeOrigin(origin));
 
+const normalizeRequestPath = (value) => {
+  const path = String(value || "").split("?")[0].replace(/\/+$/, "");
+  return path || "/";
+};
+
 export const createCookieCsrfGuard = ({
   allowedOrigins = [],
   isProduction = false,
@@ -42,8 +59,9 @@ export const createCookieCsrfGuard = ({
       return next();
     }
 
-    const requestPath = String(req.originalUrl || req.url || "").split("?")[0];
+    const requestPath = normalizeRequestPath(req.originalUrl || req.url);
     if (
+      CSRF_EXEMPT_PATHS.has(requestPath) ||
       CSRF_EXEMPT_PATH_PREFIXES.some((prefix) =>
         String(requestPath || "").startsWith(prefix),
       )

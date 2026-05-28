@@ -29,6 +29,17 @@ import {
   getCartUpsellProductSuggestion,
   getComboSectionsForProduct,
 } from "../services/combos/comboRecommendation.service.js";
+import {
+  createFirebaseCombo,
+  deleteFirebaseCombo,
+  getFirebaseCartUpsells,
+  getFirebaseComboById,
+  getFirebaseCombosData,
+  getFirebaseComboSections,
+  isFirebaseCatalogPrimaryEnabled,
+  toggleFirebaseCombo,
+  updateFirebaseCombo,
+} from "../services/firebaseCatalog.service.js";
 import { invalidatePublicResponseCache } from "../middlewares/publicResponseCache.js";
 import { AppError, asyncHandler, sendSuccess } from "../utils/errorHandler.js";
 import { normalizeProductPageConfig } from "../utils/productPageConfig.js";
@@ -449,6 +460,11 @@ const parseComboPayload = async (body = {}, { existingCombo = null } = {}) => {
 };
 
 export const getCombos = asyncHandler(async (req, res) => {
+  const firebaseCombos = await getFirebaseCombosData(req.query);
+  if (firebaseCombos) {
+    return sendSuccess(res, firebaseCombos);
+  }
+
   const page = toPositiveInt(req.query.page, 1);
   const limit = Math.min(toPositiveInt(req.query.limit, 12), 50);
   const skip = (page - 1) * limit;
@@ -505,6 +521,14 @@ export const getCombos = asyncHandler(async (req, res) => {
 });
 
 export const getComboById = asyncHandler(async (req, res) => {
+  const firebaseCombo = await getFirebaseComboById(req.params.id);
+  if (firebaseCombo) {
+    return sendSuccess(res, firebaseCombo);
+  }
+  if (isFirebaseCatalogPrimaryEnabled()) {
+    throw new AppError("NOT_FOUND", { field: "comboId" });
+  }
+
   const combo = await ComboModel.findById(req.params.id).lean();
   if (!combo) {
     throw new AppError("NOT_FOUND", { field: "comboId" });
@@ -520,6 +544,14 @@ export const getComboById = asyncHandler(async (req, res) => {
 });
 
 export const getComboBySlug = asyncHandler(async (req, res) => {
+  const firebaseCombo = await getFirebaseComboById(req.params.slug);
+  if (firebaseCombo) {
+    return sendSuccess(res, firebaseCombo);
+  }
+  if (isFirebaseCatalogPrimaryEnabled()) {
+    throw new AppError("NOT_FOUND", { field: "comboSlug" });
+  }
+
   const combo = await ComboModel.findOne({ slug: req.params.slug }).lean();
   if (!combo) {
     throw new AppError("NOT_FOUND", { field: "comboSlug" });
@@ -539,11 +571,30 @@ export const getComboSections = asyncHandler(async (req, res) => {
   if (!productId) {
     throw new AppError("MISSING_FIELD", { fieldName: "productId" });
   }
+  const firebaseSections = await getFirebaseComboSections(productId);
+  if (firebaseSections) {
+    return sendSuccess(res, firebaseSections);
+  }
+  if (isFirebaseCatalogPrimaryEnabled()) {
+    return sendSuccess(res, {
+      frequentlyBoughtTogether: [],
+      recommendedCombos: [],
+    });
+  }
+
   const sections = await getComboSectionsForProduct(productId);
   return sendSuccess(res, sections);
 });
 
 export const getCartUpsells = asyncHandler(async (req, res) => {
+  const firebaseUpsells = await getFirebaseCartUpsells();
+  if (firebaseUpsells) {
+    return sendSuccess(res, firebaseUpsells);
+  }
+  if (isFirebaseCatalogPrimaryEnabled()) {
+    return sendSuccess(res, { suggestions: [], productSuggestion: null });
+  }
+
   const cartItems = Array.isArray(req.body?.items) ? req.body.items : [];
   const normalizedItems = cartItems
     .map((item) => ({
@@ -562,6 +613,17 @@ export const getCartUpsells = asyncHandler(async (req, res) => {
 });
 
 export const createCombo = asyncHandler(async (req, res) => {
+  const firebaseCombo = await createFirebaseCombo(req.body);
+  if (firebaseCombo) {
+    await invalidatePublicResponseCache(COMBO_RESPONSE_CACHE_NAMESPACES);
+    return sendSuccess(res, firebaseCombo, "Combo created", 201);
+  }
+  if (isFirebaseCatalogPrimaryEnabled()) {
+    throw new AppError("DATABASE_ERROR", {
+      message: "Firebase catalog is enabled but Firestore is unavailable",
+    });
+  }
+
   const { payload, items } = await parseComboPayload(req.body);
 
   const combo = await ComboModel.create({
@@ -577,6 +639,15 @@ export const createCombo = asyncHandler(async (req, res) => {
 });
 
 export const updateCombo = asyncHandler(async (req, res) => {
+  const firebaseCombo = await updateFirebaseCombo(req.params.id, req.body);
+  if (firebaseCombo) {
+    await invalidatePublicResponseCache(COMBO_RESPONSE_CACHE_NAMESPACES);
+    return sendSuccess(res, firebaseCombo, "Combo updated");
+  }
+  if (isFirebaseCatalogPrimaryEnabled()) {
+    throw new AppError("NOT_FOUND", { field: "comboId" });
+  }
+
   const existing = await ComboModel.findById(req.params.id);
   if (!existing) {
     throw new AppError("NOT_FOUND", { field: "comboId" });
@@ -597,6 +668,15 @@ export const updateCombo = asyncHandler(async (req, res) => {
 });
 
 export const deleteCombo = asyncHandler(async (req, res) => {
+  const firebaseDeleted = await deleteFirebaseCombo(req.params.id);
+  if (firebaseDeleted) {
+    await invalidatePublicResponseCache(COMBO_RESPONSE_CACHE_NAMESPACES);
+    return sendSuccess(res, { deleted: true }, "Combo deleted");
+  }
+  if (isFirebaseCatalogPrimaryEnabled()) {
+    throw new AppError("NOT_FOUND", { field: "comboId" });
+  }
+
   const combo = await ComboModel.findById(req.params.id);
   if (!combo) {
     throw new AppError("NOT_FOUND", { field: "comboId" });
@@ -610,6 +690,25 @@ export const deleteCombo = asyncHandler(async (req, res) => {
 });
 
 export const duplicateCombo = asyncHandler(async (req, res) => {
+  const firebaseCombo = await getFirebaseComboById(req.params.id);
+  if (firebaseCombo) {
+    const copy = await createFirebaseCombo({
+      ...firebaseCombo,
+      id: undefined,
+      _id: undefined,
+      firestoreId: undefined,
+      name: `${firebaseCombo.name} (Copy)`,
+      slug: slugify(`${firebaseCombo.name}-copy-${Date.now()}`),
+      status: "draft",
+      isActive: false,
+    });
+    await invalidatePublicResponseCache(COMBO_RESPONSE_CACHE_NAMESPACES);
+    return sendSuccess(res, copy, "Combo duplicated", 201);
+  }
+  if (isFirebaseCatalogPrimaryEnabled()) {
+    throw new AppError("NOT_FOUND", { field: "comboId" });
+  }
+
   const combo = await ComboModel.findById(req.params.id).lean();
   if (!combo) {
     throw new AppError("NOT_FOUND", { field: "comboId" });
@@ -637,6 +736,15 @@ export const duplicateCombo = asyncHandler(async (req, res) => {
 });
 
 export const toggleCombo = asyncHandler(async (req, res) => {
+  const firebaseCombo = await toggleFirebaseCombo(req.params.id, req.body);
+  if (firebaseCombo) {
+    await invalidatePublicResponseCache(COMBO_RESPONSE_CACHE_NAMESPACES);
+    return sendSuccess(res, firebaseCombo, "Combo updated");
+  }
+  if (isFirebaseCatalogPrimaryEnabled()) {
+    throw new AppError("NOT_FOUND", { field: "comboId" });
+  }
+
   const combo = await ComboModel.findById(req.params.id);
   if (!combo) {
     throw new AppError("NOT_FOUND", { field: "comboId" });
@@ -664,6 +772,11 @@ export const toggleCombo = asyncHandler(async (req, res) => {
 });
 
 export const getAdminCombos = asyncHandler(async (req, res) => {
+  const firebaseCombos = await getFirebaseCombosData(req.query, { admin: true });
+  if (firebaseCombos) {
+    return sendSuccess(res, firebaseCombos);
+  }
+
   const page = toPositiveInt(req.query.page, 1);
   const limit = Math.min(toPositiveInt(req.query.limit, 20), 100);
   const skip = (page - 1) * limit;
@@ -701,6 +814,20 @@ export const getAdminCombos = asyncHandler(async (req, res) => {
 });
 
 export const generateComboSuggestions = asyncHandler(async (req, res) => {
+  if (isFirebaseCatalogPrimaryEnabled()) {
+    return sendSuccess(
+      res,
+      {
+        suggestions: [],
+        generated: 0,
+        pairsEvaluated: 0,
+        refreshResult: null,
+        preview: Boolean(req.body?.previewOnly),
+      },
+      "Firebase catalog is primary; no Mongo combo suggestions were used.",
+    );
+  }
+
   const limit = toPositiveInt(req.body?.limit, 8);
   const previewOnly = Boolean(req.body?.previewOnly);
   const result = await generateComboDrafts({
@@ -737,6 +864,10 @@ export const generateComboSuggestions = asyncHandler(async (req, res) => {
 });
 
 export const getComboDrafts = asyncHandler(async (req, res) => {
+  if (isFirebaseCatalogPrimaryEnabled()) {
+    return sendSuccess(res, { items: [] });
+  }
+
   const status = String(req.query.status || "").trim();
   const filter = status ? { status } : {};
   const drafts = await ComboDraftModel.find(filter)
@@ -753,6 +884,10 @@ export const getComboDrafts = asyncHandler(async (req, res) => {
 });
 
 export const updateComboDraft = asyncHandler(async (req, res) => {
+  if (isFirebaseCatalogPrimaryEnabled()) {
+    throw new AppError("NOT_FOUND", { field: "comboDraftId" });
+  }
+
   const draft = await ComboDraftModel.findById(req.params.id);
   if (!draft) {
     throw new AppError("NOT_FOUND", { field: "comboDraftId" });
@@ -789,6 +924,10 @@ export const updateComboDraft = asyncHandler(async (req, res) => {
 });
 
 export const approveComboDraft = asyncHandler(async (req, res) => {
+  if (isFirebaseCatalogPrimaryEnabled()) {
+    throw new AppError("NOT_FOUND", { field: "comboDraftId" });
+  }
+
   const draft = await ComboDraftModel.findById(req.params.id);
   if (!draft) {
     throw new AppError("NOT_FOUND", { field: "comboDraftId" });
@@ -819,6 +958,10 @@ export const approveComboDraft = asyncHandler(async (req, res) => {
 });
 
 export const publishComboDraft = asyncHandler(async (req, res) => {
+  if (isFirebaseCatalogPrimaryEnabled()) {
+    throw new AppError("NOT_FOUND", { field: "comboDraftId" });
+  }
+
   const draft = await ComboDraftModel.findById(req.params.id);
   if (!draft) {
     throw new AppError("NOT_FOUND", { field: "comboDraftId" });
@@ -859,6 +1002,10 @@ export const publishComboDraft = asyncHandler(async (req, res) => {
 });
 
 export const rejectComboDraft = asyncHandler(async (req, res) => {
+  if (isFirebaseCatalogPrimaryEnabled()) {
+    throw new AppError("NOT_FOUND", { field: "comboDraftId" });
+  }
+
   const draft = await ComboDraftModel.findById(req.params.id);
   if (!draft) {
     throw new AppError("NOT_FOUND", { field: "comboDraftId" });
@@ -870,6 +1017,22 @@ export const rejectComboDraft = asyncHandler(async (req, res) => {
 });
 
 export const getComboAnalyticsDashboard = asyncHandler(async (req, res) => {
+  if (isFirebaseCatalogPrimaryEnabled()) {
+    const { from, to } = resolveRange(req.query);
+    return sendSuccess(res, {
+      range: { from, to },
+      summary: {
+        totalCombos: 0,
+        totalRevenue: 0,
+        totalPurchases: 0,
+        avgOrderValue: 0,
+      },
+      combos: [],
+      charts: {},
+      heatmap: [],
+    });
+  }
+
   const { from, to } = resolveRange(req.query);
   const report = await buildComboAnalyticsReport({ from, to });
   const charts = await buildComboAnalyticsCharts({ from, to });
@@ -887,6 +1050,14 @@ export const getComboAnalyticsDashboard = asyncHandler(async (req, res) => {
 });
 
 export const getComboOrderInsights = asyncHandler(async (req, res) => {
+  if (isFirebaseCatalogPrimaryEnabled()) {
+    const { from, to } = resolveRange(req.query);
+    return sendSuccess(res, {
+      range: { from, to },
+      rows: [],
+    });
+  }
+
   const { from, to } = resolveRange(req.query);
 
   const pipeline = [

@@ -79,7 +79,7 @@ const escapeHtml = (value) =>
 const resolvePartnerApiBaseUrl = (req) => {
   const envBase = sanitizeBaseUrl(
     process.env.BASE_URL || process.env.BACKEND_URL,
-  );
+  ).replace(/\/api$/i, "");
   const forwardedProto = String(
     req.get("x-forwarded-proto") || req.protocol || "https",
   )
