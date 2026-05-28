@@ -2,8 +2,9 @@ import { API_BASE_URL } from "@/utils/api";
 import { io } from "socket.io-client";
 
 const SOCKET_TRANSPORTS = ["websocket", "polling"];
-const LOCAL_SOCKET_FALLBACK = "http://localhost:8000";
-const HEALTHY_ONE_GRAM_SOCKET_FALLBACK = "https://healthyonegram.com";
+const LOCAL_SOCKET_FALLBACK = "http://127.0.0.1:8000";
+const PRODUCTION_SOCKET_FALLBACK =
+  "https://healthyonegram-api-v2-xb7znoco6a-uc.a.run.app";
 
 const sanitizeBaseUrl = (value) =>
   String(value || "")
@@ -12,16 +13,6 @@ const sanitizeBaseUrl = (value) =>
     .replace(/\/+$/, "");
 
 const isHttpUrl = (value) => /^https?:\/\//i.test(String(value || ""));
-
-const LEGACY_PRODUCTION_API_URLS = new Set([
-  "https://healthy-one-gram.el.r.appspot.com",
-  "https://healthy-one-gram.appspot.com",
-  "https://client-dot-healthy-one-gram.el.r.appspot.com",
-  "https://admin-dot-healthy-one-gram.el.r.appspot.com",
-]);
-
-const isLegacyProductionApiUrl = (value) =>
-  LEGACY_PRODUCTION_API_URLS.has(sanitizeBaseUrl(value));
 
 const stripApiSuffix = (value) => {
   const baseUrl = sanitizeBaseUrl(value);
@@ -54,7 +45,6 @@ const resolveSocketBaseUrls = () => {
   const pushCandidate = (value) => {
     const normalized = normalizeSocketBaseUrl(value);
     if (!isHttpUrl(normalized) || candidates.includes(normalized)) return;
-    if (isLegacyProductionApiUrl(normalized)) return;
     candidates.push(normalized);
   };
 
@@ -63,18 +53,8 @@ const resolveSocketBaseUrls = () => {
   pushCandidate(process.env.NEXT_PUBLIC_APP_API_URL);
   pushCandidate(process.env.NEXT_PUBLIC_API_URL);
 
-  if (typeof window !== "undefined") {
-    pushCandidate(window.location.origin);
-
-    const hostname = String(window.location.hostname || "").toLowerCase();
-    const looksLikeAdminHost =
-      hostname.startsWith("admin-dot-") ||
-      hostname.startsWith("admin.") ||
-      hostname.endsWith(".healthyonegram.com");
-
-    if (looksLikeAdminHost) {
-      pushCandidate(HEALTHY_ONE_GRAM_SOCKET_FALLBACK);
-    }
+  if (process.env.NODE_ENV === "production") {
+    pushCandidate(PRODUCTION_SOCKET_FALLBACK);
   }
 
   if (candidates.length === 0) {

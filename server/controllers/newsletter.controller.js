@@ -127,7 +127,7 @@ const getPublicApiUrl = () => {
     process.env.API_BASE_URL ||
     process.env.BACKEND_URL ||
     process.env.SERVER_URL ||
-    "https://healthyonegram-backend-xb7znoco6a-uc.a.run.app";
+    "https://healthyonegram-api-v2-xb7znoco6a-uc.a.run.app";
   return String(raw)
     .split(",")[0]
     .trim()

@@ -8,6 +8,10 @@ import toast from "react-hot-toast";
 
 export const MyContext = createContext();
 
+const API_URL = API_BASE_URL.endsWith("/api")
+  ? API_BASE_URL.slice(0, -4)
+  : API_BASE_URL;
+
 // Enhanced flavor palettes with background, accent, hover, and light variants
 export const FLAVORS = {
   creamy: {
@@ -190,7 +194,7 @@ const ThemeProvider = ({ children }) => {
           : "");
       if (refreshToken) {
         fetch(
-          `${API_BASE_URL}/api/user/refresh-token`,
+          `${API_URL}/api/user/refresh-token`,
           {
             method: "POST",
             credentials: "include",

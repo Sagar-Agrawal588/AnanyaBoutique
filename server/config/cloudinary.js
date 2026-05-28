@@ -9,8 +9,16 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Ensure environment variables are loaded from server root
-dotenv.config({ path: path.join(__dirname, "../.env") });
+const isCloudRunRuntime = Boolean(
+  process.env.K_SERVICE || process.env.K_REVISION || process.env.K_CONFIGURATION,
+);
+const shouldLoadLocalDotEnv =
+  process.env.NODE_ENV !== "production" && !isCloudRunRuntime;
+
+if (shouldLoadLocalDotEnv) {
+  dotenv.config({ path: path.join(__dirname, "../.env") });
+}
+
 const isProduction = process.env.NODE_ENV === "production";
 const mediaStorageProvider = String(
   process.env.MEDIA_STORAGE_PROVIDER || "firebase",

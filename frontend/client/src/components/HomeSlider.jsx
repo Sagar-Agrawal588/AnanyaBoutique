@@ -301,10 +301,10 @@ const HomeSlider = ({ initialSlides = [], initialSettings = null }) => {
   };
 
   return (
-    <section className="relative z-10 px-0 xl:px-6">
+    <section className="relative z-10 px-3 sm:px-4 xl:px-6">
       <div className="w-full">
-        <div className="overflow-hidden rounded-[1.6rem] bg-[#f3ece4] shadow-[0_32px_90px_rgba(26,18,13,0.16)] sm:rounded-[2rem] md:mx-auto md:max-w-[900px] md:rounded-[2.25rem] lg:max-w-[980px] lg:rounded-[2.6rem] xl:max-w-[1020px]">
-          <div className="relative w-full aspect-[16/9] md:aspect-auto md:h-[clamp(360px,39vw,470px)] lg:h-[clamp(390px,37vw,520px)] xl:h-[clamp(410px,35vw,540px)]">
+        <div className="overflow-hidden rounded-[1.35rem] bg-[#f3ece4] shadow-[0_24px_70px_rgba(26,18,13,0.14)] sm:rounded-[2rem] md:mx-auto md:max-w-[900px] md:rounded-[2.25rem] md:shadow-[0_32px_90px_rgba(26,18,13,0.16)] lg:max-w-[980px] lg:rounded-[2.6rem] xl:max-w-[1020px]">
+          <div className="relative h-[clamp(190px,56vw,255px)] w-full md:aspect-auto md:h-[clamp(360px,39vw,470px)] lg:h-[clamp(390px,37vw,520px)] xl:h-[clamp(410px,35vw,540px)]">
             <Swiper
               speed={motionEnabled ? 850 : 500}
               spaceBetween={0}
@@ -343,7 +343,7 @@ const HomeSlider = ({ initialSlides = [], initialSettings = null }) => {
                   className="relative h-full w-full"
                   data-swiper-autoplay={slide.stayDurationMs || 5600}
                 >
-                  <div className="relative h-full w-full overflow-hidden bg-[#f3ece4]">
+                  <div className="relative h-full w-full overflow-hidden bg-[radial-gradient(circle_at_center,#fffaf3_0%,#efe4d9_58%,#e2d2c2_100%)]">
                     <div className="absolute inset-0 z-0">
                       {(() => {
                         const desktopSrc = getHeroImageUrl(slide.image);
@@ -373,13 +373,7 @@ const HomeSlider = ({ initialSlides = [], initialSettings = null }) => {
                       })()}
                     </div>
 
-                    <div
-                      className="absolute inset-0 z-10"
-                      style={{
-                        background:
-                          "linear-gradient(90deg, rgba(12,9,7,0.54) 0%, rgba(12,9,7,0.32) 24%, rgba(12,9,7,0.08) 58%, rgba(12,9,7,0.12) 100%), linear-gradient(to top, rgba(24,16,11,0.22) 0%, rgba(24,16,11,0.04) 28%, transparent 58%)",
-                      }}
-                    />
+                    <div className="absolute inset-0 z-10 bg-[linear-gradient(90deg,rgba(12,9,7,0.20)_0%,rgba(12,9,7,0.10)_38%,rgba(12,9,7,0.04)_100%),linear-gradient(to_top,rgba(24,16,11,0.08)_0%,rgba(24,16,11,0.03)_30%,transparent_58%)] md:bg-[linear-gradient(90deg,rgba(12,9,7,0.54)_0%,rgba(12,9,7,0.32)_24%,rgba(12,9,7,0.08)_58%,rgba(12,9,7,0.12)_100%),linear-gradient(to_top,rgba(24,16,11,0.22)_0%,rgba(24,16,11,0.04)_28%,transparent_58%)]" />
                     <div className="absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-[#1d140f]/14 to-transparent" />
 
                     {slide.offerEnabled &&
@@ -428,7 +422,7 @@ const HomeSlider = ({ initialSlides = [], initialSettings = null }) => {
                 <button
                   type="button"
                   onClick={handlePreviousSlide}
-                  className="absolute left-4 top-1/2 z-30 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-white/18 bg-black/38 text-white shadow-[0_14px_30px_rgba(0,0,0,0.24)] backdrop-blur-md transition hover:bg-black/48 md:hidden"
+                  className="absolute left-4 top-1/2 z-30 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-white/18 bg-black/38 text-white shadow-[0_14px_30px_rgba(0,0,0,0.24)] backdrop-blur-md transition hover:bg-black/48 md:hidden"
                   aria-label="Previous home slide"
                 >
                   <FiArrowLeft size={16} />
@@ -436,7 +430,7 @@ const HomeSlider = ({ initialSlides = [], initialSettings = null }) => {
                 <button
                   type="button"
                   onClick={handleNextSlide}
-                  className="absolute right-4 top-1/2 z-30 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-white/18 bg-black/38 text-white shadow-[0_14px_30px_rgba(0,0,0,0.24)] backdrop-blur-md transition hover:bg-black/48 md:hidden"
+                  className="absolute right-4 top-1/2 z-30 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-white/18 bg-black/38 text-white shadow-[0_14px_30px_rgba(0,0,0,0.24)] backdrop-blur-md transition hover:bg-black/48 md:hidden"
                   aria-label="Next home slide"
                 >
                   <FiArrowRight size={16} />
@@ -512,13 +506,13 @@ const HomeSlider = ({ initialSlides = [], initialSettings = null }) => {
       </div>
 
       {heroTrustItems.length ? (
-        <div className="mt-1 flex justify-center px-4 md:mt-2">
-          <div className="mx-auto w-full max-w-5xl rounded-[1.4rem] border border-white/16 bg-[rgba(18,12,9,0.78)] px-2.5 py-3 text-white/88 shadow-[0_18px_55px_rgba(0,0,0,0.22)] backdrop-blur-xl md:max-w-fit md:rounded-full md:px-3.5 md:py-2.5">
-            <div className="flex items-center gap-1 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden md:flex-wrap md:justify-center md:gap-1.5 md:overflow-visible">
+        <div className="mt-2 flex justify-center px-0 md:mt-2 md:px-4">
+          <div className="mx-auto w-full max-w-5xl rounded-[1.1rem] border border-white/16 bg-[rgba(18,12,9,0.78)] px-2 py-2 text-white/88 shadow-[0_14px_42px_rgba(0,0,0,0.18)] backdrop-blur-xl md:max-w-fit md:rounded-full md:px-3.5 md:py-2.5 md:shadow-[0_18px_55px_rgba(0,0,0,0.22)]">
+            <div className="flex items-center gap-1.5 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden md:flex-wrap md:justify-center md:overflow-visible">
               {heroTrustItems.map((item) => (
                 <span
                   key={item}
-                  className="rounded-full bg-white/10 px-2.5 py-1.5 text-[8px] font-extrabold uppercase tracking-[0.12em] sm:px-4 sm:py-2 sm:text-[11px] sm:tracking-[0.2em] md:px-3.5 md:py-1.5"
+                  className="shrink-0 rounded-full bg-white/10 px-2 py-1.5 text-[7px] font-extrabold uppercase tracking-[0.1em] sm:px-4 sm:py-2 sm:text-[11px] sm:tracking-[0.2em] md:px-3.5 md:py-1.5"
                 >
                   {item}
                 </span>
@@ -528,7 +522,7 @@ const HomeSlider = ({ initialSlides = [], initialSettings = null }) => {
         </div>
       ) : null}
 
-      <div className="mt-3 md:mx-auto md:mt-5 md:max-w-[1000px] lg:max-w-[1080px]">
+      <div className="mt-2 md:mx-auto md:mt-5 md:max-w-[1000px] lg:max-w-[1080px]">
         {activeSlideHasNarrative && isHeroPanelDismissed ? (
           <button
             type="button"
@@ -539,14 +533,14 @@ const HomeSlider = ({ initialSlides = [], initialSettings = null }) => {
           </button>
         ) : activeSlide && activeSlideHasNarrative ? (
           <>
-            <div className="rounded-[1.35rem] border border-[#2c1e15]/10 bg-[linear-gradient(145deg,rgba(255,255,255,0.78)_0%,rgba(255,249,242,0.64)_100%)] p-4 text-[#2d1a11] shadow-[0_18px_50px_rgba(26,18,13,0.14),inset_0_1px_0_rgba(255,255,255,0.82)] backdrop-blur-2xl backdrop-saturate-150 md:hidden">
+            <div className="rounded-[1.15rem] border border-[#2c1e15]/10 bg-[linear-gradient(145deg,rgba(255,255,255,0.78)_0%,rgba(255,249,242,0.64)_100%)] p-3.5 text-[#2d1a11] shadow-[0_14px_38px_rgba(26,18,13,0.12),inset_0_1px_0_rgba(255,255,255,0.82)] backdrop-blur-2xl backdrop-saturate-150 md:hidden">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <span className="inline-flex items-center rounded-full border border-white/60 bg-white/46 px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-[#7c5b49] shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] backdrop-blur-md">
                     Bestseller Range
                   </span>
                   {activeSlide.title ? (
-                    <h1 className="mt-3 text-[1.4rem] font-black leading-[0.96] tracking-[-0.04em] text-[#2d1a11]">
+                    <h1 className="mt-2.5 text-[1.24rem] font-black leading-[0.98] tracking-[-0.04em] text-[#2d1a11]">
                       {activeSlide.title}
                     </h1>
                   ) : null}
@@ -554,7 +548,7 @@ const HomeSlider = ({ initialSlides = [], initialSettings = null }) => {
                 <button
                   type="button"
                   onClick={() => setIsHeroPanelDismissed(true)}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#2c1e15]/10 bg-[#f7f2ed] text-[#2d1a11]"
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-[#2c1e15]/10 bg-[#f7f2ed] text-[#2d1a11]"
                   aria-label="Hide slide details"
                 >
                   <FiX size={15} />
@@ -562,22 +556,22 @@ const HomeSlider = ({ initialSlides = [], initialSettings = null }) => {
               </div>
 
               {activeSlide.subtitle ? (
-                <p className="mt-3 text-sm leading-6 text-[#6a5447]">
+                <p className="mt-2.5 text-[13px] leading-5 text-[#6a5447]">
                   {activeSlide.subtitle}
                 </p>
               ) : null}
 
-              <div className="mt-4 flex flex-wrap gap-3">
+              <div className="mt-3 flex flex-wrap gap-2.5">
                 <Link
                   href={activeSlide.link}
-                  className="inline-flex items-center gap-2 rounded-full bg-[#2d1a11] px-4 py-2.5 text-sm font-bold text-white sm:px-5 sm:py-3"
+                  className="inline-flex items-center gap-2 rounded-full bg-[#2d1a11] px-3.5 py-2 text-[13px] font-bold text-white sm:px-5 sm:py-3 sm:text-sm"
                 >
                   {activeSlide.cta}
                   <FiArrowUpRight size={16} />
                 </Link>
                 <Link
                   href="/products"
-                  className="inline-flex items-center gap-2 rounded-full border border-[#2d1a11]/12 bg-white/54 px-4 py-2.5 text-sm font-semibold text-[#2d1a11] shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] backdrop-blur-md sm:py-3"
+                  className="inline-flex items-center gap-2 rounded-full border border-[#2d1a11]/12 bg-white/54 px-3.5 py-2 text-[13px] font-semibold text-[#2d1a11] shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] backdrop-blur-md sm:py-3 sm:text-sm"
                 >
                   View catalog
                 </Link>
@@ -635,6 +629,20 @@ const HomeSlider = ({ initialSlides = [], initialSettings = null }) => {
           width: 36px !important;
           background: var(--color-primary, #00d89e) !important;
           box-shadow: 0 0 12px var(--color-primary, #00d89e) !important;
+        }
+
+        @media (max-width: 767px) {
+          .homeSlider .swiper-pagination {
+            bottom: 8px !important;
+          }
+          .home-slide-bullet {
+            width: 16px !important;
+            height: 3px !important;
+            margin: 0 3px !important;
+          }
+          .home-slide-bullet-active {
+            width: 26px !important;
+          }
         }
       `}</style>
     </section>

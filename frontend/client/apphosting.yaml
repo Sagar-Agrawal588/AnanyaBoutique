@@ -4,17 +4,17 @@ runConfig:
 
 env:
   - variable: NEXT_PUBLIC_BACKEND_URL
-    value: "https://healthy-one-gram.el.r.appspot.com"
+    value: "https://healthyonegram-api-v2-xb7znoco6a-uc.a.run.app"
     availability:
       - BUILD
       - RUNTIME
   - variable: NEXT_PUBLIC_API_URL
-    value: "https://healthy-one-gram.el.r.appspot.com"
+    value: "https://healthyonegram-api-v2-xb7znoco6a-uc.a.run.app/api"
     availability:
       - BUILD
       - RUNTIME
   - variable: NEXT_PUBLIC_APP_API_URL
-    value: "https://healthy-one-gram.el.r.appspot.com"
+    value: "https://healthyonegram-api-v2-xb7znoco6a-uc.a.run.app/api"
     availability:
       - BUILD
       - RUNTIME
@@ -39,7 +39,7 @@ env:
       - BUILD
       - RUNTIME
   - variable: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
-    value: "studio-8452116634.firebasestorage.app"
+    value: "studio-8452116634-cdb59.firebasestorage.app"
     availability:
       - BUILD
       - RUNTIME

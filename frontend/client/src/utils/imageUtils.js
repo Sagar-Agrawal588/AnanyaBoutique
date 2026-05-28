@@ -13,7 +13,9 @@ import {
   resolveLegacyLocalMedia,
 } from "@/utils/mediaDefaults";
 
-const API_URL = API_BASE_URL;
+const API_URL = API_BASE_URL.endsWith("/api")
+  ? API_BASE_URL.slice(0, -4)
+  : API_BASE_URL;
 const DEFAULT_PLACEHOLDER = DEFAULT_PRODUCT_IMAGE;
 const CLOUDINARY_TRANSFORM_TOKEN_PATTERN =
   /(?:^|,)(?:c|w|h|g|q|f|dpr|ar|x|y|z|bo|e|fl)_[^,/]+/i;

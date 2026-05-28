@@ -1,0 +1,65 @@
+HealthyOneGram Backend Cloud Run Deployment
+===========================================
+
+Service
+-------
+Name: healthyonegram-api-v2
+Region: us-central1
+Backend URL: https://healthyonegram-api-v2-xb7znoco6a-uc.a.run.app
+API base URL: https://healthyonegram-api-v2-xb7znoco6a-uc.a.run.app/api
+
+Required runtime environment
+----------------------------
+Cloud Run must provide these values as service environment variables:
+
+- MONGO_URI
+- NODE_ENV=production
+- ACCESS_TOKEN_SECRET
+- REFRESH_TOKEN_SECRET
+- CLIENT_URL=https://healthyonegram.com
+- FRONTEND_URL=https://healthyonegram.com
+- ADMIN_URL=https://healthyonegram-admin-studio-8452116634-cdb59.us-central1.hosted.app
+- CORS_ORIGINS=https://healthyonegram.com,https://healthyonegram-client-studio-8452116634-cdb59.us-central1.hosted.app,https://healthyonegram-admin-studio-8452116634-cdb59.us-central1.hosted.app
+
+Preserve the existing payment, email, Firebase, storage, analytics, and shipping
+secrets from server/.env when updating Cloud Run. Do not commit actual secret
+values.
+
+Deploy
+------
+Run from server/:
+
+gcloud run deploy healthyonegram-api-v2 --source . --region us-central1 --allow-unauthenticated --project studio-8452116634-cdb59
+
+When deploying with an env file, keep it outside the repo or use a gitignored
+temporary path. Do not include PORT in the Cloud Run env file; Cloud Run injects
+PORT=8080 and the app falls back to 8000 only for local development.
+
+Post-deploy URL variables
+------------------------
+After Cloud Run reports the service URL, update these service env vars to the
+canonical backend URL:
+
+- BACKEND_URL
+- API_BASE_URL
+- NEXT_PUBLIC_API_URL=<backend-url>/api
+- NEXT_PUBLIC_APP_API_URL=<backend-url>/api
+- PAYTM_ORDER_CALLBACK_URL=<backend-url>/api/orders/webhook/paytm
+- PHONEPE_ORDER_CALLBACK_URL=<backend-url>/api/orders/webhook/phonepe
+
+Verification
+------------
+- GET <backend-url>/ should return 200 and show port 8080.
+- GET <backend-url>/healthz/ should return 200 ok.
+- GET <backend-url>/api/products?limit=1 with Origin: https://healthyonegram.com should return CORS for that origin.
+- OPTIONS <backend-url>/api/admin/login with the admin hosted origin should return 204 and Access-Control-Allow-Credentials: true.
+- Cloud Run logs should include selected PORT=8080, NODE_ENV=production, Connected to MongoDB, and API service started successfully.
+
+Firebase App Hosting
+--------------------
+Both frontend/client/apphosting.yaml and frontend/admin/apphosting.yaml must use:
+
+- NEXT_PUBLIC_BACKEND_URL=https://healthyonegram-api-v2-xb7znoco6a-uc.a.run.app
+- NEXT_PUBLIC_API_URL=https://healthyonegram-api-v2-xb7znoco6a-uc.a.run.app/api
+- NEXT_PUBLIC_APP_API_URL=https://healthyonegram-api-v2-xb7znoco6a-uc.a.run.app/api
+- NEXT_PUBLIC_SITE_URL=https://healthyonegram.com

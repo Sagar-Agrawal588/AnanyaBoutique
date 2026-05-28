@@ -19,7 +19,9 @@ import { FaXTwitter } from "react-icons/fa6";
 import { IoLocationSharp } from "react-icons/io5";
 import { BiSupport } from "react-icons/bi";
 
-const API_URL = API_BASE_URL;
+const API_URL = API_BASE_URL.endsWith("/api")
+  ? API_BASE_URL.slice(0, -4)
+  : API_BASE_URL;
 const FALLBACK_STORE_INFO = {
   name: "BuyOneGram",
   email: "healthyonegram.com",

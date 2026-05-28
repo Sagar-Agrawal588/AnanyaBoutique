@@ -2,7 +2,16 @@ import dotenv from "dotenv";
 import mongoose from "mongoose";
 import { ensureOrderIdentityIndexes } from "../utils/orderIdentityIndexes.js";
 import { ensureReviewVariantIndexes } from "../utils/reviewVariantIndexes.js";
-dotenv.config();
+
+const isCloudRunRuntime = Boolean(
+  process.env.K_SERVICE || process.env.K_REVISION || process.env.K_CONFIGURATION,
+);
+const shouldLoadLocalDotEnv =
+  process.env.NODE_ENV !== "production" && !isCloudRunRuntime;
+
+if (shouldLoadLocalDotEnv) {
+  dotenv.config();
+}
 
 const normalizeEnvValue = (value) => {
   let normalized = String(value || "").trim();
@@ -34,11 +43,17 @@ const resolveMongoUri = () => {
   }
 
   if (!primaryMongoUri && !fallbackMongoUri) {
+    console.error(
+      "[startup] Database URI is missing. Required setting: MONGO_URI. MONGODB_URI is accepted as a fallback.",
+    );
     throw new Error(
       "Database URI is missing. Set MONGO_URI or MONGODB_URI in environment variables.",
     );
   }
 
+  console.error(
+    "[startup] Database URI is invalid. It must start with mongodb:// or mongodb+srv://.",
+  );
   throw new Error(
     "Invalid MongoDB URI format. Set MONGO_URI or MONGODB_URI to a value that starts with mongodb:// or mongodb+srv://",
   );

@@ -31,8 +31,6 @@ const API_URL = String(API_BASE_URL || "")
 const LOCAL_API_FALLBACKS = [
   "http://127.0.0.1:8000",
   "http://127.0.0.1:8001",
-  "http://localhost:8000",
-  "http://localhost:8001",
 ];
 
 const buildApiUrlCandidates = (path) => {
@@ -63,8 +61,6 @@ const buildApiUrlCandidates = (path) => {
   if (API_URL) {
     candidates.push(`${API_URL}${apiPath}`);
   }
-
-  candidates.push(apiPath);
 
   return [...new Set(candidates)];
 };

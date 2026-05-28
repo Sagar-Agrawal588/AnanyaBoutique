@@ -5,7 +5,9 @@ import cookies from "js-cookie";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-const API_URL = API_BASE_URL;
+const API_URL = API_BASE_URL.endsWith("/api")
+  ? API_BASE_URL.slice(0, -4)
+  : API_BASE_URL;
 const ORDER_PENDING_PAYMENT_KEY = "orderPaymentPending";
 const COIN_REWARD_KEY = "coinRewardAnimation";
 

@@ -2,10 +2,11 @@ const BACKEND_URL = String(
   process.env.NEXT_PUBLIC_BACKEND_URL ||
     process.env.NEXT_PUBLIC_APP_API_URL ||
     process.env.NEXT_PUBLIC_API_URL ||
-    "https://healthy-one-gram.el.r.appspot.com",
+    "https://healthyonegram-api-v2-xb7znoco6a-uc.a.run.app/api",
 )
   .trim()
-  .replace(/\/+$/, "");
+  .replace(/\/+$/, "")
+  .replace(/\/api$/i, "");
 
 const HOP_BY_HOP_HEADERS = new Set([
   "connection",
@@ -25,7 +26,9 @@ const buildTargetUrl = async (request, params) => {
     ? resolvedParams.path
     : [];
   const requestUrl = new URL(request.url);
-  const target = new URL(`/${parts.join("/")}`, BACKEND_URL);
+  const rawPath = `/${parts.join("/")}`.replace(/\/{2,}/g, "/");
+  const apiPath = /^\/api(\/|$)/i.test(rawPath) ? rawPath : `/api${rawPath}`;
+  const target = new URL(apiPath, BACKEND_URL);
   target.search = requestUrl.search;
   return target;
 };

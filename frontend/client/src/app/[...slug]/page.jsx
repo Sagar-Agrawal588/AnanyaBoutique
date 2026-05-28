@@ -12,7 +12,10 @@ const normalizeBaseUrl = (value) =>
   String(value || "")
     .trim()
     .replace(/^["']|["']$/g, "")
-    .replace(/\/+$/, "");
+    .replace(/\/+$/, "")
+    .replace(/\/api$/i, "");
+
+const DEFAULT_API_BASE_URL = "https://healthyonegram-api-v2-xb7znoco6a-uc.a.run.app";
 
 const DEFAULT_METADATA = {
   title: "Healthy One Gram - Premium Peanut Butter Store",
@@ -47,7 +50,9 @@ const normalizePath = (segments = []) => {
 
 const fetchSeoSettings = async () => {
   try {
-    const apiBase = normalizeBaseUrl(process.env.NEXT_PUBLIC_API_URL || SITE_URL);
+    const apiBase = normalizeBaseUrl(
+      process.env.NEXT_PUBLIC_API_URL || DEFAULT_API_BASE_URL,
+    );
     const response = await fetch(`${apiBase}/api/settings/public`, {
       cache: "no-store",
     });

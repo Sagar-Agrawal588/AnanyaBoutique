@@ -43,8 +43,14 @@ const sanitizeBaseUrl = (value) =>
     .replace(/^['"]|['"]$/g, "")
     .replace(/\/+$/, "");
 
+const removeApiSuffix = (value) => String(value || "").replace(/\/api$/i, "");
+
 const API_BASE_URL = sanitizeBaseUrl(
-  process.env.NEXT_PUBLIC_APP_API_URL || process.env.NEXT_PUBLIC_API_URL,
+  removeApiSuffix(
+    process.env.NEXT_PUBLIC_APP_API_URL ||
+      process.env.NEXT_PUBLIC_API_URL ||
+      "https://healthyonegram-api-v2-xb7znoco6a-uc.a.run.app/api",
+  ),
 );
 const LOCAL_DEV_API_BASE_URL = sanitizeBaseUrl(
   process.env.NEXT_PUBLIC_LOCAL_API_URL || "http://127.0.0.1:8001",

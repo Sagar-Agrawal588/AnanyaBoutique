@@ -7,13 +7,15 @@
 
 const BASE_URL =
   process.env.NEXT_PUBLIC_SITE_URL || "https://healthyonegram.com";
+const DEFAULT_API_BASE_URL = "https://healthyonegram-api-v2-xb7znoco6a-uc.a.run.app";
 const SITEMAP_REVALIDATE_SECONDS = 3600;
 
 const normalizeBaseUrl = (value) =>
   String(value || "")
     .trim()
     .replace(/^["']|["']$/g, "")
-    .replace(/\/+$/, "");
+    .replace(/\/+$/, "")
+    .replace(/\/api$/i, "");
 
 export const revalidate = 3600;
 
@@ -72,7 +74,9 @@ export default async function sitemap() {
 
   // Try to include admin-managed SEO pages from settings (seoSettings.pages)
   try {
-    const apiBase = normalizeBaseUrl(process.env.NEXT_PUBLIC_API_URL || BASE_URL);
+    const apiBase = normalizeBaseUrl(
+      process.env.NEXT_PUBLIC_API_URL || DEFAULT_API_BASE_URL,
+    );
     const resp = await fetch(`${apiBase}/api/settings/public`, {
       headers: { "content-type": "application/json" },
       next: { revalidate: SITEMAP_REVALIDATE_SECONDS },

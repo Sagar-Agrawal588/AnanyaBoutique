@@ -75,7 +75,7 @@ The guide is public (no key needed) and explains what endpoints exist and how au
 - Guide PDF: /api/v1/partner/guide.pdf
 
  Examples:
- - Live: https://healthyonegram.com/api/v1/partner/guide
+ - Live: https://healthyonegram-api-v2-xb7znoco6a-uc.a.run.app/api/v1/partner/guide
  - Local: http://localhost:8000/api/v1/partner/guide
 
 

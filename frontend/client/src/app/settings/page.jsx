@@ -8,7 +8,9 @@ import cookies from "js-cookie";
 import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 
-const API_URL = API_BASE_URL;
+const API_URL = API_BASE_URL.endsWith("/api")
+  ? API_BASE_URL.slice(0, -4)
+  : API_BASE_URL;
 
 const Settings = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);

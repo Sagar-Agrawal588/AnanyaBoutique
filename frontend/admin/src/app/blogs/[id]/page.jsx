@@ -13,7 +13,9 @@ import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { MdSave } from "react-icons/md";
 
-const API_URL = API_BASE_URL;
+const API_URL = API_BASE_URL.endsWith("/api")
+  ? API_BASE_URL.slice(0, -4)
+  : API_BASE_URL;
 
 const EditBlog = () => {
   const { token, isAuthenticated, loading } = useAdmin();

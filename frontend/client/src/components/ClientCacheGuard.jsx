@@ -2,11 +2,17 @@
 
 import { useEffect } from "react";
 
-const CACHE_GUARD_VERSION = "healthyonegram-client-2026-05-28-v4";
+const CACHE_GUARD_VERSION = "healthyonegram-client-2026-05-28-v5";
 const CACHE_GUARD_KEY = "hog_client_cache_guard_version";
+const FORCE_CACHE_RESET_PARAMS = [
+  "__hog_sw_reset",
+  "__hog_cache_reset",
+  "force",
+];
 const HOSTS_TO_GUARD = new Set([
   "healthyonegram.com",
   "www.healthyonegram.com",
+  "healthyonegram-client-studio-8452116634-cdb59.us-central1.hosted.app",
   "healthyonegram-client--studio-8452116634-cdb59.us-central1.hosted.app",
 ]);
 
@@ -54,6 +60,13 @@ const clearLegacyLocalState = () => {
   }
 };
 
+const getForceResetRequested = () => {
+  if (typeof window === "undefined") return false;
+
+  const params = new URLSearchParams(window.location.search);
+  return FORCE_CACHE_RESET_PARAMS.some((param) => params.has(param));
+};
+
 export default function ClientCacheGuard() {
   useEffect(() => {
     if (!shouldGuardHost()) return;
@@ -61,8 +74,9 @@ export default function ClientCacheGuard() {
     let cancelled = false;
 
     const runGuard = async () => {
+      const forceResetRequested = getForceResetRequested();
       const currentVersion = window.localStorage.getItem(CACHE_GUARD_KEY);
-      if (currentVersion === CACHE_GUARD_VERSION) return;
+      if (!forceResetRequested && currentVersion === CACHE_GUARD_VERSION) return;
 
       clearLegacyLocalState();
 
@@ -75,8 +89,9 @@ export default function ClientCacheGuard() {
 
       window.localStorage.setItem(CACHE_GUARD_KEY, CACHE_GUARD_VERSION);
 
-      if (clearedCaches || unregisteredWorkers) {
+      if (clearedCaches || unregisteredWorkers || forceResetRequested) {
         const url = new URL(window.location.href);
+        FORCE_CACHE_RESET_PARAMS.forEach((param) => url.searchParams.delete(param));
         url.searchParams.set("__hog_fresh", CACHE_GUARD_VERSION);
         window.location.replace(url.toString());
       }

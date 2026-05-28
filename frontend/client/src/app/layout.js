@@ -69,7 +69,9 @@ const normalizeApiBase = (value) =>
   String(value || "")
     .trim()
     .replace(/^["']|["']$/g, "")
-    .replace(/\/+$/, "");
+    .replace(/\/+$/, "")
+    .replace(/\/api$/i, "");
+const DEFAULT_API_BASE_URL = "https://healthyonegram-api-v2-xb7znoco6a-uc.a.run.app";
 const PUBLIC_SETTINGS_REVALIDATE_SECONDS = 300;
 const PUBLIC_SETTINGS_FETCH_TIMEOUT_MS = 2500;
 
@@ -118,7 +120,9 @@ export async function generateMetadata({ request }) {
       request?.headers?.get("x-forwarded-proto") || "https:";
     const siteUrl = resolvePublicSiteUrl({ requestHost, requestProtocol });
     const defaultMetadata = buildDefaultMetadata(siteUrl);
-    const apiBase = normalizeApiBase(process.env.NEXT_PUBLIC_API_URL || siteUrl);
+    const apiBase = normalizeApiBase(
+      process.env.NEXT_PUBLIC_API_URL || DEFAULT_API_BASE_URL,
+    );
     const resp = await fetchWithTimeout(`${apiBase}/api/settings/public`, {
       next: { revalidate: PUBLIC_SETTINGS_REVALIDATE_SECONDS },
     });

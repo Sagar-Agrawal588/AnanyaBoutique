@@ -21,7 +21,7 @@ const AccountSidebar = () => {
     API_BASE_URL ||
     process.env.NEXT_PUBLIC_APP_API_URL ||
     process.env.NEXT_PUBLIC_API_URL ||
-    "http://localhost:8000"
+    "https://healthyonegram-api-v2-xb7znoco6a-uc.a.run.app/api"
   )
     .replace(/\/+$/, "")
     .replace(/\/api$/i, "");

@@ -5,7 +5,9 @@ import { API_BASE_URL } from "@/utils/api";
 import { useEffect, useMemo, useState } from "react";
 import { getDisplayShippingCharge } from "@/utils/shippingDisplay";
 
-const API_URL = API_BASE_URL;
+const API_URL = API_BASE_URL.endsWith("/api")
+  ? API_BASE_URL.slice(0, -4)
+  : API_BASE_URL;
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const DEFAULT_METRICS = Object.freeze({

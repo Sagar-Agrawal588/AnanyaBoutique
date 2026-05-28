@@ -104,17 +104,14 @@ const resolveBlogApiBaseUrl = () => {
   )
     .trim()
     .replace(/^['"]|['"]$/g, "")
-    .replace(/\/+$/, "");
+    .replace(/\/+$/, "")
+    .replace(/\/api$/i, "");
 
   if (configuredBase) {
     return configuredBase;
   }
 
-  if (typeof window !== "undefined") {
-    return String(window.location.origin || "").replace(/\/+$/, "");
-  }
-
-  return "http://127.0.0.1:8000";
+  return "https://healthyonegram-api-v2-xb7znoco6a-uc.a.run.app";
 };
 
 const estimateReadTime = (content) => {

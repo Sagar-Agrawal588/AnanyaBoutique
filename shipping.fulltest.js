@@ -6,7 +6,7 @@ const fetch = (...args) =>
   import("node-fetch").then(({ default: fetch }) => fetch(...args));
 
 const API_BASE_URL = (process.env.API_BASE_URL ||
-  "https://healthy-one-gram.el.r.appspot.com").replace(/\/+$/, "");
+  "https://healthyonegram-api-v2-xb7znoco6a-uc.a.run.app").replace(/\/+$/, "");
 const API = `${API_BASE_URL}/api/shipping/quote`;
 
 const PINCODES = [

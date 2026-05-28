@@ -1,4 +1,4 @@
-name: Deploy Backend (App Engine)
+name: Deploy Backend (Cloud Run)
 
 on:
   push:
@@ -28,6 +28,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Await required CI checks
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          node scripts/await-required-checks.mjs \
+            --check "Validate Env Examples" \
+            --check "Backend Tests" \
+            --check "Client Build" \
+            --check "Admin Build"
+
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
@@ -38,73 +48,19 @@ jobs:
         with:
           project_id: ${{ secrets.GCP_PROJECT_ID }}
 
-      - name: Prune old App Engine versions (backend)
+      - name: Validate Cloud Run target project
         env:
-          SERVICE_NAME: default
-          KEEP_VERSIONS: "5"
+          CLOUD_RUN_REGION: ${{ secrets.CLOUD_RUN_REGION }}
         run: |
-          python - <<'PY'
-          import json
-          import os
-          import subprocess
-          import sys
+          region="${CLOUD_RUN_REGION:-us-central1}"
+          gcloud run regions describe "$region" --project="${{ secrets.GCP_PROJECT_ID }}"
 
-          service = os.environ.get("SERVICE_NAME")
-          keep = int(os.environ.get("KEEP_VERSIONS", "5"))
-          if not service:
-            sys.exit(0)
-
-          try:
-            output = subprocess.check_output(
-              [
-                "gcloud",
-                "app",
-                "versions",
-                "list",
-                "--service",
-                service,
-                "--sort-by",
-                "~version.last_deployed_time",
-                "--format",
-                "json(version.id,traffic_split)",
-              ],
-              text=True,
-            )
-          except subprocess.CalledProcessError as exc:
-            print("Version list failed:", exc)
-            sys.exit(0)
-
-          data = json.loads(output or "[]")
-          versions = []
-          for item in data:
-            vid = item.get("version", {}).get("id") or item.get("id")
-            traffic = item.get("traffic_split", 0)
-            try:
-              traffic = float(traffic)
-            except Exception:
-              traffic = 0.0
-            if vid:
-              versions.append((vid, traffic))
-
-          for idx, (vid, traffic) in enumerate(versions):
-            if idx < keep:
-              continue
-            if traffic > 0:
-              continue
-            try:
-              subprocess.check_call(
-                ["gcloud", "app", "versions", "delete", vid, "--service", service, "--quiet"]
-              )
-              print("Deleted version:", vid)
-            except subprocess.CalledProcessError as exc:
-              print("Delete failed:", vid, exc)
-          PY
-
-      - name: Build temporary backend deploy YAML
+      - name: Build temporary backend env file
         env:
           MONGO_URI: ${{ secrets.MONGO_URI }}
           ACCESS_TOKEN_SECRET: ${{ secrets.ACCESS_TOKEN_SECRET }}
           REFRESH_TOKEN_SECRET: ${{ secrets.REFRESH_TOKEN_SECRET }}
+          SITE_URL: ${{ secrets.SITE_URL }}
           CLIENT_URL: ${{ secrets.CLIENT_URL }}
           ADMIN_URL: ${{ secrets.ADMIN_URL }}
           CORS_ORIGINS: ${{ secrets.CORS_ORIGINS }}
@@ -186,6 +142,7 @@ jobs:
               "MONGO_URI",
               "ACCESS_TOKEN_SECRET",
               "REFRESH_TOKEN_SECRET",
+              "SITE_URL",
               "CLIENT_URL",
               "ADMIN_URL",
               "CORS_ORIGINS",
@@ -242,6 +199,7 @@ jobs:
               "MONGO_URI": os.environ["MONGO_URI"],
               "ACCESS_TOKEN_SECRET": os.environ["ACCESS_TOKEN_SECRET"],
               "REFRESH_TOKEN_SECRET": os.environ["REFRESH_TOKEN_SECRET"],
+              "SITE_URL": os.environ["SITE_URL"],
               "CLIENT_URL": os.environ["CLIENT_URL"],
               "ADMIN_URL": os.environ["ADMIN_URL"],
               "CORS_ORIGINS": os.environ["CORS_ORIGINS"],
@@ -322,26 +280,71 @@ jobs:
               if value:
                   env_values[key] = value
 
-          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env_file:
-              env_file.write(
-                  "APP_DEPLOY_BACKEND_ENV_JSON="
-                  + json.dumps(env_values, separators=(",", ":"))
-                  + "\n"
-              )
+          target = "server/cloudrun.env.yaml"
+          with open(target, "w", encoding="utf-8") as env_file:
+              for key, value in env_values.items():
+                  serialized = json.dumps(str(value))
+                  env_file.write(f"{key}: {serialized}\n")
           PY
 
-      - name: Render backend deploy YAML from app.yaml
+      - name: Derive Cloud Run backend URL
         env:
-          APP_DEPLOY_BACKEND_ENV_JSON: ${{ env.APP_DEPLOY_BACKEND_ENV_JSON }}
+          CLOUD_RUN_SERVICE: ${{ secrets.CLOUD_RUN_BACKEND_SERVICE }}
+          CLOUD_RUN_REGION: ${{ secrets.CLOUD_RUN_REGION }}
         run: |
-          python scripts/build_app_engine_deploy_yaml.py \
-            --source server/app.yaml \
-            --target server/app.deploy.yaml \
-            --env-json "$APP_DEPLOY_BACKEND_ENV_JSON"
+          service="${CLOUD_RUN_SERVICE:-healthyonegram-backend}"
+          region="${CLOUD_RUN_REGION:-us-central1}"
+          {
+            echo "CLOUD_RUN_SERVICE_NAME=$service"
+            echo "CLOUD_RUN_SERVICE_REGION=$region"
+          } >> "$GITHUB_ENV"
 
       - name: Deploy backend service
-        run: gcloud app deploy server/app.deploy.yaml --project="${{ secrets.GCP_PROJECT_ID }}" --quiet
+        run: |
+          gcloud run deploy "$CLOUD_RUN_SERVICE_NAME" \
+            --project="${{ secrets.GCP_PROJECT_ID }}" \
+            --region="$CLOUD_RUN_SERVICE_REGION" \
+            --source=server \
+            --allow-unauthenticated \
+            --port=8080 \
+            --env-vars-file=server/cloudrun.env.yaml \
+            --quiet
+
+      - name: Capture deployed backend URL
+        run: |
+          backend_url="$(gcloud run services describe "$CLOUD_RUN_SERVICE_NAME" \
+            --project="${{ secrets.GCP_PROJECT_ID }}" \
+            --region="$CLOUD_RUN_SERVICE_REGION" \
+            --format='value(status.url)')"
+          if [ -z "$backend_url" ]; then
+            echo "Failed to resolve deployed Cloud Run backend URL"
+            exit 1
+          fi
+          echo "DEPLOYED_BACKEND_URL=$backend_url" >> "$GITHUB_ENV"
+
+      - name: Finalize backend runtime URLs
+        run: |
+          gcloud run services update "$CLOUD_RUN_SERVICE_NAME" \
+            --project="${{ secrets.GCP_PROJECT_ID }}" \
+            --region="$CLOUD_RUN_SERVICE_REGION" \
+            --update-env-vars "BACKEND_URL=$DEPLOYED_BACKEND_URL,API_BASE_URL=$DEPLOYED_BACKEND_URL,PAYTM_ORDER_CALLBACK_URL=$DEPLOYED_BACKEND_URL/api/orders/webhook/paytm,PHONEPE_ORDER_CALLBACK_URL=$DEPLOYED_BACKEND_URL/api/orders/webhook/phonepe" \
+            --quiet
+
+      - name: Run production smoke checks
+        env:
+          BACKEND_SMOKE_URL: ${{ env.DEPLOYED_BACKEND_URL }}
+        run: |
+          if [ -z "$BACKEND_SMOKE_URL" ]; then
+            echo "Missing deployed backend URL for smoke checks"
+            exit 1
+          fi
+
+          node scripts/production-smoke-check.mjs \
+            --backend-url "$BACKEND_SMOKE_URL" \
+            --origin "https://healthyonegram.com" \
+            --origin "https://healthyonegram-client-studio-8452116634-cdb59.us-central1.hosted.app" \
+            --origin "https://healthyonegram-admin-studio-8452116634-cdb59.us-central1.hosted.app"
 
       - name: Cleanup
         if: always()
-        run: rm -f server/app.deploy.yaml
+        run: rm -f server/cloudrun.env.yaml

@@ -47,9 +47,6 @@ const API_URL = API_BASE_URL.endsWith("/api")
   ? API_BASE_URL
   : `${API_BASE_URL}/api`;
 const LOCAL_API_FALLBACKS = [
-  "http://localhost:8000",
-  "http://localhost:8001",
-  "http://localhost:8002",
   "http://127.0.0.1:8000",
   "http://127.0.0.1:8001",
   "http://127.0.0.1:8002",
@@ -1294,7 +1291,6 @@ const OrderDetailsPage = () => {
     const urls = Array.from(
       new Set([
         `${API_URL}/reviews`,
-        `${API_BASE_URL}/api/reviews`,
         `${API_BASE_URL}/reviews`,
       ]),
     );

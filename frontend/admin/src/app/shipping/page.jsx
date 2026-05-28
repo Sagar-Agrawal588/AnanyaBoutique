@@ -18,7 +18,9 @@ import { toast } from "react-hot-toast";
 import { FaBoxOpen, FaFilePdf, FaRegTimesCircle } from "react-icons/fa";
 import { MdLocalShipping, MdOutlineTrackChanges } from "react-icons/md";
 
-const API_URL = API_BASE_URL;
+const API_URL = API_BASE_URL.endsWith("/api")
+  ? API_BASE_URL.slice(0, -4)
+  : API_BASE_URL;
 
 const ShippingAdminPage = () => {
   const { token, isAuthenticated, loading } = useAdmin();

@@ -12,25 +12,13 @@ const normalizeBaseUrl = (value) =>
     .trim()
     .replace(/\/+$/, "");
 
-const LEGACY_PRODUCTION_API_URLS = new Set([
-  "https://healthy-one-gram.el.r.appspot.com",
-  "https://healthy-one-gram.appspot.com",
-  "https://client-dot-healthy-one-gram.el.r.appspot.com",
-  "https://admin-dot-healthy-one-gram.el.r.appspot.com",
-]);
-
-const isLegacyProductionApiUrl = (value) =>
-  LEGACY_PRODUCTION_API_URLS.has(normalizeBaseUrl(value));
-
 const resolveSocketUrl = () => {
   const explicitApiUrl =
     normalizeBaseUrl(process.env.NEXT_PUBLIC_BACKEND_URL) ||
     normalizeBaseUrl(process.env.NEXT_PUBLIC_APP_API_URL) ||
     normalizeBaseUrl(process.env.NEXT_PUBLIC_API_URL);
   const fallbackApiUrl = normalizeBaseUrl(API_BASE_URL);
-  const base = [explicitApiUrl, fallbackApiUrl].find(
-    (candidate) => candidate && !isLegacyProductionApiUrl(candidate),
-  );
+  const base = [explicitApiUrl, fallbackApiUrl].find(Boolean);
   return String(base || "").replace(/\/api$/i, "");
 };
 

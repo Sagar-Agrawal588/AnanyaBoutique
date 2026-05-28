@@ -24,6 +24,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Await required CI checks
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          node scripts/await-required-checks.mjs \
+            --check "Validate Env Examples" \
+            --check "Backend Tests" \
+            --check "Client Build" \
+            --check "Admin Build"
+
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
@@ -33,6 +43,9 @@ jobs:
         uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Validate App Engine target project
+        run: gcloud app describe --project="${{ secrets.GCP_PROJECT_ID }}"
 
       - name: Deploy dispatch rules
         run: gcloud app deploy dispatch.yaml --project="${{ secrets.GCP_PROJECT_ID }}" --quiet

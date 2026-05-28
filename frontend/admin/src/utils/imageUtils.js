@@ -14,7 +14,9 @@ import {
   resolveLegacyLocalMedia,
 } from "@/utils/mediaDefaults";
 
-const API_URL = API_BASE_URL;
+const API_URL = API_BASE_URL.endsWith("/api")
+  ? API_BASE_URL.slice(0, -4)
+  : API_BASE_URL;
 const sanitizeBaseUrl = (value) =>
   String(value || "")
     .trim()

@@ -34,7 +34,15 @@ import { UPLOAD_ROOT } from "./middlewares/upload.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-dotenv.config({ path: path.resolve(__dirname, ".env") });
+const isCloudRunRuntime = Boolean(
+  process.env.K_SERVICE || process.env.K_REVISION || process.env.K_CONFIGURATION,
+);
+const shouldLoadLocalDotEnv =
+  process.env.NODE_ENV !== "production" && !isCloudRunRuntime;
+
+if (shouldLoadLocalDotEnv) {
+  dotenv.config({ path: path.resolve(__dirname, ".env") });
+}
 
 const applyLocalDnsOverrides = () => {
   try {
@@ -90,6 +98,14 @@ const toPositiveInteger = (value, fallback) => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
 
+const failStartup = (message, details = []) => {
+  console.error(`[startup] ${message}`);
+  for (const detail of details.filter(Boolean)) {
+    console.error(`[startup] ${detail}`);
+  }
+  process.exit(1);
+};
+
 const isValidMongoUri = (value) => /^mongodb(\+srv)?:\/\//.test(value);
 const primaryMongoUri = normalizeEnvValue(process.env.MONGO_URI);
 const fallbackMongoUri = normalizeEnvValue(process.env.MONGODB_URI);
@@ -100,14 +116,23 @@ const normalizedMongoUri = isValidMongoUri(primaryMongoUri)
     : "";
 
 if (!normalizedMongoUri) {
+  const mongoEnvHelp = [
+    "Required database setting: MONGO_URI. MONGODB_URI is accepted as a fallback.",
+    isCloudRunRuntime
+      ? "Cloud Run detected: configure MONGO_URI on the service environment."
+      : "Local development: copy server/.env.example to server/.env and set MONGO_URI.",
+  ];
+
   if (!primaryMongoUri && !fallbackMongoUri) {
-    throw new Error(
+    failStartup(
       "Database URI is missing. Set MONGO_URI or MONGODB_URI in environment variables.",
+      mongoEnvHelp,
     );
   }
 
-  throw new Error(
+  failStartup(
     "Invalid MongoDB URI format. Set MONGO_URI or MONGODB_URI to a value that starts with mongodb:// or mongodb+srv://",
+    mongoEnvHelp,
   );
 }
 
@@ -147,7 +172,7 @@ const requiredServerEnvVars = ["MONGO_URI"];
 
 for (const envKey of requiredServerEnvVars) {
   if (!process.env[envKey]) {
-    throw new Error(`${envKey} is not defined`);
+    failStartup(`Missing required environment variable: ${envKey}`);
   }
 }
 
@@ -160,6 +185,8 @@ const configuredCorsOrigins = [
 const defaultProductionCorsOrigins = [
   "https://healthyonegram.com",
   "https://www.healthyonegram.com",
+  "https://healthyonegram-client-studio-8452116634-cdb59.us-central1.hosted.app",
+  "https://healthyonegram-admin-studio-8452116634-cdb59.us-central1.hosted.app",
   "https://healthyonegram-client--studio-8452116634-cdb59.us-central1.hosted.app",
   "https://healthyonegram-admin--studio-8452116634-cdb59.us-central1.hosted.app",
 ].map(normalizeOrigin);
@@ -177,38 +204,38 @@ const allowedOrigins = [
 ];
 
 if (isProductionEnv && allowedOrigins.length === 0) {
-  throw new Error(
+  failStartup(
     "At least one CORS origin must be configured via CLIENT_URL, ADMIN_URL, FRONTEND_URL, or CORS_ORIGINS.",
   );
 }
 
 const accessTokenSecret = getAccessTokenSecret();
 if (!accessTokenSecret) {
-  throw new Error(
-    `Access token secret is not configured. Set one of: ${ACCESS_TOKEN_SECRET_KEYS.join(", ")}`,
-  );
+  failStartup("Access token secret is not configured.", [
+    `Set one of: ${ACCESS_TOKEN_SECRET_KEYS.join(", ")}`,
+  ]);
 }
 
 const refreshTokenSecret = getRefreshTokenSecret();
 if (!refreshTokenSecret) {
-  throw new Error(
-    `Refresh token secret is not configured. Set one of: ${REFRESH_TOKEN_SECRET_KEYS.join(", ")}`,
-  );
+  failStartup("Refresh token secret is not configured.", [
+    `Set one of: ${REFRESH_TOKEN_SECRET_KEYS.join(", ")}`,
+  ]);
 }
 
 const MIN_JWT_SECRET_LENGTH = 32;
 if (accessTokenSecret.length < MIN_JWT_SECRET_LENGTH) {
-  throw new Error(
+  failStartup(
     `Access token secret must be at least ${MIN_JWT_SECRET_LENGTH} characters long.`,
   );
 }
 if (refreshTokenSecret.length < MIN_JWT_SECRET_LENGTH) {
-  throw new Error(
+  failStartup(
     `Refresh token secret must be at least ${MIN_JWT_SECRET_LENGTH} characters long.`,
   );
 }
 if (accessTokenSecret === refreshTokenSecret) {
-  throw new Error("Access and refresh token secrets must be different values.");
+  failStartup("Access and refresh token secrets must be different values.");
 }
 
 // Route imports
@@ -853,7 +880,8 @@ connectDb()
 
     startLocationLogRetentionJob();
 
-    const requestedPort = toPositiveInteger(process.env.PORT, 8000);
+    const PORT = process.env.PORT || 8000;
+    const requestedPort = toPositiveInteger(PORT, 8000);
     const listenHost = "0.0.0.0";
     const isLocalEnv = process.env.NODE_ENV !== "production";
     let activePort = requestedPort;

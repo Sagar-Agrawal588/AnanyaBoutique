@@ -1,10 +1,10 @@
 param(
   [string]$ProjectId = "healthy-one-gram",
   [string]$EnvFile = "",
-  [string]$BackendUrl = "https://healthyonegram-backend-xb7znoco6a-uc.a.run.app",
+  [string]$BackendUrl = "https://healthyonegram-api-v2-xb7znoco6a-uc.a.run.app",
   [string]$ClientUrl = "https://healthyonegram.com",
-  [string]$AdminUrl = "https://healthyonegram-admin--studio-8452116634-cdb59.us-central1.hosted.app",
-  [string]$CorsOrigins = "https://healthyonegram.com,https://www.healthyonegram.com,https://healthyonegram-client--studio-8452116634-cdb59.us-central1.hosted.app,https://healthyonegram-admin--studio-8452116634-cdb59.us-central1.hosted.app",
+  [string]$AdminUrl = "https://healthyonegram-admin-studio-8452116634-cdb59.us-central1.hosted.app",
+  [string]$CorsOrigins = "https://healthyonegram.com,https://healthyonegram-client-studio-8452116634-cdb59.us-central1.hosted.app,https://healthyonegram-admin-studio-8452116634-cdb59.us-central1.hosted.app",
   [switch]$DryRun
 )
 

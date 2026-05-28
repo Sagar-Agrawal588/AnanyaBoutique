@@ -31,7 +31,9 @@ import {
 } from "react-icons/fa";
 import { IoClose } from "react-icons/io5";
 
-const API_URL = API_BASE_URL;
+const API_URL = API_BASE_URL.endsWith("/api")
+  ? API_BASE_URL.slice(0, -4)
+  : API_BASE_URL;
 
 const EMPTY_ITEM = {
   productId: "",

@@ -23,7 +23,9 @@ import { FaAngleDown } from "react-icons/fa6";
 import { FiSearch } from "react-icons/fi";
 import { MdDateRange, MdLocalShipping } from "react-icons/md";
 
-const API_URL = API_BASE_URL;
+const API_URL = API_BASE_URL.endsWith("/api")
+  ? API_BASE_URL.slice(0, -4)
+  : API_BASE_URL;
 const ORDER_TABLE_COLUMNS = [
   "48px",
   "84px",

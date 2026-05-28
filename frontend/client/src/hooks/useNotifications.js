@@ -6,7 +6,9 @@ import { deleteToken, getMessaging, getToken, onMessage } from "firebase/messagi
 import { useCallback, useEffect, useRef, useState } from "react";
 import cookies from "js-cookie";
 
-const API_URL = API_BASE_URL;
+const API_URL = API_BASE_URL.endsWith("/api")
+  ? API_BASE_URL.slice(0, -4)
+  : API_BASE_URL;
 // Public VAPID key fallback for environments where env injection is missed.
 const FALLBACK_VAPID_KEY =
   "BL22YBdvb5TkydQ5LsnePfUgLQsf61THj-Ja72oli6FMb1U7lh-GYJJ__gjIvf8nZjAJ7s8aBQzq1ahFBxpSTi8";

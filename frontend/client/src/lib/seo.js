@@ -6,7 +6,9 @@ const normalizeApiBase = (value) =>
   String(value || "")
     .trim()
     .replace(/^['"]|['"]$/g, "")
-    .replace(/\/+$/, "");
+    .replace(/\/+$/, "")
+    .replace(/\/api$/i, "");
+const DEFAULT_API_BASE_URL = "https://healthyonegram-api-v2-xb7znoco6a-uc.a.run.app";
 
 export async function fetchSeoSettings() {
   if (cached) return cached;
@@ -14,7 +16,9 @@ export async function fetchSeoSettings() {
 
   pending = (async () => {
     try {
-      const apiBase = normalizeApiBase(process.env.NEXT_PUBLIC_API_URL);
+      const apiBase = normalizeApiBase(
+        process.env.NEXT_PUBLIC_API_URL || DEFAULT_API_BASE_URL,
+      );
       const resp = await fetch(`${apiBase}/api/settings/public`, {
         cache: "no-store",
       });

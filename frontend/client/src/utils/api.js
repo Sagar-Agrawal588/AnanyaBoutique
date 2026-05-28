@@ -1,31 +1,13 @@
 import axios from "axios";
 import Cookies from "js-cookie";
 
-const HEALTHY_ONE_GRAM_HOSTS = new Set([
-  "healthyonegram.com",
-  "www.healthyonegram.com",
-]);
-
-const DEFAULT_PRODUCTION_API_URL = String(
-  process.env.NEXT_PUBLIC_BACKEND_URL || "",
-)
-  .trim()
-  .replace(/\/+$/, "");
-const BROWSER_API_PROXY_BASE_URL = "/api/backend";
-const LEGACY_PRODUCTION_API_URLS = new Set([
-  "https://healthy-one-gram.el.r.appspot.com",
-  "https://healthy-one-gram.appspot.com",
-  "https://client-dot-healthy-one-gram.el.r.appspot.com",
-  "https://admin-dot-healthy-one-gram.el.r.appspot.com",
-]);
+const DEFAULT_PRODUCTION_API_URL =
+  "https://healthyonegram-api-v2-xb7znoco6a-uc.a.run.app/api";
 
 const LOCAL_API_FALLBACKS = [
   "http://127.0.0.1:8000",
   "http://127.0.0.1:8001",
   "http://127.0.0.1:8002",
-  "http://localhost:8000",
-  "http://localhost:8001",
-  "http://localhost:8002",
 ];
 
 const DEFAULT_PUBLIC_GET_CACHE_TTL_MS = Math.max(
@@ -67,27 +49,31 @@ const sanitizeBaseUrl = (value) =>
 
 const isHttpUrl = (value) => /^https?:\/\//i.test(String(value || ""));
 
-const isLegacyProductionApiUrl = (value) =>
-  LEGACY_PRODUCTION_API_URLS.has(sanitizeBaseUrl(value));
-
-const isFirebaseAppHostingHost = (hostname) =>
-  String(hostname || "")
-    .toLowerCase()
-    .endsWith(".hosted.app");
-
-const isHealthyOneGramFrontendHost = (hostname) => {
-  const normalizedHostname = String(hostname || "").toLowerCase();
-  return (
-    HEALTHY_ONE_GRAM_HOSTS.has(normalizedHostname) ||
-    isFirebaseAppHostingHost(normalizedHostname)
-  );
+const isFrontendUrl = (value) => {
+  try {
+    const parsed = new URL(sanitizeBaseUrl(value));
+    const hostname = String(parsed.hostname || "").toLowerCase();
+    return (
+      hostname === "healthyonegram.com" ||
+      hostname === "www.healthyonegram.com" ||
+      hostname.endsWith(".hosted.app")
+    );
+  } catch {
+    return false;
+  }
 };
 
-const pickFirstLiveApiUrl = (...values) => {
+const normalizeApiBaseUrl = (value) => {
+  const normalized = sanitizeBaseUrl(value);
+  if (!isHttpUrl(normalized)) return "";
+  return /\/api$/i.test(normalized) ? normalized : `${normalized}/api`;
+};
+
+const pickFirstApiUrl = (...values) => {
   for (const value of values) {
-    const normalized = sanitizeBaseUrl(value);
+    const normalized = normalizeApiBaseUrl(value);
     if (!isHttpUrl(normalized)) continue;
-    if (isLegacyProductionApiUrl(normalized)) continue;
+    if (isFrontendUrl(normalized)) continue;
     return normalized;
   }
   return "";
@@ -159,46 +145,22 @@ const resolveApiBaseUrl = () => {
     ) ||
     normalizeLocalFallbacks()[0] ||
     "";
-  const envCandidates = [
+  const envBaseUrl = pickFirstApiUrl(
     localDevBaseUrl,
     process.env.NEXT_PUBLIC_BACKEND_URL,
     process.env.NEXT_PUBLIC_APP_API_URL,
     process.env.NEXT_PUBLIC_API_URL,
-  ]
-    .map(sanitizeBaseUrl)
-    .filter(Boolean);
-
-  const envBaseUrl = pickFirstLiveApiUrl(...envCandidates);
+  );
 
   if (typeof window !== "undefined") {
     const hostname = String(window.location.hostname || "").toLowerCase();
-    const origin = sanitizeBaseUrl(window.location.origin);
     const isLocalhost = hostname === "localhost" || hostname === "127.0.0.1";
 
     if (isLocalhost) {
-      // When the client is running on localhost, honor an explicit API URL
-      // from env first. Falling back to the Next.js origin only works when
-      // dev rewrites are intentionally configured for that backend.
-      if (envBaseUrl) {
-        return envBaseUrl || origin || preferredLocalFallback || "";
-      }
-      return envBaseUrl || origin || preferredLocalFallback || "";
+      return envBaseUrl || preferredLocalFallback || "";
     }
 
-    if (isHealthyOneGramFrontendHost(hostname)) {
-      return BROWSER_API_PROXY_BASE_URL;
-    }
-
-    if (envBaseUrl) {
-      return envBaseUrl;
-    }
-
-    return (
-      DEFAULT_PRODUCTION_API_URL ||
-      origin ||
-      normalizeLocalFallbacks()[0] ||
-      "http://localhost:8001"
-    );
+    return envBaseUrl || DEFAULT_PRODUCTION_API_URL;
   }
 
   if (envBaseUrl) {
@@ -206,10 +168,10 @@ const resolveApiBaseUrl = () => {
   }
 
   if (process.env.NODE_ENV === "production") {
-    return DEFAULT_PRODUCTION_API_URL || "";
+    return DEFAULT_PRODUCTION_API_URL;
   }
 
-  return preferredLocalFallback || "http://localhost:8001";
+  return preferredLocalFallback;
 };
 
 export const API_BASE_URL = resolveApiBaseUrl();
@@ -349,20 +311,6 @@ const getApiBaseCandidates = () => {
       return [...new Set(candidates.filter(Boolean))];
     }
 
-    if (isHealthyOneGramFrontendHost(hostname)) {
-      // Live Firebase-hosted frontends must use the same-origin proxy. Falling
-      // back to direct App Engine URLs can trigger CORS/network drift between
-      // healthyonegram.com and the Firebase default domain.
-      if (preferred && preferred.startsWith("/")) {
-        candidates.push(preferred);
-      }
-      candidates.push(
-        resolvedBase && resolvedBase.startsWith("/")
-          ? resolvedBase
-          : BROWSER_API_PROXY_BASE_URL,
-      );
-      return [...new Set(candidates.filter(Boolean))];
-    }
   }
 
   if (preferred) {

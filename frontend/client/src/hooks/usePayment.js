@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation";
 import { useContext, useState } from "react";
 
 // Backend API URL
-const API_URL = API_BASE_URL;
+const API_URL = API_BASE_URL.endsWith("/api")
+  ? API_BASE_URL.slice(0, -4)
+  : API_BASE_URL;
 
 /**
  * Custom Hook for Payment Processing

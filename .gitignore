@@ -25,6 +25,8 @@ build/
 dist/
 coverage/
 logs/
+server/app.deploy*.yaml
+server/cloudrun.env.yaml
 
 # =====================================
 # Environment Variables

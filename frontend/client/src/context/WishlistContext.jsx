@@ -10,8 +10,10 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { toast } from "react-hot-toast";
 
 const WishlistContext = createContext();
-const API_URL = API_BASE_URL;
-const LOCAL_API_FALLBACKS = ["http://localhost:8000", "http://localhost:8001"];
+const API_URL = API_BASE_URL.endsWith("/api")
+  ? API_BASE_URL.slice(0, -4)
+  : API_BASE_URL;
+const LOCAL_API_FALLBACKS = ["http://127.0.0.1:8000", "http://127.0.0.1:8001"];
 
 const isNetworkFetchError = (error) =>
   error instanceof TypeError &&

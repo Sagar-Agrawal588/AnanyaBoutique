@@ -32,9 +32,6 @@ const API_URL = API_BASE_URL.endsWith("/api")
   ? API_BASE_URL
   : `${API_BASE_URL}/api`;
 const LOCAL_API_FALLBACKS = [
-  "http://localhost:8000",
-  "http://localhost:8001",
-  "http://localhost:8002",
   "http://127.0.0.1:8000",
   "http://127.0.0.1:8001",
   "http://127.0.0.1:8002",
@@ -69,15 +66,9 @@ const getApiBaseCandidates = () => {
   const candidates = [];
 
   if (typeof window !== "undefined") {
-    const origin = sanitizeBaseUrl(window.location.origin);
     const host = String(window.location.hostname || "").toLowerCase();
     const isLocalhost = host === "localhost" || host === "127.0.0.1";
     if (isLocalhost) {
-      if (origin) {
-        candidates.push(origin);
-      }
-      // Keep a same-origin relative fallback so Next.js rewrites can proxy /api calls.
-      candidates.push("");
       candidates.push(...LOCAL_API_FALLBACKS.map(sanitizeBaseUrl));
     }
   }
@@ -738,7 +729,6 @@ const Orders = () => {
     const urls = Array.from(
       new Set([
         `${API_URL}/reviews`,
-        `${API_BASE_URL}/api/reviews`,
         `${API_BASE_URL}/reviews`,
       ]),
     );

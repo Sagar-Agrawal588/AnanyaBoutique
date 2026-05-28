@@ -8,6 +8,7 @@
 const STOREFRONT_WORKER_RESET_HOSTS = new Set([
   "healthyonegram.com",
   "www.healthyonegram.com",
+  "healthyonegram-client-studio-8452116634-cdb59.us-central1.hosted.app",
   "healthyonegram-client--studio-8452116634-cdb59.us-central1.hosted.app",
 ]);
 
@@ -35,7 +36,7 @@ if (shouldResetStorefrontWorker) {
           windows.map((client) => {
             if (!("navigate" in client)) return undefined;
             const url = new URL(client.url);
-            url.searchParams.set("__hog_sw_reset", "2026-05-28-v4");
+            url.searchParams.set("__hog_sw_reset", "2026-05-28-v5");
             return client.navigate(url.toString());
           }),
         );

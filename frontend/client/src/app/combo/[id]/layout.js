@@ -1,4 +1,5 @@
 const DEFAULT_SITE_URL = "https://healthyonegram.com";
+const DEFAULT_API_ORIGIN = "https://healthyonegram-api-v2-xb7znoco6a-uc.a.run.app";
 
 const sanitizeBaseUrl = (value) =>
   String(value || "")
@@ -71,18 +72,21 @@ const getApiCandidates = () => {
     process.env.NEXT_PUBLIC_LOCAL_API_URL,
     process.env.NEXT_PUBLIC_APP_API_URL,
     process.env.NEXT_PUBLIC_API_URL,
-    process.env.NEXT_PUBLIC_SITE_URL,
   ]
     .map(sanitizeBaseUrl)
     .filter(Boolean)
     .map(removeApiSuffix)
     .filter(Boolean);
 
-  const siteUrl = getSiteUrl();
-  const localFallbacks = ["http://127.0.0.1:8002", "http://127.0.0.1:8001"];
+  const localFallbacks =
+    process.env.NODE_ENV === "production"
+      ? []
+      : ["http://127.0.0.1:8002", "http://127.0.0.1:8001"];
 
   return [
-    ...new Set([siteUrl, ...configured, ...localFallbacks].filter(Boolean)),
+    ...new Set(
+      [...configured, DEFAULT_API_ORIGIN, ...localFallbacks].filter(Boolean),
+    ),
   ];
 };
 
