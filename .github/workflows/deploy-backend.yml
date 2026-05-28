@@ -58,12 +58,11 @@ jobs:
           if [ -z "$region" ]; then
             region="us-central1"
           fi
-          gcloud run regions list \
+          gcloud run services describe "$service" \
             --project="${{ secrets.GCP_PROJECT_ID }}" \
-            --format="value(locationId)" \
-            --filter="locationId=$region" | grep -qx "$region"
-          echo "Validated Cloud Run region: $region"
-          echo "Target Cloud Run service: $service"
+            --region="$region" \
+            --format="value(metadata.name)" | grep -qx "$service"
+          echo "Validated Cloud Run service: $service in $region"
 
       - name: Build temporary backend env file
         env:
