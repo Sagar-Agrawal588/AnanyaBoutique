@@ -48,7 +48,8 @@ const pickFirstLiveApiUrl = (...values) => {
   return "";
 };
 
-const BROWSER_API_PROXY_BASE_URL = "/api/backend";
+const ADMIN_BASE_PATH = "/admin";
+const BROWSER_API_PROXY_BASE_URL = `${ADMIN_BASE_PATH}/api/backend`;
 
 const resolveConfiguredEnvBaseUrl = () => {
   const localDevBaseUrl = sanitizeBaseUrl(
@@ -99,6 +100,12 @@ const getCurrentBrowserOriginBaseUrl = () => {
   return sanitizeBaseUrl(window.location.origin);
 };
 
+const isFirebaseAppHostingHost = (hostname) =>
+  String(hostname || "").toLowerCase().endsWith(".hosted.app");
+
+const isHealthyOneGramFrontendHost = (hostname) =>
+  HEALTHY_ONE_GRAM_HOSTS.has(String(hostname || "").toLowerCase());
+
 const getAlternateApiBaseUrls = () => {
   const candidates = [];
   const pushCandidate = (value) => {
@@ -122,14 +129,16 @@ const getAlternateApiBaseUrls = () => {
       return candidates;
     }
 
-    // On hosted production deployments, always prefer the dedicated backend.
-    // Falling back to the frontend origin turns `/api/...` requests into Next.js
-    // 404s when no same-domain rewrite exists.
+    if (isHealthyOneGramFrontendHost(hostname) || isFirebaseAppHostingHost(hostname)) {
+      // Admin runs under `/admin`; the API proxy is also under that base path.
+      // Avoid falling back to the frontend origin because `/api/...` is outside
+      // the base path and returns a Next.js 404 on the hosted domain.
+      return candidates;
+    }
+
     pushCandidate(envBaseUrl);
     pushCandidate(DEFAULT_PRODUCTION_API_URL);
-    if (HEALTHY_ONE_GRAM_HOSTS.has(hostname)) {
-      pushCandidate(browserOriginBaseUrl);
-    }
+    pushCandidate(browserOriginBaseUrl);
     return candidates;
   }
 
@@ -163,8 +172,8 @@ const resolveApiBaseUrl = () => {
     }
 
     if (
-      HEALTHY_ONE_GRAM_HOSTS.has(hostname) ||
-      hostname.endsWith(".hosted.app")
+      isHealthyOneGramFrontendHost(hostname) ||
+      isFirebaseAppHostingHost(hostname)
     ) {
       return BROWSER_API_PROXY_BASE_URL;
     }

@@ -8,14 +8,18 @@ const normalizeBaseUrl = (value) =>
     .trim()
     .replace(/\/+$/, "");
 
+const SOCKET_URL_FROM_ENV = normalizeBaseUrl(
+  process.env.NEXT_PUBLIC_SOCKET_URL || process.env.NEXT_PUBLIC_WS_URL,
+);
+
 const resolveSocketUrl = () => {
+  if (SOCKET_URL_FROM_ENV) {
+    return SOCKET_URL_FROM_ENV;
+  }
+
   const fallbackApiUrl = normalizeBaseUrl(API_BASE_URL);
   if (fallbackApiUrl.startsWith("/")) {
-    return normalizeBaseUrl(
-      process.env.NEXT_PUBLIC_BACKEND_URL ||
-        process.env.NEXT_PUBLIC_APP_API_URL ||
-        process.env.NEXT_PUBLIC_API_URL,
-    );
+    return "";
   }
   return fallbackApiUrl.replace(/\/api$/i, "");
 };
@@ -254,6 +258,11 @@ const ensureCrossTabSync = () => {
 export const startStockSocket = () => {
   if (typeof window === "undefined") return null;
   ensureCrossTabSync();
+
+  if (!SOCKET_URL) {
+    activateFallbackMode("socket_url_not_configured");
+    return null;
+  }
 
   if (stockSocket) {
     if (!stockSocket.connected) {

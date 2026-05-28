@@ -70,6 +70,19 @@ const isHttpUrl = (value) => /^https?:\/\//i.test(String(value || ""));
 const isLegacyProductionApiUrl = (value) =>
   LEGACY_PRODUCTION_API_URLS.has(sanitizeBaseUrl(value));
 
+const isFirebaseAppHostingHost = (hostname) =>
+  String(hostname || "")
+    .toLowerCase()
+    .endsWith(".hosted.app");
+
+const isHealthyOneGramFrontendHost = (hostname) => {
+  const normalizedHostname = String(hostname || "").toLowerCase();
+  return (
+    HEALTHY_ONE_GRAM_HOSTS.has(normalizedHostname) ||
+    isFirebaseAppHostingHost(normalizedHostname)
+  );
+};
+
 const pickFirstLiveApiUrl = (...values) => {
   for (const value of values) {
     const normalized = sanitizeBaseUrl(value);
@@ -172,11 +185,7 @@ const resolveApiBaseUrl = () => {
       return envBaseUrl || origin || preferredLocalFallback || "";
     }
 
-    if (HEALTHY_ONE_GRAM_HOSTS.has(hostname)) {
-      return BROWSER_API_PROXY_BASE_URL;
-    }
-
-    if (hostname.endsWith(".hosted.app")) {
+    if (isHealthyOneGramFrontendHost(hostname)) {
       return BROWSER_API_PROXY_BASE_URL;
     }
 
@@ -337,6 +346,21 @@ const getApiBaseCandidates = () => {
         candidates.push(resolvedBase);
       }
 
+      return [...new Set(candidates.filter(Boolean))];
+    }
+
+    if (isHealthyOneGramFrontendHost(hostname)) {
+      // Live Firebase-hosted frontends must use the same-origin proxy. Falling
+      // back to direct App Engine URLs can trigger CORS/network drift between
+      // healthyonegram.com and the Firebase default domain.
+      if (preferred && preferred.startsWith("/")) {
+        candidates.push(preferred);
+      }
+      candidates.push(
+        resolvedBase && resolvedBase.startsWith("/")
+          ? resolvedBase
+          : BROWSER_API_PROXY_BASE_URL,
+      );
       return [...new Set(candidates.filter(Boolean))];
     }
   }
