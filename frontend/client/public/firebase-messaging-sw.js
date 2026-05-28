@@ -5,6 +5,45 @@
  * Must be in public/ folder for proper registration.
  */
 
+const STOREFRONT_WORKER_RESET_HOSTS = new Set([
+  "healthyonegram.com",
+  "www.healthyonegram.com",
+  "healthyonegram-client--studio-8452116634-cdb59.us-central1.hosted.app",
+]);
+
+const shouldResetStorefrontWorker =
+  STOREFRONT_WORKER_RESET_HOSTS.has(self.location.hostname) ||
+  self.location.hostname.endsWith(".hosted.app");
+
+if (shouldResetStorefrontWorker) {
+  self.addEventListener("install", () => {
+    self.skipWaiting();
+  });
+
+  self.addEventListener("activate", (event) => {
+    event.waitUntil(
+      (async () => {
+        if (self.caches) {
+          const cacheNames = await self.caches.keys();
+          await Promise.all(cacheNames.map((cacheName) => self.caches.delete(cacheName)));
+        }
+
+        await self.registration.unregister();
+
+        const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+        await Promise.all(
+          windows.map((client) => {
+            if (!("navigate" in client)) return undefined;
+            const url = new URL(client.url);
+            url.searchParams.set("__hog_sw_reset", "2026-05-28-v4");
+            return client.navigate(url.toString());
+          }),
+        );
+      })(),
+    );
+  });
+} else {
+
 // Import Firebase scripts
 importScripts(
   "https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js",
@@ -120,3 +159,4 @@ self.addEventListener("activate", (event) => {
   console.log("[SW] Service Worker activated");
   event.waitUntil(clients.claim());
 });
+}

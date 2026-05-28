@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 
-const CACHE_GUARD_VERSION = "healthyonegram-client-2026-05-28-v3";
+const CACHE_GUARD_VERSION = "healthyonegram-client-2026-05-28-v4";
 const CACHE_GUARD_KEY = "hog_client_cache_guard_version";
 const HOSTS_TO_GUARD = new Set([
   "healthyonegram.com",
@@ -32,17 +32,8 @@ const unregisterOldServiceWorkers = async () => {
   if (!("serviceWorker" in navigator)) return false;
 
   const registrations = await navigator.serviceWorker.getRegistrations();
-  const staleRegistrations = registrations.filter((registration) => {
-    const scriptUrl =
-      registration.active?.scriptURL ||
-      registration.waiting?.scriptURL ||
-      registration.installing?.scriptURL ||
-      "";
-    return !scriptUrl.includes("/firebase-messaging-sw.js");
-  });
-
-  await Promise.all(staleRegistrations.map((registration) => registration.unregister()));
-  return staleRegistrations.length > 0;
+  await Promise.all(registrations.map((registration) => registration.unregister()));
+  return registrations.length > 0;
 };
 
 const clearBrowserCaches = async () => {
