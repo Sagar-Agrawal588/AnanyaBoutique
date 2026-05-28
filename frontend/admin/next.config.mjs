@@ -16,6 +16,12 @@ const apiImagePattern = [
     ...(parsedApiUrl.port ? { port: parsedApiUrl.port } : {}),
     pathname: "/uploads/**",
   },
+  {
+    protocol: parsedApiUrl.protocol.replace(":", ""),
+    hostname: parsedApiUrl.hostname,
+    ...(parsedApiUrl.port ? { port: parsedApiUrl.port } : {}),
+    pathname: "/api/media/**",
+  },
 ];
 
 /** @type {import('next').NextConfig} */

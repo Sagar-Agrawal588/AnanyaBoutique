@@ -2,8 +2,10 @@ import CategoryModel from "../models/category.model.js";
 import ProductModel from "../models/product.model.js";
 import { invalidatePublicResponseCache } from "../middlewares/publicResponseCache.js";
 import { getFirebaseCategories } from "../services/firebaseCatalog.service.js";
+import { normalizeProductMediaUrls } from "../utils/productMedia.js";
 
 const CATEGORY_RESPONSE_CACHE_NAMESPACES = ["categories", "products", "combos"];
+const withCategoryMediaUrls = (value) => normalizeProductMediaUrls(value);
 
 /**
  * Category Controller
@@ -25,7 +27,7 @@ export const getCategories = async (req, res) => {
       return res.status(200).json({
         error: false,
         success: true,
-        data: firebaseCategories,
+        data: withCategoryMediaUrls(firebaseCategories),
         total: firebaseCategories.length,
       });
     }
@@ -73,7 +75,7 @@ export const getCategories = async (req, res) => {
     res.status(200).json({
       error: false,
       success: true,
-      data: categories,
+      data: withCategoryMediaUrls(categories),
       total: categories.length,
     });
   } catch (error) {
@@ -112,7 +114,7 @@ export const getCategoryById = async (req, res) => {
       return res.status(200).json({
         error: false,
         success: true,
-        data: category,
+        data: withCategoryMediaUrls(category),
       });
     }
 
@@ -144,7 +146,7 @@ export const getCategoryById = async (req, res) => {
     res.status(200).json({
       error: false,
       success: true,
-      data: category,
+      data: withCategoryMediaUrls(category),
     });
   } catch (error) {
     res.status(500).json({
@@ -166,10 +168,10 @@ export const getCategoryTree = async (req, res) => {
       return res.status(200).json({
         error: false,
         success: true,
-        data: firebaseCategories.map((category) => ({
+        data: withCategoryMediaUrls(firebaseCategories.map((category) => ({
           ...category,
           children: [],
-        })),
+        }))),
       });
     }
 
@@ -204,7 +206,7 @@ export const getCategoryTree = async (req, res) => {
     res.status(200).json({
       error: false,
       success: true,
-      data: categoryTree,
+      data: withCategoryMediaUrls(categoryTree),
     });
   } catch (error) {
     res.status(500).json({
@@ -296,7 +298,7 @@ export const createCategory = async (req, res) => {
       error: false,
       success: true,
       message: "Category created successfully",
-      data: category,
+      data: withCategoryMediaUrls(category),
     });
   } catch (error) {
     console.error("Error creating category:", error);
@@ -352,7 +354,7 @@ export const updateCategory = async (req, res) => {
       error: false,
       success: true,
       message: "Category updated successfully",
-      data: updatedCategory,
+      data: withCategoryMediaUrls(updatedCategory),
     });
   } catch (error) {
     res.status(500).json({

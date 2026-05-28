@@ -90,7 +90,9 @@ const getSiteUrl = () =>
 
 const getApiCandidates = () => {
   const configured = [
-    process.env.NEXT_PUBLIC_LOCAL_API_URL,
+    process.env.NODE_ENV === "production"
+      ? ""
+      : process.env.NEXT_PUBLIC_LOCAL_API_URL,
     process.env.NEXT_PUBLIC_APP_API_URL,
     process.env.NEXT_PUBLIC_API_URL,
   ]
@@ -165,7 +167,7 @@ const fetchProductForMetadata = async (id) => {
     const endpoint = `${apiBase}/api/products/${encodeURIComponent(id)}`;
     try {
       const response = await fetchWithTimeout(endpoint, {
-        next: { revalidate: 300 },
+        cache: "no-store",
       });
       if (!response.ok) continue;
       const payload = await response.json();

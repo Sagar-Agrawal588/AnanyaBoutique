@@ -50,10 +50,20 @@ jobs:
 
       - name: Validate Cloud Run target project
         env:
+          CLOUD_RUN_SERVICE: ${{ secrets.CLOUD_RUN_BACKEND_SERVICE }}
           CLOUD_RUN_REGION: ${{ secrets.CLOUD_RUN_REGION }}
         run: |
-          region="${CLOUD_RUN_REGION:-us-central1}"
-          gcloud run regions describe "$region" --project="${{ secrets.GCP_PROJECT_ID }}"
+          service="${CLOUD_RUN_SERVICE:-healthyonegram-api-v2}"
+          region="$(printf '%s' "${CLOUD_RUN_REGION:-us-central1}" | tr -d '\r\n' | xargs)"
+          if [ -z "$region" ]; then
+            region="us-central1"
+          fi
+          gcloud run regions list \
+            --project="${{ secrets.GCP_PROJECT_ID }}" \
+            --format="value(locationId)" \
+            --filter="locationId=$region" | grep -qx "$region"
+          echo "Validated Cloud Run region: $region"
+          echo "Target Cloud Run service: $service"
 
       - name: Build temporary backend env file
         env:
@@ -292,8 +302,11 @@ jobs:
           CLOUD_RUN_SERVICE: ${{ secrets.CLOUD_RUN_BACKEND_SERVICE }}
           CLOUD_RUN_REGION: ${{ secrets.CLOUD_RUN_REGION }}
         run: |
-          service="${CLOUD_RUN_SERVICE:-healthyonegram-backend}"
-          region="${CLOUD_RUN_REGION:-us-central1}"
+          service="${CLOUD_RUN_SERVICE:-healthyonegram-api-v2}"
+          region="$(printf '%s' "${CLOUD_RUN_REGION:-us-central1}" | tr -d '\r\n' | xargs)"
+          if [ -z "$region" ]; then
+            region="us-central1"
+          fi
           {
             echo "CLOUD_RUN_SERVICE_NAME=$service"
             echo "CLOUD_RUN_SERVICE_REGION=$region"
@@ -342,8 +355,8 @@ jobs:
           node scripts/production-smoke-check.mjs \
             --backend-url "$BACKEND_SMOKE_URL" \
             --origin "https://healthyonegram.com" \
-            --origin "https://healthyonegram-client-studio-8452116634-cdb59.us-central1.hosted.app" \
-            --origin "https://healthyonegram-admin-studio-8452116634-cdb59.us-central1.hosted.app"
+            --origin "https://healthyonegram-client--studio-8452116634-cdb59.us-central1.hosted.app" \
+            --origin "https://healthyonegram-admin--studio-8452116634-cdb59.us-central1.hosted.app"
 
       - name: Cleanup
         if: always()

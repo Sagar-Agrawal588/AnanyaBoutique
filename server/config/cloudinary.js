@@ -20,6 +20,8 @@ if (shouldLoadLocalDotEnv) {
 }
 
 const isProduction = process.env.NODE_ENV === "production";
+const DEFAULT_PRODUCTION_BACKEND_URL =
+  "https://healthyonegram-api-v2-xb7znoco6a-uc.a.run.app";
 const mediaStorageProvider = String(
   process.env.MEDIA_STORAGE_PROVIDER || "firebase",
 )
@@ -197,6 +199,127 @@ const extractGcsObjectPath = (value = "") => {
   }
 
   return "";
+};
+
+const normalizePublicBackendBaseUrl = (value = "") =>
+  String(value || "")
+    .trim()
+    .replace(/^['"]|['"]$/g, "")
+    .replace(/\/+$/, "")
+    .replace(/\/api$/i, "");
+
+const getPublicBackendBaseUrl = () => {
+  const candidates = [
+    process.env.BACKEND_URL,
+    process.env.API_BASE_URL,
+    process.env.SERVER_URL,
+    isProduction ? DEFAULT_PRODUCTION_BACKEND_URL : "",
+  ];
+
+  for (const candidate of candidates) {
+    const normalized = normalizePublicBackendBaseUrl(candidate);
+    if (/^https?:\/\//i.test(normalized)) {
+      return normalized;
+    }
+  }
+
+  return "";
+};
+
+const isAllowedGcsMediaPath = (objectPath = "") => {
+  const normalized = String(objectPath || "")
+    .trim()
+    .replace(/\\/g, "/")
+    .replace(/^\/+/, "");
+
+  if (!normalized || normalized.includes("..")) return false;
+  return /^buyonegram\//i.test(normalized);
+};
+
+const getGcsMediaProxyUrl = (objectPath) => {
+  const normalized = String(objectPath || "")
+    .trim()
+    .replace(/\\/g, "/")
+    .replace(/^\/+/, "");
+  if (!isAllowedGcsMediaPath(normalized)) return "";
+
+  const path = `/api/media/gcs?path=${encodeURIComponent(normalized)}`;
+  const backendBaseUrl = getPublicBackendBaseUrl();
+  return backendBaseUrl ? `${backendBaseUrl}${path}` : path;
+};
+
+export const getGcsMediaBucketName = () => gcsMediaBucketName;
+
+export const getGcsMediaObjectPath = (value = "") => extractGcsObjectPath(value);
+
+export const isGcsMediaStorageConfigured = () =>
+  Boolean(gcsStorage && gcsMediaBucketName);
+
+export const isSafeGcsMediaObjectPath = (objectPath = "") =>
+  isAllowedGcsMediaPath(objectPath);
+
+export const createSignedGcsMediaReadUrl = async (objectPath = "") => {
+  const normalized = String(objectPath || "")
+    .trim()
+    .replace(/\\/g, "/")
+    .replace(/^\/+/, "");
+
+  if (!isGcsMediaStorageConfigured()) {
+    throw new Error("Firebase/GCS media storage is not configured");
+  }
+
+  if (!isAllowedGcsMediaPath(normalized)) {
+    const error = new Error("Invalid media object path");
+    error.status = 400;
+    throw error;
+  }
+
+  const targetFile = gcsStorage.bucket(gcsMediaBucketName).file(normalized);
+  const [exists] = await targetFile.exists();
+  if (!exists) {
+    const error = new Error("Media object not found");
+    error.status = 404;
+    throw error;
+  }
+
+  const [signedUrl] = await targetFile.getSignedUrl({
+    action: "read",
+    expires: Date.now() + 15 * 60 * 1000,
+    version: "v4",
+  });
+
+  return signedUrl;
+};
+
+export const normalizeStoredMediaUrl = (value = "") => {
+  const normalized = String(value || "").trim();
+  if (!normalized) return normalized;
+
+  try {
+    const parsed = new URL(normalized);
+    if (
+      parsed.hostname === "firebasestorage.googleapis.com" &&
+      parsed.searchParams.get("token")
+    ) {
+      return normalized;
+    }
+  } catch {
+    // Fall through to object-path handling.
+  }
+
+  const objectPath = extractGcsObjectPath(normalized);
+  if (objectPath) {
+    return getGcsMediaProxyUrl(objectPath) || normalized;
+  }
+
+  const objectPathCandidate = normalized
+    .replace(/\\/g, "/")
+    .replace(/^\/+/, "");
+  if (isAllowedGcsMediaPath(objectPathCandidate)) {
+    return getGcsMediaProxyUrl(objectPathCandidate) || normalized;
+  }
+
+  return normalized;
 };
 
 const uploadToGcsMediaStorage = async (

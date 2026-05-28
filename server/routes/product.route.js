@@ -29,7 +29,7 @@ import createPublicResponseCacheMiddleware, {
 const router = express.Router();
 const PRODUCT_CACHE_TTL_SECONDS = getPublicResponseCacheTtlSeconds(
   "PERF_RESPONSE_CACHE_PRODUCTS_TTL_SECONDS",
-  45,
+  0,
 );
 const productListingCache = createPublicResponseCacheMiddleware({
   namespaces: ["products", "categories", "combos"],

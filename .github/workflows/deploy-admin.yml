@@ -1,6 +1,13 @@
-name: Deploy Admin (App Engine)
+name: Deploy Admin (Firebase App Hosting)
 
 on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - "frontend/admin/**"
+      - ".github/workflows/deploy-admin.yml"
   workflow_dispatch:
 
 permissions:
@@ -9,6 +16,10 @@ permissions:
 concurrency:
   group: deploy-admin
   cancel-in-progress: true
+
+env:
+  FIREBASE_APP_HOSTING_BACKEND: healthyonegram-admin
+  FIREBASE_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
 
 jobs:
   deploy:
@@ -32,152 +43,30 @@ jobs:
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      - name: Setup gcloud
-        uses: google-github-actions/setup-gcloud@v2
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
-          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          node-version: 20
 
-      - name: Validate App Engine target project
-        run: gcloud app describe --project="${{ secrets.GCP_PROJECT_ID }}"
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools@15.18.0
 
-      - name: Prune old App Engine versions (admin)
-        env:
-          SERVICE_NAME: admin
-          KEEP_VERSIONS: "5"
+      - name: Validate Firebase App Hosting backend
         run: |
-          python - <<'PY'
-          import json
-          import os
-          import subprocess
-          import sys
+          test -n "$FIREBASE_PROJECT_ID"
+          firebase apphosting:backends:get "$FIREBASE_APP_HOSTING_BACKEND" \
+            --project "$FIREBASE_PROJECT_ID" \
+            --non-interactive
 
-          service = os.environ.get("SERVICE_NAME")
-          keep = int(os.environ.get("KEEP_VERSIONS", "5"))
-          if not service:
-            sys.exit(0)
-
-          try:
-            output = subprocess.check_output(
-              [
-                "gcloud",
-                "app",
-                "versions",
-                "list",
-                "--service",
-                service,
-                "--sort-by",
-                "~version.last_deployed_time",
-                "--format",
-                "json(version.id,traffic_split)",
-              ],
-              text=True,
-            )
-          except subprocess.CalledProcessError as exc:
-            print("Version list failed:", exc)
-            sys.exit(0)
-
-          data = json.loads(output or "[]")
-          versions = []
-          for item in data:
-            vid = item.get("version", {}).get("id") or item.get("id")
-            traffic = item.get("traffic_split", 0)
-            try:
-              traffic = float(traffic)
-            except Exception:
-              traffic = 0.0
-            if vid:
-              versions.append((vid, traffic))
-
-          for idx, (vid, traffic) in enumerate(versions):
-            if idx < keep:
-              continue
-            if traffic > 0:
-              continue
-            try:
-              subprocess.check_call(
-                ["gcloud", "app", "versions", "delete", vid, "--service", service, "--quiet"]
-              )
-              print("Deleted version:", vid)
-            except subprocess.CalledProcessError as exc:
-              print("Delete failed:", vid, exc)
-          PY
-
-      - name: Build temporary admin deploy YAML
-        env:
-          NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
-          NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.NEXT_PUBLIC_FIREBASE_API_KEY }}
-          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ secrets.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN }}
-          NEXT_PUBLIC_FIREBASE_PROJECT_ID: ${{ secrets.NEXT_PUBLIC_FIREBASE_PROJECT_ID }}
-          NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: ${{ secrets.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET }}
-          NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID }}
-          NEXT_PUBLIC_FIREBASE_APP_ID: ${{ secrets.NEXT_PUBLIC_FIREBASE_APP_ID }}
-          NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID: ${{ secrets.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID }}
+      - name: Validate production API config
         run: |
-          python - <<'PY'
-          import json
-          import os
-          import sys
+          grep -q "healthyonegram-api-v2" frontend/admin/apphosting.yaml
+          ! grep -E "localhost|127\.0\.0\.1|healthyonegram-backend" frontend/admin/apphosting.yaml
 
-          api_url = os.environ.get("NEXT_PUBLIC_API_URL", "").strip()
-          if not api_url:
-              sys.exit("Missing required GitHub repository secret: NEXT_PUBLIC_API_URL")
-
-          firebase_core_keys = [
-              "NEXT_PUBLIC_FIREBASE_API_KEY",
-              "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN",
-              "NEXT_PUBLIC_FIREBASE_PROJECT_ID",
-              "NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET",
-              "NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID",
-              "NEXT_PUBLIC_FIREBASE_APP_ID",
-          ]
-          provided_firebase_core = [
-              key for key in firebase_core_keys if os.environ.get(key, "").strip()
-          ]
-          if 0 < len(provided_firebase_core) < len(firebase_core_keys):
-              sys.exit(
-                  "Partial Firebase admin client secrets detected. "
-                  "Provide all or none: " + ", ".join(firebase_core_keys)
-              )
-
-          public_env = {
-              "NEXT_PUBLIC_API_URL": api_url,
-          }
-
-          optional_public_keys = [
-              "NEXT_PUBLIC_FIREBASE_API_KEY",
-              "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN",
-              "NEXT_PUBLIC_FIREBASE_PROJECT_ID",
-              "NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET",
-              "NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID",
-              "NEXT_PUBLIC_FIREBASE_APP_ID",
-              "NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID",
-          ]
-          for key in optional_public_keys:
-              value = os.environ.get(key, "").strip()
-              if value:
-                  public_env[key] = value
-
-          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env_file:
-              env_file.write(
-                  "APP_DEPLOY_PUBLIC_ENV_JSON="
-                  + json.dumps(public_env, separators=(",", ":"))
-                  + "\n"
-              )
-          PY
-
-      - name: Render admin deploy YAML from app.yaml
-        env:
-          APP_DEPLOY_PUBLIC_ENV_JSON: ${{ env.APP_DEPLOY_PUBLIC_ENV_JSON }}
+      - name: Create Firebase App Hosting rollout
         run: |
-          python scripts/build_app_engine_deploy_yaml.py \
-            --source frontend/admin/app.yaml \
-            --target frontend/admin/app.deploy.yaml \
-            --build-env-json "$APP_DEPLOY_PUBLIC_ENV_JSON" \
-            --env-json "$APP_DEPLOY_PUBLIC_ENV_JSON"
-
-      - name: Deploy admin service
-        run: gcloud app deploy frontend/admin/app.deploy.yaml --project="${{ secrets.GCP_PROJECT_ID }}" --quiet
-
-      - name: Cleanup
-        if: always()
-        run: rm -f frontend/admin/app.deploy.yaml
+          firebase apphosting:rollouts:create "$FIREBASE_APP_HOSTING_BACKEND" \
+            --git-branch "${GITHUB_REF_NAME}" \
+            --force \
+            --project "$FIREBASE_PROJECT_ID" \
+            --non-interactive

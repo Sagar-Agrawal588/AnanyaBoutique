@@ -33,6 +33,7 @@ import {
   updateFirebaseProductDemandStatus,
   updateFirebaseProductStock,
 } from "../services/firebaseCatalog.service.js";
+import { normalizeProductMediaUrls } from "../utils/productMedia.js";
 
 const isProduction = process.env.NODE_ENV === "production";
 const PRODUCT_RESPONSE_CACHE_NAMESPACES = ["products"];
@@ -43,6 +44,8 @@ const debugLog = (...args) => {
     console.log(...args);
   }
 };
+
+const withProductMediaUrls = (value) => normalizeProductMediaUrls(value);
 
 const invalidateProductResponseCache = async (namespaces) => {
   await invalidatePublicResponseCache(namespaces);
@@ -538,7 +541,11 @@ export const getProducts = async (req, res) => {
   try {
     const firebaseResponse = await getFirebaseProductsResponse(req.query);
     if (firebaseResponse) {
-      return res.status(200).json(firebaseResponse);
+      return res.status(200).json({
+        ...firebaseResponse,
+        data: withProductMediaUrls(firebaseResponse.data || []),
+        products: withProductMediaUrls(firebaseResponse.products || []),
+      });
     }
 
     const {
@@ -1118,7 +1125,7 @@ export const getProducts = async (req, res) => {
       return res.status(200).json({
         error: false,
         success: true,
-        data: paginated,
+        data: withProductMediaUrls(paginated),
         totalProducts,
         totalPages,
         currentPage: safePage,
@@ -1161,7 +1168,7 @@ export const getProducts = async (req, res) => {
     res.status(200).json({
       error: false,
       success: true,
-      data: productsWithNotificationState,
+      data: withProductMediaUrls(productsWithNotificationState),
       totalProducts,
       totalPages,
       currentPage: Number(page),
@@ -1191,7 +1198,7 @@ export const getProductById = async (req, res) => {
       return res.status(200).json({
         error: false,
         success: true,
-        data: firebaseProduct,
+        data: withProductMediaUrls(firebaseProduct),
       });
     }
     if (isFirebaseCatalogPrimaryEnabled()) {
@@ -1247,7 +1254,7 @@ export const getProductById = async (req, res) => {
     res.status(200).json({
       error: false,
       success: true,
-      data: productWithNotificationState,
+      data: withProductMediaUrls(productWithNotificationState),
     });
   } catch (error) {
     console.error("Error fetching product:", error);
@@ -1298,7 +1305,8 @@ export const getFeaturedProducts = async (req, res) => {
     if (firebaseResponse) {
       return res.status(200).json({
         ...firebaseResponse,
-        data: firebaseResponse.data,
+        data: withProductMediaUrls(firebaseResponse.data),
+        products: withProductMediaUrls(firebaseResponse.products || []),
       });
     }
 
@@ -1330,7 +1338,7 @@ export const getFeaturedProducts = async (req, res) => {
     res.status(200).json({
       error: false,
       success: true,
-      data: productsWithNotificationState,
+      data: withProductMediaUrls(productsWithNotificationState),
     });
   } catch (error) {
     res.status(500).json({
@@ -1352,7 +1360,11 @@ export const getExclusiveProducts = async (req, res) => {
       isExclusive: true,
     });
     if (firebaseResponse) {
-      return res.status(200).json(firebaseResponse);
+      return res.status(200).json({
+        ...firebaseResponse,
+        data: withProductMediaUrls(firebaseResponse.data || []),
+        products: withProductMediaUrls(firebaseResponse.products || []),
+      });
     }
 
     const {
@@ -1411,7 +1423,7 @@ export const getExclusiveProducts = async (req, res) => {
     res.status(200).json({
       error: false,
       success: true,
-      data: productsWithNotificationState,
+      data: withProductMediaUrls(productsWithNotificationState),
       totalProducts,
       totalPages,
       currentPage: safePage,
@@ -1440,11 +1452,15 @@ export const getRelatedProducts = async (req, res) => {
       limit: req.query.limit || 4,
     });
     if (firebaseResponse) {
-      return res.status(200).json({
-        ...firebaseResponse,
-        data: firebaseResponse.data.filter(
+      const data = withProductMediaUrls(
+        firebaseResponse.data.filter(
           (product) => String(product._id) !== String(req.params.id),
         ),
+      );
+      return res.status(200).json({
+        ...firebaseResponse,
+        data,
+        products: data,
       });
     }
 
@@ -1510,7 +1526,7 @@ export const getRelatedProducts = async (req, res) => {
     res.status(200).json({
       error: false,
       success: true,
-      data: productsWithNotificationState,
+      data: withProductMediaUrls(productsWithNotificationState),
     });
   } catch (error) {
     res.status(500).json({
@@ -1532,11 +1548,15 @@ export const getFrequentlyBoughtProducts = async (req, res) => {
       limit: req.query.limit || 4,
     });
     if (firebaseResponse) {
-      return res.status(200).json({
-        ...firebaseResponse,
-        data: firebaseResponse.data.filter(
+      const data = withProductMediaUrls(
+        firebaseResponse.data.filter(
           (product) => String(product._id) !== String(req.params.id),
         ),
+      );
+      return res.status(200).json({
+        ...firebaseResponse,
+        data,
+        products: data,
       });
     }
 
@@ -1558,7 +1578,7 @@ export const getFrequentlyBoughtProducts = async (req, res) => {
     return res.status(200).json({
       error: false,
       success: true,
-      data: recommendations,
+      data: withProductMediaUrls(recommendations),
     });
   } catch (error) {
     console.error("Error fetching frequently bought products:", error);
@@ -1593,7 +1613,7 @@ export const getCartUpsellProduct = async (req, res) => {
     return res.status(200).json({
       error: false,
       success: true,
-      data: suggestion,
+      data: withProductMediaUrls(suggestion),
     });
   } catch (error) {
     console.error("Error fetching cart upsell product:", error);
@@ -1621,7 +1641,7 @@ export const createProduct = async (req, res) => {
         error: false,
         success: true,
         message: "Product created successfully",
-        data: firebaseProduct,
+        data: withProductMediaUrls(firebaseProduct),
       });
     }
 
@@ -1844,10 +1864,10 @@ export const createProduct = async (req, res) => {
       error: false,
       success: true,
       message: "Product created successfully",
-      data: {
+      data: withProductMediaUrls({
         ...(product.toObject ? product.toObject() : product),
         newArrival: Boolean(product?.isNewArrival),
-      },
+      }),
     });
   } catch (error) {
     console.error("Error creating product:", error);
@@ -1894,7 +1914,7 @@ export const updateProduct = async (req, res) => {
         error: false,
         success: true,
         message: "Product updated successfully",
-        data: firebaseProduct,
+        data: withProductMediaUrls(firebaseProduct),
       });
     }
     if (firebaseProduct === false) {
@@ -2130,10 +2150,10 @@ export const updateProduct = async (req, res) => {
       error: false,
       success: true,
       message: "Product updated successfully",
-      data: {
+      data: withProductMediaUrls({
         ...(updatedProduct?.toObject ? updatedProduct.toObject() : updatedProduct),
         newArrival: Boolean(updatedProduct?.isNewArrival),
-      },
+      }),
     });
   } catch (error) {
     console.error("Error updating product:", error);
@@ -2346,7 +2366,7 @@ export const updateStock = async (req, res) => {
         error: false,
         success: true,
         message: "Stock updated successfully",
-        data: firebaseProduct,
+        data: withProductMediaUrls(firebaseProduct),
       });
     }
     if (firebaseProduct === false) {
@@ -2410,7 +2430,7 @@ export const updateStock = async (req, res) => {
       error: false,
       success: true,
       message: "Stock updated successfully",
-      data: updatedProductForNotifications,
+      data: withProductMediaUrls(updatedProductForNotifications),
     });
   } catch (error) {
     res.status(500).json({
@@ -2570,7 +2590,7 @@ export const updateDemandStatus = async (req, res) => {
         error: false,
         success: true,
         message: `Product demand status updated to ${firebaseProduct.demandStatus}`,
-        data: firebaseProduct,
+        data: withProductMediaUrls(firebaseProduct),
       });
     }
     if (firebaseProduct === false) {
@@ -2600,7 +2620,7 @@ export const updateDemandStatus = async (req, res) => {
       error: false,
       success: true,
       message: `Product demand status updated to ${demandStatus}`,
-      data: product,
+      data: withProductMediaUrls(product?.toObject ? product.toObject() : product),
     });
   } catch (error) {
     console.error("Update demand status error:", error);

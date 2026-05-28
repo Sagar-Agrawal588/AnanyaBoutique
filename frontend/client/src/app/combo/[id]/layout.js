@@ -69,7 +69,9 @@ const getSiteUrl = () =>
 
 const getApiCandidates = () => {
   const configured = [
-    process.env.NEXT_PUBLIC_LOCAL_API_URL,
+    process.env.NODE_ENV === "production"
+      ? ""
+      : process.env.NEXT_PUBLIC_LOCAL_API_URL,
     process.env.NEXT_PUBLIC_APP_API_URL,
     process.env.NEXT_PUBLIC_API_URL,
   ]
@@ -145,7 +147,7 @@ const fetchComboForMetadata = async (id) => {
 
     for (const endpoint of lookupChain) {
       try {
-        const response = await fetch(endpoint, { next: { revalidate: 300 } });
+        const response = await fetch(endpoint, { cache: "no-store" });
         if (!response.ok) continue;
         const payload = await response.json();
         const combo = payload?.data?.data || payload?.data || null;

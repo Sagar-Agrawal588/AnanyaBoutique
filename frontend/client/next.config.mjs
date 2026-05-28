@@ -60,6 +60,12 @@ const apiImagePattern = [
     ...(parsedApiUrl.port ? { port: parsedApiUrl.port } : {}),
     pathname: "/uploads/**",
   },
+  {
+    protocol: parsedApiUrl.protocol.replace(":", ""),
+    hostname: parsedApiUrl.hostname,
+    ...(parsedApiUrl.port ? { port: parsedApiUrl.port } : {}),
+    pathname: "/api/media/**",
+  },
   ...(resolvedDevApiUrl !== normalizedApiUrl
     ? [
         {
@@ -67,6 +73,12 @@ const apiImagePattern = [
           hostname: parsedDevApiUrl.hostname,
           ...(parsedDevApiUrl.port ? { port: parsedDevApiUrl.port } : {}),
           pathname: "/uploads/**",
+        },
+        {
+          protocol: parsedDevApiUrl.protocol.replace(":", ""),
+          hostname: parsedDevApiUrl.hostname,
+          ...(parsedDevApiUrl.port ? { port: parsedDevApiUrl.port } : {}),
+          pathname: "/api/media/**",
         },
       ]
     : []),

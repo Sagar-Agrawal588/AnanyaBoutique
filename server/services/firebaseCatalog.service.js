@@ -5,13 +5,32 @@ import { normalizeProductPageConfig } from "../utils/productPageConfig.js";
 const PRODUCTS_COLLECTION = "products";
 const COMBOS_COLLECTION = "combos";
 const FIREBASE_CATALOG_ENABLED_VALUES = new Set(["true", "1", "on", "yes"]);
+const FIREBASE_CATALOG_PRODUCTION_OVERRIDE_VALUES = new Set([
+  "true",
+  "1",
+  "on",
+  "yes",
+]);
 
-export const isFirebaseCatalogPrimaryEnabled = () =>
-  FIREBASE_CATALOG_ENABLED_VALUES.has(
+export const isFirebaseCatalogPrimaryEnabled = () => {
+  const requested = FIREBASE_CATALOG_ENABLED_VALUES.has(
     String(process.env.FIREBASE_CATALOG_PRIMARY ?? "false")
       .trim()
       .toLowerCase(),
   );
+
+  if (!requested) return false;
+
+  if (process.env.NODE_ENV === "production") {
+    return FIREBASE_CATALOG_PRODUCTION_OVERRIDE_VALUES.has(
+      String(process.env.FIREBASE_CATALOG_PRIMARY_ALLOW_PRODUCTION ?? "false")
+        .trim()
+        .toLowerCase(),
+    );
+  }
+
+  return true;
+};
 
 const getCatalogDb = () => {
   if (!isFirebaseCatalogPrimaryEnabled()) return null;

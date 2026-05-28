@@ -48,12 +48,12 @@ const pickFirstApiUrl = (...values) => {
   return "";
 };
 
-const resolveConfiguredEnvBaseUrl = () => {
+const resolveConfiguredEnvBaseUrl = ({ includeLocalDevBaseUrl = false } = {}) => {
   const localDevBaseUrl = sanitizeBaseUrl(
     process.env.NEXT_PUBLIC_LOCAL_API_URL,
   );
   return pickFirstApiUrl(
-    localDevBaseUrl,
+    includeLocalDevBaseUrl ? localDevBaseUrl : "",
     process.env.NEXT_PUBLIC_BACKEND_URL,
     process.env.NEXT_PUBLIC_APP_API_URL,
     process.env.NEXT_PUBLIC_API_URL,
@@ -98,11 +98,12 @@ const getAlternateApiBaseUrls = () => {
     candidates.push(normalized);
   };
 
-  const envBaseUrl = resolveConfiguredEnvBaseUrl();
-
   if (typeof window !== "undefined") {
     const hostname = String(window.location.hostname || "").toLowerCase();
     const isLocalhost = hostname === "localhost" || hostname === "127.0.0.1";
+    const envBaseUrl = resolveConfiguredEnvBaseUrl({
+      includeLocalDevBaseUrl: isLocalhost,
+    });
 
     if (isLocalhost) {
       pushCandidate(envBaseUrl);
@@ -115,17 +116,22 @@ const getAlternateApiBaseUrls = () => {
     return candidates;
   }
 
-  pushCandidate(envBaseUrl);
+  pushCandidate(
+    resolveConfiguredEnvBaseUrl({
+      includeLocalDevBaseUrl: process.env.NODE_ENV !== "production",
+    }),
+  );
   pushCandidate(DEFAULT_PRODUCTION_API_URL);
   return candidates;
 };
 
 const resolveApiBaseUrl = () => {
-  const envBaseUrl = resolveConfiguredEnvBaseUrl();
-
   if (typeof window !== "undefined") {
     const hostname = String(window.location.hostname || "").toLowerCase();
     const isLocalhost = hostname === "localhost" || hostname === "127.0.0.1";
+    const envBaseUrl = resolveConfiguredEnvBaseUrl({
+      includeLocalDevBaseUrl: isLocalhost,
+    });
 
     if (isLocalhost) {
       // In local admin development there are no `/api` rewrites, so an
@@ -145,6 +151,10 @@ const resolveApiBaseUrl = () => {
 
     return DEFAULT_PRODUCTION_API_URL;
   }
+
+  const envBaseUrl = resolveConfiguredEnvBaseUrl({
+    includeLocalDevBaseUrl: process.env.NODE_ENV !== "production",
+  });
 
   if (isHttpUrl(envBaseUrl)) {
     return envBaseUrl;

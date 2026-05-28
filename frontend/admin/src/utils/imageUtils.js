@@ -17,6 +17,13 @@ import {
 const API_URL = API_BASE_URL.endsWith("/api")
   ? API_BASE_URL.slice(0, -4)
   : API_BASE_URL;
+const FIREBASE_STORAGE_BUCKET = String(
+  process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET ||
+    process.env.NEXT_PUBLIC_GCS_MEDIA_BUCKET ||
+    "",
+)
+  .trim()
+  .replace(/^gs:\/\//i, "");
 const sanitizeBaseUrl = (value) =>
   String(value || "")
     .trim()
@@ -46,6 +53,60 @@ const normalizeImageInput = (imageValue) => {
   return "";
 };
 
+const isAllowedMediaObjectPath = (value = "") => {
+  const normalized = String(value || "")
+    .trim()
+    .replace(/\\/g, "/")
+    .replace(/^\/+/, "");
+  return Boolean(normalized && !normalized.includes("..") && /^buyonegram\//i.test(normalized));
+};
+
+const buildMediaProxyUrl = (objectPath = "") => {
+  const normalized = String(objectPath || "")
+    .trim()
+    .replace(/\\/g, "/")
+    .replace(/^\/+/, "");
+  if (!isAllowedMediaObjectPath(normalized)) return "";
+  return `${API_URL}/api/media/gcs?path=${encodeURIComponent(normalized)}`;
+};
+
+const resolveFirebaseMediaProxyUrl = (value = "") => {
+  const normalized = String(value || "").trim();
+  if (!normalized) return "";
+
+  if (isAllowedMediaObjectPath(normalized)) {
+    return buildMediaProxyUrl(normalized);
+  }
+
+  try {
+    const parsed = new URL(normalized);
+    const pathname = decodeURIComponent(parsed.pathname.replace(/^\/+/, ""));
+
+    if (parsed.hostname === "firebasestorage.googleapis.com") {
+      if (parsed.searchParams.get("token")) return "";
+      const match = parsed.pathname.match(/^\/v0\/b\/([^/]+)\/o\/(.+)$/i);
+      if (!match) return "";
+      const [, bucket, objectPath] = match;
+      if (FIREBASE_STORAGE_BUCKET && bucket !== FIREBASE_STORAGE_BUCKET) {
+        return "";
+      }
+      return buildMediaProxyUrl(decodeURIComponent(objectPath));
+    }
+
+    if (parsed.hostname === "storage.googleapis.com") {
+      const [bucket, ...objectParts] = pathname.split("/");
+      if (FIREBASE_STORAGE_BUCKET && bucket !== FIREBASE_STORAGE_BUCKET) {
+        return "";
+      }
+      return buildMediaProxyUrl(objectParts.join("/"));
+    }
+  } catch {
+    return "";
+  }
+
+  return "";
+};
+
 /**
  * Get the proper image URL for display
  * @param {string|object} imageUrl - The image URL from database
@@ -63,6 +124,11 @@ export const getImageUrl = (
   const resolvedLegacyMedia = resolveLegacyLocalMedia(normalizedPath);
   if (resolvedLegacyMedia) {
     return resolvedLegacyMedia;
+  }
+
+  const firebaseMediaProxyUrl = resolveFirebaseMediaProxyUrl(normalizedPath);
+  if (firebaseMediaProxyUrl) {
+    return firebaseMediaProxyUrl;
   }
 
   // Data URI

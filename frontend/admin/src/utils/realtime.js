@@ -14,6 +14,16 @@ const sanitizeBaseUrl = (value) =>
 
 const isHttpUrl = (value) => /^https?:\/\//i.test(String(value || ""));
 
+const isLocalhostUrl = (value) => {
+  try {
+    const parsed = new URL(String(value || ""));
+    const hostname = String(parsed.hostname || "").toLowerCase();
+    return hostname === "localhost" || hostname === "127.0.0.1";
+  } catch {
+    return false;
+  }
+};
+
 const stripApiSuffix = (value) => {
   const baseUrl = sanitizeBaseUrl(value);
   return baseUrl.endsWith("/api") ? baseUrl.slice(0, -4) : baseUrl;
@@ -45,6 +55,9 @@ const resolveSocketBaseUrls = () => {
   const pushCandidate = (value) => {
     const normalized = normalizeSocketBaseUrl(value);
     if (!isHttpUrl(normalized) || candidates.includes(normalized)) return;
+    if (process.env.NODE_ENV === "production" && isLocalhostUrl(normalized)) {
+      return;
+    }
     candidates.push(normalized);
   };
 

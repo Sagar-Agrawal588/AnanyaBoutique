@@ -33,21 +33,27 @@ const isValidMongoUri = (value) => /^mongodb(\+srv)?:\/\//.test(value);
 const resolveMongoUri = () => {
   const primaryMongoUri = normalizeEnvValue(process.env.MONGO_URI);
   const fallbackMongoUri = normalizeEnvValue(process.env.MONGODB_URI);
+  const allowLegacyFallback =
+    process.env.NODE_ENV !== "production" && !isCloudRunRuntime;
 
   if (primaryMongoUri && isValidMongoUri(primaryMongoUri)) {
     return primaryMongoUri;
   }
 
-  if (fallbackMongoUri && isValidMongoUri(fallbackMongoUri)) {
+  if (allowLegacyFallback && fallbackMongoUri && isValidMongoUri(fallbackMongoUri)) {
     return fallbackMongoUri;
   }
 
-  if (!primaryMongoUri && !fallbackMongoUri) {
+  if (!primaryMongoUri && (!allowLegacyFallback || !fallbackMongoUri)) {
     console.error(
-      "[startup] Database URI is missing. Required setting: MONGO_URI. MONGODB_URI is accepted as a fallback.",
+      allowLegacyFallback
+        ? "[startup] Database URI is missing. Required setting: MONGO_URI. MONGODB_URI is accepted only for local development."
+        : "[startup] Database URI is missing. Required production setting: MONGO_URI.",
     );
     throw new Error(
-      "Database URI is missing. Set MONGO_URI or MONGODB_URI in environment variables.",
+      allowLegacyFallback
+        ? "Database URI is missing. Set MONGO_URI or MONGODB_URI in local environment variables."
+        : "Database URI is missing. Set MONGO_URI in production environment variables.",
     );
   }
 
@@ -59,6 +65,17 @@ const resolveMongoUri = () => {
   );
 };
 
+const getMongoHostFromUri = (mongoUri) => {
+  try {
+    const normalized = mongoUri.startsWith("mongodb+srv://")
+      ? mongoUri.replace(/^mongodb\+srv:\/\//i, "https://")
+      : mongoUri.replace(/^mongodb:\/\//i, "http://");
+    return new URL(normalized).host || "unknown";
+  } catch {
+    return "unknown";
+  }
+};
+
 async function connectDb() {
   const mongoUri = resolveMongoUri();
 
@@ -67,7 +84,11 @@ async function connectDb() {
 
   try {
     await mongoose.connect(mongoUri);
+    const connection = mongoose.connection;
     console.log("Connected to MongoDB");
+    console.log(
+      `[startup] MongoDB cluster=${getMongoHostFromUri(mongoUri)} database=${connection.name || "unknown"} env=${process.env.NODE_ENV || "development"} source=MONGO_URI`,
+    );
 
     // Best-effort startup guard against legacy/non-sparse identity indexes
     // that can break checkout with duplicate-key conflicts.

@@ -43,10 +43,12 @@ import {
 import { invalidatePublicResponseCache } from "../middlewares/publicResponseCache.js";
 import { AppError, asyncHandler, sendSuccess } from "../utils/errorHandler.js";
 import { normalizeProductPageConfig } from "../utils/productPageConfig.js";
+import { normalizeProductMediaUrls } from "../utils/productMedia.js";
 
 const round2 = (value) =>
   Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
 const COMBO_RESPONSE_CACHE_NAMESPACES = ["combos", "products"];
+const withComboMediaUrls = (value) => normalizeProductMediaUrls(value);
 
 const roundCurrency = (value) => Math.max(Math.round(Number(value || 0)), 0);
 
@@ -462,7 +464,7 @@ const parseComboPayload = async (body = {}, { existingCombo = null } = {}) => {
 export const getCombos = asyncHandler(async (req, res) => {
   const firebaseCombos = await getFirebaseCombosData(req.query);
   if (firebaseCombos) {
-    return sendSuccess(res, firebaseCombos);
+    return sendSuccess(res, withComboMediaUrls(firebaseCombos));
   }
 
   const page = toPositiveInt(req.query.page, 1);
@@ -511,19 +513,19 @@ export const getCombos = asyncHandler(async (req, res) => {
   const total = await ComboModel.countDocuments(filter);
   const enriched = await attachComboAvailability(combos);
 
-  return sendSuccess(res, {
+  return sendSuccess(res, withComboMediaUrls({
     items: enriched,
     page,
     limit,
     total,
     pages: Math.ceil(total / limit),
-  });
+  }));
 });
 
 export const getComboById = asyncHandler(async (req, res) => {
   const firebaseCombo = await getFirebaseComboById(req.params.id);
   if (firebaseCombo) {
-    return sendSuccess(res, firebaseCombo);
+    return sendSuccess(res, withComboMediaUrls(firebaseCombo));
   }
   if (isFirebaseCatalogPrimaryEnabled()) {
     throw new AppError("NOT_FOUND", { field: "comboId" });
@@ -535,18 +537,18 @@ export const getComboById = asyncHandler(async (req, res) => {
   }
   const normalizedCombo = normalizeComboPricingFields(combo);
   const availability = await computeComboAvailability(combo);
-  return sendSuccess(res, {
+  return sendSuccess(res, withComboMediaUrls({
     ...normalizedCombo,
     availableStock: availability.available,
     availability,
     outOfStockItems: availability.outOfStockItems || [],
-  });
+  }));
 });
 
 export const getComboBySlug = asyncHandler(async (req, res) => {
   const firebaseCombo = await getFirebaseComboById(req.params.slug);
   if (firebaseCombo) {
-    return sendSuccess(res, firebaseCombo);
+    return sendSuccess(res, withComboMediaUrls(firebaseCombo));
   }
   if (isFirebaseCatalogPrimaryEnabled()) {
     throw new AppError("NOT_FOUND", { field: "comboSlug" });
@@ -558,12 +560,12 @@ export const getComboBySlug = asyncHandler(async (req, res) => {
   }
   const normalizedCombo = normalizeComboPricingFields(combo);
   const availability = await computeComboAvailability(combo);
-  return sendSuccess(res, {
+  return sendSuccess(res, withComboMediaUrls({
     ...normalizedCombo,
     availableStock: availability.available,
     availability,
     outOfStockItems: availability.outOfStockItems || [],
-  });
+  }));
 });
 
 export const getComboSections = asyncHandler(async (req, res) => {
@@ -573,7 +575,7 @@ export const getComboSections = asyncHandler(async (req, res) => {
   }
   const firebaseSections = await getFirebaseComboSections(productId);
   if (firebaseSections) {
-    return sendSuccess(res, firebaseSections);
+    return sendSuccess(res, withComboMediaUrls(firebaseSections));
   }
   if (isFirebaseCatalogPrimaryEnabled()) {
     return sendSuccess(res, {
@@ -583,13 +585,13 @@ export const getComboSections = asyncHandler(async (req, res) => {
   }
 
   const sections = await getComboSectionsForProduct(productId);
-  return sendSuccess(res, sections);
+  return sendSuccess(res, withComboMediaUrls(sections));
 });
 
 export const getCartUpsells = asyncHandler(async (req, res) => {
   const firebaseUpsells = await getFirebaseCartUpsells();
   if (firebaseUpsells) {
-    return sendSuccess(res, firebaseUpsells);
+    return sendSuccess(res, withComboMediaUrls(firebaseUpsells));
   }
   if (isFirebaseCatalogPrimaryEnabled()) {
     return sendSuccess(res, { suggestions: [], productSuggestion: null });
@@ -609,14 +611,19 @@ export const getCartUpsells = asyncHandler(async (req, res) => {
     getCartUpsellProductSuggestion(normalizedItems, { limit: 1 }),
   ]);
 
-  return sendSuccess(res, { suggestions, productSuggestion });
+  return sendSuccess(res, withComboMediaUrls({ suggestions, productSuggestion }));
 });
 
 export const createCombo = asyncHandler(async (req, res) => {
   const firebaseCombo = await createFirebaseCombo(req.body);
   if (firebaseCombo) {
     await invalidatePublicResponseCache(COMBO_RESPONSE_CACHE_NAMESPACES);
-    return sendSuccess(res, firebaseCombo, "Combo created", 201);
+    return sendSuccess(
+      res,
+      withComboMediaUrls(firebaseCombo),
+      "Combo created",
+      201,
+    );
   }
   if (isFirebaseCatalogPrimaryEnabled()) {
     throw new AppError("DATABASE_ERROR", {
@@ -635,14 +642,14 @@ export const createCombo = asyncHandler(async (req, res) => {
   await upsertComboItems(combo._id, items);
   await invalidatePublicResponseCache(COMBO_RESPONSE_CACHE_NAMESPACES);
 
-  return sendSuccess(res, combo, "Combo created", 201);
+  return sendSuccess(res, withComboMediaUrls(combo), "Combo created", 201);
 });
 
 export const updateCombo = asyncHandler(async (req, res) => {
   const firebaseCombo = await updateFirebaseCombo(req.params.id, req.body);
   if (firebaseCombo) {
     await invalidatePublicResponseCache(COMBO_RESPONSE_CACHE_NAMESPACES);
-    return sendSuccess(res, firebaseCombo, "Combo updated");
+    return sendSuccess(res, withComboMediaUrls(firebaseCombo), "Combo updated");
   }
   if (isFirebaseCatalogPrimaryEnabled()) {
     throw new AppError("NOT_FOUND", { field: "comboId" });
@@ -664,7 +671,7 @@ export const updateCombo = asyncHandler(async (req, res) => {
   await upsertComboItems(existing._id, items);
   await invalidatePublicResponseCache(COMBO_RESPONSE_CACHE_NAMESPACES);
 
-  return sendSuccess(res, existing, "Combo updated");
+  return sendSuccess(res, withComboMediaUrls(existing), "Combo updated");
 });
 
 export const deleteCombo = asyncHandler(async (req, res) => {
@@ -703,7 +710,7 @@ export const duplicateCombo = asyncHandler(async (req, res) => {
       isActive: false,
     });
     await invalidatePublicResponseCache(COMBO_RESPONSE_CACHE_NAMESPACES);
-    return sendSuccess(res, copy, "Combo duplicated", 201);
+    return sendSuccess(res, withComboMediaUrls(copy), "Combo duplicated", 201);
   }
   if (isFirebaseCatalogPrimaryEnabled()) {
     throw new AppError("NOT_FOUND", { field: "comboId" });
@@ -732,14 +739,14 @@ export const duplicateCombo = asyncHandler(async (req, res) => {
 
   await upsertComboItems(copy._id, copy.items || []);
 
-  return sendSuccess(res, copy, "Combo duplicated", 201);
+  return sendSuccess(res, withComboMediaUrls(copy), "Combo duplicated", 201);
 });
 
 export const toggleCombo = asyncHandler(async (req, res) => {
   const firebaseCombo = await toggleFirebaseCombo(req.params.id, req.body);
   if (firebaseCombo) {
     await invalidatePublicResponseCache(COMBO_RESPONSE_CACHE_NAMESPACES);
-    return sendSuccess(res, firebaseCombo, "Combo updated");
+    return sendSuccess(res, withComboMediaUrls(firebaseCombo), "Combo updated");
   }
   if (isFirebaseCatalogPrimaryEnabled()) {
     throw new AppError("NOT_FOUND", { field: "comboId" });
@@ -768,13 +775,13 @@ export const toggleCombo = asyncHandler(async (req, res) => {
 
   await combo.save();
   await invalidatePublicResponseCache(COMBO_RESPONSE_CACHE_NAMESPACES);
-  return sendSuccess(res, combo, "Combo updated");
+  return sendSuccess(res, withComboMediaUrls(combo), "Combo updated");
 });
 
 export const getAdminCombos = asyncHandler(async (req, res) => {
   const firebaseCombos = await getFirebaseCombosData(req.query, { admin: true });
   if (firebaseCombos) {
-    return sendSuccess(res, firebaseCombos);
+    return sendSuccess(res, withComboMediaUrls(firebaseCombos));
   }
 
   const page = toPositiveInt(req.query.page, 1);
@@ -804,13 +811,13 @@ export const getAdminCombos = asyncHandler(async (req, res) => {
       .lean(),
   ]);
 
-  return sendSuccess(res, {
+  return sendSuccess(res, withComboMediaUrls({
     items: combos.map((combo) => normalizeComboPricingFields(combo)),
     total,
     page,
     limit,
     pages: Math.ceil(total / limit),
-  });
+  }));
 });
 
 export const generateComboSuggestions = asyncHandler(async (req, res) => {
@@ -852,13 +859,13 @@ export const generateComboSuggestions = asyncHandler(async (req, res) => {
 
   return sendSuccess(
     res,
-    {
+    withComboMediaUrls({
       suggestions,
       generated: suggestions.length,
       pairsEvaluated: result?.pairsEvaluated || 0,
       refreshResult: result?.refreshResult || null,
       preview: previewOnly,
-    },
+    }),
     message,
   );
 });
@@ -875,12 +882,12 @@ export const getComboDrafts = asyncHandler(async (req, res) => {
     .limit(100)
     .lean();
 
-  return sendSuccess(res, {
+  return sendSuccess(res, withComboMediaUrls({
     items: drafts.map((draft) => ({
       ...draft,
       items: draft.itemsSnapshot || [],
     })),
-  });
+  }));
 });
 
 export const updateComboDraft = asyncHandler(async (req, res) => {
@@ -917,10 +924,10 @@ export const updateComboDraft = asyncHandler(async (req, res) => {
   draft.lastUpdated = new Date();
   await draft.save();
 
-  return sendSuccess(res, {
+  return sendSuccess(res, withComboMediaUrls({
     ...draft.toObject(),
     items: draft.itemsSnapshot || [],
-  });
+  }));
 });
 
 export const approveComboDraft = asyncHandler(async (req, res) => {
@@ -938,7 +945,11 @@ export const approveComboDraft = asyncHandler(async (req, res) => {
     draft.lastUpdated = new Date();
     await draft.save();
     const combo = await ComboModel.findById(draft.comboId).lean();
-    return sendSuccess(res, { draft, combo }, "Combo draft approved");
+    return sendSuccess(
+      res,
+      withComboMediaUrls({ draft, combo }),
+      "Combo draft approved",
+    );
   }
 
   const { payload, snapshots } = await buildComboPayloadFromDraft(draft);
@@ -954,7 +965,11 @@ export const approveComboDraft = asyncHandler(async (req, res) => {
   draft.lastUpdated = new Date();
   await draft.save();
 
-  return sendSuccess(res, { draft, combo }, "Combo draft approved");
+  return sendSuccess(
+    res,
+    withComboMediaUrls({ draft, combo }),
+    "Combo draft approved",
+  );
 });
 
 export const publishComboDraft = asyncHandler(async (req, res) => {
@@ -998,7 +1013,11 @@ export const publishComboDraft = asyncHandler(async (req, res) => {
   await draft.save();
   await invalidatePublicResponseCache(COMBO_RESPONSE_CACHE_NAMESPACES);
 
-  return sendSuccess(res, { draft, combo }, "Combo published");
+  return sendSuccess(
+    res,
+    withComboMediaUrls({ draft, combo }),
+    "Combo published",
+  );
 });
 
 export const rejectComboDraft = asyncHandler(async (req, res) => {
@@ -1013,7 +1032,7 @@ export const rejectComboDraft = asyncHandler(async (req, res) => {
   draft.status = "rejected";
   draft.lastUpdated = new Date();
   await draft.save();
-  return sendSuccess(res, draft, "Combo draft rejected");
+  return sendSuccess(res, withComboMediaUrls(draft), "Combo draft rejected");
 });
 
 export const getComboAnalyticsDashboard = asyncHandler(async (req, res) => {

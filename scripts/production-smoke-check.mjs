@@ -108,6 +108,52 @@ const verifyJsonGet = async ({ backendUrl, origin, path }) => {
 
   const payload = await response.json();
   assert(payload?.success === true, `GET ${path} returned unsuccessful payload`);
+  return payload;
+};
+
+const verifyHealthEndpoint = async ({ backendUrl }) => {
+  for (const path of ["/api/healthz", "/healthz/"]) {
+    const response = await fetchWithTimeout(`${backendUrl}${path}`, {
+      method: "GET",
+      headers: { Accept: "text/plain" },
+    });
+    if (response.ok) {
+      return;
+    }
+  }
+
+  throw new Error("Health endpoint failed for /api/healthz and /healthz/");
+};
+
+const verifyProductImages = async ({ backendUrl, origin }) => {
+  const payload = await verifyJsonGet({
+    backendUrl,
+    origin,
+    path: "/api/products?limit=3&sortBy=createdAt&order=desc",
+  });
+  const products = Array.isArray(payload?.data) ? payload.data : [];
+  assert(products.length > 0, "Product API returned no products");
+
+  const imageUrl = products
+    .flatMap((product) => [
+      ...(Array.isArray(product?.images) ? product.images : []),
+      product?.thumbnail,
+      product?.image,
+      product?.imageUrl,
+    ])
+    .map((value) => String(value || "").trim())
+    .find(Boolean);
+
+  assert(imageUrl, "Product API returned no image URL to verify");
+
+  const response = await fetchWithTimeout(imageUrl, {
+    method: "GET",
+    redirect: "follow",
+  });
+  assert(
+    response.ok,
+    `Product image failed to load with status ${response.status}: ${imageUrl}`,
+  );
 };
 
 const verifyAdminLogin = async ({ backendUrl, origin, adminEmail }) => {
@@ -181,6 +227,9 @@ const main = async () => {
     normalizedOrigins.find((origin) => origin.includes("healthyonegram.com")) ||
     normalizedOrigins[0];
 
+  console.log("[production-smoke-check] Verifying health endpoint");
+  await verifyHealthEndpoint({ backendUrl: normalizedBackendUrl });
+
   for (const normalizedOrigin of normalizedOrigins) {
     console.log(`[production-smoke-check] Verifying CORS for ${normalizedOrigin}`);
     await verifyCorsPreflight({
@@ -229,6 +278,12 @@ const main = async () => {
       path: "/api/products",
     });
   }
+
+  console.log("[production-smoke-check] Verifying product image delivery");
+  await verifyProductImages({
+    backendUrl: normalizedBackendUrl,
+    origin: clientOrigin,
+  });
 
   console.log("[production-smoke-check] All smoke checks passed.");
 };

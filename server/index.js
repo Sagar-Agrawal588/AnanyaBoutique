@@ -106,39 +106,46 @@ const failStartup = (message, details = []) => {
   process.exit(1);
 };
 
+const isProductionEnv = process.env.NODE_ENV === "production";
 const isValidMongoUri = (value) => /^mongodb(\+srv)?:\/\//.test(value);
 const primaryMongoUri = normalizeEnvValue(process.env.MONGO_URI);
 const fallbackMongoUri = normalizeEnvValue(process.env.MONGODB_URI);
+const allowLegacyMongoFallback = !isProductionEnv && !isCloudRunRuntime;
 const normalizedMongoUri = isValidMongoUri(primaryMongoUri)
   ? primaryMongoUri
-  : isValidMongoUri(fallbackMongoUri)
+  : allowLegacyMongoFallback && isValidMongoUri(fallbackMongoUri)
     ? fallbackMongoUri
     : "";
 
 if (!normalizedMongoUri) {
   const mongoEnvHelp = [
-    "Required database setting: MONGO_URI. MONGODB_URI is accepted as a fallback.",
+    allowLegacyMongoFallback
+      ? "Required database setting: MONGO_URI. MONGODB_URI is accepted only for local development."
+      : "Required production database setting: MONGO_URI.",
     isCloudRunRuntime
       ? "Cloud Run detected: configure MONGO_URI on the service environment."
       : "Local development: copy server/.env.example to server/.env and set MONGO_URI.",
   ];
 
-  if (!primaryMongoUri && !fallbackMongoUri) {
+  if (!primaryMongoUri && (!allowLegacyMongoFallback || !fallbackMongoUri)) {
     failStartup(
-      "Database URI is missing. Set MONGO_URI or MONGODB_URI in environment variables.",
+      allowLegacyMongoFallback
+        ? "Database URI is missing. Set MONGO_URI or MONGODB_URI in environment variables."
+        : "Database URI is missing. Set MONGO_URI in production environment variables.",
       mongoEnvHelp,
     );
   }
 
   failStartup(
-    "Invalid MongoDB URI format. Set MONGO_URI or MONGODB_URI to a value that starts with mongodb:// or mongodb+srv://",
+    allowLegacyMongoFallback
+      ? "Invalid MongoDB URI format. Set MONGO_URI or MONGODB_URI to a value that starts with mongodb:// or mongodb+srv://"
+      : "Invalid MongoDB URI format. Set MONGO_URI to a value that starts with mongodb:// or mongodb+srv://",
     mongoEnvHelp,
   );
 }
 
 process.env.MONGO_URI = normalizedMongoUri;
 
-const isProductionEnv = process.env.NODE_ENV === "production";
 const isCorsAllowAllEnabled =
   String(process.env.CORS_ALLOW_ALL || (isProductionEnv ? "false" : "true"))
     .trim()
@@ -290,6 +297,7 @@ import uploadRouter from "./routes/upload.route.js";
 import userRouter from "./routes/user.route.js";
 import userLocationLogRouter from "./routes/userLocationLog.route.js";
 import internalRouter from "./routes/internal.route.js";
+import mediaRouter from "./routes/media.route.js";
 import vendorRouter from "./routes/vendor.routes.js";
 import webhookRouter from "./routes/webhook.route.js";
 import wishlistRouter from "./routes/wishlist.route.js";
@@ -529,6 +537,12 @@ app.get("/healthz", (_req, res) => {
   res.status(200).send("ok");
 });
 
+app.get("/api/healthz", (_req, res) => {
+  res.set("Cache-Control", "no-store, max-age=0");
+  res.type("text/plain");
+  res.status(200).send("ok");
+});
+
 app.get("/", (_req, res) => {
   res.set("Cache-Control", "public, max-age=120, s-maxage=300");
   res.status(200).json({
@@ -723,6 +737,7 @@ app.use("/api/cart", generalLimiter, cartRouter);
 app.use("/api/combos", generalLimiter, comboRouter);
 app.use("/api/wishlist", generalLimiter, wishlistRouter);
 app.use("/api/upload", uploadLimiter, uploadRouter);
+app.use("/api/media", generalLimiter, mediaRouter);
 app.use("/api/internal", generalLimiter, internalRouter);
 app.use("/api/membership/page", generalLimiter, membershipPageRouter);
 app.use(

@@ -33,7 +33,7 @@ export const PUBLIC_SECTION_REQUEST_TIMEOUT_MS = Math.max(
 );
 
 const PUBLIC_GET_CACHE_PATH_REGEX =
-  /^\/api\/(?:products|categories|banners|home-slides|combos|settings\/public)(?:\/|\?|$)/i;
+  /^\/api\/(?:banners|home-slides|settings\/public)(?:\/|\?|$)/i;
 const HOMEPAGE_HOT_PATH_CACHE_REGEX =
   /^\/api\/(?:banners|home-slides|settings\/maintenance-status)(?:\/|\?|$)/i;
 
@@ -94,6 +94,19 @@ const isLocalhostUrl = (value) => {
 const normalizeLocalFallbacks = () =>
   LOCAL_API_FALLBACKS.map(sanitizeBaseUrl).filter(Boolean);
 
+const getConfiguredEnvBaseUrl = ({ includeLocalDevBaseUrl = false } = {}) => {
+  const localDevBaseUrl = sanitizeBaseUrl(
+    process.env.NEXT_PUBLIC_LOCAL_API_URL,
+  );
+
+  return pickFirstApiUrl(
+    includeLocalDevBaseUrl ? localDevBaseUrl : "",
+    process.env.NEXT_PUBLIC_BACKEND_URL,
+    process.env.NEXT_PUBLIC_APP_API_URL,
+    process.env.NEXT_PUBLIC_API_URL,
+  );
+};
+
 const getGetCacheKey = (url) => `GET:${String(url || "").trim()}`;
 
 const getDefaultPublicGetCacheTtlMs = (url) => {
@@ -136,25 +149,19 @@ export const invalidatePublicGetCache = () => {
 };
 
 const resolveApiBaseUrl = () => {
-  const localDevBaseUrl = sanitizeBaseUrl(
-    process.env.NEXT_PUBLIC_LOCAL_API_URL,
-  );
   const preferredLocalFallback =
     normalizeLocalFallbacks().find((candidate) =>
       candidate.endsWith(":8001"),
     ) ||
     normalizeLocalFallbacks()[0] ||
     "";
-  const envBaseUrl = pickFirstApiUrl(
-    localDevBaseUrl,
-    process.env.NEXT_PUBLIC_BACKEND_URL,
-    process.env.NEXT_PUBLIC_APP_API_URL,
-    process.env.NEXT_PUBLIC_API_URL,
-  );
 
   if (typeof window !== "undefined") {
     const hostname = String(window.location.hostname || "").toLowerCase();
     const isLocalhost = hostname === "localhost" || hostname === "127.0.0.1";
+    const envBaseUrl = getConfiguredEnvBaseUrl({
+      includeLocalDevBaseUrl: isLocalhost,
+    });
 
     if (isLocalhost) {
       return envBaseUrl || preferredLocalFallback || "";
@@ -162,6 +169,10 @@ const resolveApiBaseUrl = () => {
 
     return envBaseUrl || DEFAULT_PRODUCTION_API_URL;
   }
+
+  const envBaseUrl = getConfiguredEnvBaseUrl({
+    includeLocalDevBaseUrl: process.env.NODE_ENV !== "production",
+  });
 
   if (envBaseUrl) {
     return envBaseUrl;

@@ -1,51 +1,16 @@
-name: Deploy Dispatch Rules
+name: Deploy Dispatch Rules (Retired)
 
 on:
-  push:
-    branches:
-      - main
-      - master
-    paths:
-      - "dispatch.yaml"
-      - ".github/workflows/deploy-dispatch.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
 
-concurrency:
-  group: deploy-dispatch
-  cancel-in-progress: true
-
 jobs:
-  deploy:
+  retired:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Await required CI checks
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
+      - name: Dispatch rules retired
         run: |
-          node scripts/await-required-checks.mjs \
-            --check "Validate Env Examples" \
-            --check "Backend Tests" \
-            --check "Client Build" \
-            --check "Admin Build"
-
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
-
-      - name: Setup gcloud
-        uses: google-github-actions/setup-gcloud@v2
-        with:
-          project_id: ${{ secrets.GCP_PROJECT_ID }}
-
-      - name: Validate App Engine target project
-        run: gcloud app describe --project="${{ secrets.GCP_PROJECT_ID }}"
-
-      - name: Deploy dispatch rules
-        run: gcloud app deploy dispatch.yaml --project="${{ secrets.GCP_PROJECT_ID }}" --quiet
+          echo "App Engine dispatch rules are no longer deployed."
+          echo "HealthyOneGram production uses Firebase App Hosting for frontends and Cloud Run for the API."
