@@ -1,6 +1,10 @@
 import mongoose from "mongoose";
 import dotenv from "dotenv";
 import path from "path";
+import {
+  DEFAULT_BANNER_IMAGE_PATHS,
+  DEFAULT_HOME_SLIDE_IMAGE_PATHS,
+} from "../config/mediaDefaults.js";
 
 dotenv.config({ path: path.resolve(".env") });
 
@@ -14,25 +18,25 @@ const homepageMediaMap = {
   homeSlides: [
     {
       title: "Pure Peanut Goodness",
-      url: "https://firebasestorage.googleapis.com/v0/b/studio-8452116634-cdb59.firebasestorage.app/o/buyonegram%2Fsystem%2Fhome-slide-default-1.webp?alt=media&token=65e6ee68-27f4-4421-837e-7e1543cf92e5",
+      url: DEFAULT_HOME_SLIDE_IMAGE_PATHS[0],
     },
     {
       title: "New: Chocolate Peanut Butter",
-      url: "https://firebasestorage.googleapis.com/v0/b/studio-8452116634-cdb59.firebasestorage.app/o/buyonegram%2Fsystem%2Fhome-slide-default-2.webp?alt=media&token=a03fee1f-c1a9-4d77-af0a-49829ac48fb6",
+      url: DEFAULT_HOME_SLIDE_IMAGE_PATHS[1],
     },
     {
       title: "Fuel Your Workout",
-      url: "https://firebasestorage.googleapis.com/v0/b/studio-8452116634-cdb59.firebasestorage.app/o/buyonegram%2Fsystem%2Fhome-slide-default-3.webp?alt=media&token=033b528f-b621-40eb-a07e-85e82b58164d",
+      url: DEFAULT_HOME_SLIDE_IMAGE_PATHS[2],
     },
   ],
   banners: [
     {
       title: "Free Delivery",
-      url: "https://firebasestorage.googleapis.com/v0/b/studio-8452116634-cdb59.firebasestorage.app/o/buyonegram%2Fsystem%2Fbanner-default-1.webp?alt=media&token=42c36dc4-fed0-4d78-a67c-73a9a2174064",
+      url: DEFAULT_BANNER_IMAGE_PATHS[0],
     },
     {
       title: "Subscribe & Save 10%",
-      url: "https://firebasestorage.googleapis.com/v0/b/studio-8452116634-cdb59.firebasestorage.app/o/buyonegram%2Fsystem%2Fbanner-default-2.webp?alt=media&token=639fa7fc-a2c3-4207-b6de-d59fadd24862",
+      url: DEFAULT_BANNER_IMAGE_PATHS[1],
     },
   ],
 };

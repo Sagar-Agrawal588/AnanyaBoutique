@@ -276,6 +276,11 @@ const orderSchema = new mongoose.Schema(
           required: true,
           min: 0,
         },
+        originalPrice: {
+          type: Number,
+          default: 0,
+          min: 0,
+        },
         image: {
           type: String,
           default: "",
@@ -283,6 +288,11 @@ const orderSchema = new mongoose.Schema(
         subTotal: {
           type: Number,
           required: true,
+          min: 0,
+        },
+        originalSubTotal: {
+          type: Number,
+          default: 0,
           min: 0,
         },
       },

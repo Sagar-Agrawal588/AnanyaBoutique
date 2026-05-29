@@ -1421,7 +1421,10 @@ export default function ComboManagementPage() {
             </Tooltip>
           </div>
         </DialogTitle>
-        <DialogContent className="space-y-4">
+        <DialogContent
+          className="space-y-4"
+          sx={{ "&.MuiDialogContent-root": { pt: 2.5 } }}
+        >
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <TextField
               label="Combo Name"

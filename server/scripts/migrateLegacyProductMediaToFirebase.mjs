@@ -2,6 +2,10 @@ import dotenv from "dotenv";
 import mongoose from "mongoose";
 import path from "path";
 import { fileURLToPath } from "url";
+import {
+  DEFAULT_BANNER_IMAGE_PATHS,
+  DEFAULT_PRODUCT_IMAGE_PATH,
+} from "../config/mediaDefaults.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -11,27 +15,27 @@ dotenv.config({ path: path.join(__dirname, "../.env") });
 const FIREBASE_MEDIA_MAP = new Map([
   [
     "/product_placeholder.png",
-    "https://firebasestorage.googleapis.com/v0/b/studio-8452116634-cdb59.firebasestorage.app/o/buyonegram%2Fsystem%2Fproduct-default.webp?alt=media&token=2239320a-df4e-40bf-8c08-597f825fa257",
+    DEFAULT_PRODUCT_IMAGE_PATH,
   ],
   [
     "/product_1.png",
-    "https://firebasestorage.googleapis.com/v0/b/studio-8452116634-cdb59.firebasestorage.app/o/buyonegram%2Fsystem%2Fproduct-default.webp?alt=media&token=2239320a-df4e-40bf-8c08-597f825fa257",
+    DEFAULT_PRODUCT_IMAGE_PATH,
   ],
   [
     "/product_1.webp",
-    "https://firebasestorage.googleapis.com/v0/b/studio-8452116634-cdb59.firebasestorage.app/o/buyonegram%2Fsystem%2Fproduct-default.webp?alt=media&token=2239320a-df4e-40bf-8c08-597f825fa257",
+    DEFAULT_PRODUCT_IMAGE_PATH,
   ],
   [
     "/prodImage1.webp",
-    "https://firebasestorage.googleapis.com/v0/b/studio-8452116634-cdb59.firebasestorage.app/o/buyonegram%2Fsystem%2Fbanner-default-1.webp?alt=media&token=42c36dc4-fed0-4d78-a67c-73a9a2174064",
+    DEFAULT_BANNER_IMAGE_PATHS[0],
   ],
   [
     "/prodImage2.webp",
-    "https://firebasestorage.googleapis.com/v0/b/studio-8452116634-cdb59.firebasestorage.app/o/buyonegram%2Fsystem%2Fbanner-default-2.webp?alt=media&token=639fa7fc-a2c3-4207-b6de-d59fadd24862",
+    DEFAULT_BANNER_IMAGE_PATHS[1],
   ],
   [
     "/prodImage3.webp",
-    "https://firebasestorage.googleapis.com/v0/b/studio-8452116634-cdb59.firebasestorage.app/o/buyonegram%2Fsystem%2Fbanner-default-3.webp?alt=media&token=40643a56-a74e-42da-a78d-2591044935c8",
+    DEFAULT_BANNER_IMAGE_PATHS[2],
   ],
 ]);
 
@@ -41,9 +45,40 @@ for (const [key, value] of Array.from(FIREBASE_MEDIA_MAP.entries())) {
 
 const applyChanges = process.argv.includes("--apply");
 
+const extractFirebaseMediaObjectPath = (value = "") => {
+  const normalized = String(value || "").trim();
+  if (!/^https?:\/\//i.test(normalized)) return "";
+
+  try {
+    const parsed = new URL(normalized);
+    const pathname = decodeURIComponent(parsed.pathname.replace(/^\/+/, ""));
+
+    if (parsed.hostname === "firebasestorage.googleapis.com") {
+      const match = parsed.pathname.match(/^\/v0\/b\/([^/]+)\/o\/(.+)$/i);
+      if (!match) return "";
+      const objectPath = decodeURIComponent(match[2]);
+      return /^buyonegram\//i.test(objectPath) ? objectPath : "";
+    }
+
+    if (parsed.hostname === "storage.googleapis.com") {
+      const [, ...objectParts] = pathname.split("/");
+      const objectPath = objectParts.join("/");
+      return /^buyonegram\//i.test(objectPath) ? objectPath : "";
+    }
+  } catch {
+    return "";
+  }
+
+  return "";
+};
+
 const resolveMediaValue = (value) => {
   const normalized = String(value || "").trim();
-  return FIREBASE_MEDIA_MAP.get(normalized) || normalized;
+  return (
+    FIREBASE_MEDIA_MAP.get(normalized) ||
+    extractFirebaseMediaObjectPath(normalized) ||
+    normalized
+  );
 };
 
 const migrateString = (value) => {

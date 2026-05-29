@@ -3,6 +3,7 @@
   "scripts": {
     "test": "npm --prefix server test",
     "validate:env": "node scripts/validate-env-examples.mjs",
+    "scan:secrets": "node scripts/scan-secrets.mjs",
     "test:server": "npm --prefix server test",
     "build:client": "npm --prefix frontend/client run build",
     "build:admin": "npm --prefix frontend/admin run build",

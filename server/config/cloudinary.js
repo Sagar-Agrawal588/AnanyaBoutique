@@ -156,18 +156,12 @@ const bufferFromUploadInput = (file) => {
   return Buffer.from(raw, "base64");
 };
 
-const buildFirebaseDownloadUrl = (objectPath, token) =>
-  `https://firebasestorage.googleapis.com/v0/b/${gcsMediaBucketName}/o/${encodeURIComponent(
-    objectPath,
-  )}?alt=media&token=${token}`;
-
-const getGcsPublicUrl = (objectPath, token = "") => {
+const getGcsPublicUrl = (objectPath) => {
   const encodedPath = objectPath
     .split("/")
     .map((part) => encodeURIComponent(part))
     .join("/");
   if (gcsPublicBaseUrl) return `${gcsPublicBaseUrl}/${encodedPath}`;
-  if (token) return buildFirebaseDownloadUrl(objectPath, token);
   return `https://storage.googleapis.com/${gcsMediaBucketName}/${encodedPath}`;
 };
 
@@ -295,18 +289,6 @@ export const normalizeStoredMediaUrl = (value = "") => {
   const normalized = String(value || "").trim();
   if (!normalized) return normalized;
 
-  try {
-    const parsed = new URL(normalized);
-    if (
-      parsed.hostname === "firebasestorage.googleapis.com" &&
-      parsed.searchParams.get("token")
-    ) {
-      return normalized;
-    }
-  } catch {
-    // Fall through to object-path handling.
-  }
-
   const objectPath = extractGcsObjectPath(normalized);
   if (objectPath) {
     return getGcsMediaProxyUrl(objectPath) || normalized;
@@ -343,16 +325,12 @@ const uploadToGcsMediaStorage = async (
   const bucket = gcsStorage.bucket(gcsMediaBucketName);
   const targetFile = bucket.file(objectPath);
   const buffer = bufferFromUploadInput(file);
-  const downloadToken = randomUUID();
 
   await targetFile.save(buffer, {
     resumable: false,
     metadata: {
       contentType: normalizedMimeType,
       cacheControl: "public, max-age=31536000, immutable",
-      metadata: {
-        firebaseStorageDownloadTokens: downloadToken,
-      },
     },
   });
 
@@ -362,7 +340,7 @@ const uploadToGcsMediaStorage = async (
 
   return {
     success: true,
-    url: getGcsPublicUrl(objectPath, gcsMakePublic ? "" : downloadToken),
+    url: gcsMakePublic ? getGcsPublicUrl(objectPath) : objectPath,
     publicId: objectPath,
     width: null,
     height: null,

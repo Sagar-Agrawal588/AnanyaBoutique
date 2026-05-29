@@ -11,6 +11,8 @@ import {
   markOrderReservationsExpired,
 } from "./stockReservation.service.js";
 import { invalidateAdminReadCaches } from "../utils/adminCacheInvalidation.js";
+import { invalidatePublicResponseCache } from "../middlewares/publicResponseCache.js";
+import { syncFirebaseProductInventory } from "./firebaseCatalog.service.js";
 import { AppError, logger } from "../utils/errorHandler.js";
 import { getLowStockSummaryUpdate } from "../utils/lowStockSummary.js";
 
@@ -24,6 +26,7 @@ const TRACK_INVENTORY_FILTER = {
 };
 
 const DEFAULT_RESERVATION_SECONDS = 210;
+const INVENTORY_RESPONSE_CACHE_NAMESPACES = ["products", "combos"];
 
 const resolveReservationSeconds = () => {
   const configuredSeconds = Number(process.env.INVENTORY_RESERVATION_SECONDS);
@@ -224,6 +227,45 @@ const flushQueuedStockUpdates = (pendingUpdates = []) => {
       }),
     0,
   );
+};
+
+const syncExternalCatalogForStockUpdates = async (
+  pendingUpdates = [],
+  source = "INVENTORY_CHANGE",
+) => {
+  if (!Array.isArray(pendingUpdates) || pendingUpdates.length === 0) {
+    return;
+  }
+
+  const latestByProductId = new Map();
+  for (const update of pendingUpdates) {
+    const productAfter = update?.productAfter;
+    const productId = String(productAfter?._id || "").trim();
+    if (productId) {
+      latestByProductId.set(productId, productAfter);
+    }
+  }
+
+  for (const productAfter of latestByProductId.values()) {
+    try {
+      await syncFirebaseProductInventory(productAfter);
+    } catch (error) {
+      logger.warn("inventoryCatalogSync", "Firebase product stock sync failed", {
+        productId: productAfter?._id || null,
+        source,
+        error: error?.message || String(error),
+      });
+    }
+  }
+
+  try {
+    await invalidatePublicResponseCache(INVENTORY_RESPONSE_CACHE_NAMESPACES);
+  } catch (error) {
+    logger.warn("inventoryCatalogSync", "Public stock cache invalidation failed", {
+      source,
+      error: error?.message || String(error),
+    });
+  }
 };
 
 const applyLowStockSummaryUpdate = async (productAfter, session = null) => {
@@ -894,6 +936,7 @@ export const reserveInventory = async (order, source = "ORDER_CREATE") => {
       expiresAt: order.reservationExpiresAt || null,
     });
     flushQueuedStockUpdates(pendingStockUpdates);
+    await syncExternalCatalogForStockUpdates(pendingStockUpdates, source);
     return { status: "reserved" };
   } catch (error) {
     if (applied.length > 0) {
@@ -1095,6 +1138,7 @@ export const confirmInventory = async (order, source = "PAYMENT_SUCCESS") => {
     });
     await markOrderReservationsCompleted(order, { source });
     flushQueuedStockUpdates(pendingStockUpdates);
+    await syncExternalCatalogForStockUpdates(pendingStockUpdates, source);
     return { status: "deducted" };
   } catch (error) {
     if (applied.length > 0) {
@@ -1262,6 +1306,7 @@ export const releaseInventory = async (order, source = "PAYMENT_FAILURE") => {
     });
     await markOrderReservationsExpired(order, { source });
     flushQueuedStockUpdates(pendingStockUpdates);
+    await syncExternalCatalogForStockUpdates(pendingStockUpdates, source);
     invalidateAdminReadCaches();
     return { status: "released" };
   } catch (error) {
@@ -1394,6 +1439,7 @@ export const restoreInventory = async (order, source = "ORDER_CANCELLED") => {
     order.inventorySource = source;
     order.reservationExpiresAt = null;
     flushQueuedStockUpdates(pendingStockUpdates);
+    await syncExternalCatalogForStockUpdates(pendingStockUpdates, source);
     return { status: "restored" };
   } catch (error) {
     if (applied.length > 0) {

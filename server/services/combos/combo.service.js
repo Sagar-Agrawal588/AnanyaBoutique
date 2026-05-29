@@ -2,10 +2,14 @@
 import ComboModel from "../../models/combo.model.js";
 import ComboItemModel from "../../models/comboItem.model.js";
 import ProductModel from "../../models/product.model.js";
-import { AppError } from "../../utils/errorHandler.js";
+import { invalidatePublicResponseCache } from "../../middlewares/publicResponseCache.js";
+import { syncFirebaseComboInventory } from "../firebaseCatalog.service.js";
+import { AppError, logger } from "../../utils/errorHandler.js";
 
 const round2 = (value) =>
   Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
+
+const COMBO_STOCK_RESPONSE_CACHE_NAMESPACES = ["combos", "products"];
 
 const toObjectId = (value) =>
   mongoose.Types.ObjectId.isValid(value)
@@ -581,7 +585,13 @@ export const expandComboToOrderProducts = (combo, quantity = 1) => {
     const unitPrice = round2(
       resolvedCurrentPrice > 0 ? resolvedCurrentPrice : resolvedOriginalPrice,
     );
+    const originalUnitPrice = round2(
+      resolvedOriginalPrice > 0
+        ? Math.max(resolvedOriginalPrice, unitPrice)
+        : unitPrice,
+    );
     const subTotal = round2(unitPrice * lineQty);
+    const originalSubTotal = round2(originalUnitPrice * lineQty);
 
     return {
       productId: String(item.productId || ""),
@@ -598,8 +608,10 @@ export const expandComboToOrderProducts = (combo, quantity = 1) => {
       hsnCode: String(item.hsnCode || "").trim(),
       quantity: lineQty,
       price: unitPrice,
+      originalPrice: originalUnitPrice,
       image: item.image || "",
       subTotal,
+      originalSubTotal,
     };
   });
 };
@@ -729,6 +741,37 @@ export const resolveComboStatus = ({
   return "active";
 };
 
+const syncComboInventoryCatalog = async (comboId, source = "COMBO_STOCK") => {
+  const normalizedComboId = String(comboId || "").trim();
+  if (!normalizedComboId) return;
+
+  let comboRecord = null;
+  try {
+    comboRecord = await ComboModel.findById(normalizedComboId)
+      .select("_id stockMode stockQuantity reservedQuantity items isActive isVisible status")
+      .lean();
+    if (comboRecord) {
+      await syncFirebaseComboInventory(comboRecord);
+    }
+  } catch (error) {
+    logger.warn("comboInventory", "Firebase combo stock sync failed", {
+      comboId: normalizedComboId,
+      source,
+      error: error?.message || String(error),
+    });
+  }
+
+  try {
+    await invalidatePublicResponseCache(COMBO_STOCK_RESPONSE_CACHE_NAMESPACES);
+  } catch (error) {
+    logger.warn("comboInventory", "Public combo cache invalidation failed", {
+      comboId: normalizedComboId,
+      source,
+      error: error?.message || String(error),
+    });
+  }
+};
+
 export const reserveComboStock = async (order, source = "ORDER_CREATE") => {
   if (!order || !Array.isArray(order.combos) || order.combos.length === 0) {
     return { status: "noop", reason: "no_combos" };
@@ -765,6 +808,7 @@ export const reserveComboStock = async (order, source = "ORDER_CREATE") => {
 
       if (result.modifiedCount === 1) {
         applied.push({ comboId, quantity });
+        await syncComboInventoryCatalog(comboId, source);
       } else {
         const comboRecord = await ComboModel.findById(comboId)
           .select("stockMode stockQuantity reservedQuantity")
@@ -806,8 +850,13 @@ export const confirmComboStock = async (order, source = "PAYMENT_SUCCESS") => {
     if (!comboId) continue;
     const quantity = Math.max(Number(combo?.quantity || 1), 1);
 
-    await ComboModel.updateOne(
-      { _id: comboId, stockMode: "manual" },
+    const result = await ComboModel.updateOne(
+      {
+        _id: comboId,
+        stockMode: "manual",
+        stockQuantity: { $gte: quantity },
+        reservedQuantity: { $gte: quantity },
+      },
       {
         $inc: {
           stockQuantity: -quantity,
@@ -815,6 +864,29 @@ export const confirmComboStock = async (order, source = "PAYMENT_SUCCESS") => {
         },
       },
     );
+
+    if (result.modifiedCount === 1) {
+      await syncComboInventoryCatalog(comboId, source);
+      continue;
+    }
+
+    const comboRecord = await ComboModel.findById(comboId)
+      .select("stockMode stockQuantity reservedQuantity")
+      .lean();
+
+    if (String(comboRecord?.stockMode || "").toLowerCase() !== "manual") {
+      continue;
+    }
+
+    throw new AppError("INSUFFICIENT_STOCK", {
+      comboId,
+      source,
+      requested: quantity,
+      available: Math.max(
+        Number(comboRecord?.reservedQuantity || 0),
+        0,
+      ),
+    });
   }
 
   return { status: "deducted" };
@@ -829,10 +901,33 @@ export const releaseComboStock = async (order, source = "PAYMENT_FAILURE") => {
     if (!comboId) continue;
     const quantity = Math.max(Number(combo?.quantity || 1), 1);
 
-    await ComboModel.updateOne(
-      { _id: comboId, stockMode: "manual" },
-      { $inc: { reservedQuantity: -quantity } },
+    const comboRecord = await ComboModel.findById(comboId)
+      .select("stockMode reservedQuantity")
+      .lean();
+    if (String(comboRecord?.stockMode || "").toLowerCase() !== "manual") {
+      continue;
+    }
+
+    const releaseQuantity = Math.min(
+      Math.max(Number(comboRecord?.reservedQuantity || 0), 0),
+      quantity,
     );
+    if (releaseQuantity <= 0) {
+      continue;
+    }
+
+    const result = await ComboModel.updateOne(
+      {
+        _id: comboId,
+        stockMode: "manual",
+        reservedQuantity: { $gte: releaseQuantity },
+      },
+      { $inc: { reservedQuantity: -releaseQuantity } },
+    );
+
+    if (result.modifiedCount === 1) {
+      await syncComboInventoryCatalog(comboId, source);
+    }
   }
 
   return { status: "released" };
@@ -847,10 +942,14 @@ export const restoreComboStock = async (order, source = "ORDER_CANCELLED") => {
     if (!comboId) continue;
     const quantity = Math.max(Number(combo?.quantity || 1), 1);
 
-    await ComboModel.updateOne(
+    const result = await ComboModel.updateOne(
       { _id: comboId, stockMode: "manual" },
       { $inc: { stockQuantity: quantity } },
     );
+
+    if (result.modifiedCount === 1) {
+      await syncComboInventoryCatalog(comboId, source);
+    }
   }
 
   return { status: "restored" };

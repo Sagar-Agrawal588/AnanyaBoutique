@@ -258,6 +258,12 @@ export const normalizeFirebaseCombo = (doc) => {
     raw.originalPrice ?? raw.originalTotal ?? raw.mrp,
     price,
   );
+  const stockMode =
+    String(raw.stockMode || raw.stock_mode || "auto")
+      .trim()
+      .toLowerCase() === "manual"
+      ? "manual"
+      : "auto";
   const stock = toNumber(raw.stockQuantity ?? raw.stock_quantity ?? raw.stock, 0);
   const reserved = toNumber(raw.reservedQuantity ?? raw.reserved_quantity, 0);
   const availableStock = Math.max(stock - reserved, 0);
@@ -299,16 +305,19 @@ export const normalizeFirebaseCombo = (doc) => {
     discount: discountPercentage,
     comboType,
     type: comboType,
+    stockMode,
+    stock_mode: stockMode,
     tags: compactStringList(raw.tags || []),
     priority: toNumber(raw.priority, 0),
     stockQuantity: stock,
     reservedQuantity: reserved,
+    reserved_quantity: reserved,
     availableStock,
     stock,
     stock_quantity: stock,
     available_quantity: availableStock,
     available_stock: availableStock,
-    inStock: availableStock > 0 || stock === 0,
+    inStock: availableStock > 0,
     minOrderQuantity: Math.max(toNumber(raw.minOrderQuantity, 1), 1),
     maxPerOrder: toNumber(raw.maxPerOrder, 0),
     isActive: raw.isActive !== false && status !== "disabled",
@@ -377,12 +386,66 @@ const getAllProducts = async () => {
   return snapshot.docs.map(normalizeFirebaseProduct).filter((product) => product.isActive !== false);
 };
 
+const resolveFirebaseProductAvailableUnits = (product, item = {}) => {
+  if (!product) return 0;
+  const trackInventory =
+    product.track_inventory !== false && product.trackInventory !== false;
+  if (!trackInventory) return Number.MAX_SAFE_INTEGER;
+
+  const variantId = String(item?.variantId || item?.variant || "").trim();
+  if (variantId && Array.isArray(product.variants)) {
+    const variant = product.variants.find(
+      (entry) => String(entry?._id || entry?.id || "") === variantId,
+    );
+    return variant ? toNumber(variant.available_quantity ?? variant.available_stock, 0) : 0;
+  }
+
+  return toNumber(product.available_quantity ?? product.available_stock, 0);
+};
+
+const attachFirebaseComboAvailability = (combo, productMap = new Map()) => {
+  if (!combo || combo.stockMode === "manual") return combo;
+  const items = Array.isArray(combo.items) ? combo.items : [];
+  if (items.length === 0) {
+    return {
+      ...combo,
+      availableStock: 0,
+      available_quantity: 0,
+      available_stock: 0,
+      inStock: false,
+    };
+  }
+
+  const availabilityByItem = items.map((item) => {
+    const productId = String(item?.productId || item?.product || item?._id || "").trim();
+    const product = productMap.get(productId);
+    const availableUnits = resolveFirebaseProductAvailableUnits(product, item);
+    const requiredQuantity = Math.max(
+      toNumber(item?.quantityRequired ?? item?.quantity, 1),
+      1,
+    );
+    return Math.floor(availableUnits / requiredQuantity);
+  });
+  const availableStock = Math.max(Math.min(...availabilityByItem), 0);
+
+  return {
+    ...combo,
+    availableStock,
+    available_quantity: availableStock,
+    available_stock: availableStock,
+    inStock: availableStock > 0,
+  };
+};
+
 const getAllCombos = async ({ includeInactive = false } = {}) => {
   const db = getCatalogDb();
   if (!db) return null;
   const snapshot = await db.collection(COMBOS_COLLECTION).get();
+  const products = (await getAllProducts()) || [];
+  const productMap = new Map(products.map((product) => [String(product._id || product.id), product]));
   return snapshot.docs
     .map(normalizeFirebaseCombo)
+    .map((combo) => attachFirebaseComboAvailability(combo, productMap))
     .filter((combo) => includeInactive || (combo.isActive !== false && combo.isVisible !== false));
 };
 
@@ -615,7 +678,11 @@ export const getFirebaseComboById = async (idOrSlug) => {
   const db = getCatalogDb();
   if (!db) return null;
   const doc = await findComboDoc(db, idOrSlug);
-  return doc?.exists ? normalizeFirebaseCombo(doc) : null;
+  if (!doc?.exists) return null;
+  const combo = normalizeFirebaseCombo(doc);
+  const products = (await getAllProducts()) || [];
+  const productMap = new Map(products.map((product) => [String(product._id || product.id), product]));
+  return attachFirebaseComboAvailability(combo, productMap);
 };
 
 export const getFirebaseComboSections = async (productId) => {
@@ -928,6 +995,171 @@ export const updateFirebaseProductStock = async (
 
   const updated = await doc.ref.get();
   return normalizeFirebaseProduct(updated);
+};
+
+const buildInventoryVariantPayload = (variant = {}, existing = {}) => {
+  const stock = Math.max(toNumber(variant.stock_quantity ?? variant.stock, 0), 0);
+  const reserved = Math.max(toNumber(variant.reserved_quantity, 0), 0);
+  const available = Math.max(stock - reserved, 0);
+  const id = String(variant._id || variant.id || existing._id || existing.id || "").trim();
+
+  return {
+    ...existing,
+    ...variant,
+    _id: id || existing._id || existing.id || "",
+    id: id || existing.id || existing._id || "",
+    stock,
+    stock_quantity: stock,
+    reserved_quantity: reserved,
+    available_quantity: available,
+    available_stock: available,
+    availableStock: available,
+    inStock: available > 0,
+  };
+};
+
+export const syncFirebaseProductInventory = async (productSnapshot = {}) => {
+  const db = getCatalogDb();
+  if (!db) return null;
+
+  const productId = String(
+    productSnapshot?._id || productSnapshot?.id || productSnapshot?.productId || "",
+  ).trim();
+  if (!productId) return false;
+
+  const doc = await findProductDoc(db, productId);
+  if (!doc?.exists) return false;
+
+  const raw = doc.data() || {};
+  const incomingVariants = Array.isArray(productSnapshot?.variants)
+    ? productSnapshot.variants
+    : [];
+  const existingVariants = Array.isArray(raw.variants) ? raw.variants : [];
+
+  let payload = {};
+  if (incomingVariants.length > 0) {
+    const incomingById = new Map(
+      incomingVariants
+        .map((variant) => [
+          String(variant?._id || variant?.id || "").trim(),
+          variant,
+        ])
+        .filter(([id]) => Boolean(id)),
+    );
+    const existingIds = new Set(
+      existingVariants
+        .map((variant) => String(variant?._id || variant?.id || "").trim())
+        .filter(Boolean),
+    );
+    const variants = existingVariants.map((variant) => {
+      const id = String(variant?._id || variant?.id || "").trim();
+      return incomingById.has(id)
+        ? buildInventoryVariantPayload(incomingById.get(id), variant)
+        : variant;
+    });
+
+    for (const [id, variant] of incomingById.entries()) {
+      if (!existingIds.has(id)) {
+        variants.push(buildInventoryVariantPayload(variant));
+      }
+    }
+
+    const totalStock = variants.reduce(
+      (sum, variant) => sum + toNumber(variant.stock_quantity ?? variant.stock, 0),
+      0,
+    );
+    const totalReserved = variants.reduce(
+      (sum, variant) => sum + toNumber(variant.reserved_quantity, 0),
+      0,
+    );
+    const available = Math.max(totalStock - totalReserved, 0);
+    payload = {
+      variants,
+      hasVariants: true,
+      stock: totalStock,
+      stock_quantity: totalStock,
+      reserved_quantity: totalReserved,
+      available_quantity: available,
+      available_stock: available,
+      availableStock: available,
+      inStock: available > 0,
+    };
+  } else {
+    const stock = Math.max(
+      toNumber(productSnapshot.stock_quantity ?? productSnapshot.stock, 0),
+      0,
+    );
+    const reserved = Math.max(toNumber(productSnapshot.reserved_quantity, 0), 0);
+    const available = Math.max(stock - reserved, 0);
+    payload = {
+      stock,
+      stock_quantity: stock,
+      reserved_quantity: reserved,
+      available_quantity: available,
+      available_stock: available,
+      availableStock: available,
+      inStock: available > 0,
+    };
+  }
+
+  await doc.ref.set(
+    {
+      ...payload,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true },
+  );
+  const updated = await doc.ref.get();
+  return normalizeFirebaseProduct(updated);
+};
+
+export const syncFirebaseComboInventory = async (comboSnapshot = {}) => {
+  const db = getCatalogDb();
+  if (!db) return null;
+
+  const comboId = String(
+    comboSnapshot?._id || comboSnapshot?.comboId || comboSnapshot?.id || "",
+  ).trim();
+  if (!comboId) return false;
+
+  const doc = await findComboDoc(db, comboId);
+  if (!doc?.exists) return false;
+
+  const stockMode =
+    String(comboSnapshot.stockMode || comboSnapshot.stock_mode || "manual")
+      .trim()
+      .toLowerCase() === "manual"
+      ? "manual"
+      : "auto";
+  const stock = Math.max(
+    toNumber(comboSnapshot.stockQuantity ?? comboSnapshot.stock_quantity ?? comboSnapshot.stock, 0),
+    0,
+  );
+  const reserved = Math.max(
+    toNumber(comboSnapshot.reservedQuantity ?? comboSnapshot.reserved_quantity, 0),
+    0,
+  );
+  const available = Math.max(stock - reserved, 0);
+
+  await doc.ref.set(
+    {
+      stockMode,
+      stock_mode: stockMode,
+      stockQuantity: stock,
+      stock,
+      stock_quantity: stock,
+      reservedQuantity: reserved,
+      reserved_quantity: reserved,
+      availableStock: available,
+      available_quantity: available,
+      available_stock: available,
+      inStock: available > 0,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true },
+  );
+  const updated = await doc.ref.get();
+  return normalizeFirebaseCombo(updated);
 };
 
 export const createFirebaseCombo = async (body = {}) => {

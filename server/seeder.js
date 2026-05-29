@@ -11,6 +11,11 @@ import HomeSlideModel from "./models/homeSlide.model.js";
 import ProductModel from "./models/product.model.js";
 import UserModel from "./models/user.model.js";
 import {
+  DEFAULT_BANNER_IMAGE_PATHS,
+  DEFAULT_HOME_SLIDE_IMAGE_PATHS,
+  DEFAULT_PRODUCT_IMAGE_PATH,
+} from "./config/mediaDefaults.js";
+import {
   buildComboItemsSnapshot,
   buildComboPricing,
   buildComboSkuFromItems,
@@ -25,17 +30,9 @@ const FORCE_HOMEPAGE_MEDIA_RESET =
   cliArgs.has("--replace-homepage-media");
 
 const FIREBASE_DEFAULT_PRODUCT_IMAGE =
-  "https://firebasestorage.googleapis.com/v0/b/studio-8452116634-cdb59.firebasestorage.app/o/buyonegram%2Fsystem%2Fproduct-default.webp?alt=media&token=2239320a-df4e-40bf-8c08-597f825fa257";
-const FIREBASE_DEFAULT_HOME_SLIDES = [
-  "https://firebasestorage.googleapis.com/v0/b/studio-8452116634-cdb59.firebasestorage.app/o/buyonegram%2Fsystem%2Fhome-slide-default-1.webp?alt=media&token=65e6ee68-27f4-4421-837e-7e1543cf92e5",
-  "https://firebasestorage.googleapis.com/v0/b/studio-8452116634-cdb59.firebasestorage.app/o/buyonegram%2Fsystem%2Fhome-slide-default-2.webp?alt=media&token=a03fee1f-c1a9-4d77-af0a-49829ac48fb6",
-  "https://firebasestorage.googleapis.com/v0/b/studio-8452116634-cdb59.firebasestorage.app/o/buyonegram%2Fsystem%2Fhome-slide-default-3.webp?alt=media&token=033b528f-b621-40eb-a07e-85e82b58164d",
-];
-const FIREBASE_DEFAULT_BANNERS = [
-  "https://firebasestorage.googleapis.com/v0/b/studio-8452116634-cdb59.firebasestorage.app/o/buyonegram%2Fsystem%2Fbanner-default-1.webp?alt=media&token=42c36dc4-fed0-4d78-a67c-73a9a2174064",
-  "https://firebasestorage.googleapis.com/v0/b/studio-8452116634-cdb59.firebasestorage.app/o/buyonegram%2Fsystem%2Fbanner-default-2.webp?alt=media&token=639fa7fc-a2c3-4207-b6de-d59fadd24862",
-  "https://firebasestorage.googleapis.com/v0/b/studio-8452116634-cdb59.firebasestorage.app/o/buyonegram%2Fsystem%2Fbanner-default-3.webp?alt=media&token=40643a56-a74e-42da-a78d-2591044935c8",
-];
+  DEFAULT_PRODUCT_IMAGE_PATH;
+const FIREBASE_DEFAULT_HOME_SLIDES = DEFAULT_HOME_SLIDE_IMAGE_PATHS;
+const FIREBASE_DEFAULT_BANNERS = DEFAULT_BANNER_IMAGE_PATHS;
 
 /**
  * Database Seeder

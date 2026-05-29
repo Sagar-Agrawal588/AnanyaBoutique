@@ -1450,7 +1450,7 @@ const OrderDetailsPage = () => {
                     details page so you can review everything in one place.
                   </p>
                   <p className="mt-2 text-xs text-emerald-700">
-                    Method: {paymentMethodLabel} | UTR / Transaction No.:{" "}
+                    Method: {paymentMethodLabel} | Payment reference:{" "}
                     {transactionDisplayValue}
                   </p>
                 </div>

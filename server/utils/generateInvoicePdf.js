@@ -1009,28 +1009,41 @@ const prepareInvoiceData = (order, sellerDetails, productMetaById = {}) => {
   );
 
   const products = Array.isArray(order?.products) ? order.products : [];
+  const lineOriginalWeights = products.map((item) => {
+    const quantity = Math.max(Number(item?.quantity || 1), 1);
+    const originalSubTotal = Number(item?.originalSubTotal || 0);
+    if (originalSubTotal > 0) return roundMoney(originalSubTotal);
+
+    const originalUnitPrice = Number(item?.originalPrice || 0);
+    if (originalUnitPrice > 0) {
+      return roundMoney(originalUnitPrice * quantity);
+    }
+
+    return roundMoney(
+      item?.subTotal || Number(item?.price || 0) * quantity,
+    );
+  });
   const grossSubtotal = roundMoney(
-    products.reduce(
-      (sum, item) =>
-        sum +
-        Number(
-          item?.subTotal ||
-            Number(item?.price || 0) * Number(item?.quantity || 0),
-        ),
-      0,
-    ),
+    lineOriginalWeights.reduce((sum, value) => sum + Number(value || 0), 0),
   );
 
+  const originalPriceCandidate = Number(
+    pricingSnapshot?.originalPrice ?? order?.originalPrice ?? 0,
+  );
   const originalPrice = roundMoney(
-    pricingSnapshot?.originalPrice ?? Number(order?.originalPrice || grossSubtotal),
+    originalPriceCandidate > 0 ? originalPriceCandidate : grossSubtotal,
   );
-  const totalDiscount = roundMoney(
-    pricingSnapshot?.discount ?? Number(order?.discount || 0),
-  );
-  const discountedPrice = roundMoney(
+  const lineGrossTotals =
+    lineOriginalWeights.length > 0
+      ? Math.abs(grossSubtotal - originalPrice) <= 0.02
+        ? lineOriginalWeights
+        : allocateByWeight(originalPrice, lineOriginalWeights)
+      : [];
+  const taxableTotal = roundMoney(
     pricingSnapshot?.discountedPrice ??
-      Math.max(originalPrice - totalDiscount, 0),
+      Number(order?.gst?.taxableAmount || order?.subtotal || 0),
   );
+  const discountedPrice = taxableTotal;
   const storedGstAmount = roundMoney(
     pricingSnapshot?.gst ??
       Number(order?.gst?.totalTax || order?.tax || 0),
@@ -1039,6 +1052,17 @@ const prepareInvoiceData = (order, sellerDetails, productMetaById = {}) => {
     storedGstAmount > 0
       ? storedGstAmount
       : roundMoney((discountedPrice * gstRate) / 100);
+  const goodsInclusiveTotal = roundMoney(taxableTotal + taxTotal);
+  const snapshotDisplayDiscount = Number(
+    pricingSnapshot?.displayDiscount ??
+      pricingSnapshot?.inclusiveDiscount ??
+      Number.NaN,
+  );
+  const totalDiscount = roundMoney(
+    Number.isFinite(snapshotDisplayDiscount)
+      ? snapshotDisplayDiscount
+      : Math.max(originalPrice - goodsInclusiveTotal, 0),
+  );
 
   // Shipping is intentionally excluded from invoice math and display.
   const persistedShippingTotal = roundMoney(Number(order?.shipping || 0));
@@ -1067,15 +1091,12 @@ const prepareInvoiceData = (order, sellerDetails, productMetaById = {}) => {
       ? derivedGrandTotalWithoutShipping
       : fallbackGrandTotalFromGoods;
 
-  const netInclusiveSubtotal = roundMoney(Math.max(grandTotal, 0));
-  const taxableTotal = roundMoney(
-    pricingSnapshot?.discountedPrice ??
-      Number(order?.gst?.taxableAmount || order?.subtotal || 0),
-  );
-
-  const weights = products.map((item) => Number(item?.subTotal || 0));
+  const weights = lineGrossTotals.length
+    ? lineGrossTotals
+    : products.map((item) => Number(item?.subTotal || 0));
   const discountAlloc = allocateByWeight(totalDiscount, weights);
   const taxAlloc = allocateByWeight(taxTotal, weights);
+  const taxableAlloc = allocateByWeight(taxableTotal, weights);
   const roundedGrandTotalFromOrder =
     Number(order?.roundedAmount || 0) > 0
       ? Math.max(Math.round(Number(order.roundedAmount || 0)), 0)
@@ -1087,11 +1108,18 @@ const prepareInvoiceData = (order, sellerDetails, productMetaById = {}) => {
   const lineItems = products.map((item, index) => {
     const quantityUnits = Math.max(Number(item?.quantity || 1), 1);
     const gross = roundMoney(
-      item?.subTotal || Number(item?.price || 0) * quantityUnits,
+      lineGrossTotals[index] ||
+        item?.originalSubTotal ||
+        (Number(item?.originalPrice || 0) > 0
+          ? Number(item.originalPrice || 0) * quantityUnits
+          : item?.subTotal || Number(item?.price || 0) * quantityUnits),
     );
     const discount = discountAlloc[index] || 0;
-    const grossAfterDiscount = roundMoney(Math.max(gross - discount, 0));
     const lineTax = taxAlloc[index] || 0;
+    const taxableAmount = roundMoney(
+      taxableAlloc[index] ??
+        Math.max(gross - discount - lineTax, 0),
+    );
     const meta = getProductMeta(productMetaById, item?.productId);
     const lineTaxRate = Number(meta?.taxRate || gstRate || 0);
     const hsn =
@@ -1125,13 +1153,12 @@ const prepareInvoiceData = (order, sellerDetails, productMetaById = {}) => {
         ? quantityValue
         : quantityUnits;
     const rate = roundMoney(
-      rateBase > 0 ? gross / rateBase : Number(item?.price || 0),
+      rateBase > 0 ? taxableAmount / rateBase : Number(item?.price || 0),
     );
 
     const igst = isInterState ? lineTax : 0;
     const cgst = isInterState ? 0 : roundMoney(lineTax / 2);
     const sgst = isInterState ? 0 : roundMoney(lineTax - cgst);
-    const taxableAmount = grossAfterDiscount;
 
     const lineDetails = [];
     const variantName = String(item?.variantName || "").trim();
@@ -1159,13 +1186,10 @@ const prepareInvoiceData = (order, sellerDetails, productMetaById = {}) => {
       igst,
       cgst,
       sgst,
-      total: grossAfterDiscount,
+      total: taxableAmount,
       amount: taxableAmount,
-      rateDisplay:
-        discount > 0
-          ? `${formatPlainAmount(rate)} (-${formatPlainAmount(discount)})`
-          : formatPlainAmount(rate),
-      amountDisplay: formatLineItemAmount(grossAfterDiscount),
+      rateDisplay: formatPlainAmount(rate),
+      amountDisplay: formatLineItemAmount(taxableAmount),
       isInterState,
     };
   });
@@ -1534,12 +1558,6 @@ export const generateInvoicePdf = async ({
       order?.order_id ||
       order?.orderId ||
       (order?._id ? `BOG-${String(order._id).slice(-8).toUpperCase()}` : "-");
-    const utrNumber = firstNonEmptyString(
-      order?.utrNumber,
-      order?.upiRefId,
-      order?.upiRef,
-      order?.utr,
-    );
     const paymentId = firstNonEmptyString(
       order?.paymentAppTxnId,
       order?.paymentId,
@@ -1563,7 +1581,6 @@ export const generateInvoicePdf = async ({
           order?.payment_status || order?.paymentMethod || "-",
         ).toUpperCase(),
       },
-      { label: "UTR Number", value: utrNumber || "-" },
       { label: "Payment ID", value: paymentId || "-" },
       { label: "Provider", value: paymentProvider || "-" },
       { label: "Buyer's Order No.", value: buyerOrderNumber },

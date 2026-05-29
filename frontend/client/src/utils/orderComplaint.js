@@ -83,7 +83,7 @@ export const buildOrderComplaintHref = ({
     `Product(s): ${summarizeComplaintProducts(productNames)}`,
     `Payment Method: ${paymentMethodLabel || "Not available"}`,
     `Payment Status: ${paymentStatusLabel || "Not available"}`,
-    `UTR / Transaction No.: ${normalizedTransactionReference || "Not available"}`,
+    `Payment reference: ${normalizedTransactionReference || "Not available"}`,
     "",
     "Please describe the issue here:",
   ].join("\n");

@@ -31,7 +31,7 @@ let resetStockNotificationQueueForTests;
 
 const TEST_SECRET = "stock_notification_prod_secret_1234567890";
 const DEFAULT_PRODUCT_IMAGE =
-  "https://firebasestorage.googleapis.com/v0/b/studio-8452116634-cdb59.firebasestorage.app/o/buyonegram%2Fsystem%2Fproduct-default.webp?alt=media&token=2239320a-df4e-40bf-8c08-597f825fa257";
+  "buyonegram/system/product-default.webp";
 
 const startServer = async (app) =>
   new Promise((resolve) => {

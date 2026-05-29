@@ -1,17 +1,60 @@
+const DEFAULT_PRODUCTION_API_URL =
+  "https://healthyonegram-api-v2-xb7znoco6a-uc.a.run.app/api";
+
+const sanitizeBaseUrl = (value) =>
+  String(value || "")
+    .trim()
+    .replace(/^['"]|['"]$/g, "")
+    .replace(/\/+$/, "");
+
+const normalizeApiBaseUrl = (value) => {
+  const normalized = sanitizeBaseUrl(value);
+  if (!/^https?:\/\//i.test(normalized)) return "";
+  return /\/api$/i.test(normalized) ? normalized : `${normalized}/api`;
+};
+
+const shouldUseLocalApiBase = () => {
+  if (typeof window === "undefined") {
+    return process.env.NODE_ENV !== "production";
+  }
+
+  const hostname = String(window.location.hostname || "").toLowerCase();
+  return hostname === "localhost" || hostname === "127.0.0.1";
+};
+
+const getMediaApiBaseUrl = () =>
+  normalizeApiBaseUrl(
+    (shouldUseLocalApiBase() ? process.env.NEXT_PUBLIC_LOCAL_API_URL : "") ||
+      process.env.NEXT_PUBLIC_BACKEND_URL ||
+      process.env.NEXT_PUBLIC_APP_API_URL ||
+      process.env.NEXT_PUBLIC_API_URL ||
+      DEFAULT_PRODUCTION_API_URL,
+  ) || DEFAULT_PRODUCTION_API_URL;
+
+const buildMediaProxyUrl = (objectPath) =>
+  `${getMediaApiBaseUrl()}/media/gcs?path=${encodeURIComponent(objectPath)}`;
+
+export const DEFAULT_PRODUCT_IMAGE_PATH =
+  "buyonegram/system/product-default.webp";
+export const DEFAULT_HOME_SLIDE_PATHS = [
+  "buyonegram/system/home-slide-default-1.webp",
+  "buyonegram/system/home-slide-default-2.webp",
+  "buyonegram/system/home-slide-default-3.webp",
+];
+export const DEFAULT_BANNER_IMAGE_PATHS = [
+  "buyonegram/system/banner-default-1.webp",
+  "buyonegram/system/banner-default-2.webp",
+  "buyonegram/system/banner-default-3.webp",
+];
+
 export const DEFAULT_PRODUCT_IMAGE =
-  "https://firebasestorage.googleapis.com/v0/b/studio-8452116634-cdb59.firebasestorage.app/o/buyonegram%2Fsystem%2Fproduct-default.webp?alt=media&token=2239320a-df4e-40bf-8c08-597f825fa257";
+  buildMediaProxyUrl(DEFAULT_PRODUCT_IMAGE_PATH);
 
-export const DEFAULT_HOME_SLIDES = [
-  "https://firebasestorage.googleapis.com/v0/b/studio-8452116634-cdb59.firebasestorage.app/o/buyonegram%2Fsystem%2Fhome-slide-default-1.webp?alt=media&token=65e6ee68-27f4-4421-837e-7e1543cf92e5",
-  "https://firebasestorage.googleapis.com/v0/b/studio-8452116634-cdb59.firebasestorage.app/o/buyonegram%2Fsystem%2Fhome-slide-default-2.webp?alt=media&token=a03fee1f-c1a9-4d77-af0a-49829ac48fb6",
-  "https://firebasestorage.googleapis.com/v0/b/studio-8452116634-cdb59.firebasestorage.app/o/buyonegram%2Fsystem%2Fhome-slide-default-3.webp?alt=media&token=033b528f-b621-40eb-a07e-85e82b58164d",
-];
+export const DEFAULT_HOME_SLIDES =
+  DEFAULT_HOME_SLIDE_PATHS.map(buildMediaProxyUrl);
 
-export const DEFAULT_BANNER_IMAGES = [
-  "https://firebasestorage.googleapis.com/v0/b/studio-8452116634-cdb59.firebasestorage.app/o/buyonegram%2Fsystem%2Fbanner-default-1.webp?alt=media&token=42c36dc4-fed0-4d78-a67c-73a9a2174064",
-  "https://firebasestorage.googleapis.com/v0/b/studio-8452116634-cdb59.firebasestorage.app/o/buyonegram%2Fsystem%2Fbanner-default-2.webp?alt=media&token=639fa7fc-a2c3-4207-b6de-d59fadd24862",
-  "https://firebasestorage.googleapis.com/v0/b/studio-8452116634-cdb59.firebasestorage.app/o/buyonegram%2Fsystem%2Fbanner-default-3.webp?alt=media&token=40643a56-a74e-42da-a78d-2591044935c8",
-];
+export const DEFAULT_BANNER_IMAGES =
+  DEFAULT_BANNER_IMAGE_PATHS.map(buildMediaProxyUrl);
 
 export const DEFAULT_MEDIA_VIDEO_POSTER = DEFAULT_PRODUCT_IMAGE;
 

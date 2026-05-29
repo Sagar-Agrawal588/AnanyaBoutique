@@ -63,7 +63,7 @@ const OrderDetailsOverview = ({
       value: orderStatusLabel || "Not available",
     },
     {
-      label: "UTR / Transaction No.",
+      label: "Payment reference",
       value: transactionReference || "Pending confirmation",
       monospace: shouldUseMonospaceValue(transactionReference),
     },

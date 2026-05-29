@@ -70,6 +70,9 @@ const buildMediaProxyUrl = (objectPath = "") => {
   return `${API_URL}/api/media/gcs?path=${encodeURIComponent(normalized)}`;
 };
 
+const isMediaProxyPath = (value = "") =>
+  /^\/?api\/media\/gcs(?:\?|$)/i.test(String(value || "").trim());
+
 const resolveFirebaseMediaProxyUrl = (value = "") => {
   const normalized = String(value || "").trim();
   if (!normalized) return "";
@@ -83,7 +86,6 @@ const resolveFirebaseMediaProxyUrl = (value = "") => {
     const pathname = decodeURIComponent(parsed.pathname.replace(/^\/+/, ""));
 
     if (parsed.hostname === "firebasestorage.googleapis.com") {
-      if (parsed.searchParams.get("token")) return "";
       const match = parsed.pathname.match(/^\/v0\/b\/([^/]+)\/o\/(.+)$/i);
       if (!match) return "";
       const [, bucket, objectPath] = match;
@@ -107,6 +109,22 @@ const resolveFirebaseMediaProxyUrl = (value = "") => {
   return "";
 };
 
+const resolveFallbackMediaUrl = (value = "") => {
+  const normalized = String(value || "").trim().replace(/\\/g, "/");
+  if (!normalized) return "";
+
+  const firebaseMediaProxyUrl = resolveFirebaseMediaProxyUrl(normalized);
+  if (firebaseMediaProxyUrl) return firebaseMediaProxyUrl;
+
+  if (isMediaProxyPath(normalized)) {
+    return normalized.startsWith("/")
+      ? `${API_URL}${normalized}`
+      : `${API_URL}/${normalized}`;
+  }
+
+  return normalized;
+};
+
 /**
  * Get the proper image URL for display
  * @param {string|object} imageUrl - The image URL from database
@@ -118,12 +136,14 @@ export const getImageUrl = (
   fallback = ADMIN_PLACEHOLDER_IMAGE,
 ) => {
   const normalizedValue = normalizeImageInput(imageUrl);
-  if (!normalizedValue) return resolveLegacyLocalMedia(fallback) || fallback;
+  if (!normalizedValue) {
+    return resolveFallbackMediaUrl(resolveLegacyLocalMedia(fallback) || fallback);
+  }
 
   const normalizedPath = normalizedValue.replace(/\\/g, "/");
   const resolvedLegacyMedia = resolveLegacyLocalMedia(normalizedPath);
   if (resolvedLegacyMedia) {
-    return resolvedLegacyMedia;
+    return resolveFallbackMediaUrl(resolvedLegacyMedia);
   }
 
   const firebaseMediaProxyUrl = resolveFirebaseMediaProxyUrl(normalizedPath);
@@ -143,6 +163,12 @@ export const getImageUrl = (
 
   if (normalizedPath.startsWith("res.cloudinary.com/")) {
     return `https://${normalizedPath}`;
+  }
+
+  if (isMediaProxyPath(normalizedPath)) {
+    return normalizedPath.startsWith("/")
+      ? `${API_URL}${normalizedPath}`
+      : `${API_URL}/${normalizedPath}`;
   }
 
   // Already a full URL (Cloudinary or external)
@@ -177,7 +203,7 @@ export const getImageUrl = (
     );
   }
 
-  return resolveLegacyLocalMedia(fallback) || fallback;
+  return resolveFallbackMediaUrl(resolveLegacyLocalMedia(fallback) || fallback);
 };
 
 /**

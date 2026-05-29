@@ -1,7 +1,7 @@
 const { test, expect } = require("@playwright/test");
 
 const DEFAULT_HOME_SLIDE =
-  "https://firebasestorage.googleapis.com/v0/b/studio-8452116634-cdb59.firebasestorage.app/o/buyonegram%2Fsystem%2Fhome-slide-default-1.webp?alt=media&token=65e6ee68-27f4-4421-837e-7e1543cf92e5";
+  "buyonegram/system/home-slide-default-1.webp";
 
 const buildSlidesPayload = () => ({
   error: false,

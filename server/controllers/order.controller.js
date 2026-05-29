@@ -1172,12 +1172,30 @@ const stringifyOrderItemsForEmail = (order) => {
           ? `${name} (${variantName})`
           : name;
       const quantity = Math.max(Number(item?.quantity || 0), 0);
-      const unitPrice = round2(Number(item?.price || 0));
-      const lineTotal = round2(
+      const currentUnitPrice = round2(Number(item?.price || 0));
+      const currentLineTotal = round2(
         Number(
           item?.subTotal || item?.subTotalAmt || item?.price * quantity || 0,
         ),
       );
+      const originalLineTotal = round2(
+        Number(
+          item?.originalSubTotal ||
+            (Number(item?.originalPrice || 0) > 0
+              ? Number(item?.originalPrice || 0) * quantity
+              : 0),
+        ),
+      );
+      const useOriginalPrice =
+        originalLineTotal > 0 &&
+        originalLineTotal > currentLineTotal + 0.009;
+      const unitPrice = useOriginalPrice
+        ? round2(
+            Number(item?.originalPrice || 0) ||
+              (quantity > 0 ? originalLineTotal / quantity : 0),
+          )
+        : currentUnitPrice;
+      const lineTotal = useOriginalPrice ? originalLineTotal : currentLineTotal;
       const unitLabel = unitPrice > 0 ? ` @ ${formatInr(unitPrice)}` : "";
       return `${index + 1}. ${displayName} x ${quantity}${unitLabel} = ${formatInr(lineTotal)}`;
     })
@@ -1341,26 +1359,32 @@ const sendOrderConfirmationEmail = async (order) => {
     const safePaymentUrl = paymentUrl || siteUrl;
     const pricingSnapshot = order?.pricing || {};
 
-    const originalSubtotal = round2(
-      Number(
-        pricingSnapshot.originalPrice ||
-          order?.originalPrice ||
-          Number(order?.subtotal || 0) + Number(order?.discount || 0) ||
-          0,
-      ),
-    );
-    const discount = round2(
-      Number(
-        pricingSnapshot.discount ||
-          order?.discount ||
-          order?.discountAmount ||
-          0,
-      ) + Number(order?.coinRedemption?.amount || 0),
-    );
     const taxableAmount = round2(
       Number(pricingSnapshot.discountedPrice || order?.subtotal || 0),
     );
     const taxAmount = round2(Number(pricingSnapshot.gst || order?.tax || 0));
+    const goodsInclusiveAmount = round2(taxableAmount + taxAmount);
+    const originalSubtotalCandidate = Number(
+      pricingSnapshot.originalPrice || order?.originalPrice || 0,
+    );
+    const originalSubtotal = round2(
+      originalSubtotalCandidate > 0
+        ? originalSubtotalCandidate
+        : goodsInclusiveAmount,
+    );
+    const snapshotDisplayDiscount = Number(
+      pricingSnapshot.displayDiscount ??
+        pricingSnapshot.inclusiveDiscount ??
+        Number.NaN,
+    );
+    const computedDisplayDiscount = round2(
+      Math.max(originalSubtotal - goodsInclusiveAmount, 0),
+    );
+    const discount = round2(
+      (Number.isFinite(snapshotDisplayDiscount)
+        ? snapshotDisplayDiscount
+        : computedDisplayDiscount) + Number(order?.coinRedemption?.amount || 0),
+    );
     const shippingAmount = round2(Number(order?.shipping || 0));
     const finalAmount = round2(
       Number(
@@ -3466,6 +3490,27 @@ const normalizeOrderProducts = ({ products, dbProductMap }) => {
       }
       return round2(Number(dbProduct.price ?? item.price ?? 0));
     })();
+    const resolvedOriginalPrice = (() => {
+      const candidate = selectedVariant?.originalPrice;
+      if (candidate !== undefined && candidate !== null && candidate !== "") {
+        const parsed = Number(candidate);
+        if (Number.isFinite(parsed) && parsed > 0) {
+          return round2(Math.max(parsed, resolvedPrice));
+        }
+      }
+
+      const productOriginal = Number(dbProduct.originalPrice || 0);
+      if (Number.isFinite(productOriginal) && productOriginal > 0) {
+        return round2(Math.max(productOriginal, resolvedPrice));
+      }
+
+      const payloadOriginal = Number(item?.originalPrice || 0);
+      if (Number.isFinite(payloadOriginal) && payloadOriginal > 0) {
+        return round2(Math.max(payloadOriginal, resolvedPrice));
+      }
+
+      return resolvedPrice;
+    })();
 
     const resolvedImage =
       item.image ||
@@ -3477,6 +3522,7 @@ const normalizeOrderProducts = ({ products, dbProductMap }) => {
       dbProduct.thumbnail ||
       "";
     const subTotal = round2(resolvedPrice * quantity);
+    const originalSubTotal = round2(resolvedOriginalPrice * quantity);
 
     const resolvedSku = String(
       selectedVariant?.sku || dbProduct?.sku || item?.sku || "",
@@ -3496,8 +3542,10 @@ const normalizeOrderProducts = ({ products, dbProductMap }) => {
       hsnCode: resolvedHsn,
       quantity,
       price: resolvedPrice,
+      originalPrice: resolvedOriginalPrice,
       image: resolvedImage,
       subTotal,
+      originalSubTotal,
     };
   });
 };
@@ -3694,7 +3742,9 @@ const fetchAndNormalizeOrderProducts = async (
   const dbProducts = await ProductModel.find({
     _id: { $in: normalizedProductIds },
   })
-    .select("_id name price images thumbnail isExclusive sku hsnCode variants")
+    .select(
+      "_id name price originalPrice images thumbnail isExclusive sku hsnCode variants",
+    )
     .lean();
   const dbProductMap = new Map(dbProducts.map((p) => [String(p._id), p]));
   const missingIds = normalizedProductIds.filter(
@@ -3895,6 +3945,22 @@ const calculateCheckoutPricing = async ({
       .filter((item) => !item?.comboId)
       .reduce((sum, item) => sum + Number(item?.subTotal || 0), 0),
   );
+  const standaloneOriginalAmount = round2(
+    normalizedProducts
+      .filter((item) => !item?.comboId)
+      .reduce((sum, item) => {
+        const quantity = Math.max(Number(item?.quantity || 1), 1);
+        const originalSubTotal = Number(item?.originalSubTotal || 0);
+        if (originalSubTotal > 0) {
+          return sum + originalSubTotal;
+        }
+        const originalPrice = Number(item?.originalPrice || 0);
+        if (originalPrice > 0) {
+          return sum + originalPrice * quantity;
+        }
+        return sum + Number(item?.subTotal || 0);
+      }, 0),
+  );
   const normalizedComboOriginalAmount = round2(
     Math.max(Number(comboOriginalAmount || 0), 0),
   );
@@ -3903,15 +3969,21 @@ const calculateCheckoutPricing = async ({
       ? normalizedComboOriginalAmount
       : comboExpandedAmount;
   const originalAmount = round2(
-    standaloneAmount + effectiveComboOriginalAmount,
+    standaloneOriginalAmount + effectiveComboOriginalAmount,
   );
 
   const comboDiscountInclusive = Math.min(
     Math.max(round2(Number(comboDiscount || 0)), 0),
-    originalAmount,
+    effectiveComboOriginalAmount,
   );
-  const discountedOriginalAmount = round2(
-    Math.max(originalAmount - comboDiscountInclusive, 0),
+  const comboPayableInclusive = round2(
+    Math.max(effectiveComboOriginalAmount - comboDiscountInclusive, 0),
+  );
+  const catalogPayableInclusive = round2(
+    standaloneAmount + comboPayableInclusive,
+  );
+  const catalogDiscountInclusive = round2(
+    Math.max(originalAmount - catalogPayableInclusive, 0),
   );
 
   const originalBaseSplit = splitGstInclusiveAmount(
@@ -3920,13 +3992,13 @@ const calculateCheckoutPricing = async ({
     checkoutContact?.state,
   );
   const originalBaseSubtotal = round2(originalBaseSplit.taxableAmount || 0);
-  const discountedBaseSplit = splitGstInclusiveAmount(
-    discountedOriginalAmount,
+  const catalogBaseSplit = splitGstInclusiveAmount(
+    catalogPayableInclusive,
     CHECKOUT_GST_RATE,
     checkoutContact?.state,
   );
-  const baseSubtotal = round2(discountedBaseSplit.taxableAmount || 0);
-  const comboDiscountBase = round2(
+  const baseSubtotal = round2(catalogBaseSplit.taxableAmount || 0);
+  const catalogDiscountBase = round2(
     Math.max(originalBaseSubtotal - baseSubtotal, 0),
   );
 
@@ -3974,7 +4046,7 @@ const calculateCheckoutPricing = async ({
     membershipDiscount +
       influencerDiscount +
       couponDiscount +
-      comboDiscountBase,
+      catalogDiscountBase,
   );
 
   const taxableAmount = round2(
@@ -4004,6 +4076,9 @@ const calculateCheckoutPricing = async ({
   const postDiscountInclusive = Math.max(
     round2(taxableAmount + gstAmount - Number(redemption.redeemAmount || 0)),
     0,
+  );
+  const displayDiscount = round2(
+    Math.max(originalAmount - postDiscountInclusive, 0),
   );
 
   const totalWeight = normalizedProducts.reduce(
@@ -4055,6 +4130,11 @@ const calculateCheckoutPricing = async ({
     roundedAmount: pricingTotals.roundedAmount,
     roundOff: pricingTotals.roundOff,
     totalDiscount,
+    taxableDiscount: totalDiscount,
+    displayDiscount,
+    inclusiveDiscount: displayDiscount,
+    catalogDiscountInclusive,
+    catalogDiscountBase,
     membershipDiscount,
     couponDiscount,
     influencerDiscount,
@@ -4070,7 +4150,7 @@ const calculateCheckoutPricing = async ({
       tax: gstAmount,
     },
     redemption,
-    comboDiscount: comboDiscountBase,
+    comboDiscount: catalogDiscountBase,
     comboDiscountInclusive: comboDiscountInclusive,
     basePrice: round2(originalBaseSubtotal),
     discountedPrice: taxableAmount,
@@ -5753,6 +5833,16 @@ export const createOrder = asyncHandler(async (req, res) => {
         originalPrice: round2(Number(pricing.originalAmount || 0)),
         basePrice: round2(Number(pricing.basePrice || 0)),
         discount: round2(Number(totalDiscount || 0)),
+        taxableDiscount: round2(Number(pricing.taxableDiscount || totalDiscount || 0)),
+        displayDiscount: round2(Number(pricing.displayDiscount || 0)),
+        inclusiveDiscount: round2(Number(pricing.inclusiveDiscount || 0)),
+        catalogDiscountInclusive: round2(
+          Number(pricing.catalogDiscountInclusive || 0),
+        ),
+        catalogDiscountBase: round2(Number(pricing.catalogDiscountBase || 0)),
+        comboDiscountInclusive: round2(
+          Number(pricing.comboDiscountInclusive || 0),
+        ),
         discountedPrice: round2(Number(pricing.taxableAmount || 0)),
         gst: round2(Number(pricing.gstAmount || 0)),
         total: round2(Number(pricing.finalAmount || computedFinalAmount || 0)),
@@ -6051,7 +6141,10 @@ export const createOrder = asyncHandler(async (req, res) => {
           paymentProvider: PAYMENT_PROVIDERS.PAYTM,
           gatewayPayableAmount: payableAmount,
           totals: {
+            originalSubtotal: round2(Number(pricing.originalAmount || 0)),
             subtotal: round2(Number(taxData.taxableAmount || 0)),
+            discount: round2(Number(pricing.displayDiscount || 0)),
+            taxableDiscount: round2(Number(totalDiscount || 0)),
             tax: round2(Number(taxData.tax || 0)),
             shipping: round2(Number(shippingCharge || 0)),
             finalAmount: round2(Number(computedFinalAmount || 0)),
@@ -6108,7 +6201,10 @@ export const createOrder = asyncHandler(async (req, res) => {
           paymentProvider: PAYMENT_PROVIDERS.PHONEPE,
           gatewayPayableAmount: payableAmount,
           totals: {
+            originalSubtotal: round2(Number(pricing.originalAmount || 0)),
             subtotal: round2(Number(taxData.taxableAmount || 0)),
+            discount: round2(Number(pricing.displayDiscount || 0)),
+            taxableDiscount: round2(Number(totalDiscount || 0)),
             tax: round2(Number(taxData.tax || 0)),
             shipping: round2(Number(shippingCharge || 0)),
             finalAmount: round2(Number(computedFinalAmount || 0)),
@@ -6272,6 +6368,9 @@ export const previewOrderPricing = asyncHandler(async (req, res) => {
       {
         subtotal: pricing.subtotal,
         discount: pricing.totalDiscount,
+        taxableDiscount: pricing.totalDiscount,
+        displayDiscount: pricing.displayDiscount,
+        inclusiveDiscount: pricing.inclusiveDiscount,
         taxableAmount: pricing.taxableAmount,
         gstAmount: pricing.gstAmount,
         shipping: pricing.shippingCharge,
@@ -6290,6 +6389,7 @@ export const previewOrderPricing = asyncHandler(async (req, res) => {
           influencer: pricing.influencerDiscount,
           coupon: pricing.couponDiscount,
           total: pricing.totalDiscount,
+          displayTotal: pricing.displayDiscount,
         },
         codes: {
           couponCode: pricing.normalizedCouponCode || null,
@@ -6497,6 +6597,29 @@ export const saveOrderForLater = asyncHandler(async (req, res) => {
         cgst: taxData.cgst,
         sgst: taxData.sgst,
         igst: taxData.igst,
+      },
+      pricing: {
+        originalPrice: round2(Number(pricing.originalAmount || 0)),
+        basePrice: round2(Number(pricing.basePrice || 0)),
+        discount: round2(Number(totalDiscount || 0)),
+        taxableDiscount: round2(Number(pricing.taxableDiscount || totalDiscount || 0)),
+        displayDiscount: round2(Number(pricing.displayDiscount || 0)),
+        inclusiveDiscount: round2(Number(pricing.inclusiveDiscount || 0)),
+        catalogDiscountInclusive: round2(
+          Number(pricing.catalogDiscountInclusive || 0),
+        ),
+        catalogDiscountBase: round2(Number(pricing.catalogDiscountBase || 0)),
+        comboDiscountInclusive: round2(
+          Number(pricing.comboDiscountInclusive || 0),
+        ),
+        discountedPrice: round2(Number(pricing.taxableAmount || 0)),
+        gst: round2(Number(pricing.gstAmount || 0)),
+        total: round2(Number(pricing.finalAmount || finalOrderAmount || 0)),
+        roundedTotal: round2(Number(roundedAmount || 0)),
+        roundOff: round2(Number(roundOff || 0)),
+        shipping: round2(Number(shippingCharge || 0)),
+        state: checkoutContact?.state || "",
+        gstRate: CHECKOUT_GST_RATE,
       },
       gstNumber: checkoutContact.contact.gst || "",
       billingDetails,
@@ -9235,6 +9358,18 @@ export const createTestOrder = asyncHandler(async (req, res) => {
         originalPrice: round2(Number(pricing.originalAmount || 0)),
         basePrice: round2(Number(pricing.basePrice || 0)),
         discount: round2(Number(pricing.totalDiscount || 0)),
+        taxableDiscount: round2(
+          Number(pricing.taxableDiscount || pricing.totalDiscount || 0),
+        ),
+        displayDiscount: round2(Number(pricing.displayDiscount || 0)),
+        inclusiveDiscount: round2(Number(pricing.inclusiveDiscount || 0)),
+        catalogDiscountInclusive: round2(
+          Number(pricing.catalogDiscountInclusive || 0),
+        ),
+        catalogDiscountBase: round2(Number(pricing.catalogDiscountBase || 0)),
+        comboDiscountInclusive: round2(
+          Number(pricing.comboDiscountInclusive || 0),
+        ),
         discountedPrice: round2(Number(taxableAmount || 0)),
         gst: round2(Number(gstAmount || 0)),
         total: round2(Number(pricing.finalAmount || finalAmount || 0)),
@@ -9336,7 +9471,9 @@ export const createTestOrder = asyncHandler(async (req, res) => {
       invoiceNumber: testOrder.invoiceNumber || null,
       invoicePath: testOrder.invoicePath || "",
       totals: {
-        originalSubtotal: round2(Number(pricing.subtotal || 0)),
+        originalSubtotal: round2(Number(pricing.originalAmount || 0)),
+        discount: round2(Number(pricing.displayDiscount || 0)),
+        taxableDiscount: round2(Number(pricing.totalDiscount || 0)),
         subtotal: taxableAmount,
         comboDiscount: round2(
           Number(pricing.comboDiscountInclusive ?? pricing.comboDiscount ?? 0),

@@ -1141,7 +1141,9 @@ const OrderRow = ({ order, index, token }) => {
                   </span>
                 </div>
                 <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
-                  <span className="font-semibold text-gray-700">UTR:</span>{" "}
+                  <span className="font-semibold text-gray-700">
+                    Payment reference:
+                  </span>{" "}
                   <span className="text-gray-800 break-all">
                     {directUtrNumber || "N/A"}
                   </span>
@@ -1153,14 +1155,14 @@ const OrderRow = ({ order, index, token }) => {
                         className="font-semibold text-gray-700"
                         title="RRN is a bank-level reference used for tracking UPI payments"
                       >
-                        UTR Number:
+                        UPI/RRN reference:
                       </span>{" "}
                       <span className="text-gray-800 break-all">{upiRrn}</span>
                     </div>
                     <Button
                       size="small"
                       variant="outlined"
-                      onClick={() => copyToClipboard(upiRrn, "UTR Number")}
+                      onClick={() => copyToClipboard(upiRrn, "UPI/RRN reference")}
                     >
                       Copy
                     </Button>

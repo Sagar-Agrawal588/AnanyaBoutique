@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { updatePurchaseOrderReceipt } from "../controllers/purchaseOrder.controller.js";
+import ComboModel from "../models/combo.model.js";
 import InventoryAuditModel from "../models/inventoryAudit.model.js";
 import OrderModel from "../models/order.model.js";
 import ProductModel from "../models/product.model.js";
@@ -15,6 +16,11 @@ import {
   reserveInventory,
   restoreInventory,
 } from "../services/inventory.service.js";
+import {
+  confirmComboStock,
+  releaseComboStock,
+  reserveComboStock,
+} from "../services/combos/combo.service.js";
 import { releaseExpiredReservations } from "../services/inventoryReservationExpiry.service.js";
 
 let mongoServer;
@@ -54,6 +60,7 @@ test.after(async () => {
 
 test.afterEach(async () => {
   await ProductModel.deleteMany({});
+  await ComboModel.deleteMany({});
   await OrderModel.deleteMany({});
   await PurchaseOrderModel.deleteMany({});
   await InventoryAuditModel.deleteMany({});
@@ -176,6 +183,64 @@ test("releaseInventory restores reserved stock on failure", async () => {
 
   const updated = await ProductModel.findById(product._id).lean();
   assert.equal(updated.reserved_quantity, 0);
+});
+
+test("manual combo release never drives reserved stock below zero", async () => {
+  const combo = await ComboModel.create({
+    name: "Manual Combo",
+    slug: "manual-combo-release",
+    stockMode: "manual",
+    stockQuantity: 5,
+    reservedQuantity: 0,
+    isActive: true,
+    isVisible: true,
+    items: [],
+  });
+  const order = {
+    combos: [
+      {
+        comboId: combo._id,
+        quantity: 2,
+        stockMode: "manual",
+      },
+    ],
+  };
+
+  await reserveComboStock(order, "TEST");
+  await releaseComboStock(order, "TEST");
+  await releaseComboStock(order, "TEST");
+
+  const updated = await ComboModel.findById(combo._id).lean();
+  assert.equal(updated.reservedQuantity, 0);
+  assert.equal(updated.stockQuantity, 5);
+});
+
+test("manual combo confirmation requires a matching reservation", async () => {
+  const combo = await ComboModel.create({
+    name: "Manual Combo Confirm",
+    slug: "manual-combo-confirm",
+    stockMode: "manual",
+    stockQuantity: 3,
+    reservedQuantity: 0,
+    isActive: true,
+    isVisible: true,
+    items: [],
+  });
+  const order = {
+    combos: [
+      {
+        comboId: combo._id,
+        quantity: 1,
+        stockMode: "manual",
+      },
+    ],
+  };
+
+  await assert.rejects(() => confirmComboStock(order, "TEST"));
+
+  const updated = await ComboModel.findById(combo._id).lean();
+  assert.equal(updated.stockQuantity, 3);
+  assert.equal(updated.reservedQuantity, 0);
 });
 
 test("restoreInventory returns stock after cancellation", async () => {

@@ -109,6 +109,48 @@ test("preview pricing uses selected variant price (not client payload price)", a
   assert.equal(payload?.data?.finalAmount, 799);
 });
 
+test("preview pricing exposes GST-inclusive catalog discount for display", async () => {
+  const product = await ProductModel.create({
+    name: "One Rupee Promo Product",
+    slug: `one-rupee-promo-${Date.now()}`,
+    price: 1,
+    originalPrice: 499,
+    category: new mongoose.Types.ObjectId(),
+    stock_quantity: 10,
+    reserved_quantity: 0,
+    stock: 10,
+    hasVariants: false,
+    variants: [],
+  });
+
+  const { response, payload } = await requestJson("/preview", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      products: [
+        {
+          productId: product._id.toString(),
+          productTitle: product.name,
+          quantity: 1,
+          price: 499,
+        },
+      ],
+      combos: [],
+      guestDetails: {},
+      paymentType: "prepaid",
+    }),
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(payload?.success, true);
+  assert.equal(payload?.data?.originalAmount, 499);
+  assert.equal(payload?.data?.finalAmount, 1);
+  assert.equal(payload?.data?.taxableAmount, 0.95);
+  assert.equal(payload?.data?.gstAmount, 0.05);
+  assert.equal(payload?.data?.displayDiscount, 498);
+  assert.equal(payload?.data?.discountBreakdown?.displayTotal, 498);
+});
+
 test("preview pricing charges comboPrice (does not double-discount against MRP)", async () => {
   const categoryId = new mongoose.Types.ObjectId();
 
