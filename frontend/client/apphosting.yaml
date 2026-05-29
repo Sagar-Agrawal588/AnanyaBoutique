@@ -24,7 +24,7 @@ env:
       - BUILD
       - RUNTIME
   - variable: NEXT_PUBLIC_FIREBASE_API_KEY
-    value: "AIzaSyByup2bUIVoMS9nad6TkfyPNKPqWgAJKWA"
+    secret: "NEXT_PUBLIC_FIREBASE_API_KEY"
     availability:
       - BUILD
       - RUNTIME
@@ -49,22 +49,22 @@ env:
       - BUILD
       - RUNTIME
   - variable: NEXT_PUBLIC_FIREBASE_APP_ID
-    value: "1:381544785154:web:a3d4807189bad3c8774e1b"
+    secret: "NEXT_PUBLIC_FIREBASE_APP_ID"
     availability:
       - BUILD
       - RUNTIME
   - variable: NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
-    value: "G-BWVFHX07P7"
+    secret: "NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID"
     availability:
       - BUILD
       - RUNTIME
   - variable: NEXT_PUBLIC_FIREBASE_VAPID_KEY
-    value: "BL22YBdvb5TkydQ5LsnePfUgLQsf61THj-Ja72oli6FMb1U7lh-GYJJ__gjIvf8nZjAJ7s8aBQzq1ahFBxpSTi8"
+    secret: "NEXT_PUBLIC_FIREBASE_VAPID_KEY"
     availability:
       - BUILD
       - RUNTIME
   - variable: NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
-    value: "AIzaSyAs_C6O3bS4fi1lBBRJG2oPVVtM7fkALS8"
+    secret: "NEXT_PUBLIC_GOOGLE_MAPS_API_KEY"
     availability:
       - BUILD
       - RUNTIME

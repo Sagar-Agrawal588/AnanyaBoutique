@@ -23,10 +23,17 @@ concurrency:
 env:
   FIREBASE_APP_HOSTING_BACKEND: healthyonegram-client
   FIREBASE_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  FIREBASE_LOCATION: us-central1
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.NEXT_PUBLIC_FIREBASE_API_KEY }}
+      NEXT_PUBLIC_FIREBASE_APP_ID: ${{ secrets.NEXT_PUBLIC_FIREBASE_APP_ID }}
+      NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID: ${{ secrets.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID }}
+      NEXT_PUBLIC_FIREBASE_VAPID_KEY: ${{ secrets.NEXT_PUBLIC_FIREBASE_VAPID_KEY }}
+      NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: ${{ secrets.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -65,6 +72,31 @@ jobs:
         run: |
           grep -q "healthyonegram-api-v2" frontend/client/apphosting.yaml
           ! grep -E "localhost|127\.0\.0\.1|healthyonegram-backend" frontend/client/apphosting.yaml
+
+      - name: Sync App Hosting secrets
+        run: |
+          set -euo pipefail
+
+          sync_secret() {
+            local key="$1"
+            local value="$2"
+            test -n "$value"
+            printf '%s' "$value" | firebase apphosting:secrets:set "$key" \
+              --project "$FIREBASE_PROJECT_ID" \
+              --location "$FIREBASE_LOCATION" \
+              --data-file _ \
+              --non-interactive
+            firebase apphosting:secrets:grantaccess "$key" "$FIREBASE_APP_HOSTING_BACKEND" \
+              --project "$FIREBASE_PROJECT_ID" \
+              --location "$FIREBASE_LOCATION" \
+              --non-interactive
+          }
+
+          sync_secret "NEXT_PUBLIC_FIREBASE_API_KEY" "$NEXT_PUBLIC_FIREBASE_API_KEY"
+          sync_secret "NEXT_PUBLIC_FIREBASE_APP_ID" "$NEXT_PUBLIC_FIREBASE_APP_ID"
+          sync_secret "NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID" "$NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID"
+          sync_secret "NEXT_PUBLIC_FIREBASE_VAPID_KEY" "$NEXT_PUBLIC_FIREBASE_VAPID_KEY"
+          sync_secret "NEXT_PUBLIC_GOOGLE_MAPS_API_KEY" "$NEXT_PUBLIC_GOOGLE_MAPS_API_KEY"
 
       - name: Create Firebase App Hosting rollout
         run: |

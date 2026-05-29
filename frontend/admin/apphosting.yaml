@@ -34,7 +34,7 @@ env:
       - BUILD
       - RUNTIME
   - variable: NEXT_PUBLIC_FIREBASE_API_KEY
-    value: "AIzaSyByup2bUIVoMS9nad6TkfyPNKPqWgAJKWA"
+    secret: "NEXT_PUBLIC_FIREBASE_API_KEY"
     availability:
       - BUILD
       - RUNTIME
@@ -59,12 +59,12 @@ env:
       - BUILD
       - RUNTIME
   - variable: NEXT_PUBLIC_FIREBASE_APP_ID
-    value: "1:381544785154:web:a3d4807189bad3c8774e1b"
+    secret: "NEXT_PUBLIC_FIREBASE_APP_ID"
     availability:
       - BUILD
       - RUNTIME
   - variable: NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
-    value: "G-BWVFHX07P7"
+    secret: "NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID"
     availability:
       - BUILD
       - RUNTIME
