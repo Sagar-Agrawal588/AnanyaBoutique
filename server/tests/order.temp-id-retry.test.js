@@ -27,7 +27,7 @@ const buildOrderPayload = (overrides = {}) => ({
 test.before(async () => {
   mongoServer = await MongoMemoryServer.create();
   await mongoose.connect(mongoServer.getUri(), {
-    dbName: "bogecom-order-temp-id-test",
+    dbName: "AnanyaBoutique-order-temp-id-test",
   });
   await OrderModel.syncIndexes();
 });

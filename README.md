@@ -1,4 +1,4 @@
-# bogEcom
+# Ananya Boutique
 
 Production-focused MERN commerce platform with:
 - Storefront (`frontend/client`)
@@ -28,7 +28,7 @@ flowchart LR
 
 ## Monorepo Structure
 ```text
-bogEcom/
+AnanyaBoutique/
   frontend/
     client/                  # Customer storefront (Next.js)
     admin/                   # Admin dashboard (Next.js)
@@ -270,8 +270,8 @@ node scripts/validate-env-examples.mjs
 Example build/run:
 ```bash
 cd server
-docker build -t bogecom-api .
-docker run --env-file .env -p 8080:8080 bogecom-api
+docker build -t ananyaboutique-api .
+docker run --env-file .env -p 8080:8080 ananyaboutique-api
 ```
 
 ## Security Measures Implemented

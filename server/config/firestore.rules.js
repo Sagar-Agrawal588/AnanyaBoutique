@@ -1,5 +1,5 @@
 /**
- * Firestore Security Rules for bogEcom
+ * Firestore Security Rules for Ananya Boutique
  *
  * Copy and paste these rules into Firebase Console:
  * Firebase Console > Firestore Database > Rules

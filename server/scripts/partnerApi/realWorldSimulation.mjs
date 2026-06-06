@@ -32,7 +32,7 @@ const bootstrapServer = async () => {
   process.env.ACCESS_TOKEN_SECRET = process.env.ACCESS_TOKEN_SECRET || "partner-api-sim-secret-012345";
 
   const mongo = await MongoMemoryServer.create();
-  await mongoose.connect(mongo.getUri(), { dbName: "bogEcom-partner-sim" });
+  await mongoose.connect(mongo.getUri(), { dbName: "AnanyaBoutique-partner-sim" });
 
   const category = await Category.create({
     name: "Simulation",

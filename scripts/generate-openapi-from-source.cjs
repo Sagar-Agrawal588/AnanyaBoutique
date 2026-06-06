@@ -457,7 +457,7 @@ for (const ep of endpoints) {
 const spec = {
   openapi: "3.1.0",
   info: {
-    title: "bogEcom API (Generated from Source)",
+    title: "Ananya Boutique API (Generated from Source)",
     version: "1.0.0-generated",
     description: "Auto-generated OpenAPI spec from server route/controller code. Request/response schemas are inferred from middleware, handler names, and static code analysis. Validate critical contracts against runtime tests before external publication.",
   },

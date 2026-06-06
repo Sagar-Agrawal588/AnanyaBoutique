@@ -109,7 +109,7 @@ const seedCatalog = async () => {
 
 test.before(async () => {
   mongoServer = await MongoMemoryServer.create();
-  await mongoose.connect(mongoServer.getUri(), { dbName: "bogEcom-partner-test" });
+  await mongoose.connect(mongoServer.getUri(), { dbName: "AnanyaBoutique-partner-test" });
 
   const app = express();
   app.use(express.json());

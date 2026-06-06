@@ -44,7 +44,7 @@ test.before(async () => {
     process.env.ACCESS_TOKEN_SECRET || TEST_JWT_SECRET;
 
   mongoServer = await MongoMemoryServer.create();
-  await mongoose.connect(mongoServer.getUri(), { dbName: "bogecom-review-test" });
+  await mongoose.connect(mongoServer.getUri(), { dbName: "AnanyaBoutique-review-test" });
 
   const app = express();
   app.use(express.json());

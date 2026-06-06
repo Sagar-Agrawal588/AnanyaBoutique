@@ -20,7 +20,7 @@ const requestJson = async (path, options = {}) => {
 test.before(async () => {
   mongoServer = await MongoMemoryServer.create();
   await mongoose.connect(mongoServer.getUri(), {
-    dbName: "bogEcom-test",
+    dbName: "AnanyaBoutique-test",
   });
 
   const app = express();

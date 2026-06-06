@@ -43,7 +43,7 @@ const requestJson = async (path, options = {}) => {
 before(async () => {
   mongoServer = await MongoMemoryServer.create();
   await mongoose.connect(mongoServer.getUri(), {
-    dbName: "bogEcom-influencer-auth",
+    dbName: "AnanyaBoutique-influencer-auth",
   });
 
   __setInfluencerOtpGeneratorForTests(() => "654321");

@@ -133,7 +133,7 @@ const shouldUseMemoryMongo = async (mongoUri, forceMemory) => {
 const startMemoryMongo = async () => {
   mongoServer = await MongoMemoryServer.create({
     instance: {
-      dbName: "BogEcomLocal",
+      dbName: "AnanyaBoutiqueLocal",
     },
   });
 

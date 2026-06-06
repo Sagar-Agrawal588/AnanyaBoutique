@@ -144,7 +144,7 @@ def render_pdf(blocks: list[dict], output_path: Path) -> None:
     document = SimpleDocTemplate(
         str(output_path),
         pagesize=A4,
-        title="bogEcom Work Summary",
+        title="Ananya Boutique Work Summary",
         author="Codex",
         leftMargin=26,
         rightMargin=26,

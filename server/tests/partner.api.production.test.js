@@ -133,7 +133,7 @@ test.before(async () => {
     "partner-api-production-test-secret-0123456789";
   mongoServer = await MongoMemoryServer.create();
   await mongoose.connect(mongoServer.getUri(), {
-    dbName: "bogEcom-partner-prod-test",
+    dbName: "AnanyaBoutique-partner-prod-test",
   });
 
   const admin = await UserModel.create({

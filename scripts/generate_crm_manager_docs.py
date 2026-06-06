@@ -126,7 +126,7 @@ def parse_markdown(text: str) -> list[dict]:
 def render_docx(blocks: list[dict], output_path: Path) -> None:
     document = Document()
     document.core_properties.title = "CRM Manager Handoff"
-    document.core_properties.subject = "bogEcom CRM implementation handoff"
+    document.core_properties.subject = "Ananya Boutique CRM implementation handoff"
 
     normal_style = document.styles["Normal"]
     normal_style.font.name = "Calibri"

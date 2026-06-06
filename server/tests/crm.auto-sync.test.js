@@ -14,7 +14,7 @@ let mongoServer;
 test.before(async () => {
   mongoServer = await MongoMemoryServer.create();
   await mongoose.connect(mongoServer.getUri(), {
-    dbName: "bogecom-crm-auto-sync-tests",
+    dbName: "AnanyaBoutique-crm-auto-sync-tests",
   });
 });
 

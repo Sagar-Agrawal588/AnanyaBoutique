@@ -47,7 +47,7 @@ const connectMongo = async () => {
 
   const uri = mongoServer.getUri();
   await mongoose.connect(uri, {
-    dbName: "bogEcom-reservation-integration",
+    dbName: "AnanyaBoutique-reservation-integration",
     serverSelectionTimeoutMS: MONGO_SELECTION_TIMEOUT_MS,
   });
 };

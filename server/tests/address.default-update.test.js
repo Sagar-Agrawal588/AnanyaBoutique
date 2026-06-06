@@ -28,7 +28,7 @@ const createMockRes = () => {
 
 test.before(async () => {
   mongoServer = await MongoMemoryServer.create();
-  await mongoose.connect(mongoServer.getUri(), { dbName: "bogecom-address-test" });
+  await mongoose.connect(mongoServer.getUri(), { dbName: "AnanyaBoutique-address-test" });
 });
 
 test.after(async () => {

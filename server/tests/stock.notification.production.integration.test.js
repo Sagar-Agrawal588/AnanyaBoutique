@@ -192,7 +192,7 @@ test.before(async () => {
 
   mongoServer = await MongoMemoryServer.create();
   await mongoose.connect(mongoServer.getUri(), {
-    dbName: "bogEcom-stock-notification-production",
+    dbName: "AnanyaBoutique-stock-notification-production",
   });
 
   const app = express();

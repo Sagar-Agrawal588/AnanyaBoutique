@@ -1,5 +1,5 @@
 $ErrorActionPreference = "Stop"
-$repo = "UtkarshD18/bogEcom"
+$repo = "Sagar-Agrawal588/AnanyaBoutique"
 $domain = "https://healthyonegram.com"
 
 # Read env files

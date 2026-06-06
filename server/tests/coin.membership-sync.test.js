@@ -12,7 +12,7 @@ let mongoServer;
 
 test.before(async () => {
   mongoServer = await MongoMemoryServer.create();
-  await mongoose.connect(mongoServer.getUri(), { dbName: "bogEcom-test" });
+  await mongoose.connect(mongoServer.getUri(), { dbName: "AnanyaBoutique-test" });
 });
 
 test.after(async () => {

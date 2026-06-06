@@ -29,7 +29,7 @@ const shutdown = async (exitCode = 0) => {
 try {
   mongoServer = await MongoMemoryServer.create({
     instance: {
-      dbName: "BogEcomLocal",
+      dbName: "AnanyaBoutiqueLocal",
     },
   });
 

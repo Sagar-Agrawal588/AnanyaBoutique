@@ -1,5 +1,7 @@
 {
+  "name": "ananya-boutique",
   "private": true,
+  "description": "Ananya Boutique monorepo",
   "scripts": {
     "test": "npm --prefix server test",
     "validate:env": "node scripts/validate-env-examples.mjs",

@@ -44,7 +44,7 @@ const restoreWhatsappEnv = () => {
 test.before(async () => {
   mongoServer = await MongoMemoryServer.create();
   await mongoose.connect(mongoServer.getUri(), {
-    dbName: "bogecom-whatsapp-tests",
+    dbName: "AnanyaBoutique-whatsapp-tests",
   });
 });
 
