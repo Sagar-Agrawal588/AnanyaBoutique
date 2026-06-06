@@ -11,7 +11,7 @@ dotenv.config({ path: path.join(__dirname, "..", ".env") });
 
 const RECIPIENTS = ["+919983531243", "+918769027048"];
 const IMAGE_URL =
-  "https://via.placeholder.com/800x450.png?text=BuyOneGram+Test+Image";
+  "https://via.placeholder.com/800x450.png?text=Ananya Boutique+Test+Image";
 
 async function main() {
   const mongoUri = process.env.MONGODB_URI;

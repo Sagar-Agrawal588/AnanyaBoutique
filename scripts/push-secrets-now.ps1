@@ -1,6 +1,6 @@
 $ErrorActionPreference = "Stop"
 $repo = "Sagar-Agrawal588/AnanyaBoutique"
-$domain = "https://healthyonegram.com"
+$domain = "https://ananyaboutique.com"
 
 # Read env files
 $scriptRoot = Split-Path -Parent $PSCommandPath
@@ -35,7 +35,7 @@ Write-Host "Parsed $($serverEnv.Count) server keys, $($clientEnv.Count) client k
 $secrets = [ordered]@{}
 
 # Required backend secrets
-$secrets["GCP_PROJECT_ID"] = "healthy-one-gram"
+$secrets["GCP_PROJECT_ID"] = "ananya-boutique"
 $secrets["MONGO_URI"] = if ($serverEnv["MONGO_URI"]) { $serverEnv["MONGO_URI"] } else { $serverEnv["MONGODB_URI"] }
 $secrets["ACCESS_TOKEN_SECRET"] = if ($serverEnv["ACCESS_TOKEN_SECRET"]) { $serverEnv["ACCESS_TOKEN_SECRET"] } else { $serverEnv["SECRET_KEY_ACCESS_TOKEN"] }
 $secrets["REFRESH_TOKEN_SECRET"] = if ($serverEnv["REFRESH_TOKEN_SECRET"]) { $serverEnv["REFRESH_TOKEN_SECRET"] } else { $serverEnv["SECRET_KEY_REFRESH_TOKEN"] }

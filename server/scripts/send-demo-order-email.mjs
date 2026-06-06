@@ -14,23 +14,23 @@ const raw = await fs.readFile(templatePath, "utf8");
 
 const data = {
   customer_name: "Piyush",
-  order_number: "H1G2526/0001",
-  order_id: "H1G2526/0001",
+  order_number: "ANB2526/0001",
+  order_id: "ANB2526/0001",
   order_date: "21 March 2026",
   order_status: "Pending",
   payment_status: "Pending",
-  items_text: "Crunchy Peanut Butter",
+  items_text: "Signature Boutique Style",
   subtotal: "INR 499",
   discount: "INR 0",
   taxable_amount: "INR 499",
   tax_amount: "INR 0",
   shipping_amount: "INR 0",
   final_amount: "INR 499",
-  payment_url: "https://healthyonegram.com/pay-order/H1G2526/0001",
+  payment_url: "https://ananyaboutique.com/pay-order/ANB2526/0001",
   payment_cta_label: "Pay Now",
-  site_url: "https://healthyonegram.com",
-  support_url: "https://healthyonegram.com/contact",
-  support_contact: "support@healthyonegram.com",
+  site_url: "https://ananyaboutique.com",
+  support_url: "https://ananyaboutique.com/contact",
+  support_contact: "support@ananyaboutique.com",
   year: "2026",
 };
 
@@ -70,7 +70,7 @@ await transporter.verify();
 const info = await transporter.sendMail({
   from,
   to: "piyushsongara69@gmail.com",
-  subject: "Demo Order Confirmation - H1G2526/0001",
+  subject: "Demo Order Confirmation - ANB2526/0001",
   html,
 });
 

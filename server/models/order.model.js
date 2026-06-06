@@ -72,7 +72,7 @@ const generateUniqueTempOrderId = async (model) => {
 const deriveDisplayOrderNumber = (orderId) => {
   const rawOrderId = String(orderId || "").trim();
   if (!rawOrderId) return "";
-  return `BOG-${rawOrderId.slice(-8).toUpperCase()}`;
+  return `ANB-${rawOrderId.slice(-8).toUpperCase()}`;
 };
 
 const resolveFiscalYearCode = (date = new Date()) => {
@@ -87,9 +87,9 @@ const resolveFiscalYearCode = (date = new Date()) => {
 };
 
 const DEFAULT_ORDER_NUMBER_PREFIX =
-  String(process.env.ORDER_NUMBER_PREFIX || "H1G")
+  String(process.env.ORDER_NUMBER_PREFIX || "ANB")
     .trim()
-    .toUpperCase() || "H1G";
+    .toUpperCase() || "ANB";
 
 const normalizeSeriesPrefix = (value) => {
   const raw = String(value || "")

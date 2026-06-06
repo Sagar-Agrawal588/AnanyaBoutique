@@ -13,4 +13,4 @@ jobs:
       - name: Dispatch rules retired
         run: |
           echo "App Engine dispatch rules are no longer deployed."
-          echo "HealthyOneGram production uses Firebase App Hosting for frontends and Cloud Run for the API."
+          echo "Ananya Boutique production uses Firebase App Hosting for frontends and Cloud Run for the API."

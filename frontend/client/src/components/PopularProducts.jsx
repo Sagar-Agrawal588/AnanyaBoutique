@@ -98,12 +98,12 @@ const PopularProducts = ({ initialProducts = [], initialCombos = [] }) => {
                   className="whitespace-nowrap text-[clamp(1.45rem,3.55vw,4.35rem)] font-black leading-[0.92] tracking-[-0.05em] transition-colors duration-500"
                   style={{ color: "var(--color-primary)" }}
                 >
-                  Fresh & Popular Products
+                  Fresh & Popular Styles
                 </h2>
 
                 <p className="max-w-2xl text-sm font-medium leading-relaxed text-slate-600 sm:text-base">
-                  Curated best-sellers with clean ingredients, richer texture,
-                  and standout flavor in one polished collection.
+                  Curated best-sellers, fresh arrivals, and occasion-ready
+                  picks in one polished boutique collection.
                 </p>
               </motion.div>
 
@@ -121,7 +121,7 @@ const PopularProducts = ({ initialProducts = [], initialCombos = [] }) => {
                       "linear-gradient(135deg, var(--color-primary) 0%, var(--flavor-hover) 100%)",
                   }}
                 >
-                  View All
+                  Discover More
                   <FiArrowRight className="h-4 w-4" />
                 </Link>
               </motion.div>

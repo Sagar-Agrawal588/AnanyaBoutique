@@ -29,7 +29,7 @@ test("search icon submits typed term and navigates to products search URL", asyn
   const searchInput = page.locator(".site-header-desktop-search input").first();
   await expect(searchInput).toBeVisible();
 
-  await searchInput.fill("peanut butter");
+  await searchInput.fill("boutique style");
   const searchForm = searchInput.locator("xpath=ancestor::form[1]").first();
   const submitButton = searchForm.locator('button[type="submit"]').first();
   await expect(submitButton).toBeEnabled();

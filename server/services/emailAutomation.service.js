@@ -86,7 +86,7 @@ const getSiteUrl = () =>
     process.env.CLIENT_URL ||
       process.env.NEXT_PUBLIC_SITE_URL ||
       process.env.FRONTEND_URL ||
-      "https://healthyonegram.com",
+      "https://ananyaboutique.com",
   )
     .split(",")[0]
     .trim()
@@ -98,7 +98,7 @@ const getSupportEmail = () =>
       process.env.SUPPORT_EMAIL ||
       process.env.EMAIL_FROM_ADDRESS ||
       process.env.SMTP_USER ||
-      "support@healthyonegram.com",
+      "support@ananyaboutique.com",
   )
     .trim()
     .toLowerCase();

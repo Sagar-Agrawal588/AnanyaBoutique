@@ -29,7 +29,7 @@ test("buildTrackingEvent replaces placeholder client IPs with the request IP", (
       eventId: "event_12345678",
       eventType: "page_view_started",
       sessionId: "session_12345678",
-      pageUrl: "https://healthyonegram.com/products/honey",
+      pageUrl: "https://ananyaboutique.com/products/honey",
       ipAddress: "0.0.0.0",
       metadata: {},
     },
@@ -55,7 +55,7 @@ test("normalizeEvent keeps hover metrics needed by behavior analytics", () => {
     eventType: "hover_duration",
     sessionId: "session_hover_1234",
     timestamp: "2026-04-09T12:00:00.000Z",
-    pageUrl: "https://healthyonegram.com/product/abc",
+    pageUrl: "https://ananyaboutique.com/product/abc",
     referrer: "https://www.google.com/search?q=healthy+one+gram",
     metadata: {
       productId: "prod_123",

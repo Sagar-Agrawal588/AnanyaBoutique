@@ -289,7 +289,7 @@ export default function AdminDashboard() {
             Welcome back, {admin?.name || admin?.userName || "Admin"}!
           </h1>
           <p className="text-blue-100">
-            Manage your BuyOneGram store from here.
+            Manage your Ananya Boutique store from here.
           </p>
         </div>
 

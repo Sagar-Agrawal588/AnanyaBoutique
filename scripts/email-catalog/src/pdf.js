@@ -16,7 +16,7 @@ export function generateCatalogPdf({
   outputPath,
   pages,
   includeCover = true,
-  coverTitle = "HealthyOneGram Email Catalog",
+  coverTitle = "Ananya Boutique Email Catalog",
 }) {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: "A4", margin: 40 });

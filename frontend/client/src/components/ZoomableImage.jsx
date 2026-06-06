@@ -206,7 +206,32 @@ export default function ZoomableImage({
 
   const setScaleAtPoint = useCallback(
     (targetScale, point, animate = false) => {
-      const metrics = metricsRef.current;
+      let metrics = metricsRef.current;
+      if (!metrics) {
+        const container = containerRef.current;
+        const image = imageRef.current;
+        if (container && image?.naturalWidth && image?.naturalHeight) {
+          const rect = container.getBoundingClientRect();
+          const containerWidth = Math.max(container.clientWidth, rect.width, 1);
+          const containerHeight = Math.max(
+            container.clientHeight,
+            rect.height,
+            1,
+          );
+          const fitScale = Math.min(
+            containerWidth / image.naturalWidth,
+            containerHeight / image.naturalHeight,
+          );
+
+          metrics = {
+            containerWidth,
+            containerHeight,
+            baseWidth: image.naturalWidth * fitScale,
+            baseHeight: image.naturalHeight * fitScale,
+          };
+          metricsRef.current = metrics;
+        }
+      }
       if (!metrics || !point) return;
 
       const current = transformRef.current;
@@ -535,6 +560,17 @@ export default function ZoomableImage({
     };
   }, [recalculateMetrics]);
 
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return undefined;
+
+    container.addEventListener("wheel", handleWheel, { passive: false });
+
+    return () => {
+      container.removeEventListener("wheel", handleWheel);
+    };
+  }, [handleWheel]);
+
   useEffect(
     () => () => {
       if (frameRef.current) {
@@ -548,7 +584,6 @@ export default function ZoomableImage({
     <div
       ref={containerRef}
       className={className}
-      onWheel={handleWheel}
       onDoubleClick={handleDoubleClick}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}

@@ -31,7 +31,7 @@ let resetStockNotificationQueueForTests;
 
 const TEST_SECRET = "stock_notification_prod_secret_1234567890";
 const DEFAULT_PRODUCT_IMAGE =
-  "buyonegram/system/product-default.webp";
+  "ananyaboutique/system/product-default.webp";
 
 const startServer = async (app) =>
   new Promise((resolve) => {

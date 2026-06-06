@@ -247,7 +247,7 @@ const AffiliatePortalPage = () => {
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="mb-2 text-xs font-black uppercase tracking-[0.22em] text-amber-100">
-                Buy One Gram
+                Ananya Boutique
               </p>
               <h1 className="text-3xl font-black tracking-tight">
                 Collaborator Earnings Portal

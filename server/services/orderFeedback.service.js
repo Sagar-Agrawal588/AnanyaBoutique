@@ -34,7 +34,7 @@ const getFrontendBaseUrl = () =>
   normalizeBaseUrl(process.env.CLIENT_URL) ||
   normalizeBaseUrl(process.env.NEXT_PUBLIC_SITE_URL) ||
   normalizeBaseUrl(process.env.FRONTEND_URL) ||
-  "https://healthyonegram.com";
+  "https://ananyaboutique.com";
 
 const getSupportContactEmail = () =>
   String(

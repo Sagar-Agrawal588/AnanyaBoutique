@@ -1,18 +1,29 @@
 "use client";
 
 import { API_BASE_URL } from "@/utils/api";
-
-import MemberGate from "@/components/MemberGate";
-import MembershipExclusivePreview from "@/components/MembershipExclusivePreview";
-import { useTheme } from "@/context/theme-provider";
-import { resolveMembershipTheme } from "@/utils/membershipTheme";
 import { parseJsonSafely } from "@/utils/safeJsonFetch";
 import cookies from "js-cookie";
+import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
-import { FaCheck, FaCrown } from "react-icons/fa";
-import { HiSparkles } from "react-icons/hi2";
-import { IoSparkles } from "react-icons/io5";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  ArrowRight,
+  BadgePercent,
+  Cake,
+  Crown,
+  Gem,
+  Gift,
+  Headphones,
+  Heart,
+  LockKeyhole,
+  ShoppingBag,
+  Sparkles,
+  Star,
+  TicketPercent,
+  Trophy,
+  WandSparkles,
+} from "lucide-react";
+import BrandArtworkFrame from "@/components/brand/BrandArtworkFrame";
 
 const API_URL = API_BASE_URL.endsWith("/api")
   ? API_BASE_URL.slice(0, -4)
@@ -34,254 +45,400 @@ const ensureAccessTokenCookie = (token) => {
   }
 };
 
-const THEME_PRESETS = {
-  mint: {
-    bg: "from-emerald-50/80 via-white to-teal-50/80",
-    glowA: "bg-emerald-200/40",
-    glowB: "bg-teal-200/30",
-    glowC: "bg-[var(--flavor-glass)]",
-    accent: "from-emerald-600 via-teal-600 to-green-600",
-    badge: "from-emerald-500 to-teal-500",
-    glass: "bg-[var(--glass-bg)]",
-    border: "border-[var(--glass-border)]",
-    text: "text-[var(--glass-text)]",
-  },
-  sky: {
-    bg: "from-sky-50/80 via-white to-cyan-50/80",
-    glowA: "bg-sky-200/40",
-    glowB: "bg-cyan-200/30",
-    glowC: "bg-blue-200/30",
-    accent: "from-sky-600 via-cyan-600 to-blue-600",
-    badge: "from-sky-500 to-cyan-500",
-    glass: "bg-[var(--glass-bg)]",
-    border: "border-[var(--glass-border)]",
-    text: "text-[var(--glass-text)]",
-  },
-  aurora: {
-    bg: "from-lime-50/70 via-white to-emerald-50/80",
-    glowA: "bg-lime-200/35",
-    glowB: "bg-emerald-200/30",
-    glowC: "bg-teal-200/25",
-    accent: "from-lime-600 via-emerald-600 to-teal-600",
-    badge: "from-lime-500 to-emerald-500",
-    glass: "bg-[var(--glass-bg)]",
-    border: "border-[var(--glass-border)]",
-    text: "text-[var(--glass-text)]",
-  },
-  lavender: {
-    bg: "from-indigo-50/70 via-white to-purple-50/80",
-    glowA: "bg-indigo-200/35",
-    glowB: "bg-purple-200/30",
-    glowC: "bg-fuchsia-200/25",
-    accent: "from-indigo-600 via-purple-600 to-fuchsia-600",
-    badge: "from-indigo-500 to-purple-500",
-    glass: "bg-[var(--glass-bg)]",
-    border: "border-[var(--glass-border)]",
-    text: "text-[var(--glass-text)]",
-  },
-  sunset: {
-    bg: "from-orange-50/70 via-white to-rose-50/80",
-    glowA: "bg-orange-200/35",
-    glowB: "bg-rose-200/30",
-    glowC: "bg-pink-200/25",
-    accent: "from-orange-600 via-rose-600 to-pink-600",
-    badge: "from-orange-500 to-rose-500",
-    glass: "bg-[var(--glass-bg)]",
-    border: "border-[var(--glass-border)]",
-    text: "text-[var(--glass-text)]",
-  },
-  midnight: {
-    bg: "from-slate-50/70 via-white to-gray-50/80",
-    glowA: "bg-slate-200/35",
-    glowB: "bg-gray-200/30",
-    glowC: "bg-zinc-200/25",
-    accent: "from-slate-700 via-gray-800 to-zinc-800",
-    badge: "from-slate-700 to-gray-800",
-    glass: "bg-[var(--glass-bg)]",
-    border: "border-[var(--glass-border)]",
-    text: "text-[var(--glass-text)]",
+const fadeUp = {
+  hidden: { opacity: 0, y: 32 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.68, ease: [0.22, 1, 0.36, 1] },
   },
 };
 
-const DEFAULT_CONTENT = {
-  theme: { style: "mint" },
-  hero: {
-    badge: "Premium Membership",
-    title: "Buy One Gram Club",
-    titleHighlight: "Premium",
-    description:
-      "Join our exclusive community and unlock premium benefits designed for your wellness journey.",
-    note: "Limited member slots refreshed monthly",
+const stagger = {
+  hidden: {},
+  visible: {
+    transition: { staggerChildren: 0.1 },
   },
-  benefits: {
-    title: "Unlock Exclusive Benefits",
-    subtitle:
-      "Start earning rewards today and take your health journey to the next level with premium perks.",
-    items: [
-      {
-        icon: "⭐",
-        title: "Earn Points",
-        description:
-          "Get 1 point for every ₹1 spent. Redeem points for discounts and exclusive products.",
-      },
-      {
-        icon: "🚀",
-        title: "Early Access",
-        description:
-          "Be the first to try our latest products before they're available to the public.",
-      },
-      {
-        icon: "💎",
-        title: "Special Discounts",
-        description:
-          "Enjoy exclusive pricing and promotions available only to our members.",
-      },
-      {
-        icon: "🚚",
-        title: "Free Shipping",
-        description:
-          "Enjoy free shipping on all orders with ₹0 delivery charge.",
-      },
-      {
-        icon: "🎁",
-        title: "Birthday Gifts",
-        description:
-          "Receive special birthday surprises and exclusive member-only offers monthly.",
-      },
-      {
-        icon: "🛡️",
-        title: "VIP Support",
-        description:
-          "Get priority customer support and personalized recommendations.",
-      },
+};
+
+const clubBenefits = [
+  {
+    icon: WandSparkles,
+    title: "Early Access",
+    description: "Get first access to new collections before public launch.",
+  },
+  {
+    icon: BadgePercent,
+    title: "Exclusive Discounts",
+    description: "Members receive special pricing and private promotions.",
+  },
+  {
+    icon: Cake,
+    title: "Birthday Rewards",
+    description: "Celebrate your special day with exclusive gifts and offers.",
+  },
+  {
+    icon: Trophy,
+    title: "Fashion Points",
+    description: "Earn points on every purchase and redeem them later.",
+  },
+  {
+    icon: Headphones,
+    title: "Priority Support",
+    description: "Faster customer support and assistance.",
+  },
+  {
+    icon: LockKeyhole,
+    title: "Members-Only Collections",
+    description: "Access limited-edition products and exclusive launches.",
+  },
+];
+
+const howItWorks = [
+  {
+    step: "Step 1",
+    title: "Join Fashion Insider Club",
+    text: "Activate your membership through the existing secure checkout.",
+  },
+  {
+    step: "Step 2",
+    title: "Shop Your Favorites",
+    text: "Browse sarees, suits, kurtis, cosmetics, jewellery, and accessories.",
+  },
+  {
+    step: "Step 3",
+    title: "Earn Rewards",
+    text: "Collect fashion points and member benefits as you shop.",
+  },
+  {
+    step: "Step 4",
+    title: "Unlock Exclusive Perks",
+    text: "Enjoy early drops, private offers, priority care, and special gifts.",
+  },
+];
+
+const membershipTiers = [
+  {
+    name: "STYLE STARTER",
+    label: "Welcome Edit",
+    description: "A beautiful first step into the club.",
+    benefits: ["Welcome rewards", "Birthday benefits", "Early access"],
+  },
+  {
+    name: "FASHION ICON",
+    label: "Most Loved",
+    description: "For shoppers who want the full insider feeling.",
+    featured: true,
+    benefits: ["Increased rewards", "Exclusive discounts", "Priority support"],
+  },
+  {
+    name: "BOUTIQUE ELITE",
+    label: "VIP Circle",
+    description: "A premium tier for the most devoted boutique customer.",
+    benefits: [
+      "Highest rewards",
+      "VIP experiences",
+      "Premium launches",
+      "Concierge assistance",
     ],
   },
-  pricing: {
-    title: "Simple, honest pricing",
-    subtitle: "One plan. All benefits. Cancel anytime.",
-    ctaText: "Join Membership",
-    note: "Instant access after checkout.",
+];
+
+const successStories = [
+  {
+    name: "Priya S.",
+    title: "Early access shopper",
+    text: "The club makes every new launch feel personal. I love discovering fresh styles before everyone else.",
   },
-  cta: {
-    title: "Ready to upgrade your daily nutrition?",
-    description:
-      "Members get early access, exclusive drops, and a smoother checkout experience.",
-    buttonText: "Explore Plans",
-    buttonLink: "/membership",
+  {
+    name: "Nisha R.",
+    title: "Rewards collector",
+    text: "Fashion points and birthday perks make shopping feel thoughtful, not ordinary.",
   },
+  {
+    name: "Aditi M.",
+    title: "Boutique loyalist",
+    text: "Priority help and member offers make Ananya Boutique feel like my own style circle.",
+  },
+];
+
+const dashboardPreview = [
+  { label: "Points earned", value: 2450, suffix: "" },
+  { label: "Rewards available", value: 6, suffix: "" },
+  { label: "Benefits unlocked", value: 12, suffix: "" },
+];
+
+const formatPrice = (value) => {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return "";
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 0,
+  }).format(amount);
 };
 
-const GLASS_THEME_MAP = {
-  sky: "sky-glass",
-  mint: "mint-glass",
-  aurora: "aurora-glass",
-  lavender: "lavender-glass",
-  sunset: "sunset-glass",
-  midnight: "midnight-glass",
-  "sky-glass": "sky-glass",
-  "mint-glass": "mint-glass",
-  "aurora-glass": "aurora-glass",
-  "lavender-glass": "lavender-glass",
-  "sunset-glass": "sunset-glass",
-  "midnight-glass": "midnight-glass",
-};
+function AnimatedCounter({ value, suffix = "", prefix = "" }) {
+  const ref = useRef(null);
+  const [displayValue, setDisplayValue] = useState(0);
 
-const normalizeThemeStyle = (styleKey) =>
-  String(styleKey || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[\s_]+/g, "-");
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return undefined;
 
-const resolveGlassThemeKey = (styleKey) => {
-  const normalizedKey = normalizeThemeStyle(styleKey);
-  if (GLASS_THEME_MAP[normalizedKey]) {
-    return GLASS_THEME_MAP[normalizedKey];
-  }
-  if (normalizedKey.endsWith("glass")) {
-    const canonicalGlassKey = `${normalizedKey.replace(/glass$/, "").replace(/-+$/, "")}-glass`;
-    return GLASS_THEME_MAP[canonicalGlassKey] || "mint-glass";
-  }
-  return GLASS_THEME_MAP[normalizedKey] || "mint-glass";
-};
+    let frameId = 0;
+    let started = false;
+    const duration = 900;
 
-const resolvePresetThemeKey = (styleKey) => {
-  const normalizedKey = normalizeThemeStyle(styleKey);
-  if (normalizedKey.endsWith("-glass")) {
-    return normalizedKey.replace("-glass", "");
-  }
-  if (normalizedKey.endsWith("glass")) {
-    return normalizedKey.replace(/glass$/, "").replace(/-+$/, "") || "mint";
-  }
-  return normalizedKey || "mint";
-};
+    const runCounter = () => {
+      if (started) return;
+      started = true;
+      const start = performance.now();
 
-const ACCENT_BG_IMAGE_CLASS = "bg-[image:var(--glass-accent)]";
-const ACCENT_TEXT_CLASS = `${ACCENT_BG_IMAGE_CLASS} bg-clip-text text-transparent`;
+      const tick = (time) => {
+        const progress = Math.min((time - start) / duration, 1);
+        const eased = 1 - Math.pow(1 - progress, 3);
+        setDisplayValue(Math.round(value * eased));
+        if (progress < 1) {
+          frameId = requestAnimationFrame(tick);
+        }
+      };
 
-// Floating particle component
-const FloatingParticle = ({ delay, size, left, duration }) => (
-  <div
-    className="absolute rounded-full bg-gradient-to-br from-emerald-400/30 to-teal-400/20 blur-sm"
-    style={{
-      width: size,
-      height: size,
-      left: `${left}%`,
-      bottom: "-50px",
-      animation: `floatUp ${duration}s ease-in-out infinite`,
-      animationDelay: `${delay}s`,
-    }}
-  />
-);
+      frameId = requestAnimationFrame(tick);
+    };
 
-// Benefit Card Component with liquid glass effect
-const BenefitCard = ({ icon, title, description, index }) => (
-  <div
-    className="group relative overflow-hidden rounded-2xl transition-all duration-500 hover:scale-[1.02] hover:-translate-y-1"
-    style={{ animationDelay: `${index * 100}ms` }}
-  >
-    {/* Glass background */}
-    <div className="absolute inset-0 rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-bg)] shadow-[var(--glass-shadow)] backdrop-blur-[var(--glass-blur)]" />
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) runCounter();
+      },
+      { threshold: 0.35 },
+    );
 
-    {/* Gradient overlay on hover */}
-    <div
-      className={`absolute inset-0 ${ACCENT_BG_IMAGE_CLASS} opacity-0 group-hover:opacity-10 transition-opacity duration-500 rounded-2xl`}
-    />
+    observer.observe(node);
 
-    {/* Shine effect */}
-    <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-700 overflow-hidden rounded-2xl">
-      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
-    </div>
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(frameId);
+    };
+  }, [value]);
 
-    {/* Content */}
-    <div className="relative p-6 sm:p-7">
-      {/* Icon container */}
-      <div
-        className={`w-14 h-14 rounded-xl ${ACCENT_BG_IMAGE_CLASS} flex items-center justify-center mb-4 shadow-lg group-hover:scale-110 group-hover:rotate-3 transition-all duration-300`}
-      >
-        <span className="text-white text-2xl">{icon || "⭐"}</span>
-      </div>
+  return (
+    <span ref={ref}>
+      {prefix}
+      {displayValue.toLocaleString("en-IN")}
+      {suffix}
+    </span>
+  );
+}
 
-      <h3 className="text-lg font-bold text-gray-800 mb-2 transition-colors">
+function SectionHeading({ eyebrow, title, copy, align = "left" }) {
+  return (
+    <motion.div
+      variants={fadeUp}
+      className={align === "center" ? "mx-auto max-w-3xl text-center" : "max-w-3xl"}
+    >
+      <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#9d6b19]">
+        {eyebrow}
+      </p>
+      <h2 className="mt-3 font-serif text-3xl font-semibold leading-tight text-[#2f1325] sm:text-4xl lg:text-5xl">
         {title}
-      </h3>
-      <p className="text-gray-600 text-sm leading-relaxed">{description}</p>
-    </div>
+      </h2>
+      {copy ? (
+        <p className="mt-4 text-base leading-7 text-[#6c4b5d] sm:text-lg">
+          {copy}
+        </p>
+      ) : null}
+    </motion.div>
+  );
+}
 
-    {/* Bottom accent line */}
-    <div
-      className={`absolute bottom-0 left-0 right-0 h-1 ${ACCENT_BG_IMAGE_CLASS} transform scale-x-0 group-hover:scale-x-100 transition-transform duration-500 origin-left rounded-b-2xl`}
-    />
-  </div>
-);
+function LuxuryArtwork({
+  title,
+  copy,
+  ratio = "wide",
+  icon: Icon = Sparkles,
+  artworkKey,
+}) {
+  const isPortrait = ratio === "portrait";
+
+  return (
+    <motion.div
+      variants={fadeUp}
+      whileHover={{ y: -6, scale: 1.01 }}
+      transition={{ duration: 0.35, ease: "easeOut" }}
+      className="w-full"
+    >
+      <BrandArtworkFrame
+        artworkKey={artworkKey}
+        title={title}
+        copy={copy}
+        aspect={isPortrait ? "portrait" : "wide"}
+        icon={Icon}
+        label="Fashion Insider Club"
+        motionEnabled={false}
+      />
+    </motion.div>
+  );
+}
+
+function BenefitCard({ benefit, index }) {
+  const Icon = benefit.icon;
+
+  return (
+    <motion.article
+      variants={fadeUp}
+      whileHover={{ y: -6 }}
+      transition={{ duration: 0.28, ease: "easeOut" }}
+      className="group relative overflow-hidden rounded-3xl border border-[#f0d8df] bg-white/85 p-6 shadow-[0_18px_60px_rgba(93,45,74,0.12)] backdrop-blur"
+      style={{ transitionDelay: `${index * 20}ms` }}
+    >
+      <div className="absolute inset-x-0 top-0 h-1 origin-left scale-x-0 bg-gradient-to-r from-[#ec4899] via-[#a855f7] to-[#d6a84f] transition-transform duration-500 group-hover:scale-x-100" />
+      <div className="mb-5 grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-[#ffe4ef] to-[#eee3ff] text-[#7c2d62] shadow-lg shadow-[#7a335e]/10 transition duration-300 group-hover:-rotate-3 group-hover:scale-105">
+        <Icon className="h-6 w-6" aria-hidden="true" />
+      </div>
+      <h3 className="text-lg font-semibold text-[#2f1325]">{benefit.title}</h3>
+      <p className="mt-3 text-sm leading-6 text-[#6c4b5d]">
+        {benefit.description}
+      </p>
+    </motion.article>
+  );
+}
+
+function TierCard({ tier, onJoin }) {
+  return (
+    <motion.article
+      variants={fadeUp}
+      whileHover={{ y: -6 }}
+      className={`relative overflow-hidden rounded-[2rem] border p-6 shadow-[0_22px_70px_rgba(93,45,74,0.14)] ${
+        tier.featured
+          ? "border-[#d6a84f]/75 bg-[#2f1325] text-white"
+          : "border-[#f0d8df] bg-white/90 text-[#2f1325]"
+      }`}
+    >
+      {tier.featured ? (
+        <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-[#f9d77e] via-[#f472b6] to-[#c4b5fd]" />
+      ) : null}
+      <div
+        className={`mb-6 inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] ${
+          tier.featured
+            ? "bg-white/10 text-[#f8d88a]"
+            : "bg-[#fff4ef] text-[#9d6b19]"
+        }`}
+      >
+        <Crown className="h-4 w-4" aria-hidden="true" />
+        {tier.label}
+      </div>
+      <h3 className="font-serif text-3xl font-semibold">{tier.name}</h3>
+      <p
+        className={`mt-3 text-sm leading-6 ${
+          tier.featured ? "text-white/75" : "text-[#6c4b5d]"
+        }`}
+      >
+        {tier.description}
+      </p>
+      <ul className="mt-6 space-y-3">
+        {tier.benefits.map((benefit) => (
+          <li key={benefit} className="flex items-start gap-3 text-sm">
+            <span
+              className={`mt-1 grid h-5 w-5 shrink-0 place-items-center rounded-full ${
+                tier.featured ? "bg-white/12 text-[#f8d88a]" : "bg-[#fff0f7] text-[#a21caf]"
+              }`}
+            >
+              <Star className="h-3 w-3 fill-current" aria-hidden="true" />
+            </span>
+            <span className={tier.featured ? "text-white/85" : "text-[#604354]"}>
+              {benefit}
+            </span>
+          </li>
+        ))}
+      </ul>
+      <button
+        type="button"
+        onClick={onJoin}
+        className={`mt-8 inline-flex h-12 w-full items-center justify-center gap-2 rounded-full text-sm font-semibold transition hover:-translate-y-0.5 ${
+          tier.featured
+            ? "bg-white text-[#2f1325] shadow-xl shadow-black/20 hover:bg-[#fff8ef]"
+            : "bg-[#2f1325] text-white shadow-xl shadow-[#2f1325]/15 hover:bg-[#4b1f3a]"
+        }`}
+      >
+        Join The Club
+        <ArrowRight className="h-4 w-4" aria-hidden="true" />
+      </button>
+    </motion.article>
+  );
+}
+
+function RewardsDashboardPreview({ isMemberActive, activePlan }) {
+  const level = isMemberActive ? "Boutique Elite" : "Fashion Icon";
+
+  return (
+    <motion.section
+      variants={stagger}
+      initial="hidden"
+      whileInView="visible"
+      viewport={{ once: true, amount: 0.25 }}
+      id="rewards-preview"
+      className="mx-auto grid max-w-7xl gap-8 px-4 py-12 sm:px-6 lg:grid-cols-[0.95fr_1.05fr] lg:px-8 lg:py-16"
+    >
+      <LuxuryArtwork
+        title="Rewards In Motion"
+        copy="Track the little wins that make every boutique order feel rewarding."
+        ratio="wide"
+        icon={TicketPercent}
+        artworkKey="membership.rewards"
+      />
+      <motion.div
+        variants={fadeUp}
+        className="rounded-[2rem] border border-[#f0d8df] bg-white/90 p-6 shadow-[0_24px_80px_rgba(93,45,74,0.14)] backdrop-blur sm:p-8"
+      >
+        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#9d6b19]">
+          Rewards Dashboard Preview
+        </p>
+        <h2 className="mt-3 font-serif text-3xl font-semibold text-[#2f1325] sm:text-4xl">
+          Your club benefits, styled like a private wardrobe.
+        </h2>
+        <div className="mt-7 grid gap-4 sm:grid-cols-3">
+          {dashboardPreview.map((item) => (
+            <div
+              key={item.label}
+              className="rounded-3xl border border-[#f4dce5] bg-gradient-to-br from-white to-[#fff4fa] p-5"
+            >
+              <p className="font-serif text-3xl font-semibold text-[#2f1325]">
+                <AnimatedCounter value={item.value} suffix={item.suffix} />
+              </p>
+              <p className="mt-2 text-xs font-semibold uppercase tracking-[0.16em] text-[#9d6b19]">
+                {item.label}
+              </p>
+            </div>
+          ))}
+        </div>
+        <div className="mt-5 grid gap-4 sm:grid-cols-2">
+          <div className="rounded-3xl border border-[#f4dce5] bg-[#2f1325] p-5 text-white">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#f8d88a]">
+              Membership level
+            </p>
+            <p className="mt-3 text-2xl font-semibold">{level}</p>
+          </div>
+          <div className="rounded-3xl border border-[#f4dce5] bg-[#fff8ef] p-5">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#9d6b19]">
+              Active plan
+            </p>
+            <p className="mt-3 text-2xl font-semibold text-[#2f1325]">
+              {activePlan?.name || "Fashion Insider Club"}
+            </p>
+          </div>
+        </div>
+      </motion.div>
+    </motion.section>
+  );
+}
 
 export default function MembershipPage() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [membershipStatus, setMembershipStatus] = useState(null);
   const [activePlan, setActivePlan] = useState(null);
-  const [pageContent, setPageContent] = useState(DEFAULT_CONTENT);
   const router = useRouter();
-  const { setTheme } = useTheme();
 
   const fetchMembershipStatus = async (token) => {
     if (!token) {
@@ -319,7 +476,7 @@ export default function MembershipPage() {
         setIsLoggedIn(false);
         setMembershipStatus(null);
       }
-      // Fetch active plan
+
       try {
         const res = await fetch(`${API_URL}/api/membership/active`);
         const data = await parseJsonSafely(res);
@@ -329,35 +486,10 @@ export default function MembershipPage() {
       } catch (err) {
         console.warn("Failed to fetch active plan:", err);
       }
-      // Fetch membership page content
-      try {
-        const res = await fetch(`${API_URL}/api/membership/page/public`);
-        const data = await parseJsonSafely(res);
-        if (data?.success && data?.data) {
-          setPageContent({
-            ...DEFAULT_CONTENT,
-            ...data.data,
-            hero: { ...DEFAULT_CONTENT.hero, ...(data.data.hero || {}) },
-            benefits: {
-              ...DEFAULT_CONTENT.benefits,
-              ...(data.data.benefits || {}),
-            },
-            pricing: {
-              ...DEFAULT_CONTENT.pricing,
-              ...(data.data.pricing || {}),
-            },
-            cta: { ...DEFAULT_CONTENT.cta, ...(data.data.cta || {}) },
-            theme: {
-              ...DEFAULT_CONTENT.theme,
-              ...(data.data.theme || {}),
-            },
-          });
-        }
-      } catch (err) {
-        console.warn("Failed to fetch membership page content:", err);
-      }
+
       setIsLoading(false);
     };
+
     checkAuth();
   }, []);
 
@@ -385,454 +517,405 @@ export default function MembershipPage() {
     };
   }, []);
 
-  const themeStyleKey = pageContent?.theme?.style || pageContent?.themeStyle;
+  const isMemberActive = useMemo(
+    () =>
+      Boolean(membershipStatus?.isMember ?? membershipStatus?.membershipActive) &&
+      !Boolean(membershipStatus?.isExpired),
+    [membershipStatus],
+  );
 
-  useEffect(() => {
-    // Sync server-selected membership theme to the global CSS-variable theme layer.
-    setTheme(resolveGlassThemeKey(themeStyleKey));
-  }, [themeStyleKey, setTheme]);
-
-  const theme = useMemo(() => {
-    return resolveMembershipTheme(themeStyleKey);
-  }, [themeStyleKey]);
+  const membershipExpiryLabel = membershipStatus?.membershipExpiry
+    ? new Date(membershipStatus.membershipExpiry).toLocaleDateString()
+    : "";
 
   const handleSubscribe = () => {
     if (!isLoggedIn) {
       router.push("/login?redirect=/membership/checkout");
       return;
     }
-    const memberNow =
-      Boolean(
-        membershipStatus?.isMember ?? membershipStatus?.membershipActive,
-      ) && !Boolean(membershipStatus?.isExpired);
-    if (memberNow) {
-      return;
-    }
+    if (isMemberActive) return;
     router.push("/membership/checkout");
-  };
-
-  const handleSecondaryCta = () => {
-    const configuredLink =
-      pageContent?.cta?.buttonLink || DEFAULT_CONTENT.cta.buttonLink;
-    if (configuredLink === "/membership") {
-      handleSubscribe();
-      return;
-    }
-    router.push(configuredLink);
-  };
-
-  const handlePreviewUnlockCta = () => {
-    if (!isLoggedIn) {
-      handleSubscribe();
-      return;
-    }
-
-    const pricingSection = document.getElementById("membership-pricing");
-    if (pricingSection) {
-      pricingSection.scrollIntoView({ behavior: "smooth", block: "start" });
-      return;
-    }
-
-    handleSubscribe();
   };
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-50 via-white to-teal-50">
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-[#fff8f2] via-white to-[#f3e8ff]">
         <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-emerald-200 border-t-emerald-600 rounded-full animate-spin" />
-          <p className="text-emerald-700 font-medium">Loading membership...</p>
+          <div className="h-12 w-12 animate-spin rounded-full border-4 border-[#f4c7d7] border-t-[#7c2d62]" />
+          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#7c2d62]">
+            Loading Fashion Insider Club
+          </p>
         </div>
       </div>
     );
   }
 
-  const isMemberActive =
-    Boolean(membershipStatus?.isMember ?? membershipStatus?.membershipActive) &&
-    !Boolean(membershipStatus?.isExpired);
-  const user = { isMember: isMemberActive };
-  const summaryBenefitPool = (
-    pageContent?.benefits?.items?.length
-      ? pageContent.benefits.items
-      : DEFAULT_CONTENT.benefits.items
-  ).filter((benefit) => {
-    const title = String(benefit?.title || "")
-      .trim()
-      .toLowerCase();
-    return title !== "earn points" && title !== "free shipping";
-  });
-  const unlockedBenefits = [
-    ...summaryBenefitPool.slice(0, 2),
-    {
-      title: "Dedicated Customer Care Service",
-      description:
-        "Get priority support from our customer care team whenever you need help.",
-    },
-  ];
-  const membershipExpiryLabel = membershipStatus?.membershipExpiry
-    ? new Date(membershipStatus.membershipExpiry).toLocaleDateString()
-    : "";
+  const planPrice = formatPrice(activePlan?.price);
+  const originalPrice = formatPrice(activePlan?.originalPrice);
+  const showOriginalPrice =
+    Number(activePlan?.originalPrice) > Number(activePlan?.price);
 
   return (
-    <main
-      className={`min-h-screen bg-gradient-to-br ${theme.bg} relative overflow-hidden`}
-    >
-      {/* Animated background elements */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div
-          className={`absolute top-20 left-10 w-72 h-72 rounded-full blur-3xl animate-pulse ${theme.glowA}`}
+    <main className="overflow-hidden bg-[linear-gradient(180deg,#fffaf6_0%,#ffffff_32%,#fff3f8_68%,#ffffff_100%)] text-[#2f1325]">
+      <section className="relative px-4 pb-12 pt-10 sm:px-6 sm:pt-16 lg:px-8 lg:pb-20">
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#e8c67a] to-transparent" />
+        <motion.div
+          variants={stagger}
+          initial="hidden"
+          animate="visible"
+          className="mx-auto grid max-w-7xl items-center gap-10 lg:grid-cols-[1.02fr_0.98fr] lg:gap-14"
+        >
+          <motion.div variants={fadeUp}>
+            <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-[#efd8b0] bg-white/85 px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-[#9d6b19] shadow-sm">
+              <Crown className="h-4 w-4 text-[#cc7a9b]" aria-hidden="true" />
+              Luxury Loyalty Program
+            </div>
+            <h1 className="font-serif text-5xl font-semibold leading-tight text-[#2f1325] sm:text-6xl lg:text-7xl">
+              Fashion Insider Club
+            </h1>
+            <p className="mt-6 max-w-2xl text-lg leading-8 text-[#604354] sm:text-xl">
+              Unlock exclusive fashion experiences, rewards, and member-only
+              benefits designed for women who love style.
+            </p>
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+              <button
+                type="button"
+                onClick={handleSubscribe}
+                disabled={isMemberActive}
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-[#2f1325] px-6 text-sm font-semibold text-white shadow-xl shadow-[#2f1325]/20 transition hover:-translate-y-0.5 hover:bg-[#4b1f3a] disabled:cursor-default disabled:opacity-80"
+              >
+                {isMemberActive ? "Club Active" : "Join The Club"}
+                <ArrowRight className="h-4 w-4" aria-hidden="true" />
+              </button>
+              <a
+                href="#club-benefits"
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-full border border-[#efd8b0] bg-white px-6 text-sm font-semibold text-[#8a5a12] shadow-sm transition hover:-translate-y-0.5 hover:bg-[#fff8f0]"
+              >
+                Explore Benefits
+                <Sparkles className="h-4 w-4" aria-hidden="true" />
+              </a>
+            </div>
+
+            {isMemberActive ? (
+              <div className="mt-7 rounded-3xl border border-[#efd8b0] bg-white/85 p-5 shadow-[0_18px_60px_rgba(93,45,74,0.12)]">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-[#2f1325]">
+                      Your Fashion Insider Club membership is active.
+                    </p>
+                    {membershipExpiryLabel ? (
+                      <p className="mt-1 text-sm text-[#6c4b5d]">
+                        Valid until {membershipExpiryLabel}.
+                      </p>
+                    ) : null}
+                  </div>
+                  <span className="inline-flex w-fit items-center gap-2 rounded-full bg-[#2f1325] px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-white">
+                    <Heart className="h-4 w-4 text-[#f8d88a]" aria-hidden="true" />
+                    Active Member
+                  </span>
+                </div>
+              </div>
+            ) : null}
+          </motion.div>
+
+          <LuxuryArtwork
+            title="The Insider Wardrobe"
+            copy="A private style world with early access, rewards, and boutique care."
+            ratio="portrait"
+            icon={Gem}
+            artworkKey="membership.hero"
+          />
+        </motion.div>
+      </section>
+
+      <section className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
+        <motion.div
+          variants={stagger}
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, amount: 0.25 }}
+          className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
+        >
+          {[
+            { label: "Luxury Benefits", value: 6, suffix: "" },
+            { label: "Style Tiers", value: 3, suffix: "" },
+            { label: "Years of Trust", value: 13, suffix: "+" },
+            { label: "Priority Support", value: 24, suffix: "h" },
+          ].map((stat) => (
+            <motion.div
+              key={stat.label}
+              variants={fadeUp}
+              whileHover={{ y: -5 }}
+              className="rounded-3xl border border-[#efd8b0]/75 bg-white/85 p-6 text-center shadow-[0_18px_60px_rgba(93,45,74,0.12)]"
+            >
+              <p className="font-serif text-4xl font-semibold text-[#2f1325]">
+                <AnimatedCounter value={stat.value} suffix={stat.suffix} />
+              </p>
+              <p className="mt-3 text-xs font-semibold uppercase tracking-[0.2em] text-[#9d6b19]">
+                {stat.label}
+              </p>
+            </motion.div>
+          ))}
+        </motion.div>
+      </section>
+
+      <motion.section
+        variants={stagger}
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true, amount: 0.2 }}
+        id="club-benefits"
+        className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8 lg:py-16"
+      >
+        <SectionHeading
+          eyebrow="Membership Benefits"
+          title="A private circle of fashion, rewards, and care"
+          copy="Every benefit is designed to make shopping feel more personal, more rewarding, and more beautifully yours."
+          align="center"
         />
-        <div
-          className={`absolute top-40 right-20 w-96 h-96 rounded-full blur-3xl animate-pulse ${theme.glowB}`}
-          style={{ animationDelay: "1s" }}
+        <div className="mt-9 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {clubBenefits.map((benefit, index) => (
+            <BenefitCard
+              key={benefit.title}
+              benefit={benefit}
+              index={index}
+            />
+          ))}
+        </div>
+        <div className="mt-8">
+          <LuxuryArtwork
+            title="Member Benefits Edit"
+            copy="Every benefit is curated to make fashion feel more personal."
+            ratio="wide"
+            icon={Gift}
+            artworkKey="membership.tiers"
+          />
+        </div>
+      </motion.section>
+
+      <motion.section
+        variants={stagger}
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true, amount: 0.25 }}
+        className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8 lg:py-16"
+      >
+        <SectionHeading
+          eyebrow="How It Works"
+          title="Join once, then let every purchase unlock more"
+          copy="The existing membership checkout activates the club. The experience around it now feels like a modern fashion loyalty program."
         />
-        <div
-          className={`absolute bottom-20 left-1/3 w-80 h-80 rounded-full blur-3xl animate-pulse ${theme.glowC}`}
-          style={{ animationDelay: "2s" }}
+        <div className="mt-9 grid gap-5 lg:grid-cols-4">
+          {howItWorks.map((item, index) => (
+            <motion.article
+              key={item.step}
+              variants={fadeUp}
+              whileHover={{ y: -5 }}
+              className="relative overflow-hidden rounded-3xl border border-[#f0d8df] bg-white/90 p-6 shadow-[0_18px_60px_rgba(93,45,74,0.12)]"
+            >
+              <div className="mb-6 flex items-center justify-between">
+                <span className="rounded-full bg-[#fff4ef] px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-[#9d6b19]">
+                  {item.step}
+                </span>
+                <span className="grid h-10 w-10 place-items-center rounded-2xl bg-[#2f1325] text-white">
+                  {index + 1}
+                </span>
+              </div>
+              <h3 className="text-lg font-semibold text-[#2f1325]">
+                {item.title}
+              </h3>
+              <p className="mt-3 text-sm leading-6 text-[#6c4b5d]">{item.text}</p>
+            </motion.article>
+          ))}
+        </div>
+      </motion.section>
+
+      <motion.section
+        variants={stagger}
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true, amount: 0.2 }}
+        id="membership-pricing"
+        className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8 lg:py-16"
+      >
+        <SectionHeading
+          eyebrow="Membership Tiers"
+          title="Three luxury levels, one elegant club experience"
+          copy="The tier presentation is visual and aspirational. Activation still uses the current membership infrastructure."
+          align="center"
         />
 
-        {/* Floating particles */}
-        <FloatingParticle delay={0} size={20} left={10} duration={8} />
-        <FloatingParticle delay={2} size={15} left={25} duration={10} />
-        <FloatingParticle delay={1} size={25} left={50} duration={9} />
-        <FloatingParticle delay={3} size={18} left={75} duration={11} />
-        <FloatingParticle delay={4} size={22} left={90} duration={7} />
-      </div>
+        <div className="mt-9 grid gap-5 lg:grid-cols-3">
+          {membershipTiers.map((tier) => (
+            <TierCard key={tier.name} tier={tier} onJoin={handleSubscribe} />
+          ))}
+        </div>
 
-      <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16">
-        {/* Header Section */}
-        <header className="text-center mb-12 sm:mb-16">
-          {/* Crown badge */}
-          <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-[var(--glass-border)] bg-[var(--glass-bg)] px-4 py-2 shadow-[var(--glass-shadow)] backdrop-blur-[var(--glass-blur)]">
-            <FaCrown className="text-[var(--glass-text)]" />
-            <span className="text-sm font-semibold text-[var(--glass-text)]">
-              {pageContent?.hero?.badge || "Premium Membership"}
-            </span>
-            <HiSparkles className="text-amber-500" />
-          </div>
-
-          {/* Main title */}
-          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black mb-4">
-            <span className={ACCENT_TEXT_CLASS}>
-              {pageContent?.hero?.title ||
-                activePlan?.name ||
-                "Buy One Gram Club"}
-            </span>
-            {pageContent?.hero?.titleHighlight && (
-              <span className={`block ${ACCENT_TEXT_CLASS}`}>
-                {pageContent.hero.titleHighlight}
+        <motion.div
+          variants={fadeUp}
+          className="mt-8 rounded-[2rem] border border-[#efd8b0]/85 bg-gradient-to-br from-white via-[#fff8f3] to-[#fae8ff] p-6 text-center shadow-[0_24px_80px_rgba(93,45,74,0.14)] sm:p-8"
+        >
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#9d6b19]">
+            Current Active Plan
+          </p>
+          <h3 className="mt-3 font-serif text-3xl font-semibold text-[#2f1325]">
+            {activePlan?.name || "Fashion Insider Club"}
+          </h3>
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
+            {planPrice ? (
+              <span className="font-serif text-5xl font-semibold text-[#2f1325]">
+                {planPrice}
+              </span>
+            ) : (
+              <span className="text-base font-semibold text-[#604354]">
+                Plan details load from the existing membership API.
               </span>
             )}
-          </h1>
-
-          {/* Subtitle */}
-          <p className="text-gray-600 text-lg sm:text-xl max-w-2xl mx-auto leading-relaxed mb-8">
-            {pageContent?.hero?.description ||
-              activePlan?.description ||
-              DEFAULT_CONTENT.hero.description}
-          </p>
-          {pageContent?.hero?.note && (
-            <p className="text-xs sm:text-sm text-gray-500">
-              {pageContent.hero.note}
-            </p>
-          )}
-
-          {/* Active member badge */}
-          {isMemberActive && (
-            <div
-              className={`inline-flex items-center gap-3 px-6 py-3 rounded-2xl ${ACCENT_BG_IMAGE_CLASS} text-white shadow-xl shadow-black/10`}
-            >
-              <FaCheck className="text-lg" />
-              <span className="font-bold">You&apos;re a Member!</span>
-              <span className="text-emerald-100">
-                Expires:{" "}
-                {new Date(
-                  membershipStatus.membershipExpiry,
-                ).toLocaleDateString()}
+            {showOriginalPrice ? (
+              <span className="text-lg text-[#9f8795] line-through">
+                {originalPrice}
               </span>
-            </div>
-          )}
-        </header>
+            ) : null}
+          </div>
+          {activePlan?.duration ? (
+            <p className="mt-3 text-sm text-[#6c4b5d]">
+              Valid for {activePlan.duration} {activePlan.durationUnit}.
+            </p>
+          ) : null}
+          <button
+            type="button"
+            onClick={handleSubscribe}
+            disabled={isMemberActive}
+            className="mt-7 inline-flex h-12 items-center justify-center gap-2 rounded-full bg-[#2f1325] px-7 text-sm font-semibold text-white shadow-xl shadow-[#2f1325]/20 transition hover:-translate-y-0.5 hover:bg-[#4b1f3a] disabled:cursor-default disabled:opacity-80"
+          >
+            {isMemberActive ? "Membership Active" : "Join The Club"}
+            <ArrowRight className="h-4 w-4" aria-hidden="true" />
+          </button>
+          {!isLoggedIn && !isMemberActive ? (
+            <p className="mt-3 text-sm text-[#6c4b5d]">
+              Login is required before checkout.
+            </p>
+          ) : null}
+        </motion.div>
+      </motion.section>
 
-        <MembershipExclusivePreview
-          onUnlockExclusive={handlePreviewUnlockCta}
-          theme={theme}
-        />
-
-        <MemberGate
-          isMember={user?.isMember}
-          fallback={
-            <>
-              {/* Benefits Section */}
-              <section className="mb-16">
-                <div className="text-center mb-10">
-                  <h2 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-3">
-                    <span className={ACCENT_TEXT_CLASS}>
-                      {pageContent?.benefits?.title ||
-                        DEFAULT_CONTENT.benefits.title}
-                    </span>
-                  </h2>
-                  <p className="text-gray-600 max-w-xl mx-auto">
-                    {pageContent?.benefits?.subtitle ||
-                      DEFAULT_CONTENT.benefits.subtitle}
-                  </p>
-                </div>
-
-                {/* Benefits Grid */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6">
-                  {(pageContent?.benefits?.items?.length
-                    ? pageContent.benefits.items
-                    : DEFAULT_CONTENT.benefits.items
-                  ).map((benefit, index) => (
-                    <BenefitCard
-                      key={`${benefit.title}-${index}`}
-                      icon={benefit.icon}
-                      title={benefit.title}
-                      description={benefit.description}
-                      index={index}
-                    />
-                  ))}
-                </div>
-              </section>
-
-              {/* Pricing Section */}
-              <section id="membership-pricing" className="text-center">
-                {/* Price Card */}
-                {activePlan && (
-                  <div className="inline-block mb-8">
-                    <div className="relative">
-                      {/* Glass card */}
-                      <div className="relative rounded-3xl border border-[var(--glass-border)] bg-[var(--glass-bg)] px-12 py-8 shadow-[var(--glass-shadow)] backdrop-blur-[var(--glass-blur)]">
-                        {/* Sparkle decoration */}
-                        <IoSparkles className="absolute -top-3 -right-3 text-3xl text-amber-400 animate-pulse" />
-
-                        <div className="mb-4">
-                          <p className="text-xs uppercase tracking-[0.2em] text-gray-500">
-                            {pageContent?.pricing?.title ||
-                              DEFAULT_CONTENT.pricing.title}
-                          </p>
-                          <p className="text-sm text-gray-500">
-                            {pageContent?.pricing?.subtitle ||
-                              DEFAULT_CONTENT.pricing.subtitle}
-                          </p>
-                        </div>
-
-                        {/* Price */}
-                        <div className="flex items-baseline justify-center gap-1 mb-2">
-                          <span className="text-2xl font-bold text-gray-500">
-                            ₹
-                          </span>
-                          <span
-                            className={`text-5xl sm:text-6xl font-black ${ACCENT_TEXT_CLASS}`}
-                          >
-                            {activePlan.price}
-                          </span>
-                          {activePlan.originalPrice > activePlan.price && (
-                            <span className="text-xl text-gray-400 line-through ml-3">
-                              ₹{activePlan.originalPrice}
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Duration */}
-                        <p className="text-gray-500 font-medium">
-                          for {activePlan.duration} {activePlan.durationUnit}
-                        </p>
-
-                        {pageContent?.pricing?.note && (
-                          <p className="text-xs text-gray-500 mt-2">
-                            {pageContent.pricing.note}
-                          </p>
-                        )}
-
-                        {/* Save badge */}
-                        {activePlan.originalPrice > activePlan.price && (
-                          <div
-                            className={`absolute -top-4 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full ${ACCENT_BG_IMAGE_CLASS} text-white text-sm font-bold shadow-lg`}
-                          >
-                            Save ₹{activePlan.originalPrice - activePlan.price}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* CTA Button */}
-                <div>
-                  <button
-                    onClick={handleSubscribe}
-                    disabled={isMemberActive}
-                    className={`
-                relative group inline-flex items-center gap-3 px-10 py-4 rounded-2xl text-white font-bold text-lg
-                transition-all duration-300 transform
-                ${
-                  isMemberActive
-                    ? `${ACCENT_BG_IMAGE_CLASS} cursor-default opacity-90`
-                    : `${ACCENT_BG_IMAGE_CLASS} hover:scale-105 hover:shadow-2xl hover:shadow-black/20 active:scale-[0.98]`
-                }
-                shadow-xl shadow-black/15
-              `}
-                  >
-                    {/* Button shine effect */}
-                    {!isMemberActive && (
-                      <div className="absolute inset-0 rounded-2xl overflow-hidden">
-                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
-                      </div>
-                    )}
-
-                    <span className="relative">
-                      {isMemberActive ? (
-                        <>
-                          <FaCheck className="inline mr-2" />
-                          Active Member
-                        </>
-                      ) : isLoggedIn ? (
-                        <>
-                          <FaCrown className="inline mr-2" />
-                          {pageContent?.pricing?.ctaText ||
-                            DEFAULT_CONTENT.pricing.ctaText}
-                        </>
-                      ) : (
-                        "Login to Join"
-                      )}
-                    </span>
-                  </button>
-
-                  <p className="text-gray-500 text-sm mt-4">
-                    {isMemberActive
-                      ? "Enjoy your exclusive member benefits!"
-                      : isLoggedIn
-                        ? "Click above to proceed to checkout"
-                        : "Login required to activate membership"}
-                  </p>
-                </div>
-              </section>
-
-              {/* CTA Section */}
-              {!isMemberActive && (
-                <section className="mt-16">
-                  <div className="relative overflow-hidden rounded-3xl border border-[var(--glass-border)] bg-[var(--glass-bg)] px-8 py-10 shadow-[var(--glass-shadow)] backdrop-blur-[var(--glass-blur)] sm:px-10">
-                    <div className="absolute inset-0 opacity-40">
-                      <div
-                        className={`absolute -top-20 -right-20 h-48 w-48 rounded-full blur-3xl ${theme.glowB}`}
-                      />
-                      <div
-                        className={`absolute -bottom-24 -left-24 h-56 w-56 rounded-full blur-3xl ${theme.glowA}`}
-                      />
-                    </div>
-                    <div className="relative z-10 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-                      <div>
-                        <h3 className="text-2xl sm:text-3xl font-bold text-gray-900">
-                          {pageContent?.cta?.title || DEFAULT_CONTENT.cta.title}
-                        </h3>
-                        <p className="text-gray-600 mt-2 max-w-2xl">
-                          {pageContent?.cta?.description ||
-                            DEFAULT_CONTENT.cta.description}
-                        </p>
-                      </div>
-                      <button
-                        onClick={handleSecondaryCta}
-                        className={`inline-flex items-center justify-center px-8 py-3 rounded-2xl font-semibold text-white ${ACCENT_BG_IMAGE_CLASS} shadow-lg shadow-black/15 hover:scale-[1.02] transition-transform`}
-                      >
-                        {pageContent?.cta?.buttonText ||
-                          DEFAULT_CONTENT.cta.buttonText}
-                      </button>
-                    </div>
-                  </div>
-                </section>
-              )}
-            </>
-          }
-        >
-          <section className="mb-16">
-            <div className="relative overflow-hidden rounded-3xl border border-[var(--glass-border)] bg-[var(--glass-bg)] p-8 shadow-[var(--glass-shadow)] backdrop-blur-[var(--glass-blur)] sm:p-10">
-              <div className="absolute inset-0 opacity-40">
-                <div
-                  className={`absolute -top-20 -right-20 h-48 w-48 rounded-full blur-3xl ${theme.glowB}`}
-                />
-                <div
-                  className={`absolute -bottom-24 -left-24 h-56 w-56 rounded-full blur-3xl ${theme.glowA}`}
-                />
-              </div>
-
-              <div className="relative z-10">
-                <div
-                  className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-bold text-white shadow-lg ${ACCENT_BG_IMAGE_CLASS}`}
-                >
-                  <FaCheck />
-                  Active Member
-                </div>
-
-                <h2 className="mt-5 text-2xl sm:text-3xl font-bold text-gray-900">
-                  <span className={ACCENT_TEXT_CLASS}>
-                    You are an Active Member
-                  </span>
-                </h2>
-
-                <p className="mt-2 text-gray-600">
-                  Your membership is currently active.
-                  {membershipExpiryLabel
-                    ? ` Valid until ${membershipExpiryLabel}.`
-                    : ""}
+      <motion.section
+        variants={stagger}
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true, amount: 0.25 }}
+        className="mx-auto grid max-w-7xl gap-8 px-4 py-12 sm:px-6 lg:grid-cols-[1.05fr_0.95fr] lg:px-8 lg:py-16"
+      >
+        <motion.div variants={fadeUp} className="flex flex-col justify-center">
+          <SectionHeading
+            eyebrow="VIP Experience"
+            title="A member world made for women who love style"
+            copy="Private launches, thoughtful rewards, and boutique attention come together in a softer, more personal loyalty experience."
+          />
+          <div className="mt-7 grid gap-4 sm:grid-cols-2">
+            {["Private collection previews", "Birthday styling gifts", "Priority customer care", "Member-only fashion notes"].map((item) => (
+              <div
+                key={item}
+                className="rounded-3xl border border-[#f0d8df] bg-white/90 p-5 shadow-[0_14px_46px_rgba(93,45,74,0.1)]"
+              >
+                <p className="flex items-center gap-3 text-sm font-semibold text-[#2f1325]">
+                  <Gem className="h-4 w-4 text-[#9d6b19]" aria-hidden="true" />
+                  {item}
                 </p>
-
-                <div className="mt-6 rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-bg)] p-5 shadow-[var(--glass-shadow)] backdrop-blur-[var(--glass-blur)]">
-                  <h3 className="text-lg font-semibold text-gray-900">
-                    Member status card
-                  </h3>
-                  <p className="mt-1 text-sm text-gray-600">
-                    Benefits unlocked summary and member-only access are active
-                    on your account.
-                  </p>
-                </div>
-
-                <div className="mt-6">
-                  <h3 className="text-lg font-semibold text-gray-900">
-                    Benefits unlocked summary
-                  </h3>
-                  <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-3">
-                    {unlockedBenefits.map((benefit, index) => (
-                      <div
-                        key={`${benefit.title || "benefit"}-${index}`}
-                        className="rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-bg)] p-4 shadow-[var(--glass-shadow)] backdrop-blur-[var(--glass-blur)]"
-                      >
-                        <p className="text-sm font-semibold text-gray-900">
-                          {benefit.title}
-                        </p>
-                        <p className="mt-1 text-xs text-gray-600">
-                          {benefit.description}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
               </div>
-            </div>
-          </section>
-        </MemberGate>
-      </div>
+            ))}
+          </div>
+        </motion.div>
+        <LuxuryArtwork
+          title="VIP Boutique Experience"
+          copy="An elevated member world for private launches and thoughtful care."
+          ratio="portrait"
+          icon={Crown}
+          artworkKey="membership.vip"
+        />
+      </motion.section>
 
-      {/* Custom keyframes for floating animation */}
-      <style jsx>{`
-        @keyframes floatUp {
-          0%,
-          100% {
-            transform: translateY(0) rotate(0deg);
-            opacity: 0;
-          }
-          10% {
-            opacity: 0.7;
-          }
-          90% {
-            opacity: 0.7;
-          }
-          100% {
-            transform: translateY(-100vh) rotate(360deg);
-            opacity: 0;
-          }
-        }
-      `}</style>
+      <RewardsDashboardPreview
+        isMemberActive={isMemberActive}
+        activePlan={activePlan}
+      />
+
+      <motion.section
+        variants={stagger}
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true, amount: 0.25 }}
+        className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8 lg:py-16"
+      >
+        <SectionHeading
+          eyebrow="Success Stories"
+          title="Member stories, ready for the Ananya community"
+          copy="Elegant story cards for real testimonials from Fashion Insider Club members."
+          align="center"
+        />
+        <div className="mt-9 grid gap-5 md:grid-cols-3">
+          {successStories.map((story) => (
+            <motion.article
+              key={story.name}
+              variants={fadeUp}
+              whileHover={{ y: -5 }}
+              className="rounded-3xl border border-[#f0d8df] bg-white/90 p-6 shadow-[0_18px_60px_rgba(93,45,74,0.12)]"
+            >
+              <div className="mb-5 flex gap-1 text-[#cc7a9b]">
+                {Array.from({ length: 5 }).map((_, index) => (
+                  <Star key={index} className="h-4 w-4 fill-current" aria-hidden="true" />
+                ))}
+              </div>
+              <p className="text-sm leading-7 text-[#604354]">"{story.text}"</p>
+              <div className="mt-6 border-t border-[#f3dce5] pt-5">
+                <p className="font-semibold text-[#2f1325]">{story.name}</p>
+                <p className="mt-1 text-xs font-semibold uppercase tracking-[0.16em] text-[#9d6b19]">
+                  {story.title}
+                </p>
+              </div>
+            </motion.article>
+          ))}
+        </div>
+      </motion.section>
+
+      <section className="px-4 py-12 sm:px-6 lg:px-8 lg:py-20">
+        <motion.div
+          variants={stagger}
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, amount: 0.25 }}
+          className="mx-auto grid max-w-7xl gap-8 overflow-hidden rounded-[2rem] border border-[#efd8b0]/85 bg-[#2f1325] p-6 text-white shadow-[0_30px_100px_rgba(47,19,37,0.28)] sm:p-8 lg:grid-cols-[0.92fr_1.08fr] lg:p-10"
+        >
+          <LuxuryArtwork
+            title="The Insider Invitation"
+            copy="A lifestyle invitation into rewards, confidence, and private fashion moments."
+            ratio="wide"
+            icon={ShoppingBag}
+            artworkKey="membership.hero"
+          />
+          <motion.div variants={fadeUp} className="flex flex-col justify-center">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#f8d88a]">
+              Your private fashion circle awaits
+            </p>
+            <h2 className="mt-3 font-serif text-4xl font-semibold leading-tight sm:text-5xl">
+              Step into the Fashion Insider Club.
+            </h2>
+            <p className="mt-5 text-base leading-8 text-white/75 sm:text-lg">
+              Join for early access, exclusive discounts, birthday rewards,
+              fashion points, priority support, and member-only collections.
+            </p>
+            <button
+              type="button"
+              onClick={handleSubscribe}
+              disabled={isMemberActive}
+              className="mt-7 inline-flex h-12 w-fit items-center justify-center gap-2 rounded-full bg-white px-7 text-sm font-semibold text-[#2f1325] shadow-xl shadow-black/20 transition hover:-translate-y-0.5 hover:bg-[#fff8ef] disabled:cursor-default disabled:opacity-80"
+            >
+              {isMemberActive ? "Already A Member" : "Join The Club"}
+              <ArrowRight className="h-4 w-4" aria-hidden="true" />
+            </button>
+          </motion.div>
+        </motion.div>
+      </section>
     </main>
   );
 }

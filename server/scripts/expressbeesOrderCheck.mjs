@@ -1,4 +1,4 @@
-﻿import fs from "fs/promises";
+import fs from "fs/promises";
 import path from "path";
 import dotenv from "dotenv";
 import mongoose from "mongoose";
@@ -49,7 +49,7 @@ const safeWriteJson = async (filePath, payload) => {
 };
 
 const resolveSellerDetails = () => ({
-  name: process.env.INVOICE_SELLER_NAME || process.env.BUSINESS_NAME || "BuyOneGram",
+  name: process.env.INVOICE_SELLER_NAME || process.env.BUSINESS_NAME || "Ananya Boutique",
   gstin: process.env.INVOICE_SELLER_GSTIN || "",
   address: process.env.INVOICE_SELLER_ADDRESS || "",
   state: process.env.INVOICE_SELLER_STATE || "",
@@ -178,8 +178,8 @@ const run = async () => {
     };
 
     // Ensure pickup defaults align with the tax-invoice seller address.
-    setEnvIfMissing("XPRESSBEES_PICKUP_WAREHOUSE", "BUY ONE GRAM PRIVATE LIMITED");
-    setEnvIfMissing("XPRESSBEES_PICKUP_NAME", "BuyOneGram Dispatch");
+    setEnvIfMissing("XPRESSBEES_PICKUP_WAREHOUSE", "Ananya Boutique");
+    setEnvIfMissing("XPRESSBEES_PICKUP_NAME", "Ananya Boutique Dispatch");
     setEnvIfMissing(
       "XPRESSBEES_PICKUP_ADDRESS1",
       "G-225, RIICO INDUSTRIAL AREA SITAPURA, TONK ROAD",

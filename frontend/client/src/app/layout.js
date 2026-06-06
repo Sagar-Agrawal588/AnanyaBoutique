@@ -1,7 +1,7 @@
 import FlavorThemeProvider from "@/context/ThemeContext";
 import ThemeProvider from "@/context/theme-provider";
 import { resolvePublicSiteUrl } from "@/utils/siteUrl";
-import { Inter, Poppins } from "next/font/google";
+import { Inter, Playfair_Display, Poppins } from "next/font/google";
 import Script from "next/script";
 import ClientLayout from "./ClientLayout.jsx";
 import "./globals.css";
@@ -19,36 +19,42 @@ const poppins = Poppins({
   variable: "--font-poppins",
 });
 
+const playfair = Playfair_Display({
+  subsets: ["latin"],
+  weight: ["500", "600", "700"],
+  variable: "--font-fashion-serif",
+});
+
 const buildDefaultMetadata = (siteUrl) => ({
   metadataBase: new URL(siteUrl),
-  title: "Healthy One Gram - Premium Peanut Butter Store",
+  title: "Ananya Boutique - Fashion Created With Love Since 2012",
   description:
-    "Shop premium quality peanut butter and healthy food products at Healthy One Gram. Natural, organic, and delicious options for a healthier lifestyle.",
+    "Discover sarees, suits, kurtis, leggings, cosmetics, jewellery, and curated occasion edits from a family-owned boutique trusted since 2012.",
   keywords:
-    "peanut butter, healthy food, organic, natural, protein, healthy one gram",
-  authors: [{ name: "Healthy One Gram" }],
+    "boutique fashion, sarees, suits, kurtis, leggings, cosmetics, artificial jewellery, accessories, occasion wear, ananya boutique",
+  authors: [{ name: "Ananya Boutique" }],
   openGraph: {
-    title: "Healthy One Gram - Premium Peanut Butter Store",
+    title: "Ananya Boutique - Fashion Created With Love Since 2012",
     description:
-      "Shop premium quality peanut butter and healthy food products. Natural, organic, and delicious options for a healthier lifestyle.",
+      "Fashion created with love, trust, and years of dedication by a founder-led family boutique.",
     url: siteUrl,
     type: "website",
     locale: "en_IN",
-    siteName: "Healthy One Gram",
+    siteName: "Ananya Boutique",
     images: [
       {
         url: "/logo-og-v2.png",
         width: 512,
         height: 512,
-        alt: "Healthy One Gram",
+        alt: "Ananya Boutique",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Healthy One Gram - Premium Peanut Butter Store",
+    title: "Ananya Boutique - Fashion Created With Love Since 2012",
     description:
-      "Shop premium quality peanut butter and healthy food products.",
+      "A boutique built by a mother, trusted by women since 2012.",
     images: ["/logo-og-v2.png"],
   },
   icons: {
@@ -71,8 +77,8 @@ const normalizeApiBase = (value) =>
     .replace(/^["']|["']$/g, "")
     .replace(/\/+$/, "")
     .replace(/\/api$/i, "");
-const DEFAULT_PUBLIC_SITE_URL = "https://healthyonegram.com";
-const DEFAULT_API_BASE_URL = "https://healthyonegram-api-v2-xb7znoco6a-uc.a.run.app";
+const DEFAULT_PUBLIC_SITE_URL = "https://ananyaboutique.com";
+const DEFAULT_API_BASE_URL = "https://api.ananyaboutique.com";
 const PUBLIC_SETTINGS_REVALIDATE_SECONDS = 300;
 const PUBLIC_SETTINGS_FETCH_TIMEOUT_MS = 2500;
 
@@ -95,8 +101,9 @@ const fetchWithTimeout = async (url, options = {}) => {
 
 const headerBackgroundBootstrapScript = `(function () {
   try {
-    var key = "hog_header_background_color";
-    var color = localStorage.getItem(key) || "";
+    var key = "ananya_header_background_color";
+    var legacyKey = "hog_header_background_color";
+    var color = localStorage.getItem(key) || localStorage.getItem(legacyKey) || "";
     var valid = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(color);
     if (valid) {
       var normalized = color.toLowerCase();
@@ -107,6 +114,7 @@ const headerBackgroundBootstrapScript = `(function () {
           normalized[2] + normalized[2] +
           normalized[3] + normalized[3];
       }
+      localStorage.setItem(key, normalized);
       document.documentElement.style.setProperty("--header-bg-color", normalized);
     }
   } catch (e) {}
@@ -163,7 +171,9 @@ export async function generateMetadata({ request }) {
 export default function RootLayout({ children }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${inter.variable} ${poppins.variable} ${inter.className}`}>
+      <body
+        className={`${inter.variable} ${poppins.variable} ${playfair.variable} ${inter.className}`}
+      >
         <Script
           id="header-bg-bootstrap"
           strategy="beforeInteractive"

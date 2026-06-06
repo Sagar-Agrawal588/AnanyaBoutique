@@ -56,7 +56,7 @@ jobs:
           CLOUD_RUN_SERVICE: ${{ secrets.CLOUD_RUN_BACKEND_SERVICE }}
           CLOUD_RUN_REGION: ${{ secrets.CLOUD_RUN_REGION }}
         run: |
-          service="${CLOUD_RUN_SERVICE:-healthyonegram-api-v2}"
+          service="${CLOUD_RUN_SERVICE:-ananyaboutique-api}"
           region="$(printf '%s' "${CLOUD_RUN_REGION:-us-central1}" | tr -d '\r\n' | xargs)"
           if [ -z "$region" ]; then
             region="us-central1"
@@ -304,7 +304,7 @@ jobs:
           CLOUD_RUN_SERVICE: ${{ secrets.CLOUD_RUN_BACKEND_SERVICE }}
           CLOUD_RUN_REGION: ${{ secrets.CLOUD_RUN_REGION }}
         run: |
-          service="${CLOUD_RUN_SERVICE:-healthyonegram-api-v2}"
+          service="${CLOUD_RUN_SERVICE:-ananyaboutique-api}"
           region="$(printf '%s' "${CLOUD_RUN_REGION:-us-central1}" | tr -d '\r\n' | xargs)"
           if [ -z "$region" ]; then
             region="us-central1"
@@ -356,9 +356,9 @@ jobs:
 
           node scripts/production-smoke-check.mjs \
             --backend-url "$BACKEND_SMOKE_URL" \
-            --origin "https://healthyonegram.com" \
-            --origin "https://healthyonegram-client--studio-8452116634-cdb59.us-central1.hosted.app" \
-            --origin "https://healthyonegram-admin--studio-8452116634-cdb59.us-central1.hosted.app"
+            --origin "https://ananyaboutique.com" \
+            --origin "https://ananyaboutique.com" \
+            --origin "https://admin.ananyaboutique.com"
 
       - name: Cleanup
         if: always()

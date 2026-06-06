@@ -8,26 +8,26 @@ import { useContext, useEffect, useState } from "react";
 import { AiOutlineCheck } from "react-icons/ai";
 
 const DEFAULT_BENEFITS = [
-  { emoji: "💰", title: "Save ₹2000+", description: "Annually with discounts" },
-  { emoji: "📦", title: "Free Shipping", description: "On all your orders" },
+  { emoji: "VIP", title: "Member Savings", description: "Exclusive boutique offers" },
+  { emoji: "SHIP", title: "Free Shipping", description: "On all your orders" },
   {
-    emoji: "🎧",
+    emoji: "CARE",
     title: "24/7 Support",
-    description: "Dedicated member hotline",
+    description: "Priority styling and order help",
   },
   {
-    emoji: "🚀",
+    emoji: "DROP",
     title: "Early Access",
-    description: "To new product launches",
+    description: "To new arrivals and festive edits",
   },
 ];
 
 const DEFAULT_CHECK_ITEMS = [
   { text: "15% discount on all orders" },
   { text: "Free shipping on every purchase" },
-  { text: "Exclusive member-only products" },
+  { text: "Exclusive member-only drops" },
   { text: "Priority customer support" },
-  { text: "Monthly wellness tips & guides" },
+  { text: "Styling notes and new collection previews" },
 ];
 
 export default function MembershipCTA() {
@@ -36,9 +36,9 @@ export default function MembershipCTA() {
   const flavor = themeContext?.flavor || FLAVORS.creamy;
   const [mounted, setMounted] = useState(false);
 
-  const [title, setTitle] = useState("Join Our Buy One Gram Club");
+  const [title, setTitle] = useState("Join Our Ananya Boutique Club");
   const [subtitle, setSubtitle] = useState(
-    "Unlock premium benefits, exclusive savings, and prioritize your health journey with us.",
+    "Unlock early access, member-only offers, styling notes, and boutique rewards.",
   );
   const [benefits, setBenefits] = useState(DEFAULT_BENEFITS);
   const [checkItems, setCheckItems] = useState(DEFAULT_CHECK_ITEMS);

@@ -1071,7 +1071,7 @@ export default function PurchaseOrdersPage() {
     const fyStart = String(fyStartYear % 100).padStart(2, "0");
     const fyEnd = String(fyEndYear % 100).padStart(2, "0");
     const seq = String((index ?? 0) + 1).padStart(3, "0");
-    return `BOGPO${fyStart}-${fyEnd}/${seq}`;
+    return `ANBPO${fyStart}-${fyEnd}/${seq}`;
   };
 
   const formatPacking = (item) => {

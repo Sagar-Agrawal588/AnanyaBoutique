@@ -45,10 +45,10 @@ const getFrontendBaseUrl = () => {
     normalizeBaseUrl(process.env.ADMIN_URL);
 
   if (isProduction && isLocalhostBaseUrl(candidate)) {
-    return "https://healthyonegram.com";
+    return "https://ananyaboutique.com";
   }
 
-  return candidate || "https://healthyonegram.com";
+  return candidate || "https://ananyaboutique.com";
 };
 
 const getSupportContactEmail = () =>
@@ -93,10 +93,10 @@ const getBackendBaseUrl = () => {
     normalizeBaseUrl(process.env.NEXT_PUBLIC_API_URL);
 
   if (isProduction && isLocalhostBaseUrl(candidate)) {
-    return "https://healthyonegram-api-v2-xb7znoco6a-uc.a.run.app";
+    return "https://api.ananyaboutique.com";
   }
 
-  return candidate || "https://healthyonegram-api-v2-xb7znoco6a-uc.a.run.app";
+  return candidate || "https://api.ananyaboutique.com";
 };
 
 const normalizePromotionalEmail = (value) =>
@@ -186,7 +186,7 @@ const renderPromotionalUnsubscribePage = ({
             : ""
         }
         <div style="margin-top:18px;padding:12px;border-radius:10px;background:#f8fafc;border:1px solid #e2e8f0;color:#475569;font-size:13px;">You can manage subscriptions anytime from account settings.</div>
-        <p style="margin:0;font-size:13px;color:#64748b;">HealthyOneGram</p>
+        <p style="margin:0;font-size:13px;color:#64748b;">Ananya Boutique</p>
       </div>
     </div>
   </body>
@@ -1211,7 +1211,7 @@ export const unsubscribePromotionalEmail = async (req, res) => {
           renderPromotionalUnsubscribePage({
             success: true,
             message:
-              "Do you want to stop receiving promotional emails from HealthyOneGram?",
+              "Do you want to stop receiving promotional emails from Ananya Boutique?",
             showConfirm: true,
             confirmUrl,
           }),

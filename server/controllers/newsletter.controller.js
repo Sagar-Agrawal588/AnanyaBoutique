@@ -28,10 +28,10 @@ const ALLOWED_SOURCES = new Set([
 ]);
 
 const NEWSLETTER_TEMPLATE_SETTING_KEY = "newsletterEmailTemplate";
-const DEFAULT_NEWSLETTER_SUBJECT = "Latest updates from HealthyOneGram";
+const DEFAULT_NEWSLETTER_SUBJECT = "Latest updates from Ananya Boutique";
 const DEFAULT_NEWSLETTER_HTML = `
 <div style="font-family: Arial, sans-serif; max-width: 680px; margin: 0 auto; color: #1f2937; line-height: 1.6;">
-  <h1 style="margin-bottom: 12px;">HealthyOneGram Newsletter</h1>
+  <h1 style="margin-bottom: 12px;">Ananya Boutique Newsletter</h1>
   <p>Hello {{email}},</p>
   <p>Thanks for being part of our community. This is your newsletter content preview.</p>
   <p>Update this template from the admin panel before sending.</p>
@@ -117,7 +117,7 @@ const getPublicSiteUrl = () => {
   const raw =
     process.env.CLIENT_URL ||
     process.env.NEXT_PUBLIC_SITE_URL ||
-    "https://healthyonegram.com";
+    "https://ananyaboutique.com";
   const first = String(raw).split(",")[0].trim();
   return first.replace(/\/+$/, "");
 };
@@ -127,7 +127,7 @@ const getPublicApiUrl = () => {
     process.env.API_BASE_URL ||
     process.env.BACKEND_URL ||
     process.env.SERVER_URL ||
-    "https://healthyonegram-api-v2-xb7znoco6a-uc.a.run.app";
+    "https://api.ananyaboutique.com";
   return String(raw)
     .split(",")[0]
     .trim()
@@ -218,25 +218,25 @@ const getWelcomeEmailTemplate = (email) => {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Welcome to HealthyOneGram Family</title>
+  <title>Welcome to Ananya Boutique Family</title>
 </head>
 <body style="margin:0;padding:0;font-family:Segoe UI,Arial,sans-serif;background:#f9f5f0;">
   <div style="max-width:600px;margin:0 auto;background:#ffffff;">
     <div style="background:linear-gradient(135deg,#c1591c 0%,#e07830 100%);padding:32px 24px;text-align:center;color:#fff;">
-      <h1 style="margin:0;font-size:26px;">Welcome to HealthyOneGram</h1>
-      <p style="margin:10px 0 0;font-size:15px;">Your healthy shopping journey starts here.</p>
+      <h1 style="margin:0;font-size:26px;">Welcome to Ananya Boutique</h1>
+      <p style="margin:10px 0 0;font-size:15px;">Your boutique shopping journey starts here.</p>
     </div>
 
     <div style="padding:28px 24px;color:#444;line-height:1.6;">
       <p>Thank you for subscribing with <strong>${email}</strong>.</p>
-      <p>You will receive product updates, special offers, and healthy recipes.</p>
+      <p>You will receive product updates, special offers, and style notes.</p>
       <p><a href="${siteUrl}/products" style="display:inline-block;background:#c1591c;color:#fff;text-decoration:none;padding:10px 16px;border-radius:6px;">Explore Products</a></p>
       <p style="margin:14px 0 0;font-size:13px;color:#6b5b4d;">Prefer fewer updates? <a href="${unsubscribeUrl}" style="color:#c1591c;text-decoration:underline;">Unsubscribe</a>.</p>
-      <p style="margin-top:18px;">Regards,<br><strong>HealthyOneGram Team</strong></p>
+      <p style="margin-top:18px;">Regards,<br><strong>Ananya Boutique Team</strong></p>
     </div>
 
     <div style="background:#2c2c2c;padding:20px 24px;color:#aaa;font-size:12px;">
-      <p style="margin:0;">&copy; ${new Date().getFullYear()} HealthyOneGram. All rights reserved.</p>
+      <p style="margin:0;">&copy; ${new Date().getFullYear()} Ananya Boutique. All rights reserved.</p>
     </div>
   </div>
 </body>
@@ -252,8 +252,8 @@ const sendWelcomeEmail = async (email) => {
   try {
     const siteUrl = getPublicSiteUrl();
     const unsubscribeUrl = buildNewsletterUnsubscribeUrl(email);
-    const subject = "Welcome to the HealthyOneGram Family!";
-    const text = `Welcome to HealthyOneGram! Thank you for subscribing to our newsletter. You'll now receive updates about exclusive discounts, new products, and healthy recipes. Visit us at ${siteUrl}`;
+    const subject = "Welcome to the Ananya Boutique Family!";
+    const text = `Welcome to Ananya Boutique! Thank you for subscribing to our newsletter. You'll now receive updates about exclusive discounts, new products, and style notes. Visit us at ${siteUrl}`;
 
     const templateResult = await sendTemplatedEmail({
       to: email,
@@ -578,9 +578,9 @@ export const unsubscribe = async (req, res) => {
         .set("Content-Type", "text/html; charset=utf-8")
         .send(
           renderNewsletterUnsubscribePage({
-            title: "Unsubscribe from HealthyOneGram",
+            title: "Unsubscribe from Ananya Boutique",
             message:
-              "Do you want to stop receiving newsletter emails from HealthyOneGram?",
+              "Do you want to stop receiving newsletter emails from Ananya Boutique?",
             showConfirm: true,
             confirmUrl: buildNewsletterUnsubscribeUrl(normalizedEmail, {
               confirm: true,

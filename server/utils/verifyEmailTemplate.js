@@ -48,7 +48,7 @@ const VerificationEmail = (username, otp) => {
                                             opacity: 0.9;
                                         "
                                     >
-                                        HealthyOneGram
+                                        Ananya Boutique
                                     </div>
                                     <h1 style="margin: 8px 0 0; font-size: 26px; line-height: 1.2">
                                         One-Time Password
@@ -109,7 +109,7 @@ const VerificationEmail = (username, otp) => {
                                     "
                                 >
                                     <p style="margin: 0">
-                                        &copy; 2026 HealthyOneGram. All rights reserved.
+                                        &copy; 2026 Ananya Boutique. All rights reserved.
                                     </p>
                                 </td>
                             </tr>

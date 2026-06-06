@@ -59,23 +59,23 @@ const defaultPopupSettings = {
   couponCode: "",
 };
 const DEFAULT_FLAVOUR_BUTTON_SETTINGS = {
-  flavour_button_1_text: "Creamy",
-  flavour_button_1_bg_color: "#F6E6C9",
-  flavour_button_1_text_color: "#6B4F2A",
-  flavour_button_2_text: "Chocolate",
-  flavour_button_2_bg_color: "#5A3A2E",
-  flavour_button_2_text_color: "#FFFFFF",
-  flavour_button_3_text: "Daizu",
-  flavour_button_3_bg_color: "#8FAE5D",
-  flavour_button_3_text_color: "#2F3E1F",
-  flavour_button_4_text: "Low-calorie",
-  flavour_button_4_bg_color: "#CFEFE8",
-  flavour_button_4_text_color: "#1F4D46",
+  flavour_button_1_text: "Sarees",
+  flavour_button_1_bg_color: "#FCE7F3",
+  flavour_button_1_text_color: "#831843",
+  flavour_button_2_text: "Suits",
+  flavour_button_2_bg_color: "#EDE9FE",
+  flavour_button_2_text_color: "#4C1D95",
+  flavour_button_3_text: "Kurtis",
+  flavour_button_3_bg_color: "#FDF2F8",
+  flavour_button_3_text_color: "#9D174D",
+  flavour_button_4_text: "Accessories",
+  flavour_button_4_bg_color: "#F3E8FF",
+  flavour_button_4_text_color: "#6B21A8",
 };
 const DEFAULT_HOMEPAGE_TRUST_SETTINGS = {
-  homepage_trust_1_text: "100% Natural",
-  homepage_trust_2_text: "No Palm Oil",
-  homepage_trust_3_text: "High Protein",
+  homepage_trust_1_text: "Boutique Picks",
+  homepage_trust_2_text: "Fresh Arrivals",
+  homepage_trust_3_text: "Curated Styles",
   homepage_trust_4_text: "Fast Moving Picks",
 };
 const DEFAULT_OFFER_COUNTDOWN_SETTINGS = {
@@ -90,25 +90,25 @@ const DEFAULT_OFFER_COUNTDOWN_SETTINGS = {
 };
 const FLAVOUR_BUTTON_FIELDS = [
   {
-    label: "Creamy",
+    label: "Sarees",
     textKey: "flavour_button_1_text",
     bgKey: "flavour_button_1_bg_color",
     textColorKey: "flavour_button_1_text_color",
   },
   {
-    label: "Chocolate",
+    label: "Suits",
     textKey: "flavour_button_2_text",
     bgKey: "flavour_button_2_bg_color",
     textColorKey: "flavour_button_2_text_color",
   },
   {
-    label: "Daizu",
+    label: "Kurtis",
     textKey: "flavour_button_3_text",
     bgKey: "flavour_button_3_bg_color",
     textColorKey: "flavour_button_3_text_color",
   },
   {
-    label: "Low-calorie",
+    label: "Accessories",
     textKey: "flavour_button_4_text",
     bgKey: "flavour_button_4_bg_color",
     textColorKey: "flavour_button_4_text_color",
@@ -118,17 +118,17 @@ const HOMEPAGE_TRUST_FIELDS = [
   {
     label: "Trust Pill 1",
     key: "homepage_trust_1_text",
-    fallback: "100% Natural",
+    fallback: "Boutique Picks",
   },
   {
     label: "Trust Pill 2",
     key: "homepage_trust_2_text",
-    fallback: "No Palm Oil",
+    fallback: "Fresh Arrivals",
   },
   {
     label: "Trust Pill 3",
     key: "homepage_trust_3_text",
-    fallback: "High Protein",
+    fallback: "Curated Styles",
   },
   {
     label: "Trust Pill 4",
@@ -181,7 +181,7 @@ const ORDER_SETTINGS_DEFAULTS = {
   codEnabled: false,
   codMinOrder: 200,
   codMaxOrder: 5000,
-  orderSeriesPrefix: "H1G",
+  orderSeriesPrefix: "ANB",
   orderSeriesPadding: 4,
 };
 
@@ -196,9 +196,9 @@ const DEFAULT_MAINTENANCE_SETTINGS = {
 
 const buildOrderSeriesPreview = (settings = {}) => {
   const prefix =
-    String(settings.orderSeriesPrefix || "H1G")
+    String(settings.orderSeriesPrefix || "ANB")
       .trim()
-      .toUpperCase() || "H1G";
+      .toUpperCase() || "ANB";
   const now = new Date();
   const year = now.getFullYear();
   const month = now.getMonth();
@@ -226,69 +226,69 @@ const DEFAULT_SEO_PAGE_ENTRIES = [
   {
     label: "Home",
     path: "/",
-    metaTitle: "Buy OneGram - Premium Health Products",
+    metaTitle: "Ananya Boutique - Curated Boutique Styles",
     metaDescription:
-      "Shop premium quality peanut butter and healthy food products at Buy OneGram.",
-    keywords: "peanut butter, healthy food, organic, natural, protein",
+      "Shop boutique apparel, accessories, and curated occasion edits at Ananya Boutique.",
+    keywords: "boutique fashion, ethnic wear, accessories, occasion wear, ananya boutique",
     indexable: true,
     notes: "Main homepage SEO entry.",
   },
   {
     label: "Products",
     path: "/products",
-    metaTitle: "Healthy Products | Buy OneGram",
+    metaTitle: "Boutique Collections | Ananya Boutique",
     metaDescription:
-      "Browse healthy pantry essentials, protein-rich snacks, and wellness products from Buy OneGram.",
-    keywords: "healthy products, peanut butter, snacks, protein, wellness",
+      "Browse boutique apparel, accessories, and occasion-ready collections from Ananya Boutique.",
+    keywords: "boutique collections, ethnic wear, accessories, occasion wear, style",
     indexable: true,
     notes: "Catalog landing page.",
   },
   {
     label: "Blogs",
     path: "/blogs",
-    metaTitle: "Wellness Blog | Buy OneGram",
+    metaTitle: "Style Journal | Ananya Boutique",
     metaDescription:
-      "Read nutrition tips, healthy eating guides, and product advice from Buy OneGram.",
-    keywords: "health blog, nutrition tips, wellness, healthy eating",
+      "Read styling notes, collection updates, and boutique guides from Ananya Boutique.",
+    keywords: "style journal, boutique guide, fashion tips, occasion styling",
     indexable: true,
     notes: "Content hub for search traffic.",
   },
   {
     label: "About",
     path: "/about",
-    metaTitle: "About Buy OneGram",
+    metaTitle: "About Ananya Boutique",
     metaDescription:
-      "Learn more about Buy OneGram, our story, and the healthy products we build for everyday use.",
-    keywords: "about buy onegram, healthy brand, peanut butter store",
+      "Learn more about Ananya Boutique, our story, and the collections we curate for everyday style.",
+    keywords: "about ananya boutique, boutique brand, fashion store",
     indexable: true,
     notes: "Brand story page.",
   },
   {
     label: "Membership",
     path: "/membership",
-    metaTitle: "Membership Benefits | Buy OneGram",
+    metaTitle: "Membership Benefits | Ananya Boutique",
     metaDescription:
-      "Unlock premium membership benefits, savings, and rewards with Buy OneGram.",
-    keywords: "membership benefits, rewards, savings, healthy products",
+      "Unlock premium membership benefits, savings, and rewards with Ananya Boutique.",
+    keywords: "membership benefits, rewards, savings, boutique collections",
     indexable: true,
     notes: "Membership landing page.",
   },
   {
-    label: "Healthy Peanut Butter Guide",
-    path: "/healthy-peanut-butter-guide",
-    metaTitle: "Healthy Peanut Butter Guide | Buy OneGram",
+    label: "Boutique Style Guide",
+    path: "/style-guide",
+    metaTitle: "Boutique Style Guide | Ananya Boutique",
     metaDescription:
-      "Explore how to choose healthy peanut butter, simple snack ideas, and ingredient tips from Buy OneGram.",
+      "Explore how to choose boutique looks, accessories, and occasion edits from Ananya Boutique.",
     keywords:
-      "healthy peanut butter, snack ideas, ingredient tips, wellness guide",
+      "boutique style guide, outfit ideas, accessories, occasion guide",
     indexable: true,
     notes: "SEO guide page.",
   },
   {
     label: "Login",
     path: "/login",
-    metaTitle: "Login | Buy OneGram",
-    metaDescription: "Sign in to your Buy OneGram account.",
+    metaTitle: "Login | Ananya Boutique",
+    metaDescription: "Sign in to your Ananya Boutique account.",
     keywords: "login, account sign in",
     indexable: false,
     notes: "Usually noindex.",
@@ -296,8 +296,8 @@ const DEFAULT_SEO_PAGE_ENTRIES = [
   {
     label: "Register",
     path: "/register",
-    metaTitle: "Register | Buy OneGram",
-    metaDescription: "Create your Buy OneGram account.",
+    metaTitle: "Register | Ananya Boutique",
+    metaDescription: "Create your Ananya Boutique account.",
     keywords: "register, create account",
     indexable: false,
     notes: "Usually noindex.",
@@ -308,14 +308,14 @@ const DEFAULT_SEO_IMAGE_ENTRIES = [
   {
     label: "Logo",
     target: "/logo.png",
-    altText: "Buy OneGram logo",
-    titleText: "Buy OneGram",
+    altText: "Ananya Boutique logo",
+    titleText: "Ananya Boutique",
     notes: "Keep the brand logo alt text short.",
   },
   {
     label: "Homepage banners",
     target: "Homepage hero and promotional sliders",
-    altText: "Buy OneGram premium health products banner",
+    altText: "Ananya Boutique curated boutique styles banner",
     titleText: "Homepage banner",
     notes: "Use for hero banners and promotional creatives.",
   },
@@ -418,7 +418,7 @@ const SettingsPage = () => {
 
   const [orderNumberSeries, setOrderNumberSeries] = useState({
     enabled: false,
-    prefix: "H1G",
+    prefix: "ANB",
     fiscalYearCode: "",
   });
 
@@ -455,8 +455,8 @@ const SettingsPage = () => {
   });
 
   const [storeInfo, setStoreInfo] = useState({
-    name: "BuyOneGram",
-    email: "healthyonegram.com",
+    name: "Ananya Boutique",
+    email: "ananyaboutique.com",
     phone: "+91 9876541234",
     address: "",
     gstNumber: "",
@@ -836,7 +836,7 @@ const SettingsPage = () => {
                 ...(raw
                   ? {
                       enabled: raw.enabled === true,
-                      prefix: String(raw.prefix || prev.prefix || "H1G")
+                      prefix: String(raw.prefix || prev.prefix || "ANB")
                         .trim()
                         .toUpperCase(),
                       fiscalYearCode: String(raw.fiscalYearCode || "").trim(),
@@ -1489,7 +1489,7 @@ const SettingsPage = () => {
             }
             size="small"
             fullWidth
-            helperText="Letters/numbers/hyphen. Example: H1G-"
+            helperText="Letters/numbers/hyphen. Example: ANB-"
           />
 
           <TextField
@@ -1621,7 +1621,7 @@ const SettingsPage = () => {
               }
               size="small"
               fullWidth
-              helperText="Letters/numbers/hyphen. Example: H1G-"
+              helperText="Letters/numbers/hyphen. Example: ANB-"
               disabled={!orderNumberSeries.enabled}
             />
 
@@ -1649,7 +1649,7 @@ const SettingsPage = () => {
           const startYear = month >= 3 ? year : year - 1;
           const currentFy = resolveFiscalYearCode(now);
           const nextFy = resolveFiscalYearCode(new Date(startYear + 1, 3, 1));
-          const safePrefix = String(orderNumberSeries.prefix || "H1G")
+          const safePrefix = String(orderNumberSeries.prefix || "ANB")
             .trim()
             .toUpperCase();
           const safeFyOverride = String(
@@ -1657,7 +1657,7 @@ const SettingsPage = () => {
           ).trim();
           const effectivePrefix = orderNumberSeries.enabled
             ? safePrefix
-            : "H1G";
+            : "ANB";
           const effectiveFy =
             orderNumberSeries.enabled && safeFyOverride
               ? safeFyOverride
@@ -3074,12 +3074,12 @@ const SettingsPage = () => {
       </div>
       */}
 
-      {/* Homepage Flavour Buttons */}
+      {/* Homepage Style Buttons */}
       <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
         <div className="flex items-center gap-3 mb-4">
           <MdStore className="text-2xl text-amber-600" />
           <h2 className="text-lg font-semibold text-gray-800">
-            Homepage Flavour Buttons
+            Homepage Style Buttons
           </h2>
         </div>
         <Divider className="mb-4" />

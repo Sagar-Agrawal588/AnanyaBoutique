@@ -243,7 +243,7 @@ test("getWhatsappMessagingHealth keeps the saved admin token as first priority w
           return {
             id: "123456789",
             display_phone_number: "+91 87690 27048",
-            verified_name: "Healthy One Gram",
+            verified_name: "Ananya Boutique",
             quality_rating: "GREEN",
             code_verification_status: "VERIFIED",
             name_status: "APPROVED",
@@ -343,7 +343,7 @@ test("getWhatsappMessagingHealth reports ready when provider auth probe succeeds
         return {
           id: "123456789",
           display_phone_number: "+91 87690 27048",
-          verified_name: "Healthy One Gram",
+          verified_name: "Ananya Boutique",
           quality_rating: "GREEN",
           code_verification_status: "VERIFIED",
           name_status: "APPROVED",
@@ -377,7 +377,7 @@ test("getWhatsappMessagingHealth reports sender_warning when sender setup can bl
         return {
           id: "123456789",
           display_phone_number: "+91 87690 27048",
-          verified_name: "Healthy One Gram",
+          verified_name: "Ananya Boutique",
           quality_rating: "GREEN",
           code_verification_status: "EXPIRED",
           name_status: "DECLINED",
@@ -523,7 +523,7 @@ test("sendWhatsappMessage builds template payload with variables for promotional
     templateName: "spring_offer_template",
     languageCode: "en_US",
     bodyVariables: ["Utkarsh", "15% OFF"],
-    headerVariables: ["HealthyOneGram"],
+    headerVariables: ["Ananya Boutique"],
     campaignName: "Spring Offer",
     segment: "customers",
     adminUserId: "admin-2",
@@ -643,7 +643,7 @@ test("sendWhatsappMessage sends gif mode as video when using Cloudinary gif URL"
     contactId: String(inbound.contact._id),
     mode: "gif",
     mediaUrl:
-      "https://res.cloudinary.com/demo/image/upload/v1/buyonegram/whatsapp/offer.gif",
+      "https://res.cloudinary.com/demo/image/upload/v1/ananyaboutique/whatsapp/offer.gif",
     mediaCaption: "Festive offer",
     mediaFilename: "offer.gif",
     adminUserId: "admin-gif",
@@ -701,7 +701,7 @@ test("sendWhatsappMessage sends template with image header media parameter", asy
     contactId: String(inbound.contact._id),
     templateName: "spring_offer_template",
     languageCode: "en_US",
-    bodyVariables: ["Protein Peanut Butter", "399"],
+    bodyVariables: ["Style Boutique Style", "399"],
     templateHeaderMediaType: "image",
     templateHeaderMediaUrl: "https://cdn.example.com/media/product-offer.png",
     campaignName: "Product Retrieval Ad",
@@ -803,7 +803,7 @@ test("sendWhatsappCampaign sends approved template messages to the deduped campa
         limit: 10,
         languageCode: "en_US",
         bodyVariables: ["Utkarsh", "15% OFF"],
-        headerVariables: ["HealthyOneGram"],
+        headerVariables: ["Ananya Boutique"],
       },
       "admin-campaign",
     );

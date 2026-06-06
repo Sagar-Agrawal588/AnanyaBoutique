@@ -9,13 +9,13 @@
 [2026-05-03T18:08:58.643Z] ERROR [EmailService]: SMTP verification failed {
   error: 'Invalid login: 535-5.7.8 Username and Password not accepted. For more information, go to\n' +
     '535 5.7.8  https://support.google.com/mail/?p=BadCredentials d2e1a72fcca58-835532a3aa2sm2776987b3a.41 - gsmtp',
-  user: 'buyonegramjaipur@gmail.com',
+  user: 'ananyaboutiquejaipur@gmail.com',
   authSource: 'SMTP'
 }
 [2026-05-03T18:08:58.645Z] WARN [EmailService]: Retrying SMTP verify with fallback credentials {
-  previousUser: 'buyonegramjaipur@gmail.com',
+  previousUser: 'ananyaboutiquejaipur@gmail.com',
   previousSource: 'SMTP',
-  fallbackUser: 'healthyonegram@gmail.com',
+  fallbackUser: 'ananyaboutique@gmail.com',
   fallbackSource: 'EMAIL'
 }
 [perf] Slow request detected {
@@ -1304,26 +1304,26 @@
   orderId: new ObjectId('698c9af2fc4c9b0bd6c96b33'),
   error: 'Product not found'
 }
-D:\BogEcom\server\node_modules\mongodb\lib\sdam\topology.js:346
+D:\AnanyaBoutique\server\node_modules\mongodb\lib\sdam\topology.js:346
                 const timeoutError = new error_1.MongoServerSelectionError(`Server selection timed out after ${timeout?.duration} ms`, this.description);
                                      ^
 
 MongoServerSelectionError: getaddrinfo ENOTFOUND ac-qowamxo-shard-00-02.zaczcab.mongodb.net
-    at Topology.selectServer (D:\BogEcom\server\node_modules\mongodb\lib\sdam\topology.js:346:38)
+    at Topology.selectServer (D:\AnanyaBoutique\server\node_modules\mongodb\lib\sdam\topology.js:346:38)
     at runNextTicks (node:internal/process/task_queues:64:5)
     at listOnTimeout (node:internal/timers:567:9)
     at process.processTimers (node:internal/timers:541:7)
-    at async tryOperation (D:\BogEcom\server\node_modules\mongodb\lib\operations\execute_operation.js:198:22)
-    at async executeOperation (D:\BogEcom\server\node_modules\mongodb\lib\operations\execute_operation.js:80:16)
-    at async FindCursor._initialize (D:\BogEcom\server\node_modules\mongodb\lib\cursor\find_cursor.js:62:26)
-    at async FindCursor.cursorInit (D:\BogEcom\server\node_modules\mongodb\lib\cursor\abstract_cursor.js:620:27)
-    at async FindCursor.fetchBatch (D:\BogEcom\server\node_modules\mongodb\lib\cursor\abstract_cursor.js:654:13)
-    at async FindCursor.next (D:\BogEcom\server\node_modules\mongodb\lib\cursor\abstract_cursor.js:326:17)
-    at async [Symbol.asyncIterator] (D:\BogEcom\server\node_modules\mongodb\lib\cursor\abstract_cursor.js:254:34)
-    at async FindCursor.toArray (D:\BogEcom\server\node_modules\mongodb\lib\cursor\abstract_cursor.js:406:26)
-    at async model.Query._find (D:\BogEcom\server\node_modules\mongoose\lib\query.js:2432:14)
-    at async model.Query.exec (D:\BogEcom\server\node_modules\mongoose\lib\query.js:4637:63)
-    at async Timeout.releaseExpiredReservations [as _onTimeout] (file:///D:/BogEcom/server/services/inventoryReservationExpiry.service.js:163:20) {
+    at async tryOperation (D:\AnanyaBoutique\server\node_modules\mongodb\lib\operations\execute_operation.js:198:22)
+    at async executeOperation (D:\AnanyaBoutique\server\node_modules\mongodb\lib\operations\execute_operation.js:80:16)
+    at async FindCursor._initialize (D:\AnanyaBoutique\server\node_modules\mongodb\lib\cursor\find_cursor.js:62:26)
+    at async FindCursor.cursorInit (D:\AnanyaBoutique\server\node_modules\mongodb\lib\cursor\abstract_cursor.js:620:27)
+    at async FindCursor.fetchBatch (D:\AnanyaBoutique\server\node_modules\mongodb\lib\cursor\abstract_cursor.js:654:13)
+    at async FindCursor.next (D:\AnanyaBoutique\server\node_modules\mongodb\lib\cursor\abstract_cursor.js:326:17)
+    at async [Symbol.asyncIterator] (D:\AnanyaBoutique\server\node_modules\mongodb\lib\cursor\abstract_cursor.js:254:34)
+    at async FindCursor.toArray (D:\AnanyaBoutique\server\node_modules\mongodb\lib\cursor\abstract_cursor.js:406:26)
+    at async model.Query._find (D:\AnanyaBoutique\server\node_modules\mongoose\lib\query.js:2432:14)
+    at async model.Query.exec (D:\AnanyaBoutique\server\node_modules\mongoose\lib\query.js:4637:63)
+    at async Timeout.releaseExpiredReservations [as _onTimeout] (file:///D:/AnanyaBoutique/server/services/inventoryReservationExpiry.service.js:163:20) {
   errorLabelSet: Set(0) {},
   reason: TopologyDescription {
     type: 'ReplicaSetNoPrimary',
@@ -1342,7 +1342,7 @@ MongoServerSelectionError: getaddrinfo ENOTFOUND ac-qowamxo-shard-00-02.zaczcab.
         lastUpdateTime: 547705910,
         lastWriteDate: 0,
         error: MongoNetworkError: getaddrinfo ENOTFOUND ac-qowamxo-shard-00-02.zaczcab.mongodb.net
-            at TLSSocket.<anonymous> (D:\BogEcom\server\node_modules\mongodb\lib\cmap\connect.js:286:44)
+            at TLSSocket.<anonymous> (D:\AnanyaBoutique\server\node_modules\mongodb\lib\cmap\connect.js:286:44)
             at Object.onceWrapper (node:events:623:26)
             at TLSSocket.emit (node:events:508:28)
             at emitErrorNT (node:internal/streams/destroy:170:8)
@@ -1385,7 +1385,7 @@ MongoServerSelectionError: getaddrinfo ENOTFOUND ac-qowamxo-shard-00-02.zaczcab.
         lastUpdateTime: 547705910,
         lastWriteDate: 0,
         error: MongoNetworkError: getaddrinfo ENOTFOUND ac-qowamxo-shard-00-00.zaczcab.mongodb.net
-            at TLSSocket.<anonymous> (D:\BogEcom\server\node_modules\mongodb\lib\cmap\connect.js:286:44)
+            at TLSSocket.<anonymous> (D:\AnanyaBoutique\server\node_modules\mongodb\lib\cmap\connect.js:286:44)
             at Object.onceWrapper (node:events:623:26)
             at TLSSocket.emit (node:events:508:28)
             at emitErrorNT (node:internal/streams/destroy:170:8)
@@ -1428,7 +1428,7 @@ MongoServerSelectionError: getaddrinfo ENOTFOUND ac-qowamxo-shard-00-02.zaczcab.
         lastUpdateTime: 547705742,
         lastWriteDate: 0,
         error: MongoNetworkError: getaddrinfo ENOTFOUND ac-qowamxo-shard-00-01.zaczcab.mongodb.net
-            at TLSSocket.<anonymous> (D:\BogEcom\server\node_modules\mongodb\lib\cmap\connect.js:286:44)
+            at TLSSocket.<anonymous> (D:\AnanyaBoutique\server\node_modules\mongodb\lib\cmap\connect.js:286:44)
             at Object.onceWrapper (node:events:623:26)
             at TLSSocket.emit (node:events:508:28)
             at emitErrorNT (node:internal/streams/destroy:170:8)
@@ -1476,7 +1476,7 @@ MongoServerSelectionError: getaddrinfo ENOTFOUND ac-qowamxo-shard-00-02.zaczcab.
   },
   code: undefined,
   [cause]: MongoNetworkError: getaddrinfo ENOTFOUND ac-qowamxo-shard-00-02.zaczcab.mongodb.net
-      at TLSSocket.<anonymous> (D:\BogEcom\server\node_modules\mongodb\lib\cmap\connect.js:286:44)
+      at TLSSocket.<anonymous> (D:\AnanyaBoutique\server\node_modules\mongodb\lib\cmap\connect.js:286:44)
       at Object.onceWrapper (node:events:623:26)
       at TLSSocket.emit (node:events:508:28)
       at emitErrorNT (node:internal/streams/destroy:170:8)

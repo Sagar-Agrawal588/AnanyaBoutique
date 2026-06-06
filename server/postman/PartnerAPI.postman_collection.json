@@ -13,7 +13,7 @@
           "if (!pm.environment.get('partner_suffix')) {",
           "  pm.environment.set('partner_suffix', String(Date.now()));",
           "}",
-          "if (!pm.environment.get('admin_email')) pm.environment.set('admin_email', 'admin@buyonegram.com');",
+          "if (!pm.environment.get('admin_email')) pm.environment.set('admin_email', 'admin@ananyaboutique.com');",
           "if (!pm.environment.get('admin_password')) pm.environment.set('admin_password', 'admin123');"
         ]
       }

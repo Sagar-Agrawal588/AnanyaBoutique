@@ -5,7 +5,7 @@
  * Codes are persisted in localStorage and attached to orders.
  */
 
-const AFFILIATE_STORAGE_KEY = "bogecom_affiliate";
+const AFFILIATE_STORAGE_KEY = "ananyaboutique_affiliate";
 const AFFILIATE_EXPIRY_DAYS = 30;
 
 /**

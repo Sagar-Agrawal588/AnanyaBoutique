@@ -157,7 +157,7 @@ def main():
         dst,
         "DECLARATION",
         [
-            'I hereby declare that the internship work carried out on the project "BogEcom / Buy One Gram E-commerce Platform" is an authentic record of my work completed as part of the six-month internship requirement for the award of B.Tech in Computer Science and Engineering. The work was performed under the guidance of Balveer Bajiya(CTO, Buy One Gram) and Megha Garg(Assistant Professor, JECRC University).',
+            'I hereby declare that the internship work carried out on the project "AnanyaBoutique / Ananya Boutique E-commerce Platform" is an authentic record of my work completed as part of the six-month internship requirement for the award of B.Tech in Computer Science and Engineering. The work was performed under the guidance of Balveer Bajiya(CTO, Ananya Boutique) and Megha Garg(Assistant Professor, JECRC University).',
             "Name of Student: Piyush Songara",
             "RN No.: 22BCON386",
             "Place: JECRC University, Jaipur",
@@ -181,7 +181,7 @@ def main():
         "ACKNOWLEDGEMENT",
         [
             "It is my foremost duty to express my deep sense of gratitude and respect to the guide Ms. Megha Garg (Assistant Professor) his uplifting tendency and inspiring me for taking up this Internship completely successful. I am also grateful to Dr. Bhavana Sharma (H.O.D), Dr. Naveen Hemrajani (Dean Engineering) and Dy. HoD Dr. Gajanand Sharma for providing all necessary facilities to carry out the internship work and those encouraging part has been a perpetual source of inspiration.",
-            "I am also thankful to Mr. Balveer Bajiya (CTO, Buy One Gram) Sir for proving me internship in Buy One Gram, Sitapura, Jaipur. Last but not least I am thankful to my colleagues and those help me directly or indirectly through this Internship.",
+            "I am also thankful to Mr. Balveer Bajiya (CTO, Ananya Boutique) Sir for proving me internship in Ananya Boutique, Sitapura, Jaipur. Last but not least I am thankful to my colleagues and those help me directly or indirectly through this Internship.",
             "Thanking You.",
             "Piyush Songara",
         ],

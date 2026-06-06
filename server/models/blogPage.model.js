@@ -25,7 +25,7 @@ const blogPageSchema = new mongoose.Schema(
     hero: {
       badge: {
         type: String,
-        default: "Health & Wellness Insights",
+        default: "Style Journal",
       },
       title: {
         type: String,
@@ -34,7 +34,7 @@ const blogPageSchema = new mongoose.Schema(
       description: {
         type: String,
         default:
-          "Expert insights on nutrition, wellness, and the science behind healthy living. No fluff, just evidence-backed guidance.",
+          "Styling notes, collection updates, and boutique guidance for everyday and occasion-ready looks.",
       },
     },
     newsletter: {
@@ -45,7 +45,7 @@ const blogPageSchema = new mongoose.Schema(
       description: {
         type: String,
         default:
-          "Subscribe to get weekly insights, wellness tips, and exclusive health recommendations delivered to your inbox.",
+          "Subscribe to get styling notes, collection updates, and boutique offers delivered to your inbox.",
       },
       inputPlaceholder: {
         type: String,
@@ -99,15 +99,15 @@ blogPageSchema.statics.getDefaultContent = function () {
       newsletter: true,
     },
     hero: {
-      badge: "Health & Wellness Insights",
+      badge: "Style Journal",
       title: "The Journal",
       description:
-        "Expert insights on nutrition, wellness, and the science behind healthy living. No fluff, just evidence-backed guidance.",
+        "Styling notes, collection updates, and boutique guidance for everyday and occasion-ready looks.",
     },
     newsletter: {
       title: "Don't Miss Our Latest Articles",
       description:
-        "Subscribe to get weekly insights, wellness tips, and exclusive health recommendations delivered to your inbox.",
+        "Subscribe to get styling notes, collection updates, and boutique offers delivered to your inbox.",
       inputPlaceholder: "Enter your email address",
       buttonText: "Subscribe",
       note: "We respect your privacy. Unsubscribe at any time.",

@@ -69,10 +69,10 @@ const normalizeEmail = (email) =>
 const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
 const ADMIN_PRIMARY_EMAIL = normalizeEmail(
-  process.env.ADMIN_PRIMARY_EMAIL || "admin@buyonegram.com",
+  process.env.ADMIN_PRIMARY_EMAIL || "admin@ananyaboutique.com",
 );
 const MANAGER_PRIMARY_EMAIL = normalizeEmail(
-  process.env.MANAGER_PRIMARY_EMAIL || "manager@buyonegram.com",
+  process.env.MANAGER_PRIMARY_EMAIL || "manager@ananyaboutique.com",
 );
 
 const ADMIN_ALLOWED_EMAILS = new Set(

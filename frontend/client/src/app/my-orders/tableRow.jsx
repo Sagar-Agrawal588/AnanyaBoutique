@@ -81,10 +81,10 @@ const OrderRow = () => {
               </div>
               <div className="info flex flex-col">
                 <h2 className="text-gray-900 text-[15px] font-[500]">
-                  Peanut Butter
+                  Boutique Style
                 </h2>
                 <span className="text-gray-600 text-[13px] font-[500]">
-                  Protein
+                  Style
                 </span>
                 <span className="text-gray-600 text-[13px] font-[500]">
                   Unit Price: ₹540.00

@@ -147,7 +147,7 @@ export default function FlavorSwitcherBar({ variant = "default", className = "" 
         setSelected(FLAVORS.creamy.name);
       }
     } else {
-      // Default to Creamy
+      // Default to Sarees
       setSelected(FLAVORS.creamy.name);
     }
     setMounted(true);

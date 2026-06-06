@@ -26,33 +26,33 @@ const PAGE_THEMES = [
 ];
 
 const DEFAULT_HOME_CONTENT = {
-  title: "Join Our Buy One Gram Club",
+  title: "Join Our Ananya Boutique Club",
   subtitle:
-    "Unlock premium benefits, exclusive savings, and prioritize your health journey with us.",
+    "Unlock early access, member-only offers, styling notes, and boutique rewards.",
   benefits: [
     {
-      emoji: "💰",
-      title: "Save ₹2000+",
-      description: "Annually with discounts",
+      emoji: "VIP",
+      title: "Member Savings",
+      description: "Exclusive boutique offers",
     },
-    { emoji: "📦", title: "Free Shipping", description: "On all your orders" },
+    { emoji: "SHIP", title: "Free Shipping", description: "On all your orders" },
     {
-      emoji: "🎧",
+      emoji: "CARE",
       title: "24/7 Support",
-      description: "Dedicated member hotline",
+      description: "Priority styling and order help",
     },
     {
-      emoji: "🚀",
+      emoji: "DROP",
       title: "Early Access",
-      description: "To new product launches",
+      description: "To new arrivals and festive edits",
     },
   ],
   checkItems: [
     { text: "15% discount on all orders" },
     { text: "Free shipping on every purchase" },
-    { text: "Exclusive member-only products" },
+    { text: "Exclusive member-only drops" },
     { text: "Priority customer support" },
-    { text: "Monthly wellness tips & guides" },
+    { text: "Styling notes and new collection previews" },
   ],
   ctaButtonText: "Explore Plans",
   ctaButtonLink: "/membership",
@@ -62,22 +62,22 @@ const DEFAULT_PAGE_CONTENT = {
   theme: { style: "mint" },
   hero: {
     badge: "Premium Membership",
-    title: "Buy One Gram Club",
+    title: "Ananya Boutique Club",
     titleHighlight: "Premium",
     description:
-      "Join our exclusive community and unlock premium benefits designed for your wellness journey.",
+      "Join our exclusive community and unlock premium fashion benefits, early access, and member-only rewards.",
     note: "Limited member slots refreshed monthly",
   },
   benefits: {
     title: "Unlock Exclusive Benefits",
     subtitle:
-      "Start earning rewards today and take your health journey to the next level with premium perks.",
+      "Start earning rewards today and enjoy a smoother boutique shopping experience.",
     items: [
       {
-        icon: "⭐",
+        icon: "VIP",
         title: "Earn Points",
         description:
-          "Get 1 point for every ₹1 spent. Redeem points for discounts and exclusive products.",
+          "Get 1 point for every Rs. 1 spent. Redeem points for discounts and exclusive styles.",
       },
     ],
   },
@@ -88,7 +88,7 @@ const DEFAULT_PAGE_CONTENT = {
     note: "Instant access after checkout.",
   },
   cta: {
-    title: "Ready to upgrade your daily nutrition?",
+    title: "Ready to upgrade your daily style?",
     description:
       "Members get early access, exclusive drops, and a smoother checkout experience.",
     buttonText: "Explore Plans",
@@ -937,7 +937,7 @@ export default function MembershipPage() {
                     }
                     size="small"
                     fullWidth
-                    placeholder="e.g. Join Our Buy One Gram Club"
+                    placeholder="e.g. Join Our Ananya Boutique Club"
                   />
                   <TextField
                     label="Subtitle / Description"

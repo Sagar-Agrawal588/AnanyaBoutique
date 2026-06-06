@@ -1,13 +1,13 @@
 "use client";
 
 const DESKTOP_TRUST_ITEMS = [
-  "100% Natural",
-  "No Palm Oil",
-  "High Protein",
+  "Boutique Picks",
+  "Fresh Arrivals",
+  "Curated Styles",
   "Fast Moving Picks",
 ];
 
-const MOBILE_TRUST_ITEMS = ["Natural", "Protein", "Fast Moving"];
+const MOBILE_TRUST_ITEMS = ["Natural", "Style", "Fast Moving"];
 
 const getTimerPositionClass = (position, isMobile = false) => {
   switch (position) {
@@ -164,7 +164,7 @@ const HomeSlideFramePreview = ({
             <span className="h-2.5 w-2.5 rounded-full bg-amber-400" />
             <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
             <div className="ml-3 h-8 flex-1 rounded-full border border-slate-200 bg-white/90 px-4 text-xs leading-8 text-slate-400">
-              healthyonegram.com
+              ananyaboutique.com
             </div>
           </div>
 

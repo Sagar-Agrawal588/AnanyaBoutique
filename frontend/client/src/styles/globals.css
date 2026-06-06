@@ -499,7 +499,7 @@ select:focus {
     color: var(--color-error);
 }
 
-/* Trust / health label — "100% Natural", "High Protein", etc. */
+/* Trust / health label — "100% Natural", "High Style", etc. */
 .trust-label {
     display: inline-flex;
     align-items: center;

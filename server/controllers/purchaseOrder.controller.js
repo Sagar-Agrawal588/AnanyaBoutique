@@ -23,7 +23,7 @@ const round2 = (value) =>
   Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
 const round3 = (value) =>
   Math.round((Number(value || 0) + Number.EPSILON) * 1000) / 1000;
-const PO_COMPANY_NAME = "Buy One Gram Private Limited";
+const PO_COMPANY_NAME = "Ananya Boutique";
 const PO_COMPANY_ADDRESS =
   "G-225, Sitapura Industrial Area, Tonk Road, Jaipur 302022";
 const PO_COMPANY_GST = "GST No: 08AAJCB3889Q1ZO";
@@ -283,7 +283,7 @@ const buildPoNumber = ({ fyStartYear, fyEndYear, sequence }) => {
   const fyStart = String(fyStartYear % 100).padStart(2, "0");
   const fyEnd = String(fyEndYear % 100).padStart(2, "0");
   const seq = String(sequence || 1).padStart(3, "0");
-  return `BOGPO${fyStart}-${fyEnd}/${seq}`;
+  return `ANBPO${fyStart}-${fyEnd}/${seq}`;
 };
 
 const normalizeGuestDetails = (guestDetails = {}) => ({

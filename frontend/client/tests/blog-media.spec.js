@@ -144,7 +144,7 @@ test("blog detail renders imported HTML blog documents inside an article frame",
   <html lang="en">
     <head>
       <meta charset="UTF-8" />
-      <title>Imported Peanut Butter Story</title>
+      <title>Imported Boutique Style Story</title>
       <style>
         body { font-family: Arial, sans-serif; margin: 0; padding: 32px; color: #111827; }
         h1 { color: #92400e; margin-bottom: 16px; }
@@ -152,7 +152,7 @@ test("blog detail renders imported HTML blog documents inside an article frame",
       </style>
     </head>
     <body>
-      <h1>Imported Peanut Butter Story</h1>
+      <h1>Imported Boutique Style Story</h1>
       <p>This article was uploaded as a full HTML document.</p>
     </body>
   </html>`;
@@ -163,9 +163,9 @@ test("blog detail renders imported HTML blog documents inside an article frame",
       slug: "blog-imported-html-test",
       contentFormat: "html",
       contentHtml: htmlDocument,
-      contentHtmlFileName: "imported-peanut-butter-story.html",
+      contentHtmlFileName: "imported-boutique-style-story.html",
       content:
-        "Imported Peanut Butter Story This article was uploaded as a full HTML document.",
+        "Imported Boutique Style Story This article was uploaded as a full HTML document.",
       excerpt: "Imported HTML article smoke test.",
       image: "",
     }),

@@ -58,7 +58,7 @@ const isAllowedMediaObjectPath = (value = "") => {
     .trim()
     .replace(/\\/g, "/")
     .replace(/^\/+/, "");
-  return Boolean(normalized && !normalized.includes("..") && /^buyonegram\//i.test(normalized));
+  return Boolean(normalized && !normalized.includes("..") && /^ananyaboutique\//i.test(normalized));
 };
 
 const buildMediaProxyUrl = (objectPath = "") => {

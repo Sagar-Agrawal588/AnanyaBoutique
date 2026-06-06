@@ -71,7 +71,7 @@ await runCase("GET unsubscribe link returns confirm page HTML", async () => {
   );
   const html = String(res.body || "");
   expect(
-    html.includes("Unsubscribe from HealthyOneGram"),
+    html.includes("Unsubscribe from Ananya Boutique"),
     "Expected confirm page title",
   );
   expect(

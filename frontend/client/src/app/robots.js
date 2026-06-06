@@ -6,7 +6,7 @@
  */
 
 const BASE_URL =
-  process.env.NEXT_PUBLIC_SITE_URL || "https://healthyonegram.com";
+  process.env.NEXT_PUBLIC_SITE_URL || "https://ananyaboutique.com";
 
 export default function robots() {
   return {

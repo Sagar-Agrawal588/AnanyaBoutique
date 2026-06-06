@@ -146,7 +146,7 @@ test("mobile header keeps logo shield behavior on same configured color", async 
 
   await expect(
     page.locator(
-      'input[placeholder="Weight Gainer Peanut Butter"]:visible',
+      'input[placeholder="Weight Gainer Boutique Style"]:visible',
     ).first(),
   ).toBeVisible();
 

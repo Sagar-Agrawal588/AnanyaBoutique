@@ -334,7 +334,7 @@ const Banners = ({ initialBanners = [] }) => {
                             <span className="inline-flex items-center gap-2 rounded-full bg-white px-6 py-2.5 text-sm font-bold text-gray-900 shadow-lg transition-colors group-hover:bg-[#fff2df]">
                               {banner.buttonText ||
                                 banner.linkText ||
-                                "Shop Now"}
+                                "Discover Your Style"}
                               <svg
                                 className="h-4 w-4"
                                 fill="none"

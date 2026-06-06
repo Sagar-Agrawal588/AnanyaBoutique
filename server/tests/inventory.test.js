@@ -530,7 +530,7 @@ test("applyPurchaseOrderInventory resolves variant from packing and syncs parent
 
 test("updatePurchaseOrderReceipt increments received variant stock from 15 to 65", async () => {
   const product = await ProductModel.create({
-    name: "Creamy Peanut Butter",
+    name: "Creamy Boutique Style",
     slug: "po-receive-variant-1",
     price: 449,
     category: new mongoose.Types.ObjectId(),
@@ -562,7 +562,7 @@ test("updatePurchaseOrderReceipt increments received variant stock from 15 to 65
     items: [
       {
         productId: product._id,
-        productTitle: "Creamy Peanut Butter",
+        productTitle: "Creamy Boutique Style",
         variantId: targetVariantId,
         variantName: "500g",
         packing: "500g",
@@ -616,7 +616,7 @@ test("updatePurchaseOrderReceipt increments received variant stock from 15 to 65
 
 test("concurrent PO receipts atomically accumulate variant stock", async () => {
   const product = await ProductModel.create({
-    name: "Creamy Peanut Butter Concurrent",
+    name: "Creamy Boutique Style Concurrent",
     slug: "po-receive-variant-concurrent",
     price: 449,
     category: new mongoose.Types.ObjectId(),
@@ -639,7 +639,7 @@ test("concurrent PO receipts atomically accumulate variant stock", async () => {
     items: [
       {
         productId: product._id,
-        productTitle: "Creamy Peanut Butter Concurrent",
+        productTitle: "Creamy Boutique Style Concurrent",
         variantId: targetVariantId,
         variantName: "500g",
         packing: "500g",
@@ -658,7 +658,7 @@ test("concurrent PO receipts atomically accumulate variant stock", async () => {
     items: [
       {
         productId: product._id,
-        productTitle: "Creamy Peanut Butter Concurrent",
+        productTitle: "Creamy Boutique Style Concurrent",
         variantId: targetVariantId,
         variantName: "500g",
         packing: "500g",

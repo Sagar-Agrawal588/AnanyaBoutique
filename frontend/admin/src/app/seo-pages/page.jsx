@@ -54,24 +54,24 @@ const DEFAULT_SEO_PAGE_ENTRIES = [
   {
     label: "Home",
     path: "/",
-    metaTitle: "Buy OneGram - Premium Health Products",
+    metaTitle: "Ananya Boutique - Curated Boutique Styles",
     metaDescription:
-      "Shop premium quality peanut butter and healthy food products at Buy OneGram.",
-    keywords: "peanut butter, healthy food, organic, natural, protein",
+      "Shop boutique apparel, accessories, and curated occasion edits at Ananya Boutique.",
+    keywords: "boutique fashion, sarees, suits, kurtis, leggings, cosmetics, jewellery, accessories, occasion wear, ananya boutique",
     indexable: true,
     notes: "Main homepage SEO entry.",
-    heroTitle: "Premium health products for everyday wellness",
+    heroTitle: "Curated boutique styles for everyday elegance",
     heroSubtitle:
-      "Discover healthy pantry staples, better ingredients, and products designed for simple daily routines.",
+      "Discover sarees, suits, kurtis, cosmetics, jewellery, and accessories curated for daily style and special occasions.",
     heroImageUrl: "",
-    heroImageAlt: "Healthy One Gram hero banner",
+    heroImageAlt: "Ananya Boutique hero banner",
     ctaLabel: "Browse Products",
     ctaHref: "/products",
     bodySections: [
       {
-        heading: "Why customers choose Healthy One Gram",
+        heading: "Why customers choose Ananya Boutique",
         content:
-          "We focus on better ingredients, clean flavor profiles, and products that fit into practical daily nutrition habits.",
+          "We focus on curated boutique fashion, graceful styling, and pieces that fit practical daily routines as well as special occasions.",
       },
     ],
     faqItems: [],
@@ -82,8 +82,8 @@ const DEFAULT_SEO_IMAGE_ENTRIES = [
   {
     label: "Logo",
     target: "/logo.png",
-    altText: "Buy OneGram logo",
-    titleText: "Buy OneGram",
+    altText: "Ananya Boutique logo",
+    titleText: "Ananya Boutique",
     notes: "Keep the brand logo alt text short.",
   },
 ];
@@ -470,7 +470,7 @@ const SeoPagesPage = () => {
                     onChange={(e) => updateSeoPageField(index, "path", e.target.value)}
                     size="small"
                     fullWidth
-                    placeholder="/protein-breakfast-guide"
+                    placeholder="/style-breakfast-guide"
                   />
                   <TextField
                     label="Meta Title"

@@ -9,6 +9,7 @@ import ClientCacheGuard from "../components/ClientCacheGuard";
 import ErrorBoundary from "../components/ErrorBoundary";
 import Footer from "../components/Footer";
 import Header from "../components/Header";
+import { BrandTrustBanner } from "../components/brand/BrandTrust";
 import { CartProvider } from "../context/CartContext";
 import { ProductProvider } from "../context/ProductContext";
 import { ReferralProvider } from "../context/ReferralContext";
@@ -55,7 +56,7 @@ const API_URL = String(API_BASE_URL || "")
 const FALLBACK_BRAND_NAME =
   process.env.NEXT_PUBLIC_BRAND_NAME ||
   process.env.NEXT_PUBLIC_STORE_NAME ||
-  "HealthyOneGram";
+  "Ananya Boutique";
 const toPollIntervalMs = (value, fallback) => {
   const parsed = Number.parseInt(String(value || "").trim(), 10);
   return Number.isFinite(parsed) && parsed >= 10000 ? parsed : fallback;
@@ -83,7 +84,7 @@ const buildStatusUrlCandidates = () => {
 
 const resolveBrandName = (storeName) => {
   const candidate = String(storeName || "").trim();
-  if (!candidate || /^buyonegram$/i.test(candidate)) {
+  if (!candidate || /^ananyaboutique$/i.test(candidate)) {
     return FALLBACK_BRAND_NAME;
   }
   return candidate;
@@ -371,6 +372,7 @@ const ClientShell = ({ children, isAffiliateRoute, enhancementsReady }) => {
         className="min-h-screen overflow-x-hidden w-full"
         style={{ paddingTop: "var(--header-height, 128px)" }}
       >
+        {!isAffiliateRoute ? <BrandTrustBanner /> : null}
         {children}
       </main>
       <Footer />

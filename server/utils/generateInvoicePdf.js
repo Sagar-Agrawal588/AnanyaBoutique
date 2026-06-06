@@ -27,7 +27,7 @@ const SHOULD_FORCE_REGENERATE =
 const DEFAULT_HSN = process.env.INVOICE_DEFAULT_HSN || "2106";
 const DEFAULT_TAX_RATE = Number(process.env.INVOICE_DEFAULT_GST_RATE || 5);
 const FIXED_SELLER_PROFILE = Object.freeze({
-  name: "BUY ONE GRAM PRIVATE LIMITED",
+  name: "Ananya Boutique",
   address: "G-225, RIICO INDUSTRIAL AREA SITAPURA, TONK ROAD, JAIPUR-302022",
   gstin: "08AAJCB3889Q1ZO",
   state: "Rajasthan",
@@ -1474,7 +1474,7 @@ export const generateInvoicePdf = async ({
       .fontSize(9)
       .fillColor("#111827")
       .text(
-        String(seller.name || "BuyOneGram").toUpperCase(),
+        String(seller.name || "Ananya Boutique").toUpperCase(),
         sellerTextX,
         y + 8,
         {
@@ -1557,7 +1557,7 @@ export const generateInvoicePdf = async ({
       order?.orderNumber ||
       order?.order_id ||
       order?.orderId ||
-      (order?._id ? `BOG-${String(order._id).slice(-8).toUpperCase()}` : "-");
+      (order?._id ? `ANB-${String(order._id).slice(-8).toUpperCase()}` : "-");
     const paymentId = firstNonEmptyString(
       order?.paymentAppTxnId,
       order?.paymentId,

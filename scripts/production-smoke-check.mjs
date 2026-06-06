@@ -5,7 +5,7 @@ const parseArgs = () => {
   const options = {
     backendUrl: "",
     origins: [],
-    adminEmail: "admin@buyonegram.com",
+    adminEmail: "admin@ananyaboutique.com",
   };
 
   for (let index = 0; index < args.length; index += 1) {
@@ -224,7 +224,7 @@ const main = async () => {
     normalizedOrigins.find((origin) => origin.includes("admin")) ||
     normalizedOrigins[0];
   const clientOrigin =
-    normalizedOrigins.find((origin) => origin.includes("healthyonegram.com")) ||
+    normalizedOrigins.find((origin) => origin.includes("ananyaboutique.com")) ||
     normalizedOrigins[0];
 
   console.log("[production-smoke-check] Verifying health endpoint");

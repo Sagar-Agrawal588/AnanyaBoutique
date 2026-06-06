@@ -26,10 +26,10 @@ const escapeHtml = (value = "") =>
 
 const resolveSiteUrl = (ctaUrl) => {
   try {
-    const parsed = new URL(String(ctaUrl || "https://healthyonegram.com"));
+    const parsed = new URL(String(ctaUrl || "https://ananyaboutique.com"));
     return `${parsed.protocol}//${parsed.host}`;
   } catch {
-    return "https://healthyonegram.com";
+    return "https://ananyaboutique.com";
   }
 };
 
@@ -111,7 +111,7 @@ const getNewsletterAssetBaseUrl = () => {
     }
   }
 
-  return "https://healthyonegram.com";
+  return "https://ananyaboutique.com";
 };
 
 const DEFAULT_LOGO_URL = `${getNewsletterAssetBaseUrl()}/logo-og-v2.png`;
@@ -161,7 +161,7 @@ const buildSimpleNewsletterHtml = ({
         ${
           showLogoImage
             ? `<div style="display:inline-block;background:#ffffff;border-radius:10px;padding:8px 14px;">
-          <img src="${escapeHtml(resolvedLogoUrl)}" alt="HealthyOneGram" style="max-width:180px;max-height:56px;height:auto;display:block;margin:0 auto;" />
+          <img src="${escapeHtml(resolvedLogoUrl)}" alt="Ananya Boutique" style="max-width:180px;max-height:56px;height:auto;display:block;margin:0 auto;" />
         </div>`
             : ""
         }
@@ -177,7 +177,7 @@ const buildSimpleNewsletterHtml = ({
           ${
             showHeroImage
               ? `<div style="margin-top:18px;background:#ffffff14;border:1px solid #ffffff30;border-radius:12px;padding:8px;">
-            <img src="${escapeHtml(resolvedHeroImageUrl)}" alt="HealthyOneGram" style="width:100%;max-width:652px;height:260px;border-radius:10px;display:block;object-fit:contain;background:#ffffff;" />
+            <img src="${escapeHtml(resolvedHeroImageUrl)}" alt="Ananya Boutique" style="width:100%;max-width:652px;height:260px;border-radius:10px;display:block;object-fit:contain;background:#ffffff;" />
           </div>`
               : ""
           }
@@ -196,7 +196,7 @@ const buildSimpleNewsletterHtml = ({
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:12px;">
           <tr>
             <td style="padding:16px;">
-              <h3 style="margin:0 0 10px;font-size:18px;color:#111827;">Why people love HealthyOneGram</h3>
+              <h3 style="margin:0 0 10px;font-size:18px;color:#111827;">Why people love Ananya Boutique</h3>
               <p style="margin:0 0 8px;color:#374151;">• Premium quality products curated for health-focused families.</p>
               <p style="margin:0 0 8px;color:#374151;">• Faster delivery and transparent order support.</p>
               <p style="margin:0;color:#374151;">• Exclusive subscriber-only offers and updates.</p>
@@ -250,7 +250,7 @@ const buildSimpleNewsletterHtml = ({
       <td style="padding:0 24px 26px;">
         <div style="border-top:1px solid #e5e7eb;padding-top:16px;">
           <p style="margin:0 0 8px;color:#111827;font-size:14px;">${escapeHtml(footer)}</p>
-          <p style="margin:0;color:#6b7280;font-size:12px;">You are receiving this email because you subscribed at HealthyOneGram.</p>
+          <p style="margin:0;color:#6b7280;font-size:12px;">You are receiving this email because you subscribed at Ananya Boutique.</p>
         </div>
       </td>
     </tr>
@@ -264,50 +264,50 @@ const SIMPLE_NEWSLETTER_PRESETS = {
     label: "Offer",
     subject: "Special Offer Just For You 🎉",
     template: {
-      title: "Exclusive Offer From HealthyOneGram",
+      title: "Exclusive Offer From Ananya Boutique",
       greeting: "Hello",
       intro: "We have a limited-time offer for our subscribers.",
       body: "Use this special offer before it ends.\nShop your favorites and save more today.",
       ctaLabel: "Claim Offer",
-      ctaUrl: "https://healthyonegram.com/products",
-      footer: "Offer valid for a limited time. HealthyOneGram Team",
-      logoUrl: "https://healthyonegram.com/logo-og-v2.png",
+      ctaUrl: "https://ananyaboutique.com/products",
+      footer: "Offer valid for a limited time. Ananya Boutique Team",
+      logoUrl: "https://ananyaboutique.com/logo-og-v2.png",
       showLogoImage: true,
-      heroImageUrl: "https://healthyonegram.com/logo-header.png",
+      heroImageUrl: "https://ananyaboutique.com/logo-header.png",
       showHeroImage: true,
     },
   },
   product: {
     label: "New Product",
-    subject: "New Product Launch at HealthyOneGram",
+    subject: "New Product Launch at Ananya Boutique",
     template: {
       title: "New Arrivals Are Here",
       greeting: "Hello",
       intro: "We just launched something new for you.",
       body: "Discover our latest products made for healthy living.\nBe the first to try them and share your feedback.",
       ctaLabel: "View New Products",
-      ctaUrl: "https://healthyonegram.com/products",
-      footer: "Thanks for supporting HealthyOneGram.",
-      logoUrl: "https://healthyonegram.com/logo-og-v2.png",
+      ctaUrl: "https://ananyaboutique.com/products",
+      footer: "Thanks for supporting Ananya Boutique.",
+      logoUrl: "https://ananyaboutique.com/logo-og-v2.png",
       showLogoImage: true,
-      heroImageUrl: "https://healthyonegram.com/logo-header.png",
+      heroImageUrl: "https://ananyaboutique.com/logo-header.png",
       showHeroImage: true,
     },
   },
   festival: {
     label: "Festival",
-    subject: "Festival Wishes from HealthyOneGram ✨",
+    subject: "Festival Wishes from Ananya Boutique ✨",
     template: {
-      title: "Season's Greetings from HealthyOneGram",
+      title: "Season's Greetings from Ananya Boutique",
       greeting: "Dear",
       intro: "Wishing you and your family joy, health, and happiness.",
       body: "Celebrate this festive season with healthy choices.\nEnjoy special festive picks curated for you.",
       ctaLabel: "Shop Festive Picks",
-      ctaUrl: "https://healthyonegram.com/products",
-      footer: "Warm wishes, HealthyOneGram Team",
-      logoUrl: "https://healthyonegram.com/logo-og-v2.png",
+      ctaUrl: "https://ananyaboutique.com/products",
+      footer: "Warm wishes, Ananya Boutique Team",
+      logoUrl: "https://ananyaboutique.com/logo-og-v2.png",
       showLogoImage: true,
-      heroImageUrl: "https://healthyonegram.com/logo-header.png",
+      heroImageUrl: "https://ananyaboutique.com/logo-header.png",
       showHeroImage: true,
     },
   },
@@ -324,7 +324,7 @@ const NewsletterPage = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
   const [templateSubject, setTemplateSubject] = useState(
-    "Latest updates from HealthyOneGram",
+    "Latest updates from Ananya Boutique",
   );
   const [templateHtml, setTemplateHtml] = useState("");
   const [templateLoading, setTemplateLoading] = useState(true);
@@ -361,13 +361,13 @@ const NewsletterPage = () => {
   const logoImageFileInputRef = useRef(null);
   const heroImageFileInputRef = useRef(null);
   const [simpleTemplate, setSimpleTemplate] = useState({
-    title: "HealthyOneGram Newsletter",
+    title: "Ananya Boutique Newsletter",
     greeting: "Hello",
     intro: "Thanks for being part of our community.",
     body: "This is your newsletter content preview.\nUpdate this template from the admin panel before sending.",
     ctaLabel: "Explore Products",
-    ctaUrl: "https://healthyonegram.com/products",
-    footer: "Regards, HealthyOneGram Team",
+    ctaUrl: "https://ananyaboutique.com/products",
+    footer: "Regards, Ananya Boutique Team",
     logoUrl: DEFAULT_LOGO_URL,
     showLogoImage: true,
     heroImageUrl: DEFAULT_HERO_URL,
@@ -442,7 +442,7 @@ const NewsletterPage = () => {
       const response = await getData("/api/newsletter/admin/template", token);
       if (response?.success && response?.data) {
         setTemplateSubject(
-          response.data.subject || "Latest updates from HealthyOneGram",
+          response.data.subject || "Latest updates from Ananya Boutique",
         );
         setTemplateHtml(response.data.html || "");
       }

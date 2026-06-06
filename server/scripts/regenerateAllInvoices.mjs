@@ -12,7 +12,7 @@ const DEFAULT_GST_RATE = 5;
 const DEFAULT_HSN = "2106";
 
 const FIXED_SELLER_DETAILS = Object.freeze({
-  name: "BUY ONE GRAM PRIVATE LIMITED",
+  name: "Ananya Boutique",
   gstin: "08AAJCB3889Q1ZO",
   address: "G-225, RIICO INDUSTRIAL AREA SITAPURA, TONK ROAD, JAIPUR-302022",
   state: "Rajasthan",

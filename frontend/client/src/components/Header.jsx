@@ -6,7 +6,6 @@ import { useWishlist } from "@/context/WishlistContext";
 import useMembership from "@/hooks/useMembership";
 import { fetchDataFromApi, postData } from "@/utils/api";
 import cookies from "js-cookie";
-import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
@@ -20,6 +19,7 @@ import {
   MdOutlineShoppingBag,
 } from "react-icons/md";
 import Search from "./Search";
+import BrandLogo from "./brand/BrandLogo";
 import ThemePickerButton from "./ThemePickerButton";
 
 const resolveUserPhotoUrl = (photo, apiUrl) => {
@@ -118,7 +118,7 @@ const normalizeCoinSummary = (summary) => ({
   },
 });
 
-const HEADER_COLOR_CACHE_KEY = "hog_header_background_color";
+const HEADER_COLOR_CACHE_KEY = "ananya_header_background_color";
 const DEFAULT_HEADER_BACKGROUND_COLOR = "#fffbf5";
 const HEX_COLOR_PATTERN = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
 const LOGO_GREEN_HUE_MIN = 85;
@@ -237,7 +237,7 @@ const Header = () => {
   const API_URL = (
     process.env.NEXT_PUBLIC_APP_API_URL ||
     process.env.NEXT_PUBLIC_API_URL ||
-    "https://healthyonegram-api-v2-xb7znoco6a-uc.a.run.app/api"
+    "https://api.ananyaboutique.com/api"
   )
     .trim()
     .replace(/\/+$/, "");
@@ -417,7 +417,9 @@ const Header = () => {
 
     let hasCachedColor = false;
     try {
-      const cached = localStorage.getItem(HEADER_COLOR_CACHE_KEY);
+      const cached =
+        localStorage.getItem(HEADER_COLOR_CACHE_KEY) ||
+        localStorage.getItem("hog_header_background_color");
       hasCachedColor = applyHeaderBackgroundColor(cached);
     } catch {
       hasCachedColor = false;
@@ -744,7 +746,7 @@ const Header = () => {
 
   const mobileNavItems = [
     { name: "Home", href: "/", icon: "🏠" },
-    { name: "Products", href: "/products", icon: "🛍️" },
+    { name: "Discover", href: "/products", icon: "🛍️" },
     { name: "Membership", href: "/membership", icon: "💎" },
     { name: "Blogs", href: "/blogs", icon: "📝" },
     { name: "About Us", href: "/about-us", icon: "✨" },
@@ -884,14 +886,9 @@ const Header = () => {
                         showLogoProtection ? "opacity-100" : "opacity-0"
                       }`}
                     />
-                    <Image
-                      src="/logo-header.png"
-                      width={407}
-                      height={347}
-                      alt="Buy One Gram"
-                      priority
-                      className="site-header-logo-image-mobile relative object-contain w-[42px] h-[42px] sm:w-[46px] sm:h-[46px]"
-                      style={{ background: "transparent" }}
+                    <BrandLogo
+                      variant="mobile"
+                      imageClassName="site-header-logo-image-mobile w-[42px] h-[42px] sm:w-[46px] sm:h-[46px]"
                     />
                   </div>
                 </Link>
@@ -952,14 +949,9 @@ const Header = () => {
                         showLogoProtection ? "opacity-100" : "opacity-0"
                       }`}
                     />
-                    <Image
-                      src="/logo-header.png"
-                      width={407}
-                      height={347}
-                      alt="Buy One Gram"
-                      priority
-                      className="site-header-logo-image-desktop relative object-contain w-[62px] h-[62px]"
-                      style={{ background: "transparent" }}
+                    <BrandLogo
+                      variant="main"
+                      imageClassName="site-header-logo-image-desktop w-[62px] h-[62px]"
                     />
                   </div>
                 </Link>
@@ -969,7 +961,7 @@ const Header = () => {
                 <nav className="site-header-desktop-nav flex items-center gap-5">
                   {[
                     { name: "Home", href: "/" },
-                    { name: "Products", href: "/products" },
+                    { name: "Discover Style", href: "/products" },
                     { name: "Membership", href: "/membership" },
                     { name: "Blogs", href: "/blogs" },
                     { name: "About Us", href: "/about-us" },

@@ -2,7 +2,15 @@ import axios from "axios";
 import Cookies from "js-cookie";
 
 const DEFAULT_PRODUCTION_API_URL =
-  "https://healthyonegram-api-v2-xb7znoco6a-uc.a.run.app/api";
+  "https://api.ananyaboutique.com/api";
+
+const LOCAL_API_FALLBACKS = [
+  "http://127.0.0.1:8000",
+  "http://localhost:8000",
+  "http://127.0.0.1:8001",
+  "http://localhost:8001",
+  "http://127.0.0.1:8002",
+];
 
 const DEFAULT_PUBLIC_GET_CACHE_TTL_MS = Math.max(
   Number.parseInt(
@@ -48,8 +56,8 @@ const isFrontendUrl = (value) => {
     const parsed = new URL(sanitizeBaseUrl(value));
     const hostname = String(parsed.hostname || "").toLowerCase();
     return (
-      hostname === "healthyonegram.com" ||
-      hostname === "www.healthyonegram.com" ||
+      hostname === "ananyaboutique.com" ||
+      hostname === "www.ananyaboutique.com" ||
       hostname.endsWith(".hosted.app")
     );
   } catch {
@@ -84,6 +92,9 @@ const isLocalhostUrl = (value) => {
     return false;
   }
 };
+
+const normalizeLocalFallbacks = () =>
+  LOCAL_API_FALLBACKS.map(normalizeApiBaseUrl).filter(Boolean);
 
 const getConfiguredEnvBaseUrl = ({ includeLocalDevBaseUrl = false } = {}) => {
   const localDevBaseUrl = sanitizeBaseUrl(
@@ -279,7 +290,7 @@ const handleApiError = (error, fallbackMessage) => {
 const getApiBaseCandidates = () => {
   const preferred = sanitizeBaseUrl(preferredApiBaseUrl);
   const resolvedBase = sanitizeBaseUrl(API_BASE_URL);
-  const localDevBase = sanitizeBaseUrl(process.env.NEXT_PUBLIC_LOCAL_API_URL);
+  const localDevBase = normalizeApiBaseUrl(process.env.NEXT_PUBLIC_LOCAL_API_URL);
   const candidates = [];
 
   if (typeof window !== "undefined") {

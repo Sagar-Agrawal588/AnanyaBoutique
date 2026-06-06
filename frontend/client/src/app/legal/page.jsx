@@ -12,7 +12,7 @@ export default function LegalPage() {
               Legal Notice
             </h1>
             <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-              Important information about Healthy One Gram
+              Important information about Ananya Boutique
             </p>
           </div>
 
@@ -23,7 +23,7 @@ export default function LegalPage() {
             </h2>
             <div className="space-y-3 text-gray-700">
               <p className="text-lg font-semibold text-gray-800">
-                Healthy One Gram - Mega Health Store
+                Ananya Boutique - Fashion Boutique
               </p>
               <p className="ml-4 flex items-center gap-2">
                 <span className="text-orange-600">📍</span>
@@ -45,7 +45,7 @@ export default function LegalPage() {
               </h3>
               <p className="text-gray-700">
                 All content on this website, including text, graphics, logos,
-                images, and software, is the property of Healthy One Gram or its
+                images, and software, is the property of Ananya Boutique or its
                 content suppliers and protected by international copyright laws.
                 Unauthorized reproduction is prohibited.
               </p>
@@ -54,26 +54,25 @@ export default function LegalPage() {
             {/* Product Liability */}
             <div className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition">
               <h3 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2">
-                🏭 Product Liability
+                Product Liability
               </h3>
               <p className="text-gray-700">
-                All products are manufactured in compliance with relevant food
-                safety standards. We are not responsible for allergic reactions
-                or adverse effects if users fail to read product labels and
-                ingredients carefully.
+                Product colors, finishes, and fit can vary slightly by screen,
+                fabric batch, and styling context. Please review product
+                details, care notes, and sizing information before ordering.
               </p>
             </div>
 
             {/* Disclaimer */}
             <div className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition">
               <h3 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2">
-                ⚠️ Medical Disclaimer
+                Product Information Disclaimer
               </h3>
               <p className="text-gray-700">
-                Information provided is for educational purposes only and should
-                not be considered medical advice. Always consult with a
-                healthcare professional before using any health products or
-                changing your diet.
+                Information provided is for shopping guidance only and should
+                not be considered professional styling or medical advice.
+                Review product details before using any cosmetic, accessory, or
+                apparel item.
               </p>
             </div>
 
@@ -83,7 +82,7 @@ export default function LegalPage() {
                 ⚡ Limitation of Liability
               </h3>
               <p className="text-gray-700">
-                Healthy One Gram shall not be liable for any indirect,
+                Ananya Boutique shall not be liable for any indirect,
                 incidental, special, consequential, or punitive damages
                 resulting from the use of our website or products.
               </p>
@@ -150,7 +149,7 @@ export default function LegalPage() {
               We're here to help clarify any legal concerns
             </p>
             <a
-              href="https://healthyonegram.com"
+              href="https://ananyaboutique.com"
               className="inline-block bg-orange-600 text-white px-8 py-3 rounded-lg font-semibold hover:bg-orange-700 transition"
             >
               📧 Contact Legal Team

@@ -93,7 +93,7 @@ const resolveAvailability = (product, variantId = null) => {
       throw new AppError("INVALID_INPUT", {
         fieldName: "variantId",
         value: variantId,
-        message: "Selected pack is invalid",
+        message: "Selected option is invalid",
       });
     }
     return {
@@ -134,11 +134,11 @@ const getFrontendBaseUrl = () => {
     normalizeBaseUrl(process.env.CLIENT_URL) ||
     normalizeBaseUrl(process.env.NEXT_PUBLIC_SITE_URL) ||
     normalizeBaseUrl(process.env.FRONTEND_URL) ||
-    "https://healthyonegram.com";
+    "https://ananyaboutique.com";
 
   if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(candidate)) {
     return process.env.NODE_ENV === "production"
-      ? "https://healthyonegram.com"
+      ? "https://ananyaboutique.com"
       : candidate;
   }
 
@@ -238,7 +238,7 @@ const buildBackInStockEmailPayload = ({
       available_quantity: String(Math.max(Number(availableQuantity || 0), 1)),
       product_url: productUrl,
       preview_image: previewImage,
-      brand: String(product?.brand || "Healthy One Gram").trim(),
+      brand: String(product?.brand || "Ananya Boutique").trim(),
       year: String(new Date().getFullYear()),
     },
     text: [

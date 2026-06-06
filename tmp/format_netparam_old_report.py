@@ -15,8 +15,8 @@ from docx.shared import Inches, Pt
 SOURCE = Path(r"C:\Users\piyush songara\Downloads\Mid_Review_Report_Netparam_Formatted old.docx")
 BACKUP = SOURCE.with_name("Mid_Review_Report_Netparam_Formatted old.backup.docx")
 FALLBACK = SOURCE.with_name("Mid_Review_Report_Netparam_Formatted_University_Format.docx")
-NETPARAM_LOGO = Path(r"D:\BogEcom\output\friend-report-media\netparam_logo_generated.png")
-JECRC_LOGO = Path(r"D:\BogEcom\output\template1-media\image1.jpeg")
+NETPARAM_LOGO = Path(r"D:\AnanyaBoutique\output\friend-report-media\netparam_logo_generated.png")
+JECRC_LOGO = Path(r"D:\AnanyaBoutique\output\template1-media\image1.jpeg")
 
 
 MAIN_SECTION_HEADINGS = {

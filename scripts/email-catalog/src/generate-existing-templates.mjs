@@ -21,13 +21,13 @@ const ORDER_ID_SERIES = {
 
 const common = {
   year: "2026",
-  site_url: "https://healthyonegram.com",
-  products_url: "https://healthyonegram.com/products",
-  support_url: "https://healthyonegram.com/contact",
-  support_contact: "support@healthyonegram.com",
+  site_url: "https://ananyaboutique.com",
+  products_url: "https://ananyaboutique.com/products",
+  support_url: "https://ananyaboutique.com/contact",
+  support_contact: "support@ananyaboutique.com",
   order_status: "Pending",
   payment_provider: "PhonePe",
-  items_text: "Crunchy Peanut Butter",
+  items_text: "Signature Boutique Style",
   subtotal: "INR 499",
   discount: "INR 0",
   taxable_amount: "INR 499",
@@ -76,9 +76,9 @@ const jobs = [
       order_date: "21 March 2026",
       order_status: "Pending",
       payment_status: "Pending",
-      items_text: "Crunchy Peanut Butter",
+      items_text: "Signature Boutique Style",
       final_amount: "INR 499",
-      payment_url: `https://healthyonegram.com/pay-order/${ORDER_ID_TOKEN}`,
+      payment_url: `https://ananyaboutique.com/pay-order/${ORDER_ID_TOKEN}`,
       payment_cta_label: "Pay Now",
     },
   },
@@ -93,7 +93,7 @@ const jobs = [
       order_date: "21 March 2026",
       payment_status: "Paid",
       final_amount: "INR 499",
-      action_url: `https://healthyonegram.com/orders/${ORDER_ID_TOKEN}`,
+      action_url: `https://ananyaboutique.com/orders/${ORDER_ID_TOKEN}`,
       order_status: "Confirmed",
     },
   },
@@ -109,7 +109,7 @@ const jobs = [
       failure_kind: "Failed",
       failure_message: "Transaction declined",
       final_amount: "INR 499",
-      action_url: `https://healthyonegram.com/pay-order/${ORDER_ID_TOKEN}`,
+      action_url: `https://ananyaboutique.com/pay-order/${ORDER_ID_TOKEN}`,
       action_label: "Pay Now",
       order_date: "21 March 2026",
     },
@@ -123,7 +123,7 @@ const jobs = [
     data: {
       customer_name: "Piyush",
       order_date: "21 March 2026",
-      items_text: "Crunchy Peanut Butter",
+      items_text: "Signature Boutique Style",
       order_status: "Cancelled",
     },
   },
@@ -136,7 +136,7 @@ const jobs = [
     data: {
       customer_name: "Piyush",
       order_date: "21 March 2026",
-      feedback_url: `https://healthyonegram.com/feedback/${ORDER_ID_TOKEN}`,
+      feedback_url: `https://ananyaboutique.com/feedback/${ORDER_ID_TOKEN}`,
       delay_days: "3",
     },
   },
@@ -147,13 +147,13 @@ const jobs = [
     template: "promotionalOffer.html",
     data: {
       customer_name: "Piyush",
-      headline: "Flat 20% OFF on Peanut Butter!",
+      headline: "Flat 20% OFF on Boutique Styles!",
       message:
-        "Enjoy your favorite Crunchy Peanut Butter at a discounted price.",
+        "Enjoy your favorite boutique picks at a discounted price.",
       offer_details: "Use code below to get discount",
       coupon_code: "HOG20",
       cta_label: "Shop Now",
-      cta_url: "https://healthyonegram.com",
+      cta_url: "https://ananyaboutique.com",
     },
   },
   {
@@ -162,10 +162,10 @@ const jobs = [
     screenshotFile: "9.png",
     template: "newsletterConfirmation.html",
     data: {
-      site_url: "https://healthyonegram.com",
+      site_url: "https://ananyaboutique.com",
       year: "2026",
       subscriber_email: "piyush@example.com",
-      products_url: "https://healthyonegram.com/products",
+      products_url: "https://ananyaboutique.com/products",
     },
   },
   {
@@ -179,7 +179,7 @@ const jobs = [
       status: "Resolved",
       updated_at: "21 March 2026",
       admin_reply: "Your issue has been resolved successfully.",
-      support_url: "https://healthyonegram.com/contact",
+      support_url: "https://ananyaboutique.com/contact",
     },
   },
 ];
@@ -351,7 +351,7 @@ function buildPdf(renderedJobs) {
     doc
       .fillColor("#0f766e")
       .fontSize(34)
-      .text("HealthyOneGram Email Catalog", 40, 240, {
+      .text("Ananya Boutique Email Catalog", 40, 240, {
         width: doc.page.width - 80,
         align: "center",
       });

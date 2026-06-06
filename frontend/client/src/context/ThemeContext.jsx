@@ -12,55 +12,55 @@ const API_URL = API_BASE_URL.endsWith("/api")
   ? API_BASE_URL.slice(0, -4)
   : API_BASE_URL;
 
-// Enhanced flavor palettes with background, accent, hover, and light variants
+// Style palettes with background, accent, hover, and light variants.
 export const FLAVORS = {
   creamy: {
-    name: "Creamy",
-    color: "#F6E6C9",
-    hover: "#EBD5AE",
-    text: "#6B4F2A",
-    light: "#FFF7E9",
-    glass: "rgba(246,230,201,0.35)",
-    gradient: "linear-gradient(135deg, #FFF7E9 0%, #FFFDF7 50%, #FFFFFF 100%)",
-    cardBg: "#FFFDF7",
-    badge: "#D2BB92",
+    name: "Sarees",
+    color: "#FCE7F3",
+    hover: "#F9A8D4",
+    text: "#831843",
+    light: "#FFF5FB",
+    glass: "rgba(252,231,243,0.55)",
+    gradient: "linear-gradient(135deg, #FFF5FB 0%, #FFFDFE 50%, #FFFFFF 100%)",
+    cardBg: "#FFFDFE",
+    badge: "#DB2777",
   },
   chocolate: {
-    name: "Chocolate",
-    color: "#5A3A2E",
-    hover: "#472C23",
+    name: "Suits",
+    color: "#7C3AED",
+    hover: "#6D28D9",
     text: "#FFFFFF",
-    light: "#F7F1EF",
-    glass: "rgba(90,58,46,0.24)",
-    gradient: "linear-gradient(135deg, #F7F1EF 0%, #FCF8F6 50%, #FFFFFF 100%)",
-    cardBg: "#FCF8F6",
-    badge: "#472C23",
+    light: "#F5F3FF",
+    glass: "rgba(124,58,237,0.18)",
+    gradient: "linear-gradient(135deg, #F5F3FF 0%, #FAF8FF 50%, #FFFFFF 100%)",
+    cardBg: "#FAF8FF",
+    badge: "#6D28D9",
   },
   millets: {
-    name: "Daizu",
-    color: "#8FAE5D",
-    hover: "#7C984C",
-    text: "#2F3E1F",
-    light: "#F2F8E9",
-    glass: "rgba(143,174,93,0.22)",
-    gradient: "linear-gradient(135deg, #F2F8E9 0%, #F8FBEF 50%, #FFFFFF 100%)",
-    cardBg: "#F8FBEF",
-    badge: "#7C984C",
+    name: "Kurtis",
+    color: "#DB2777",
+    hover: "#BE185D",
+    text: "#FFFFFF",
+    light: "#FDF2F8",
+    glass: "rgba(219,39,119,0.16)",
+    gradient: "linear-gradient(135deg, #FDF2F8 0%, #FFF7FB 50%, #FFFFFF 100%)",
+    cardBg: "#FFF7FB",
+    badge: "#BE185D",
   },
   nutty: {
-    name: "Low-calorie",
-    color: "#CFEFE8",
-    hover: "#B6E4DA",
-    text: "#1F4D46",
-    light: "#F0FAF7",
-    glass: "rgba(207,239,232,0.45)",
-    gradient: "linear-gradient(135deg, #F0FAF7 0%, #F7FCFA 50%, #FFFFFF 100%)",
-    cardBg: "#F7FCFA",
-    badge: "#8DC7BA",
+    name: "Accessories",
+    color: "#C4B5FD",
+    hover: "#A78BFA",
+    text: "#4C1D95",
+    light: "#FAF5FF",
+    glass: "rgba(196,181,253,0.34)",
+    gradient: "linear-gradient(135deg, #FAF5FF 0%, #FDFBFF 50%, #FFFFFF 100%)",
+    cardBg: "#FDFBFF",
+    badge: "#8B5CF6",
   },
 };
 
-// Default flavor is Chocolate
+// Default style is Suits.
 const DEFAULT_FLAVOR = FLAVORS.chocolate;
 const resolveFlavorWithOverrides = (candidate) => {
   if (!candidate || typeof candidate !== "object") {

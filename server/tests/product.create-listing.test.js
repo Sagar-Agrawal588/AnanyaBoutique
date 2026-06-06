@@ -12,7 +12,7 @@ import {
 
 let mongoServer;
 const DEFAULT_PRODUCT_IMAGE =
-  "buyonegram/system/product-default.webp";
+  "ananyaboutique/system/product-default.webp";
 
 const createMockRes = () => {
   const result = {
@@ -88,7 +88,7 @@ test("newly created product appears in listings and product detail even when opt
   );
   assert.ok(listedProduct);
   assert.equal(listedProduct?.available_quantity, 8);
-  assert.equal(listedProduct?.brand, "Buy One Gram");
+  assert.equal(listedProduct?.brand, "Ananya Boutique");
 
   const detailReq = {
     params: { id: createdProductId },

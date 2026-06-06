@@ -11,7 +11,7 @@ const TARGET_EMAIL = String(
 )
   .trim()
   .toLowerCase();
-const PRODUCT_NAME = "Choco Millet Crisp Peanut Butter";
+const PRODUCT_NAME = "Choco Millet Crisp Boutique Style";
 const WELCOME_COUPON_CODE = "WELCOME10";
 
 const getArgValue = (prefix) =>

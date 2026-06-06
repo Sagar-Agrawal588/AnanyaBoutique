@@ -34,7 +34,7 @@ test.afterEach(async () => {
 test("cart upsell keeps 500g and 1kg variant-name combos distinct", async () => {
   const categoryId = new mongoose.Types.ObjectId();
   const productA = await ProductModel.create({
-    name: "Dark Chocolate Smooth Peanut Butter",
+    name: "Dark Chocolate Smooth Boutique Style",
     slug: `dark-chocolate-smooth-${Date.now()}`,
     category: categoryId,
     price: 449,
@@ -66,7 +66,7 @@ test("cart upsell keeps 500g and 1kg variant-name combos distinct", async () => 
   });
 
   const productB = await ProductModel.create({
-    name: "Classic Crunchy Peanut Butter",
+    name: "Classic Signature Boutique Style",
     slug: `classic-crunchy-${Date.now()}`,
     category: categoryId,
     price: 349,
@@ -77,7 +77,7 @@ test("cart upsell keeps 500g and 1kg variant-name combos distinct", async () => 
   });
 
   await ComboModel.create({
-    name: "1kg Protein Combo",
+    name: "1kg Style Combo",
     slug: `combo-1kg-${Date.now()}`,
     isActive: true,
     isVisible: true,
@@ -135,7 +135,7 @@ test("cart upsell normalizes variant names like 1kg and 1 kg as the same match",
   const categoryId = new mongoose.Types.ObjectId();
   const [productA, productB] = await ProductModel.create([
     {
-      name: "Dark Chocolate Smooth Peanut Butter",
+      name: "Dark Chocolate Smooth Boutique Style",
       slug: `dark-chocolate-smooth-match-${Date.now()}`,
       category: categoryId,
       price: 449,
@@ -145,7 +145,7 @@ test("cart upsell normalizes variant names like 1kg and 1 kg as the same match",
       reserved_quantity: 0,
     },
     {
-      name: "Classic Crunchy Peanut Butter",
+      name: "Classic Signature Boutique Style",
       slug: `classic-crunchy-match-${Date.now()}`,
       category: categoryId,
       price: 349,

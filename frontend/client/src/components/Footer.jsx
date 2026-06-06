@@ -1,57 +1,42 @@
 "use client";
 
-import { useSettings } from "@/context/SettingsContext";
 import { API_BASE_URL, postData } from "@/utils/api";
+import {
+  contactConfig,
+  getMailtoHref,
+  getMapHref,
+  getPhoneHref,
+  getWhatsAppHref,
+} from "@/config/siteConfig";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { AiOutlineYoutube } from "react-icons/ai";
 import {
   FiCreditCard,
-  FiGift,
   FiHeadphones,
+  FiHeart,
+  FiHome,
+  FiMail,
+  FiPhone,
   FiShield,
-  FiTruck,
+  FiStar,
 } from "react-icons/fi";
-import { FaFacebook, FaInstagram, FaLinkedin } from "react-icons/fa";
-import { FaXTwitter } from "react-icons/fa6";
+import { FaInstagram, FaWhatsapp } from "react-icons/fa";
 import { IoLocationSharp } from "react-icons/io5";
 import { BiSupport } from "react-icons/bi";
+import BrandLogo from "./brand/BrandLogo";
+import {
+  brandIdentity,
+  brandPillars,
+  globalTrustMessages,
+} from "@/config/visualIdentity";
 
 const API_URL = API_BASE_URL.endsWith("/api")
   ? API_BASE_URL.slice(0, -4)
   : API_BASE_URL;
-const FALLBACK_STORE_INFO = {
-  name: "BuyOneGram",
-  email: "healthyonegram.com",
-  phone: "+91 8619641968",
-  address:
-    "G-220,225, RIICO, Sitapura Industrial Area, Jaipur, Rajasthan 302022",
-};
-
-const normalizeStoreLink = (value) => {
-  const normalized = String(value || "").trim();
-  if (!normalized) return "";
-  if (normalized.includes("@")) {
-    return `mailto:${normalized}`;
-  }
-  if (/^https?:\/\//i.test(normalized)) {
-    return normalized;
-  }
-  if (!normalized.includes(" ")) {
-    return `https://${normalized.replace(/^\/+/, "")}`;
-  }
-  return "";
-};
-
-const normalizePhoneHref = (value) => {
-  const digits = String(value || "").replace(/[^\d+]/g, "");
-  return digits ? `tel:${digits}` : "";
-};
 
 const Footer = () => {
-  const { storeInfo: liveStoreInfo } = useSettings();
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState(null);
   const [message, setMessage] = useState("");
@@ -119,67 +104,66 @@ const Footer = () => {
     fetchPolicyLinks();
   }, []);
 
-  const storeInfo = {
-    ...FALLBACK_STORE_INFO,
-    ...(liveStoreInfo || {}),
-  };
-  const supportLink = normalizeStoreLink(storeInfo.email);
-  const supportPhoneHref = normalizePhoneHref(storeInfo.phone);
+  const supportLink = getMailtoHref("Ananya Boutique support");
+  const supportPhoneHref = getPhoneHref();
+  const mapHref = getMapHref();
+  const whatsappHref = getWhatsAppHref(
+    contactConfig.whatsappActions[0]?.message,
+  );
 
-  const features = [
-    {
-      icon: <FiTruck />,
-      title: "Free Delivery",
-      desc: "On Every Order, We've Got It Covered",
-    },
-    {
-      icon: <FiShield />,
-      title: "100% Genuine",
-      desc: "Quality Assured",
-    },
+  const featureIcons = [FiShield, FiHome, FiStar, FiHeart, FiHeadphones];
+  const features = brandPillars.map((pillar, index) => ({
+    icon: (() => {
+      const Icon = featureIcons[index] || FiShield;
+      return <Icon />;
+    })(),
+    title: pillar.title,
+    desc: pillar.description,
+  }));
+  features.push(
     {
       icon: <FiCreditCard />,
       title: "Secure Payment",
-      desc: "UPI, Credit Cards, Debit Cards",
+      desc: "Safe checkout options",
     },
-    {
-      icon: <FiGift />,
-      title: "Special Gifts",
-      desc: "For Selected lucky Users",
-    },
-    {
-      icon: <FiHeadphones />,
-      title: "24/7 Support",
-      desc: "Always Here",
-    },
-  ];
+  );
 
   return (
     <footer
       className="site-footer relative overflow-hidden"
       style={{
-        background: "linear-gradient(180deg, #0a0a0a 0%, #111827 100%)",
+        background:
+          "linear-gradient(180deg, #2a0f24 0%, #130816 58%, #08050a 100%)",
       }}
     >
-      {/* Decorative mesh gradient overlay */}
+      {/* Layered footer glow */}
       <div className="pointer-events-none absolute inset-0">
         <div
-          className="absolute top-0 left-1/4 w-96 h-96 rounded-full blur-[120px] opacity-20"
-          style={{ background: "var(--primary)" }}
+          className="absolute inset-0 opacity-45"
+          style={{
+            background:
+              "linear-gradient(135deg, rgba(236,72,153,0.22), transparent 34%, rgba(124,58,237,0.2) 74%, transparent)",
+          }}
         />
         <div
-          className="absolute bottom-0 right-1/4 w-80 h-80 rounded-full blur-[120px] opacity-15"
-          style={{ background: "#7c3aed" }}
+          className="absolute inset-x-0 top-0 h-px"
+          style={{
+            background:
+              "linear-gradient(90deg, transparent, rgba(255,255,255,0.35), transparent)",
+          }}
         />
         <div
-          className="absolute top-1/2 right-0 w-64 h-64 rounded-full blur-[100px] opacity-10"
-          style={{ background: "#ff6b9d" }}
+          className="absolute inset-x-0 bottom-0 h-px"
+          style={{
+            background:
+              "linear-gradient(90deg, transparent, rgba(255,255,255,0.14), transparent)",
+          }}
         />
       </div>
 
       <div className="container mx-auto px-4 sm:px-6 relative z-10">
         {/* ============ FEATURE CARDS ============ */}
-        <div className="mx-auto grid max-w-6xl grid-cols-2 justify-center gap-3 py-10 sm:grid-cols-3 sm:gap-4 sm:py-14 lg:grid-cols-5">
+        <div className="mx-auto grid max-w-7xl grid-cols-2 justify-center gap-3 py-10 sm:grid-cols-3 sm:gap-4 sm:py-14 lg:grid-cols-6">
           {features.map((item, i) => (
             <motion.div
               key={i}
@@ -200,7 +184,7 @@ const Footer = () => {
                 className="flex h-12 w-12 items-center justify-center rounded-2xl text-[22px] text-[#121212] transition-all duration-200 group-hover:shadow-lg sm:h-14 sm:w-14 sm:text-[26px]"
                 style={{
                   background:
-                    "linear-gradient(135deg, var(--primary), var(--flavor-hover))",
+                    "linear-gradient(135deg, #f9a8d4, #c4b5fd)",
                 }}
               >
                 {item.icon}
@@ -235,46 +219,58 @@ const Footer = () => {
             transition={{ duration: 0.28 }}
             className="flex flex-col gap-4 sm:gap-5 lg:border-r lg:pr-8 border-white/5"
           >
+            <BrandLogo
+              variant="footer"
+              showText
+              imageClassName="h-12 w-12"
+              textClassName="text-white"
+            />
             <h3 className="text-[16px] sm:text-[18px] font-extrabold text-white uppercase tracking-[0.15em]">
               Contact Us
             </h3>
             <p className="text-[13px] sm:text-[14px] leading-relaxed text-gray-400">
-              {storeInfo.address}
+              {brandIdentity.supportingMessage}
             </p>
-            {supportLink ? (
-              <a
-                href={supportLink}
-                className="text-[14px] font-semibold text-gray-400 hover:text-primary transition-colors duration-300"
-                target={supportLink.startsWith("http") ? "_blank" : undefined}
-                rel={supportLink.startsWith("http") ? "noreferrer" : undefined}
-              >
-                {storeInfo.email}
-              </a>
-            ) : (
-              <span className="text-[14px] font-semibold text-gray-400">
-                {storeInfo.email}
-              </span>
-            )}
-            {supportPhoneHref ? (
-              <a
-                href={supportPhoneHref}
-                className="text-[18px] font-extrabold tracking-tight hover:underline transition-colors"
-                style={{ color: "var(--primary)" }}
-              >
-                {storeInfo.phone}
-              </a>
-            ) : (
-              <span
-                className="text-[18px] font-extrabold tracking-tight"
-                style={{ color: "var(--primary)" }}
-              >
-                {storeInfo.phone}
-              </span>
-            )}
+            <p className="text-[13px] sm:text-[14px] leading-relaxed text-gray-400">
+              {globalTrustMessages.founder}
+            </p>
+            <a
+              href={supportLink}
+              className="inline-flex items-center gap-2 text-[14px] font-semibold text-gray-400 hover:text-primary transition-colors duration-300"
+            >
+              <FiMail />
+              {contactConfig.email}
+            </a>
+            <a
+              href={supportPhoneHref}
+              className="inline-flex items-center gap-2 text-[18px] font-extrabold tracking-tight hover:underline transition-colors"
+              style={{ color: "var(--primary)" }}
+            >
+              <FiPhone />
+              {contactConfig.phone}
+            </a>
+            <a
+              href={whatsappHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 text-[14px] font-semibold text-gray-400 hover:text-primary transition-colors duration-300"
+            >
+              <FaWhatsapp />
+              WhatsApp Support
+            </a>
+            <a
+              href={contactConfig.instagramUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 text-[14px] font-semibold text-gray-400 hover:text-primary transition-colors duration-300"
+            >
+              <FaInstagram />
+              {contactConfig.instagramHandle}
+            </a>
 
             {/* Map Card */}
             <Link
-              href="https://maps.app.goo.gl/zbbCcKeTnX3GYPhZ8"
+              href={mapHref}
               target="_blank"
               rel="noopener noreferrer"
               className="group flex items-center gap-4 mt-1 p-3.5 rounded-2xl transition-all duration-300 hover:-translate-y-1 active:-translate-y-0.5 active:bg-white/[0.08]"
@@ -290,7 +286,7 @@ const Footer = () => {
               <span className="text-[13px] font-bold text-gray-300 leading-tight">
                 View on Map <br />
                 <span className="font-normal text-gray-500 group-hover:text-primary group-active:text-primary transition-colors">
-                  Open in Google Maps
+                  Get Directions
                 </span>
               </span>
             </Link>
@@ -326,14 +322,14 @@ const Footer = () => {
             transition={{ duration: 0.28, delay: 0.08 }}
           >
             <h3 className="text-[16px] sm:text-[18px] font-extrabold text-white uppercase tracking-[0.15em] mb-5 sm:mb-7">
-              Products
+              Discover
             </h3>
             <ul className="space-y-3.5">
               {[
-                { name: "Prices drop", link: "/products?priceDrop=true" },
-                { name: "New products", link: "/products?newArrivals=true" },
-                { name: "Best seller", link: "/products?bestSeller=true" },
-                { name: "All Products", link: "/products" },
+                { name: "Special Offers", link: "/products?priceDrop=true" },
+                { name: "New Arrivals", link: "/products?newArrivals=true" },
+                { name: "Loved Most", link: "/products?bestSeller=true" },
+                { name: "Discover Your Style", link: "/products" },
               ].map((item, i) => (
                 <li key={i}>
                   <Link
@@ -405,10 +401,11 @@ const Footer = () => {
             transition={{ duration: 0.28, delay: 0.16 }}
           >
             <h3 className="text-[16px] sm:text-[18px] font-extrabold text-white uppercase tracking-[0.15em] mb-3 sm:mb-4">
-              Stay in the loop
+              Join the boutique family
             </h3>
             <p className="text-[12px] sm:text-[13px] text-gray-500 mb-5 sm:mb-6 leading-relaxed">
-              Get the latest drops, deals & wellness tips. No spam, ever.
+              Get thoughtful styling notes, new arrivals, and boutique offers
+              selected with care.
             </p>
 
             <form
@@ -440,18 +437,18 @@ const Footer = () => {
                 style={{
                   background:
                     status === "success"
-                      ? "linear-gradient(135deg, var(--primary), var(--flavor-hover))"
-                      : "linear-gradient(135deg, var(--primary), var(--flavor-hover))",
-                  color: "#0a0a0a",
-                  boxShadow: "0 4px 20px rgba(0, 216, 158, 0.25)",
+                      ? "linear-gradient(135deg, #ec4899, #7c3aed)"
+                      : "linear-gradient(135deg, #ec4899, #7c3aed)",
+                  color: "#ffffff",
+                  boxShadow: "0 12px 30px rgba(124, 58, 237, 0.24)",
                 }}
               >
                 {status === "loading" ? (
-                  <span className="w-5 h-5 border-2 border-[#0a0a0a]/20 border-t-[#0a0a0a] rounded-full animate-spin" />
+                  <span className="w-5 h-5 border-2 border-white/25 border-t-white rounded-full animate-spin" />
                 ) : status === "success" ? (
                   "SUBSCRIBED"
                 ) : (
-                  "SUBSCRIBE"
+                  "JOIN NOW"
                 )}
               </button>
             </form>
@@ -492,29 +489,9 @@ const Footer = () => {
           <div className="flex gap-2.5 sm:gap-3">
             {[
               {
-                Icon: FaFacebook,
-                link: "https://www.facebook.com/buyonegram/",
-                hoverColor: "#1877F2",
-              },
-              {
-                Icon: AiOutlineYoutube,
-                link: "https://www.youtube.com/@buyonegram",
-                hoverColor: "#FF0000",
-              },
-              {
                 Icon: FaInstagram,
-                link: "https://www.instagram.com/buyonegram/",
+                link: contactConfig.instagramUrl,
                 hoverColor: "#E4405F",
-              },
-              {
-                Icon: FaLinkedin,
-                link: "https://www.linkedin.com/company/buy-one-gram-private-limited/",
-                hoverColor: "#0A66C2",
-              },
-              {
-                Icon: FaXTwitter,
-                link: "https://x.com/buyonegram/",
-                hoverColor: "#ffffff",
               },
             ].map(({ Icon, link, hoverColor }, i) => (
               <motion.a
@@ -550,7 +527,7 @@ const Footer = () => {
           </div>
 
           <p className="text-center text-[11px] sm:text-[13px] font-medium text-gray-600">
-            © 2026 Healthyonegram. All rights reserved.
+            &copy; 2026 Ananya Boutique. All rights reserved.
           </p>
         </div>
       </div>

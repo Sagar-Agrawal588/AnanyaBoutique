@@ -1,6 +1,6 @@
 param(
   [string]$Repo = "",
-  [string]$Domain = "healthyonegram.com",
+  [string]$Domain = "ananyaboutique.com",
   [string]$ServerEnvPath = "server/.env",
   [string]$ClientEnvPath = "frontend/client/.env",
   [string]$AdminUrl = "",

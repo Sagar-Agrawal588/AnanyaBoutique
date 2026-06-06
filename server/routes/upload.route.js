@@ -134,7 +134,7 @@ router.post(
       }
 
       // Determine folder based on request
-      let folder = "buyonegram/general";
+      let folder = "ananyaboutique/general";
       const referer = req.get("referer") || "";
       const preserveQuality =
         req.body.preserveQuality === true ||
@@ -143,22 +143,22 @@ router.post(
         referer.includes("blogs");
 
       if (referer.includes("products") || req.body.folder === "products") {
-        folder = "buyonegram/products";
+        folder = "ananyaboutique/products";
       } else if (
         referer.includes("categories") ||
         req.body.folder === "categories"
       ) {
-        folder = "buyonegram/categories";
+        folder = "ananyaboutique/categories";
       } else if (referer.includes("banners") || req.body.folder === "banners") {
-        folder = "buyonegram/banners";
+        folder = "ananyaboutique/banners";
       } else if (
         referer.includes("slides") ||
         referer.includes("home-slides") ||
         req.body.folder === "slides"
       ) {
-        folder = "buyonegram/slides";
+        folder = "ananyaboutique/slides";
       } else if (referer.includes("users") || req.body.folder === "users") {
-        folder = "buyonegram/users";
+        folder = "ananyaboutique/users";
       }
 
       let uploadBuffer = req.file.buffer;
@@ -236,9 +236,9 @@ router.post(
       }
 
       // Determine folder
-      let folder = "buyonegram/products";
+      let folder = "ananyaboutique/products";
       if (req.body.folder) {
-        folder = `buyonegram/${req.body.folder}`;
+        folder = `ananyaboutique/${req.body.folder}`;
       }
 
       const preserveQuality =
@@ -351,7 +351,7 @@ router.post(
       // Upload to configured media storage provider as video
       const result = await uploadVideoToCloudinary(
         req.file.buffer,
-        "buyonegram/videos",
+        "ananyaboutique/videos",
         { mimeType: req.file.mimetype },
       );
 

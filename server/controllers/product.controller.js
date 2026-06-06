@@ -1019,7 +1019,7 @@ export const getProducts = async (req, res) => {
             itemType: "combo",
             name: String(combo?.name || "Combo Deal"),
             shortDescription: String(combo?.shortDescription || ""),
-            brand: String(combo?.brand || "Buy One Gram"),
+            brand: String(combo?.brand || "Ananya Boutique"),
             price: comboPrice,
             originalPrice: comboOriginalPrice,
             discount: comboDiscount,

@@ -74,7 +74,7 @@ const seedCatalog = async () => {
     stock: 20,
     stock_quantity: 20,
     reserved_quantity: 2,
-    tags: ["dry-fruits", "protein"],
+    tags: ["dry-fruits", "style"],
     isActive: true,
   });
 
@@ -276,7 +276,7 @@ test("docs: guide.pdf returns a PDF payload", async () => {
   assert.ok(
     String(response.headers.get("content-disposition") || "")
       .toLowerCase()
-      .includes("healthyonegram-partner-api-guide.pdf"),
+      .includes("ananyaboutique-partner-api-guide.pdf"),
   );
 
   const buffer = await response.arrayBuffer();

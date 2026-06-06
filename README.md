@@ -257,7 +257,7 @@ node scripts/validate-env-examples.mjs
 ## Production Setup (App Engine)
 
 1. Configure GitHub secrets required by deploy workflows.
-2. Configure the App Engine custom domain and `dispatch.yaml` routes for `healthyonegram.com`.
+2. Configure the App Engine custom domain and `dispatch.yaml` routes for `ananyaboutique.com`.
 3. Push to `main` (path-based workflows deploy changed service).
 4. Optionally run `workflow_dispatch` for manual deploy.
 5. Verify App Engine service health, routing, and the configured media bucket/CDN URLs.

@@ -167,7 +167,7 @@ const productSchema = new mongoose.Schema(
     },
     brand: {
       type: String,
-      default: "Buy One Gram",
+      default: "Ananya Boutique",
       trim: true,
       index: true,
     },
@@ -520,7 +520,12 @@ productSchema.pre("validate", function () {
   // Auto-generate SKU if not provided
   if (!this.sku) {
     const randomPart = Math.random().toString(36).substring(2, 8).toUpperCase();
-    this.sku = `BOG-${randomPart}`;
+    const skuPrefix =
+      String(process.env.SKU_PREFIX || "ANB")
+        .trim()
+        .toUpperCase()
+        .replace(/[^A-Z0-9-]/g, "") || "ANB";
+    this.sku = `${skuPrefix}-${randomPart}`;
   }
 });
 

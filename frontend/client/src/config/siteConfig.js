@@ -1,6 +1,6 @@
 /**
  * ============================================
- * SITE CONFIGURATION - BUY ONE GRAM ECOMMERCE
+ * SITE CONFIGURATION - ANANYA BOUTIQUE ECOMMERCE
  * ============================================
  *
  * This file contains all dynamic content that can be managed from admin panel.
@@ -8,46 +8,114 @@
  * For now, they serve as defaults and structure reference.
  */
 
+const BUSINESS_PHONE = "+91 6396789311";
+const BUSINESS_EMAIL = "sagaragrawal.588@gmail.com";
+const BUSINESS_INSTAGRAM_URL = "https://www.instagram.com/ananya___boutique";
+const BUSINESS_MAP_URL = "https://share.google/9gTvwlEIKp6hVZDbk";
+
+const normalizePhoneDigits = (value = "") =>
+  String(value || "").replace(/[^\d]/g, "");
+
 // ========== SITE INFO ==========
 export const siteConfig = {
-  name: "Buy One Gram",
-  tagline: "Your Health, Our Priority",
-  description: "Premium quality health products delivered to your doorstep",
+  name: "Ananya Boutique",
+  tagline: "Fashion created with love, trust, and years of dedication",
+  description:
+    "A family-owned boutique built by a mother, trusted by women since 2012 for affordable fashion, accessories, and occasion-ready edits.",
   logo: "/logo.png",
   favicon: "/favicon.ico",
 
   // Contact Information
   contact: {
-    email: "healthyonegram.com",
-    phone: "+91 8619-641-968",
-    whatsapp: "+918619641968",
-    address: "Rajasthan Centre of Advanced Technology (R-CAT)",
+    email: BUSINESS_EMAIL,
+    phone: BUSINESS_PHONE,
+    whatsapp: BUSINESS_PHONE,
+    address: "Ananya Boutique",
+    mapUrl: BUSINESS_MAP_URL,
   },
 
   // Social Media Links
   social: {
-    facebook: "https://facebook.com/buyonegram",
-    instagram: "https://instagram.com/buyonegram",
-    twitter: "https://twitter.com/buyonegram",
-    youtube: "https://youtube.com/buyonegram",
+    instagram: BUSINESS_INSTAGRAM_URL,
+    instagramHandle: "@ananya___boutique",
   },
 
   // SEO Defaults
   seo: {
-    title: "Buy One Gram - Premium Health Products",
+    title: "Ananya Boutique - Fashion Created With Love Since 2012",
     description:
-      "Shop premium health products, peanut butter, supplements and more",
-    keywords: ["health products", "peanut butter", "organic", "supplements"],
+      "Discover sarees, suits, kurtis, leggings, cosmetics, jewellery, and fashion accessories from a family-owned boutique trusted since 2012.",
+    keywords: ["boutique fashion", "sarees", "suits", "kurtis", "leggings", "cosmetics", "artificial jewellery", "fashion accessories", "ananya boutique"],
     ogImage: "/og-image.jpg",
   },
+};
+
+export const contactConfig = {
+  businessName: siteConfig.name,
+  email: BUSINESS_EMAIL,
+  phone: BUSINESS_PHONE,
+  whatsapp: BUSINESS_PHONE,
+  whatsappNumber: normalizePhoneDigits(BUSINESS_PHONE),
+  address: siteConfig.contact.address,
+  mapUrl: BUSINESS_MAP_URL,
+  instagramUrl: BUSINESS_INSTAGRAM_URL,
+  instagramHandle: siteConfig.social.instagramHandle,
+  instagramTitle: "Follow Our Journey",
+  instagramContent:
+    "Discover new arrivals, styling inspiration, boutique updates, customer stories, and behind-the-scenes moments from Ananya Boutique.",
+  trustSignals: [
+    "Trust Since 2012",
+    "Family-Owned Boutique",
+    "Affordable Fashion",
+    "Women-Centric Style",
+    "Personal Customer Care",
+  ],
+  whatsappActions: [
+    {
+      label: "Chat on WhatsApp",
+      message: "Hi Ananya Boutique, I would like to chat on WhatsApp.",
+    },
+    {
+      label: "Get Styling Advice",
+      message: "Hi Ananya Boutique, I would like styling advice.",
+    },
+    {
+      label: "Product Assistance",
+      message: "Hi Ananya Boutique, I need product assistance.",
+    },
+    {
+      label: "Order Support",
+      message: "Hi Ananya Boutique, I need help with my order.",
+    },
+    {
+      label: "Fashion Consultation",
+      message: "Hi Ananya Boutique, I would like a fashion consultation.",
+    },
+  ],
+};
+
+export const getPhoneHref = () =>
+  `tel:+${normalizePhoneDigits(contactConfig.phone)}`;
+
+export const getMailtoHref = (subject = "") => {
+  const query = subject ? `?subject=${encodeURIComponent(subject)}` : "";
+  return `mailto:${contactConfig.email}${query}`;
+};
+
+export const getMapHref = () => contactConfig.mapUrl;
+
+export const getWhatsAppHref = (message = "") => {
+  const text =
+    message || contactConfig.whatsappActions[0]?.message || "Hi Ananya Boutique";
+  return `https://wa.me/${contactConfig.whatsappNumber}?text=${encodeURIComponent(text)}`;
 };
 
 // ========== NAVIGATION ==========
 export const navigationConfig = {
   mainNav: [
     { name: "Home", link: "/", icon: null },
-    { name: "Products", link: "/products", icon: null },
-    { name: "Categories", link: "/category-list", icon: null },
+    { name: "Discover Style", link: "/products", icon: null },
+    { name: "Categories", link: "/products", icon: null },
     { name: "Blogs", link: "/blogs", icon: null },
     { name: "About Us", link: "/about-us", icon: null },
   ],
@@ -79,27 +147,27 @@ export const homeSlides = [
   {
     id: 1,
     image: "/slides/slide1.jpg",
-    title: "Pure Nutrition",
-    subtitle: "100% Natural Peanut Butter",
-    cta: "Shop Now",
+    title: "New Season Edit",
+    subtitle: "Sarees, suits, kurtis, and finishing touches",
+    cta: "Discover Your Style",
     link: "/products",
     isActive: true,
   },
   {
     id: 2,
     image: "/slides/slide2.jpg",
-    title: "Fuel Your Fitness",
-    subtitle: "High Protein • No Sugar",
-    cta: "Explore",
-    link: "/products?category=fitness",
+    title: "Occasion Ready",
+    subtitle: "Elegant looks for celebrations and gifting",
+    cta: "Explore the Edit",
+    link: "/products?category=occasion-edit",
     isActive: true,
   },
   {
     id: 3,
     image: "/slides/slide3.jpg",
-    title: "Clean Eating",
-    subtitle: "No Palm Oil • No Preservatives",
-    cta: "Discover",
+    title: "Everyday Luxury",
+    subtitle: "Soft colors, graceful details, easy styling",
+    cta: "Meet Our Story",
     link: "/about-us",
     isActive: true,
   },
@@ -109,42 +177,66 @@ export const homeSlides = [
 export const categories = [
   {
     id: 1,
-    name: "Peanut Butter",
-    slug: "peanut-butter",
-    image: "/categories/peanut-butter.jpg",
-    description: "Premium quality peanut butter",
+    name: "Sarees",
+    slug: "sarees",
+    image: "/categories/sarees.jpg",
+    description: "Elegant drapes for festive, wedding, and everyday occasions",
     isActive: true,
   },
   {
     id: 2,
-    name: "Supplements",
-    slug: "supplements",
-    image: "/categories/supplements.jpg",
-    description: "Health supplements for daily nutrition",
+    name: "Suits",
+    slug: "suits",
+    image: "/categories/suits.jpg",
+    description: "Ready-to-style suits and coordinated ethnic sets",
     isActive: true,
   },
   {
     id: 3,
-    name: "Protein",
-    slug: "protein",
-    image: "/categories/protein.jpg",
-    description: "High-quality protein products",
+    name: "Kurtis",
+    slug: "kurtis",
+    image: "/categories/kurtis.jpg",
+    description: "Comfortable kurtis for work, casual wear, and outings",
     isActive: true,
   },
   {
     id: 4,
-    name: "Organic Foods",
-    slug: "organic-foods",
-    image: "/categories/organic.jpg",
-    description: "100% organic food products",
+    name: "Leggings",
+    slug: "leggings",
+    image: "/categories/leggings.jpg",
+    description: "Essential leggings and bottomwear for everyday styling",
     isActive: true,
   },
   {
     id: 5,
-    name: "Healthy Snacks",
-    slug: "healthy-snacks",
-    image: "/categories/snacks.jpg",
-    description: "Guilt-free healthy snacking options",
+    name: "Women's Fashion",
+    slug: "womens-fashion",
+    image: "/categories/womens-fashion.jpg",
+    description: "Fresh fashion picks for daily dressing and occasions",
+    isActive: true,
+  },
+  {
+    id: 6,
+    name: "Cosmetics",
+    slug: "cosmetics",
+    image: "/categories/cosmetics.jpg",
+    description: "Beauty essentials to complete your look",
+    isActive: true,
+  },
+  {
+    id: 7,
+    name: "Artificial Jewellery",
+    slug: "artificial-jewellery",
+    image: "/categories/artificial-jewellery.jpg",
+    description: "Statement pieces, earrings, bangles, and delicate accents",
+    isActive: true,
+  },
+  {
+    id: 8,
+    name: "Fashion Accessories",
+    slug: "fashion-accessories",
+    image: "/categories/fashion-accessories.jpg",
+    description: "Bags, clutches, scarves, and finishing touches",
     isActive: true,
   },
 ];
@@ -153,37 +245,37 @@ export const categories = [
 export const featuredProducts = [
   {
     id: 1,
-    name: "Classic Peanut Butter - Crunchy",
-    slug: "classic-peanut-butter-crunchy",
-    brand: "Buy One Gram",
-    price: 349,
-    originalPrice: 499,
+    name: "Ananya Signature Kurta Set",
+    slug: "ananya-signature-kurta-set",
+    brand: "Ananya Boutique",
+    price: 1899,
+    originalPrice: 2499,
     discount: 30,
     rating: 4.5,
     reviewCount: 128,
     image: "/products/product1.jpg",
     images: ["/products/product1.jpg", "/products/product1-2.jpg"],
     inStock: true,
-    category: "peanut-butter",
+    category: "kurtis",
     tags: ["bestseller", "featured"],
-    description: "100% premium roasted peanuts, no added sugar",
+    description: "A polished kurta set placeholder for the Ananya Boutique catalogue.",
   },
   {
     id: 2,
-    name: "Chocolate Peanut Butter - Creamy",
-    slug: "chocolate-peanut-butter-creamy",
-    brand: "Buy One Gram",
-    price: 399,
-    originalPrice: 549,
+    name: "Festive Saree Draped Set",
+    slug: "festive-saree-draped-set",
+    brand: "Ananya Boutique",
+    price: 2499,
+    originalPrice: 3299,
     discount: 27,
     rating: 4.8,
     reviewCount: 95,
     image: "/products/product2.jpg",
     images: ["/products/product2.jpg"],
     inStock: true,
-    category: "peanut-butter",
+    category: "sarees",
     tags: ["new", "featured"],
-    description: "Rich chocolate flavor with premium peanuts",
+    description: "A refined saree placeholder for festive and occasion edits.",
   },
 ];
 
@@ -221,7 +313,7 @@ export const promoBanners = [
 
 // ========== MEMBERSHIP CONFIG ==========
 export const membershipConfig = {
-  title: "Join the Buy One Gram Club",
+  title: "Join the Ananya Boutique Club",
   description:
     "Become a member today to unlock exclusive rewards, early access to sales, and special member-only gifts.",
   benefits: [
@@ -238,7 +330,7 @@ export const membershipConfig = {
 // ========== CURRENCY CONFIG ==========
 export const currencyConfig = {
   code: "INR",
-  symbol: "₹",
+  symbol: "Rs. ",
   position: "before", // 'before' or 'after'
   decimalPlaces: 0,
 };
@@ -324,6 +416,11 @@ export default {
   membershipConfig,
   currencyConfig,
   shippingConfig,
+  contactConfig,
+  getPhoneHref,
+  getMailtoHref,
+  getMapHref,
+  getWhatsAppHref,
   formatPrice,
   calculateDiscount,
   isInStock,

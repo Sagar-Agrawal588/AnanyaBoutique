@@ -42,7 +42,7 @@ const normalizeEmail = (value) =>
     .trim()
     .toLowerCase();
 const ADMIN_PRIMARY_EMAIL = normalizeEmail(
-  process.env.ADMIN_PRIMARY_EMAIL || "admin@buyonegram.com",
+  process.env.ADMIN_PRIMARY_EMAIL || "admin@ananyaboutique.com",
 );
 const isAdminEmail = (value) => normalizeEmail(value) === ADMIN_PRIMARY_EMAIL;
 const blockAdminEmailSignup = (req, res, next) => {

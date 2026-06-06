@@ -1,5 +1,5 @@
 {
-  "sourceDocx": "D:\\BogEcom\\EMAILS.docx",
+  "sourceDocx": "D:\\AnanyaBoutique\\EMAILS.docx",
   "parsed": {
     "detected": [
       "Email Verification OTP",
@@ -100,7 +100,7 @@
   "missingFromDocxDetection": [],
   "generatedCount": 10,
   "generatedAt": "2026-03-21T05:58:20.373Z",
-  "outputPdf": "D:\\BogEcom\\email_catalog.pdf",
-  "emailsDir": "D:\\BogEcom\\emails",
-  "screenshotsDir": "D:\\BogEcom\\screenshots"
+  "outputPdf": "D:\\AnanyaBoutique\\email_catalog.pdf",
+  "emailsDir": "D:\\AnanyaBoutique\\emails",
+  "screenshotsDir": "D:\\AnanyaBoutique\\screenshots"
 }

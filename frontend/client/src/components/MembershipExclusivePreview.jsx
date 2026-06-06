@@ -15,7 +15,7 @@ import { FaCrown } from "react-icons/fa";
 const TEASER_PRODUCTS = [
   {
     _id: "teaser-1",
-    name: "Elite Protein Shaker",
+    name: "Signature Accessory Pouch",
     brand: "Members Series",
     image: DEFAULT_PRODUCT_IMAGE,
   },

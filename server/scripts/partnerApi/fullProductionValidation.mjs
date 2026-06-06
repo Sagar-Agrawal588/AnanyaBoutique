@@ -10,7 +10,7 @@ const SERVER_ROOT = path.resolve(__dirname, "..", "..");
 
 const BASE_URL = String(process.env.PARTNER_BASE_URL || "http://localhost:8000").replace(/\/+$/, "");
 const PARTNER_API_BASE = `${BASE_URL}/api/v1/partner`;
-const ADMIN_EMAIL = String(process.env.PARTNER_ADMIN_EMAIL || "admin@buyonegram.com");
+const ADMIN_EMAIL = String(process.env.PARTNER_ADMIN_EMAIL || "admin@ananyaboutique.com");
 const ADMIN_PASSWORD = String(process.env.PARTNER_ADMIN_PASSWORD || "admin123");
 
 const jsonHeaders = (token) => ({

@@ -1,27 +1,11 @@
 import { headers } from "next/headers";
-import HomeSlider from "@/components/HomeSlider";
 import nextDynamic from "next/dynamic";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
-const Banners = nextDynamic(() => import("@/components/Banners"), {
-  loading: () => null,
-});
-const CatSlider = nextDynamic(() => import("@/components/CatSlider"), {
-  loading: () => null,
-});
-const HomeComboDeals = nextDynamic(() => import("@/components/HomeComboDeals"), {
-  loading: () => null,
-});
-const HomeCustomerReviews = nextDynamic(
-  () => import("@/components/HomeCustomerReviews"),
-  {
-    loading: () => null,
-  },
-);
 
-const OfferCountdownStrip = nextDynamic(
-  () => import("@/components/OfferCountdownStrip"),
+const BoutiqueHomepage = nextDynamic(
+  () => import("@/components/BoutiqueHomepage"),
   {
     loading: () => null,
   },
@@ -32,10 +16,6 @@ const WhatsAppFloatingButton = nextDynamic(
     loading: () => null,
   },
 );
-// PopularProducts removed from homepage per layout change; replaced by CatSlider
-const MembershipCTA = nextDynamic(() => import("@/components/MembershipCTA"), {
-  loading: () => null,
-});
 
 const sanitizeBaseUrl = (value) =>
   String(value || "")
@@ -49,7 +29,7 @@ const API_BASE_URL = sanitizeBaseUrl(
   removeApiSuffix(
     process.env.NEXT_PUBLIC_APP_API_URL ||
       process.env.NEXT_PUBLIC_API_URL ||
-      "https://healthyonegram-api-v2-xb7znoco6a-uc.a.run.app/api",
+      "https://api.ananyaboutique.com/api",
   ),
 );
 const LOCAL_DEV_API_BASE_URL = sanitizeBaseUrl(
@@ -152,96 +132,53 @@ const getHomepageData = async (path, requestOrigin = "") => {
   return Array.isArray(payload?.data) ? payload.data : [];
 };
 
-const getHomepageSettings = async (requestOrigin = "") => {
-  const payload = await getHomepagePayload("/api/settings/public", requestOrigin);
-  return payload?.data && typeof payload.data === "object" ? payload.data : null;
-};
-
 const getHomepageCategories = async (requestOrigin = "") => {
   const payload = await getHomepagePayload("/api/categories", requestOrigin);
   const items = Array.isArray(payload?.data) ? payload.data : [];
   return items.filter((category) => !category?.parent);
 };
 
-const getHomepagePopularProducts = async (requestOrigin = "") => {
+const getHomepageNewArrivals = async (requestOrigin = "") => {
   const payload = await getHomepagePayload(
-    "/api/products?sortBy=popular&order=desc&includeCombos=false&limit=10",
+    "/api/products?sortBy=createdAt&order=desc&includeCombos=false&limit=8",
     requestOrigin,
   );
   return Array.isArray(payload?.data) ? payload.data : [];
 };
 
-const getHomepageCombos = async (requestOrigin = "") => {
+const getHomepageBestSellers = async (requestOrigin = "") => {
   const payload = await getHomepagePayload(
-    "/api/combos?sort=priority&limit=10",
+    "/api/products?sortBy=popular&order=desc&includeCombos=false&limit=8",
     requestOrigin,
   );
-  return Array.isArray(payload?.data?.items) ? payload.data.items.slice(0, 4) : [];
-};
-
-const deferredSectionStyle = {
-  contentVisibility: "auto",
-  containIntrinsicSize: "900px",
+  return Array.isArray(payload?.data) ? payload.data : [];
 };
 
 export default async function Home() {
   const requestOrigin = await getRequestOrigin();
-  const [
-    homeSlides,
-    banners,
-    homepageSettings,
-    homepageCategories,
-    homepagePopularProducts,
-    homepageCombos,
-    featuredReviews,
-  ] = await Promise.all([
-    getHomepageData("/api/home-slides", requestOrigin),
-    getHomepageData("/api/banners", requestOrigin),
-    getHomepageSettings(requestOrigin),
-    getHomepageCategories(requestOrigin),
-    getHomepagePopularProducts(requestOrigin),
-    getHomepageCombos(requestOrigin),
-    getHomepageData("/api/reviews/featured/home?limit=6", requestOrigin),
-  ]);
+  const [homepageCategories, newArrivals, bestSellers, featuredReviews] =
+    await Promise.all([
+      getHomepageCategories(requestOrigin),
+      getHomepageNewArrivals(requestOrigin),
+      getHomepageBestSellers(requestOrigin),
+      getHomepageData("/api/reviews/featured/home?limit=6", requestOrigin),
+    ]);
 
   return (
     <main
-      className="sliderWrapper relative w-full overflow-x-hidden pb-0"
+      className="relative min-h-screen w-full overflow-x-hidden pb-0"
       style={{
         background:
-          "linear-gradient(180deg, #fffdf9 0%, var(--flavor-light, #f7f1ef) 16%, #fffaf2 42%, #ffffff 100%)",
+          "linear-gradient(180deg, #fff9fc 0%, #ffffff 45%, #fbf7ff 100%)",
         transition: "background 0.5s cubic-bezier(0.4, 0, 0.2, 1)",
       }}
     >
-      <div className="pointer-events-none absolute inset-x-0 top-0 z-0 h-[140rem] bg-[radial-gradient(circle_at_top,rgba(255,241,214,0.5),transparent_46%)]" />
-      <div className="relative z-10">
-        <HomeSlider
-          initialSlides={homeSlides}
-          initialSettings={homepageSettings}
-        />
-        <OfferCountdownStrip
-          initialConfig={homepageSettings?.offerCountdownSettings || null}
-        />
-        <div style={deferredSectionStyle}>
-          <Banners initialBanners={banners} />
-        </div>
-        <div style={deferredSectionStyle}>
-          <CatSlider
-            initialCategories={homepageCategories}
-            initialPopularProducts={homepagePopularProducts}
-            initialPopularCombos={homepageCombos}
-          />
-        </div>
-        <div style={deferredSectionStyle}>
-          <HomeComboDeals initialCombos={homepageCombos} />
-        </div>
-        <div style={deferredSectionStyle}>
-          <HomeCustomerReviews initialReviews={featuredReviews} />
-        </div>
-        <div style={deferredSectionStyle}>
-          <MembershipCTA />
-        </div>
-      </div>
+      <BoutiqueHomepage
+        initialCategories={homepageCategories}
+        newArrivals={newArrivals}
+        bestSellers={bestSellers}
+        featuredReviews={featuredReviews}
+      />
       <WhatsAppFloatingButton />
     </main>
   );

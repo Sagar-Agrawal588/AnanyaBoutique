@@ -1,5 +1,5 @@
-const DEFAULT_SITE_URL = "https://healthyonegram.com";
-const DEFAULT_API_ORIGIN = "https://healthyonegram-api-v2-xb7znoco6a-uc.a.run.app";
+const DEFAULT_SITE_URL = "https://ananyaboutique.com";
+const DEFAULT_API_ORIGIN = "https://api.ananyaboutique.com";
 
 const sanitizeBaseUrl = (value) =>
   String(value || "")
@@ -162,24 +162,24 @@ export async function generateMetadata({ params }) {
 
   if (!routeId) {
     return {
-      title: "Combo Deal | Healthy One Gram",
-      description: "Explore combo offers from Healthy One Gram.",
+      title: "Combo Deal | Ananya Boutique",
+      description: "Explore combo offers from Ananya Boutique.",
     };
   }
 
   const { combo, apiBase } = await fetchComboForMetadata(routeId);
   if (!combo) {
     return {
-      title: "Combo Deal | Healthy One Gram",
-      description: "Explore combo offers from Healthy One Gram.",
+      title: "Combo Deal | Ananya Boutique",
+      description: "Explore combo offers from Ananya Boutique.",
     };
   }
 
   const slugOrId = String(combo?.slug || combo?._id || routeId);
-  const title = `${String(combo?.name || "Combo Deal").trim()} | Healthy One Gram`;
+  const title = `${String(combo?.name || "Combo Deal").trim()} | Ananya Boutique`;
   const description =
     stripHtml(combo?.shortDescription || combo?.description) ||
-    "Handpicked combo savings from Healthy One Gram.";
+    "Handpicked combo savings from Ananya Boutique.";
   const url = `${siteUrl}/combo/${encodeURIComponent(slugOrId)}`;
   const imageUrl = resolveComboImage(combo, apiBase);
 
@@ -195,13 +195,13 @@ export async function generateMetadata({ params }) {
       url,
       type: "website",
       locale: "en_IN",
-      siteName: "Healthy One Gram",
+      siteName: "Ananya Boutique",
       images: [
         {
           url: imageUrl,
           width: 1200,
           height: 630,
-          alt: String(combo?.name || "Healthy One Gram Combo"),
+          alt: String(combo?.name || "Ananya Boutique Combo"),
         },
       ],
     },

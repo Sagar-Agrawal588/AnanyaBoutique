@@ -2,6 +2,11 @@
 
 import ProductItem from "@/components/ProductItem";
 import {
+    BrandTrustStrip,
+    FounderBadgeGroup,
+} from "@/components/brand/BrandTrust";
+import { fashionMicrocopy } from "@/config/visualIdentity";
+import {
     subscribeToStockConnection,
     subscribeToStockUpdates,
 } from "@/realtime/stockSocket";
@@ -31,18 +36,18 @@ const FALLBACK_POLL_INTERVAL_MS = 45000;
 
 const PRICE_FILTERS = [
     { label: "All prices", min: "", max: "" },
-    { label: "Under ₹500", min: "", max: "500" },
-    { label: "₹500 - ₹799", min: "500", max: "799" },
-    { label: "₹800 and above", min: "800", max: "" },
+    { label: "Under Rs. 500", min: "", max: "500" },
+    { label: "Rs. 500 - Rs. 799", min: "500", max: "799" },
+    { label: "Rs. 800 and above", min: "800", max: "" },
 ];
 
 const FLAVOR_FILTERS = [
-    { label: "All flavours", value: "" },
-    { label: "Classic", value: "classic" },
-    { label: "Dark Chocolate", value: "dark chocolate" },
-    { label: "Choco Millet", value: "choco millet" },
-    { label: "Crunchy", value: "crunchy" },
-    { label: "Creamy", value: "creamy" },
+    { label: "All styles", value: "" },
+    { label: "Sarees", value: "saree" },
+    { label: "Suits", value: "suit" },
+    { label: "Kurtis", value: "kurti" },
+    { label: "Jewellery", value: "jewellery" },
+    { label: "Accessories", value: "accessories" },
 ];
 
 const PRODUCT_TYPE_FILTERS = [
@@ -503,7 +508,7 @@ function ProductsPageContent() {
         )?.label || "Custom price";
     const activeFlavorLabel =
         FLAVOR_FILTERS.find((item) => item.value === urlFlavor)?.label ||
-        "All flavours";
+        "All styles";
     const activeProductTypeLabel =
         PRODUCT_TYPE_FILTERS.find((item) => item.value === urlProductType)
             ?.label || "All items";
@@ -588,12 +593,15 @@ function ProductsPageContent() {
         <div className="min-h-screen pb-20 pt-10">
             <div className="container mx-auto px-4">
                 {/* Header Section */}
-                <div className="flex flex-col gap-6 mb-12 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex flex-col gap-6 mb-8 lg:flex-row lg:items-center lg:justify-between">
                     <div>
-                        <h1 className="text-4xl md:text-5xl font-black text-gray-900 tracking-tight mb-2">
-                            Our <span className="text-primary">Products</span>
+                        <FounderBadgeGroup compact className="mb-4" />
+                        <h1 className="brand-story-heading text-4xl md:text-5xl font-semibold text-gray-900 tracking-tight mb-3">
+                            {fashionMicrocopy.productsPageTitle}
                         </h1>
-                        <p className="text-gray-500 font-medium">Explore our premium peanut butter collections</p>
+                        <p className="max-w-2xl text-gray-500 font-medium">
+                            {fashionMicrocopy.productsPageSubtitle}
+                        </p>
                     </div>
 
                     <div className="flex w-full flex-col gap-3 lg:w-auto lg:min-w-[680px]">
@@ -646,6 +654,7 @@ function ProductsPageContent() {
                         </div>
                     </div>
                 </div>
+                <BrandTrustStrip className="mb-10" />
 
                 {/* Products Grid */}
                 {legacyProductSlug ? (
@@ -669,7 +678,7 @@ function ProductsPageContent() {
                         {productItems.length > 0 ? (
                             <div className="space-y-3">
                                 <div className="flex items-center justify-between gap-3">
-                                    <h2 className="text-lg font-black text-gray-900">Products</h2>
+                                    <h2 className="text-lg font-black text-gray-900">Boutique Picks</h2>
                                     <span className="text-xs font-bold text-gray-400">
                                         {productItems.length} items
                                     </span>
@@ -789,7 +798,7 @@ function ProductsPageContent() {
                     </div>
                 ) : (
                     <div className="text-center py-20 bg-white/30 backdrop-blur-xl rounded-[40px] border border-dashed border-gray-200">
-                        <div className="text-6xl mb-4">🥜</div>
+                        <div className="text-5xl mb-4 font-black text-primary">AB</div>
                         <h3 className="text-xl font-bold text-gray-900 mb-2">No products found</h3>
                         <p className="text-gray-500">Try adjusting your search</p>
                     </div>
@@ -868,13 +877,13 @@ function ProductsPageContent() {
                                     </section>
 
                                     <section>
-                                        <p className="mb-3 text-xs font-black uppercase tracking-widest text-gray-400">Flavour</p>
+                                        <p className="mb-3 text-xs font-black uppercase tracking-widest text-gray-400">Style</p>
                                         <div className="grid gap-3">
                                             {FLAVOR_FILTERS.map((item) => {
                                                 const active = item.value === urlFlavor;
                                                 return (
                                                     <button
-                                                        key={item.value || "all-flavours"}
+                                                        key={item.value || "all-styles"}
                                                         type="button"
                                                         onClick={() => replaceProductsParams({ flavor: item.value })}
                                                         className={`rounded-2xl border px-4 py-3 text-left text-base font-black transition ${active ? "border-primary bg-primary/10 text-primary" : "border-gray-100 text-gray-800 hover:border-primary/30 hover:bg-primary/5"}`}

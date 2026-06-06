@@ -9,8 +9,8 @@
  * @returns {string|null} Public ID or null if invalid
  *
  * Example:
- * Input: "https://res.cloudinary.com/cloud/image/upload/v123/buyonegram/banners/uuid.jpg"
- * Output: "buyonegram/banners/uuid"
+ * Input: "https://res.cloudinary.com/cloud/image/upload/v123/ananyaboutique/banners/uuid.jpg"
+ * Output: "ananyaboutique/banners/uuid"
  */
 export const extractPublicIdFromUrl = (url) => {
   if (!url || typeof url !== "string") {
@@ -18,7 +18,7 @@ export const extractPublicIdFromUrl = (url) => {
   }
 
   try {
-    // Match: /upload/[v123/]buyonegram/folder/filename
+    // Match: /upload/[v123/]ananyaboutique/folder/filename
     const matches = url.match(/\/upload\/(?:v\d+\/)?(.+)\.[a-z]+$/i);
     return matches && matches[1] ? matches[1] : null;
   } catch (error) {

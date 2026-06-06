@@ -13,7 +13,7 @@
     "example": {
       "body_text": [
         ["Customer"],
-        ["Healthy Peanut Butter 500g"],
+        ["Healthy Boutique Style 500g"],
         ["499"],
         ["20% OFF - Limited time only!"]
       ]
@@ -30,7 +30,7 @@
     }
   ],
   "footer": {
-    "text": "BM COMPANIES | www.healthyonegram.com"
+    "text": "BM COMPANIES | www.ananyaboutique.com"
   },
   "metadata": {
     "description": "Product announcement template with image header, title, price, discount offer, and CTA buttons",

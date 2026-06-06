@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const DEFAULT_PRODUCTION_API_URL =
-  "https://healthyonegram-api-v2-xb7znoco6a-uc.a.run.app/api";
+  "https://api.ananyaboutique.com/api";
 const REQUEST_TIMEOUT_MS = 12000;
 
 const sanitizeBaseUrl = (value) =>
@@ -17,8 +17,8 @@ const isFrontendUrl = (value) => {
     const parsed = new URL(sanitizeBaseUrl(value));
     const hostname = String(parsed.hostname || "").toLowerCase();
     return (
-      hostname === "healthyonegram.com" ||
-      hostname === "www.healthyonegram.com" ||
+      hostname === "ananyaboutique.com" ||
+      hostname === "www.ananyaboutique.com" ||
       hostname.endsWith(".hosted.app")
     );
   } catch {

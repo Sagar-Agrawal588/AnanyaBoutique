@@ -256,7 +256,7 @@ const getEmailConfig = () => {
   const user = selectedAuth.user;
   const pass = selectedAuth.pass;
   const fromName = normalizeEnvString(
-    process.env.EMAIL_FROM_NAME || process.env.SMTP_FROM_NAME || "BuyOneGram",
+    process.env.EMAIL_FROM_NAME || process.env.SMTP_FROM_NAME || "Ananya Boutique",
   );
   const fromAddress = normalizeEnvString(
     process.env.EMAIL_FROM_ADDRESS ||

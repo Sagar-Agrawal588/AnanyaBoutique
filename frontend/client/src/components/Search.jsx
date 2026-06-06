@@ -8,7 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { IoSearchOutline } from "react-icons/io5";
 
 const Search = ({
-  placeholder = "India's Most Honest Peanut Butter",
+  placeholder = "Search Ananya Boutique styles",
   width = "100%",
   onSearch = null,
 }) => {
@@ -149,10 +149,10 @@ const Search = ({
     const seen = new Set();
     const candidates = [
       placeholder,
-      "Search for 'High Protein'...",
-      "Try 'Dark Chocolate'...",
-      "Find your favorite flavor...",
-      "Discover 'Sugar Free'...",
+      "Search for 'Kurta Set'...",
+      "Try 'Festive Saree'...",
+      "Find your favorite style...",
+      "Discover 'Artificial Jewellery'...",
       "Search for anything...",
     ];
 

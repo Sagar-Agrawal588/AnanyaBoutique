@@ -114,7 +114,7 @@ const mapComboToProductCard = (combo) => {
       0,
     ),
     stock: toNumber(combo?.availableStock ?? combo?.stockQuantity ?? 0, 0),
-    brand: String(combo?.brand || "").trim() || "Buy One Gram",
+    brand: String(combo?.brand || "").trim() || "Ananya Boutique",
     images: [resolveComboImage(combo)],
     itemType: "combo",
     comboId: id,

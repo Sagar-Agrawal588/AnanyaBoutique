@@ -21,7 +21,7 @@ const homepageMediaMap = {
       url: DEFAULT_HOME_SLIDE_IMAGE_PATHS[0],
     },
     {
-      title: "New: Chocolate Peanut Butter",
+      title: "New: Evening Co-ord Set",
       url: DEFAULT_HOME_SLIDE_IMAGE_PATHS[1],
     },
     {

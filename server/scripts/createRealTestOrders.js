@@ -8,7 +8,7 @@ import ProductModel from "../models/product.model.js";
 import UserModel from "../models/user.model.js";
 
 const TARGET_EMAIL = "piyushsongara69@gmail.com";
-const TARGET_PRODUCT_NAME = "Choco Millet Crisp Peanut Butter";
+const TARGET_PRODUCT_NAME = "Choco Millet Crisp Boutique Style";
 const TARGET_VARIANT_LABEL = "500g";
 const API_BASE_URL = String(process.env.TEST_ORDER_BASE_URL || "http://127.0.0.1:8000")
   .trim()

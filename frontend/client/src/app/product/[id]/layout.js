@@ -1,7 +1,7 @@
 import { DEFAULT_BANNER_IMAGES } from "@/utils/mediaDefaults";
 
-const DEFAULT_SITE_URL = "https://healthyonegram.com";
-const DEFAULT_API_ORIGIN = "https://healthyonegram-api-v2-xb7znoco6a-uc.a.run.app";
+const DEFAULT_SITE_URL = "https://ananyaboutique.com";
+const DEFAULT_API_ORIGIN = "https://api.ananyaboutique.com";
 const DEMO_PRODUCT_ID = "demo-live";
 const SERVER_FETCH_TIMEOUT_MS = 3000;
 
@@ -183,13 +183,13 @@ export async function generateMetadata({ params }) {
 
   if (!routeId) {
     return {
-      title: "Product | Healthy One Gram",
-      description: "Explore healthy products from Healthy One Gram.",
+      title: "Product | Ananya Boutique",
+      description: "Explore boutique fashion and accessories from Ananya Boutique.",
     };
   }
 
   if (routeId.toLowerCase() === DEMO_PRODUCT_ID) {
-    const title = "Clean Whey Protein (Isolate), 2.2 lb Chocolate | Healthy One Gram";
+    const title = "Ananya Signature Kurta Set | Ananya Boutique";
     const description =
       "Preview the upgraded storefront product detail experience with demo data, richer visuals, and conversion-focused layout blocks.";
     const url = `${siteUrl}/product/${DEMO_PRODUCT_ID}`;
@@ -207,7 +207,7 @@ export async function generateMetadata({ params }) {
         url,
         type: "website",
         locale: "en_IN",
-        siteName: "Healthy One Gram",
+        siteName: "Ananya Boutique",
         images: [
           {
             url: imageUrl,
@@ -229,16 +229,16 @@ export async function generateMetadata({ params }) {
   const { product, apiBase } = await fetchProductForMetadata(routeId);
   if (!product) {
     return {
-      title: "Product | Healthy One Gram",
-      description: "Explore healthy products from Healthy One Gram.",
+      title: "Product | Ananya Boutique",
+      description: "Explore boutique fashion and accessories from Ananya Boutique.",
     };
   }
 
   const slugOrId = String(product?.slug || product?._id || routeId);
-  const title = `${String(product?.name || "Product").trim()} | Healthy One Gram`;
+  const title = `${String(product?.name || "Product").trim()} | Ananya Boutique`;
   const description =
     stripHtml(product?.shortDescription || product?.description) ||
-    "Premium healthy products from Healthy One Gram.";
+    "Premium boutique fashion and accessories from Ananya Boutique.";
   const url = `${siteUrl}/product/${encodeURIComponent(slugOrId)}`;
   const imageUrl = resolveProductImage(product, apiBase);
 
@@ -254,13 +254,13 @@ export async function generateMetadata({ params }) {
       url,
       type: "website",
       locale: "en_IN",
-      siteName: "Healthy One Gram",
+      siteName: "Ananya Boutique",
       images: [
         {
           url: imageUrl,
           width: 1200,
           height: 630,
-          alt: String(product?.name || "Healthy One Gram Product"),
+          alt: String(product?.name || "Ananya Boutique Product"),
         },
       ],
     },

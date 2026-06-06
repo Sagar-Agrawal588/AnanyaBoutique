@@ -57,13 +57,13 @@ const extractFirebaseMediaObjectPath = (value = "") => {
       const match = parsed.pathname.match(/^\/v0\/b\/([^/]+)\/o\/(.+)$/i);
       if (!match) return "";
       const objectPath = decodeURIComponent(match[2]);
-      return /^buyonegram\//i.test(objectPath) ? objectPath : "";
+      return /^ananyaboutique\//i.test(objectPath) ? objectPath : "";
     }
 
     if (parsed.hostname === "storage.googleapis.com") {
       const [, ...objectParts] = pathname.split("/");
       const objectPath = objectParts.join("/");
-      return /^buyonegram\//i.test(objectPath) ? objectPath : "";
+      return /^ananyaboutique\//i.test(objectPath) ? objectPath : "";
     }
   } catch {
     return "";

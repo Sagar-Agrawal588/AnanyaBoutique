@@ -1,8 +1,8 @@
 /**
- * Backfill Script: Assign FY-based order numbers (e.g. H1G-2526/0001) to existing orders.
+ * Backfill Script: Assign FY-based order numbers (e.g. ANB-2526/0001) to existing orders.
  *
  * Why:
- * - Older orders may only have legacy display IDs (e.g. BOG-XXXXXXXX).
+ * - Older orders may only have legacy display IDs.
  * - Admin export + invoices can use `orderNumber` for consistent reporting.
  *
  * Usage:
@@ -11,7 +11,7 @@
  *
  * Options:
  *   --fy 2526          Restrict to a specific fiscal year code (default: current FY)
- *   --prefix H1G       Override prefix (default: ORDER_NUMBER_PREFIX env or H1G)
+ *   --prefix ANB       Override prefix (default: ORDER_NUMBER_PREFIX env or ANB)
  *
  * Notes:
  * - Updates `orderNumber` and `displayOrderId` only.
@@ -80,8 +80,8 @@ async function main() {
       : resolveFiscalYearCode(new Date());
 
   const prefix = normalizePrefix(
-    readArgValue("--prefix") || process.env.ORDER_NUMBER_PREFIX || "H1G",
-  ) || "H1G";
+    readArgValue("--prefix") || process.env.ORDER_NUMBER_PREFIX || "ANB",
+  ) || "ANB";
 
   await mongoose.connect(MONGO_URI, { serverSelectionTimeoutMS: 20000 });
   // eslint-disable-next-line no-console

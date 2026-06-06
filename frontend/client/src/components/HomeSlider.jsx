@@ -20,34 +20,34 @@ const HERO_PANEL_REOPEN_DELAY_MS = 4200;
 const fallbackSlides = [
   {
     image: DEFAULT_HOME_SLIDES[0],
-    title: "Pure Nutrition",
-    subtitle: "100% Natural Peanut Butter",
-    cta: "Shop Now",
+    title: "Curated Style",
+    subtitle: "Boutique Picks | New Arrivals",
+    cta: "Discover Your Style",
     link: "/products",
     stayDurationMs: 5600,
   },
   {
     image: DEFAULT_HOME_SLIDES[1],
-    title: "Fuel Your Fitness",
-    subtitle: "High Protein | No Sugar",
+    title: "Occasion Ready",
+    subtitle: "Curated Styles | New Looks",
     cta: "Explore",
-    link: "/products?category=protein-peanut-butter",
+    link: "/products?category=occasion-edit",
     stayDurationMs: 5600,
   },
   {
     image: DEFAULT_HOME_SLIDES[2],
-    title: "Clean Eating",
-    subtitle: "No Palm Oil | No Preservatives",
+    title: "Fresh Styling",
+    subtitle: "Fresh Arrivals | Everyday Edit",
     cta: "Discover",
-    link: "/products?category=organic-natural",
+    link: "/products?category=everyday-edit",
     stayDurationMs: 5600,
   },
 ];
 
 const HERO_TRUST_DEFAULTS = [
-  "100% Natural",
-  "No Palm Oil",
-  "High Protein",
+  "Boutique Picks",
+  "Fresh Arrivals",
+  "Curated Styles",
   "Fast Moving Picks",
 ];
 
@@ -83,7 +83,7 @@ const formatSlides = (slides = []) =>
     mobileImagePositionY: Number(slide.mobileImagePositionY) || 50,
     title: normalizeSlideText(slide.title, ""),
     subtitle: normalizeSlideText(slide.subtitle || slide.description, ""),
-    cta: normalizeSlideText(slide.buttonText, "Shop Now"),
+    cta: normalizeSlideText(slide.buttonText, "Discover Your Style"),
     link: normalizeSlideLink(slide.buttonLink),
     backgroundColor: slide.backgroundColor || "#f5f5f5",
     stayDurationMs: Math.max(
@@ -104,8 +104,8 @@ const formatSlides = (slides = []) =>
 
 const HERO_STATS = [
   { label: "Best Seller", value: "Top Rated" },
-  { label: "Clean Label", value: "No Nasties" },
-  { label: "Everyday Use", value: "Snack + Fitness" },
+  { label: "New Edit", value: "Fresh Looks" },
+  { label: "Everyday Use", value: "Style + Comfort" },
 ];
 
 const hasNarrativeContent = (slide) =>

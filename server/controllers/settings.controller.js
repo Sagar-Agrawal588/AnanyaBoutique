@@ -219,12 +219,12 @@ export const getPublicSettings = async (req, res) => {
         .toLowerCase();
       if (
         !currentStoreEmail ||
-        currentStoreEmail === "support@buyonegram.com" ||
+        currentStoreEmail === "support@ananyaboutique.com" ||
         currentStoreEmail.startsWith("support@")
       ) {
         settingsObject.storeInfo = {
           ...settingsObject.storeInfo,
-          email: "healthyonegram.com",
+          email: "ananyaboutique.com",
         };
       }
     }
@@ -497,7 +497,7 @@ export const updateSetting = async (req, res) => {
     }
 
     if (FLAVOUR_BUTTON_SETTING_KEYS.includes(key)) {
-      // Flavour button settings are public storefront controls and should
+      // Style button settings are public storefront controls and should
       // always stay active so client consumers receive updated values.
       req.body.isActive = true;
     }

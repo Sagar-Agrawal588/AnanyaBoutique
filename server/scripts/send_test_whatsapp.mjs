@@ -26,7 +26,7 @@ async function main() {
     const result = await sendWhatsappMessage({
       to: RECIPIENT,
       mode: "text",
-      body: "Dev test: please reply to confirm receipt. — BuyOneGram dev",
+      body: "Dev test: please reply to confirm receipt. — Ananya Boutique dev",
       adminUserId: "dev-test-script",
     });
 

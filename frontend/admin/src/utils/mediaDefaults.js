@@ -1,5 +1,5 @@
 const DEFAULT_PRODUCTION_API_URL =
-  "https://healthyonegram-api-v2-xb7znoco6a-uc.a.run.app/api";
+  "https://api.ananyaboutique.com/api";
 
 const sanitizeBaseUrl = (value) =>
   String(value || "")
@@ -35,9 +35,9 @@ const buildMediaProxyUrl = (objectPath) =>
   `${getMediaApiBaseUrl()}/media/gcs?path=${encodeURIComponent(objectPath)}`;
 
 export const ADMIN_PLACEHOLDER_IMAGE_PATH =
-  "buyonegram/system/admin-placeholder.png";
+  "ananyaboutique/system/admin-placeholder.png";
 export const DEFAULT_PRODUCT_IMAGE_PATH =
-  "buyonegram/system/product-default.webp";
+  "ananyaboutique/system/product-default.webp";
 
 export const ADMIN_PLACEHOLDER_IMAGE =
   buildMediaProxyUrl(ADMIN_PLACEHOLDER_IMAGE_PATH);

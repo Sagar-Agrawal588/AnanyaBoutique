@@ -118,8 +118,8 @@ const resolveOrderDisplayId = (order) => {
   }
 
   const rawOrderId = String(order?._id || "").trim();
-  if (!rawOrderId) return "BOG-UNKNOWN";
-  const prefix = String(process.env.XPRESSBEES_ORDER_PREFIX || "BOG")
+  if (!rawOrderId) return "ANB-UNKNOWN";
+  const prefix = String(process.env.XPRESSBEES_ORDER_PREFIX || "ANB")
     .trim()
     .toUpperCase();
   return `${prefix}-${rawOrderId.slice(-8).toUpperCase()}`;

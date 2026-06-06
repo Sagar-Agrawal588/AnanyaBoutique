@@ -1,7 +1,7 @@
 /**
- * Backfill Script: Set Peanut Butter HSN Code (6-digit) for existing products/variants.
+ * Backfill Script: Set Boutique Style HSN Code (6-digit) for existing products/variants.
  *
- * Requirement (from GST sheet): Peanut Butter (chocolate/creamy/crispy/crunchy) -> HSN 200811
+ * Requirement (from GST sheet): Boutique Style (chocolate/creamy/crispy/crunchy) -> HSN 200811
  *
  * Usage:
  *   node scripts/backfillPeanutButterHsn200811.mjs --dry-run
@@ -38,7 +38,7 @@ const normalize = (value) => String(value || "").trim().toLowerCase();
 
 const shouldUpdateProduct = (product) => {
   const name = normalize(product?.name);
-  if (!name.includes("peanut butter")) return false;
+  if (!name.includes("boutique style")) return false;
 
   // Match the SKUs from the provided GST list (Chocolate/Creamy/Crispy/Crisp/Crunchy).
   const tokens = ["chocolate", "creamy", "crispy", "crisp", "crunchy"];
@@ -51,19 +51,19 @@ async function main() {
 
   const { default: ProductModel } = await import("../models/product.model.js");
 
-  const candidates = await ProductModel.find({ name: /peanut butter/i })
+  const candidates = await ProductModel.find({ name: /boutique style/i })
     .select("_id name hsnCode variants._id variants.name variants.sku variants.hsnCode")
     .lean();
 
   const targets = candidates.filter(shouldUpdateProduct);
 
   if (targets.length === 0) {
-    console.log("No Peanut Butter products found that match chocolate/creamy/crispy/crunchy.");
+    console.log("No Boutique Style products found that match chocolate/creamy/crispy/crunchy.");
     await mongoose.disconnect();
     return;
   }
 
-  console.log(`Found ${targets.length} Peanut Butter products to update to HSN ${HSN}.`);
+  console.log(`Found ${targets.length} Boutique Style products to update to HSN ${HSN}.`);
   targets.forEach((p) => {
     console.log(`- ${p.name} (${p._id}) product.hsnCode="${p.hsnCode || ""}" variants=${(p.variants || []).length}`);
   });

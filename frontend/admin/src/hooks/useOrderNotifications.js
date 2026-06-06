@@ -33,7 +33,7 @@ const normalizeOrder = (order = {}) => {
   const displayId = String(
     order?.displayOrderId ||
       order?.orderNumber ||
-      (id ? `BOG-${id.slice(-8).toUpperCase()}` : "N/A"),
+      (id ? `ANB-${id.slice(-8).toUpperCase()}` : "N/A"),
   ).trim();
 
   const total = Number(

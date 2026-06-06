@@ -62,21 +62,21 @@ const cloneSeoPageEntry = (entry = {}) => ({
 });
 
 const seedEntry = cloneSeoPageEntry({
-  label: "SEO Test Protein Breakfast Guide",
-  path: "/seo-test-protein-breakfast-guide",
-  metaTitle: "Protein Breakfast Guide for Busy Mornings | Buy OneGram",
+  label: "SEO Test Style Breakfast Guide",
+  path: "/seo-test-style-breakfast-guide",
+  metaTitle: "Boutique Style Guide for Busy Days | Ananya Boutique",
   metaDescription:
-    "A hidden SEO landing page for protein breakfast ideas, quick pantry planning, and everyday healthy routines from Buy OneGram.",
+    "A hidden SEO landing page for boutique styling ideas, quick outfit planning, and everyday style routines from Ananya Boutique.",
   keywords:
-    "protein breakfast guide, healthy breakfast ideas, peanut butter breakfast, quick protein meals, buy onegram seo test",
+    "style breakfast guide, healthy breakfast ideas, boutique style breakfast, quick style meals, ananya boutique seo test",
   indexable: true,
   notes:
     "Seeded test SEO landing page. This should stay in admin and on the storefront for verification.",
-  heroTitle: "Protein breakfast ideas that are realistic on busy mornings",
+  heroTitle: "Style breakfast ideas that are realistic on busy mornings",
   heroSubtitle:
     "Use this landing page to target breakfast-intent SEO traffic with a clearer hero message, structured body content, FAQs, and a direct CTA into the catalog.",
   heroImageUrl: "/logo-og-v2.png",
-  heroImageAlt: "Buy OneGram protein breakfast SEO landing banner",
+  heroImageAlt: "Ananya Boutique boutique style SEO landing banner",
   ctaLabel: "Shop Breakfast-Friendly Products",
   ctaHref: "/products",
   bodySections: [

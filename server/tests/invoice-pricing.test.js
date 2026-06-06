@@ -11,7 +11,7 @@ test("invoice pricing uses inclusive discount with taxable GST totals", () => {
     products: [
       {
         productId: "product-1",
-        productTitle: "Promo Peanut Butter",
+        productTitle: "Promo Boutique Style",
         quantity: 1,
         price: 1,
         originalPrice: 499,
@@ -56,7 +56,7 @@ test("invoice pricing uses inclusive discount with taxable GST totals", () => {
   };
 
   const invoiceData = prepareInvoiceData(order, {
-    name: "BUY ONE GRAM PRIVATE LIMITED",
+    name: "Ananya Boutique",
     state: "Rajasthan",
     placeOfSupplyStateCode: "08",
   });

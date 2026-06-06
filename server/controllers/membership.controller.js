@@ -266,7 +266,7 @@ const getClientBaseUrl = () => {
     return configured;
   }
 
-  return "https://healthyonegram.com";
+  return "https://ananyaboutique.com";
 };
 
 const isBrowserNavigationRequest = (req) => {
@@ -316,7 +316,7 @@ const redirectMembershipCallbackToClient = ({
     target.searchParams.set("paymentProvider", String(paymentProvider));
     return res.redirect(303, target.toString());
   } catch {
-    const fallback = new URL("/membership/checkout", "https://healthyonegram.com/");
+    const fallback = new URL("/membership/checkout", "https://ananyaboutique.com/");
     if (merchantTransactionId) {
       fallback.searchParams.set(
         "merchantTransactionId",

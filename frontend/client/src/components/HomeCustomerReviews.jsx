@@ -12,8 +12,8 @@ const FALLBACK_REVIEWS = [
     city: "Delhi",
     rating: 5,
     comment:
-      "The peanut butter feels fresh, clean, and filling. It has become my daily breakfast add-on.",
-    itemName: "Crunchy Peanut Butter",
+      "The styling feels polished, comfortable, and easy to repeat. It has become my go-to look.",
+    itemName: "Signature Boutique Style",
     isVerifiedPurchase: true,
   },
   {
@@ -22,8 +22,8 @@ const FALLBACK_REVIEWS = [
     city: "Bengaluru",
     rating: 5,
     comment:
-      "Great texture and no over-sweet taste. The family pack actually disappears fast at home.",
-    itemName: "Chocolate Peanut Butter",
+      "The fabric feels premium, the fit is graceful, and the look works beautifully for evening plans.",
+    itemName: "Evening Co-ord Set",
     isVerifiedPurchase: true,
   },
   {
@@ -32,8 +32,8 @@ const FALLBACK_REVIEWS = [
     city: "Pune",
     rating: 4,
     comment:
-      "Good protein snack before workout. Delivery and packaging were neat too.",
-    itemName: "Protein overflow",
+      "Great styling pick for a busy day. Delivery and packaging were neat too.",
+    itemName: "Occasion Edit",
     isVerifiedPurchase: true,
   },
 ];
@@ -113,7 +113,7 @@ export default function HomeCustomerReviews({ initialReviews = [] }) {
           </div>
           <div className="inline-flex w-fit items-center gap-2 rounded-full border border-[#ecd6b8] bg-white px-4 py-2 text-sm font-bold text-[#5e3b22] shadow-sm">
             <FiCheckCircle className="text-[#0f8a4b]" />
-            Verified taste signals
+            Verified style notes
           </div>
         </div>
 
@@ -166,7 +166,7 @@ export default function HomeCustomerReviews({ initialReviews = [] }) {
                 </span>
                 <div>
                   <p className="text-xs font-black uppercase tracking-[0.2em] text-[#b37608]">
-                    Review bundle
+                    Style stories
                   </p>
                   <h3 className="mt-1 text-xl font-black text-[#24150f]">
                     <span className="md:hidden">

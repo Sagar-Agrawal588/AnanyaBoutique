@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { contactConfig, getWhatsAppHref } from "@/config/siteConfig";
 import {
   FiAlertCircle,
   FiCheck,
@@ -197,7 +198,11 @@ const SecurePayment = () => {
               Contact Support
             </Link>
             <Link
-              href="https://wa.me/918619641968"
+              href={getWhatsAppHref(
+                contactConfig.whatsappActions.find(
+                  (action) => action.label === "Order Support",
+                )?.message,
+              )}
               target="_blank"
               className="inline-block px-8 py-3 bg-primary text-white font-semibold rounded-lg hover:brightness-110 transition-colors"
             >

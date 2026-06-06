@@ -30,8 +30,8 @@ const SOCKET_TIMEOUT_MS = 8000;
 const STOCK_EVENT_FLUSH_MS = 80;
 const STOCK_EVENT_RETENTION_MS = 5 * 60 * 1000;
 const SOCKET_FALLBACK_GRACE_MS = 4000;
-const STOCK_BROADCAST_CHANNEL_NAME = "bogecom:stock-updates";
-const STOCK_LOCAL_STORAGE_KEY = "bogecom:stock-update";
+const STOCK_BROADCAST_CHANNEL_NAME = "ananyaboutique:stock-updates";
+const STOCK_LOCAL_STORAGE_KEY = "ananyaboutique:stock-update";
 
 const stockListeners = new Set();
 const connectionListeners = new Set();

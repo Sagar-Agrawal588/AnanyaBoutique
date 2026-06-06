@@ -6,10 +6,10 @@
  */
 
 const STOREFRONT_WORKER_RESET_HOSTS = new Set([
-  "healthyonegram.com",
-  "www.healthyonegram.com",
-  "healthyonegram-client-studio-8452116634-cdb59.us-central1.hosted.app",
-  "healthyonegram-client--studio-8452116634-cdb59.us-central1.hosted.app",
+  "ananyaboutique.com",
+  "www.ananyaboutique.com",
+  "ananyaboutique.com",
+  "ananyaboutique.com",
 ]);
 
 const shouldResetStorefrontWorker =

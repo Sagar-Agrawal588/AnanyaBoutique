@@ -3,7 +3,7 @@ import { io } from "socket.io-client";
 
 const SOCKET_TRANSPORTS = ["websocket", "polling"];
 const PRODUCTION_SOCKET_FALLBACK =
-  "https://healthyonegram-api-v2-xb7znoco6a-uc.a.run.app";
+  "https://api.ananyaboutique.com";
 
 const sanitizeBaseUrl = (value) =>
   String(value || "")

@@ -13,10 +13,10 @@ const normalizeEmail = (email) =>
     .toLowerCase();
 
 const ADMIN_EMAIL = normalizeEmail(
-  process.env.ADMIN_PRIMARY_EMAIL || "admin@buyonegram.com",
+  process.env.ADMIN_PRIMARY_EMAIL || "admin@ananyaboutique.com",
 );
 const MANAGER_EMAIL = normalizeEmail(
-  process.env.MANAGER_PRIMARY_EMAIL || "manager@buyonegram.com",
+  process.env.MANAGER_PRIMARY_EMAIL || "manager@ananyaboutique.com",
 );
 const ADMIN_PASSWORD = String(process.env.ADMIN_PRIMARY_PASSWORD || "").trim();
 const MANAGER_PASSWORD = String(

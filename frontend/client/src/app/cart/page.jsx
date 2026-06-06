@@ -173,7 +173,7 @@ export default function CartPage() {
         DEFAULT_PRODUCT_IMAGE,
       price,
       originalPrice,
-      brand: product?.brand || item?.brand || "BOG",
+      brand: product?.brand || item?.brand || "Ananya Boutique",
       quantity: Number(item?.quantity || 1),
       quantityUnit:
         variantLabel ||
@@ -204,7 +204,7 @@ export default function CartPage() {
           Your cart is empty
         </h1>
         <p className="text-gray-500 mb-8 max-w-xs">
-          Looks like you haven't added any peanut butter goodness yet!
+          Looks like you haven't added any boutique picks yet!
         </p>
         <Link
           href="/products"

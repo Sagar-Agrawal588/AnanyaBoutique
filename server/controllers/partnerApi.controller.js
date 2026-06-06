@@ -30,16 +30,16 @@ const SITE_URL =
   String(
     process.env.NEXT_PUBLIC_SITE_URL ||
       process.env.CLIENT_URL ||
-      "https://healthyonegram.com",
+      "https://ananyaboutique.com",
   )
     .split(",")[0]
     .trim()
-    .replace(/\/+$/, "") || "https://healthyonegram.com";
+    .replace(/\/+$/, "") || "https://ananyaboutique.com";
 
 const SUPPORT_EMAIL = String(
   process.env.SUPPORT_EMAIL ||
     process.env.CONTACT_EMAIL ||
-    "support@healthyonegram.com",
+    "support@ananyaboutique.com",
 )
   .trim()
   .toLowerCase();
@@ -1058,7 +1058,7 @@ const buildPartnerGuidePdfBuffer = ({ baseUrl, endpoints, sampleCurl }) =>
       .fillColor("#ffffff")
       .font("Helvetica-Bold")
       .fontSize(18)
-      .text("HealthyOneGram Partner API", logoPath ? 94 : 56, 58);
+      .text("Ananya Boutique Partner API", logoPath ? 94 : 56, 58);
     doc
       .font("Helvetica")
       .fontSize(10)
@@ -1234,7 +1234,7 @@ const buildPartnerCredentialPdfBuffer = ({
       .fillColor("#ffffff")
       .font("Helvetica-Bold")
       .fontSize(18)
-      .text("HealthyOneGram Partner Credentials", logoPath ? 94 : 56, 58);
+      .text("Ananya Boutique Partner Credentials", logoPath ? 94 : 56, 58);
     doc
       .font("Helvetica")
       .fontSize(10)
@@ -1388,7 +1388,7 @@ const buildPartnerCredentialPdfBuffer = ({
       .fillColor("#64748b")
       .font("Helvetica")
       .fontSize(8.5)
-      .text(`HealthyOneGram: ${websiteUrl || SITE_URL}`, startX, doc.y, {
+      .text(`Ananya Boutique: ${websiteUrl || SITE_URL}`, startX, doc.y, {
         width: pageWidth,
       });
 
@@ -1424,7 +1424,7 @@ export const getPartnerApiGuide = async (req, res) => {
   const payload = {
     success: true,
     data: {
-      title: "HealthyOneGram Partner API Guide",
+      title: "Ananya Boutique Partner API Guide",
       version: "v1",
       baseUrl,
       websiteUrl: SITE_URL,
@@ -1471,7 +1471,7 @@ export const getPartnerApiGuide = async (req, res) => {
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader(
         "Content-Disposition",
-        'inline; filename="healthyonegram-partner-api-guide.pdf"',
+        'inline; filename="ananyaboutique-partner-api-guide.pdf"',
       );
       return res.status(200).send(pdfBuffer);
     } catch (error) {
@@ -1521,11 +1521,11 @@ export const getPartnerApiGuide = async (req, res) => {
   <head>
     <meta charset=\"utf-8\" />
     <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
-    <title>HealthyOneGram Partner API Guide</title>
+    <title>Ananya Boutique Partner API Guide</title>
   </head>
   <body style=\"margin:0;padding:24px;background:#f8fafc;font-family:Arial,sans-serif;color:#0f172a;\">
     <div style=\"max-width:980px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:14px;padding:22px;\">
-      <h1 style=\"margin:0 0 8px;font-size:26px;\">HealthyOneGram Partner API Guide</h1>
+      <h1 style=\"margin:0 0 8px;font-size:26px;\">Ananya Boutique Partner API Guide</h1>
       <p style=\"margin:0 0 16px;color:#475569;\">Version v1 • Share this link with partners.</p>
       <div style="padding:14px;background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;margin-bottom:16px;">
         <div style="font-size:14px;font-weight:700;color:#9a3412;margin-bottom:6px;">Contact Us</div>
@@ -1623,7 +1623,7 @@ export const getPartnerApiGuidePdf = async (req, res) => {
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader(
       "Content-Disposition",
-      'attachment; filename="healthyonegram-partner-api-guide.pdf"',
+      'attachment; filename="ananyaboutique-partner-api-guide.pdf"',
     );
     return res.status(200).send(pdfBuffer);
   } catch (error) {
@@ -3997,7 +3997,7 @@ export const adminGeneratePartnerCredentialPdf = async (req, res) => {
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader(
       "Content-Disposition",
-      `attachment; filename="healthyonegram-partner-credentials-${safeName}.pdf"`,
+      `attachment; filename="ananyaboutique-partner-credentials-${safeName}.pdf"`,
     );
     return res.status(200).send(pdfBuffer);
   } catch (error) {

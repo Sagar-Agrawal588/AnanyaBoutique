@@ -7,6 +7,7 @@ import ShareButton from "@/components/ShareButton";
 import StockNotificationButton from "@/components/StockNotificationButton";
 import { useCart } from "@/context/CartContext";
 import { useWishlist } from "@/context/WishlistContext";
+import { fashionMicrocopy } from "@/config/visualIdentity";
 import useSeoAlt from "@/hooks/useSeoAlt";
 import { resolveAvailability } from "@/utils/productAvailability";
 import { DEFAULT_PRODUCT_IMAGE } from "@/utils/mediaDefaults";
@@ -95,8 +96,8 @@ const ProductItem = (props) => {
   const productData = liveProduct ||
     product || {
       _id: id || _id || product?.id || 1,
-      name: name || "Classic Peanut Butter",
-      brand: brand || "Buy One Gram",
+      name: name || "Signature Boutique Style",
+      brand: brand || "Ananya Boutique",
       price: price || 349,
       originalPrice: originalPrice || 499,
       images: [image || DEFAULT_PRODUCT_IMAGE],
@@ -186,12 +187,12 @@ const ProductItem = (props) => {
       ? `Only ${availableQuantity} left`
       : "";
   const actionLabel = alreadyInCart
-    ? "Remove from cart"
+    ? fashionMicrocopy.removeFromCart
     : showNotifyAction
       ? "Notify me when back in stock"
       : isOutOfStock
         ? "Currently unavailable"
-        : "Add to cart";
+        : fashionMicrocopy.addToCart;
   const primaryCartButtonStyle = {
     background:
       "linear-gradient(135deg, var(--flavor-color, #24150f) 0%, var(--flavor-hover, #3a2418) 100%)",

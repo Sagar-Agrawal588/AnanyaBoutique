@@ -1,10 +1,11 @@
 import Link from "next/link";
+import { contactConfig } from "@/config/siteConfig";
 
 const sections = [
   {
     title: "Introduction",
     body: [
-      'This Privacy Policy describes how BUY ONE GRAM PVT LTD and its affiliates (collectively "BUY ONE GRAM PVT LTD, we, our, us") collect, use, share, protect or otherwise process your information/personal data through our website https://healthyonegram.com/ (hereinafter referred to as Platform).',
+      'This Privacy Policy describes how Ananya Boutique and its affiliates (collectively "Ananya Boutique, we, our, us") collect, use, share, protect or otherwise process your information/personal data through our website https://ananyaboutique.com/ (hereinafter referred to as Platform).',
       "Please note that you may be able to browse certain sections of the Platform without registering with us.",
       "We do not offer any product/service under this Platform outside India and your personal data will primarily be stored and processed in India.",
       "By visiting this Platform, providing your information or availing any product/service offered on the Platform, you expressly agree to be bound by the terms and conditions of this Privacy Policy, the Terms of Use and the applicable service/product terms and conditions, and agree to be governed by the laws of India including but not limited to the laws applicable to data protection and privacy.",
@@ -21,7 +22,7 @@ const sections = [
       "We may track your behaviour, preferences, and other information that you choose to provide on our Platform. This information is compiled and analysed on an aggregated basis.",
       "We will also collect your information related to your transactions on Platform and such third-party business partner platforms.",
       "When such a third-party business partner collects your personal data directly from you, you will be governed by their privacy policies. We shall not be responsible for the third-party business partner's privacy practices or the content of their privacy policies, and we request you to read their privacy policies prior to disclosing any information.",
-      "If you receive an email, a call from a person/association claiming to be BUY ONE GRAM PVT LTD seeking any personal data like debit/credit card PIN, net-banking or mobile banking password, we request you to never provide such information. If you have already revealed such information, report it immediately to an appropriate law enforcement agency.",
+      "If you receive an email, a call from a person/association claiming to be Ananya Boutique seeking any personal data like debit/credit card PIN, net-banking or mobile banking password, we request you to never provide such information. If you have already revealed such information, report it immediately to an appropriate law enforcement agency.",
     ],
   },
   {
@@ -103,7 +104,7 @@ export default function PrivacyPolicyPage() {
             Privacy Policy
           </h1>
           <p className="mt-3 text-sm text-slate-600">
-            BUY ONE GRAM PVT LTD
+            Ananya Boutique
           </p>
         </div>
 
@@ -130,11 +131,12 @@ export default function PrivacyPolicyPage() {
                 <span className="font-semibold">Name of the Office:</span> Mahendra Singh Saran
               </p>
               <p>
-                <span className="font-semibold">Designation:</span> CEO, Buy One Gram Private Limited
+                <span className="font-semibold">Designation:</span> CEO, Ananya Boutique
               </p>
               <p>G-225, Sitapura Industrial Area, Jaipur Rajasthan</p>
               <p>
-                <span className="font-semibold">Contact us:</span> buy1gram@gmail.com, +918619641968
+                <span className="font-semibold">Contact us:</span>{" "}
+                {contactConfig.email}, {contactConfig.phone}
               </p>
               <p>
                 <span className="font-semibold">FSSAI No:</span> 12224027000921

@@ -190,12 +190,12 @@ const configuredCorsOrigins = [
   ...parseOriginList(process.env.CORS_ORIGINS),
 ];
 const defaultProductionCorsOrigins = [
-  "https://healthyonegram.com",
-  "https://www.healthyonegram.com",
-  "https://healthyonegram-client-studio-8452116634-cdb59.us-central1.hosted.app",
-  "https://healthyonegram-admin-studio-8452116634-cdb59.us-central1.hosted.app",
-  "https://healthyonegram-client--studio-8452116634-cdb59.us-central1.hosted.app",
-  "https://healthyonegram-admin--studio-8452116634-cdb59.us-central1.hosted.app",
+  "https://ananyaboutique.com",
+  "https://www.ananyaboutique.com",
+  "https://ananyaboutique.com",
+  "https://admin.ananyaboutique.com",
+  "https://ananyaboutique.com",
+  "https://admin.ananyaboutique.com",
 ].map(normalizeOrigin);
 const defaultDevCorsOrigins = [
   "http://localhost:3000",
@@ -852,7 +852,7 @@ const redirectPaytmFailure = (req, res) => {
     .split(",")[0]
     .trim()
     .replace(/\/+$/, "");
-  const base = clientBase || "https://healthyonegram.com";
+  const base = clientBase || "https://ananyaboutique.com";
   const target = new URL(
     resolvedOrderId ? `/orders/${resolvedOrderId}` : "/my-orders",
     base,

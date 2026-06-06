@@ -1,6 +1,7 @@
 "use client";
 
 import AccountSidebar from "@/components/AccountSiderbar";
+import { fashionMicrocopy } from "@/config/visualIdentity";
 import { useCart } from "@/context/CartContext";
 import { useWishlist } from "@/context/WishlistContext";
 import { DEFAULT_PRODUCT_IMAGE } from "@/utils/mediaDefaults";
@@ -233,7 +234,7 @@ const MyWishlistPage = () => {
 
                         <div className="flex-1 min-w-0">
                           <span className="text-xs uppercase tracking-wide text-slate-500">
-                            {entity.brand || "Healthy One Gram"}
+                            {entity.brand || "Ananya Boutique"}
                           </span>
                           <Link href={itemLink}>
                             <h3 className="text-sm md:text-base font-semibold text-slate-900 hover:text-primary mt-1 line-clamp-2">
@@ -313,7 +314,7 @@ const MyWishlistPage = () => {
                           variant="outlined"
                           className="!border-slate-300 !text-slate-700 !font-medium !normal-case"
                         >
-                          Add to Cart
+                          {fashionMicrocopy.addToCart}
                         </Button>
                         <Button
                           onClick={() => handleDirectOrder(item)}

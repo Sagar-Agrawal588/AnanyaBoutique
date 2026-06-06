@@ -255,7 +255,7 @@ const ManagedPopup = () => {
                 handleCta();
               }}
             >
-              {popup.buttonText || "Shop Now"}
+              {popup.buttonText || "Discover Your Style"}
               {isClickable && <MdNorthEast size={16} />}
             </button>
           </div>

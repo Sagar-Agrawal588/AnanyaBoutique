@@ -506,7 +506,7 @@ const Orders = () => {
 
     const orderId = String(resolveOrderRouteId(order) || "").trim();
     if (!orderId) return "N/A";
-    return `BOG-${orderId.slice(-8).toUpperCase()}`;
+    return `ANB-${orderId.slice(-8).toUpperCase()}`;
   };
 
   const buildXpressbeesTrackingUrl = (awb, candidateUrl = "") => {

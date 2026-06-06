@@ -7,12 +7,12 @@ export function buildSampleData() {
   });
 
   return {
-    brandName: "HealthyOneGram",
+    brandName: "Ananya Boutique",
     brandTagline: "Fresh choices, delivered with care",
     logoText: "HOG",
-    supportEmail: "support@healthyonegram.com",
+    supportEmail: "support@ananyaboutique.com",
     supportPhone: "+91 98765 43210",
-    siteUrl: "https://healthyonegram.com",
+    siteUrl: "https://ananyaboutique.com",
     customer_name: "Piyush",
     order_number: "HOG12345",
     amount: "INR 499",

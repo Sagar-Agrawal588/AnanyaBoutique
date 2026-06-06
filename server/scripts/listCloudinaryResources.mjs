@@ -16,7 +16,7 @@ cloudinary.config({
   try {
     const res = await cloudinary.api.resources({
       type: 'upload',
-      prefix: 'buyonegram/',
+      prefix: 'ananyaboutique/',
       max_results: 100,
       direction: 'desc'
     });

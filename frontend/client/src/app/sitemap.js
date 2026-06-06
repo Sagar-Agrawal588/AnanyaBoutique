@@ -6,8 +6,8 @@
  */
 
 const BASE_URL =
-  process.env.NEXT_PUBLIC_SITE_URL || "https://healthyonegram.com";
-const DEFAULT_API_BASE_URL = "https://healthyonegram-api-v2-xb7znoco6a-uc.a.run.app";
+  process.env.NEXT_PUBLIC_SITE_URL || "https://ananyaboutique.com";
+const DEFAULT_API_BASE_URL = "https://api.ananyaboutique.com";
 const SITEMAP_REVALIDATE_SECONDS = 3600;
 
 const normalizeBaseUrl = (value) =>
@@ -53,7 +53,7 @@ export default async function sitemap() {
       priority: 0.6,
     },
     {
-      url: `${BASE_URL}/healthy-peanut-butter-guide`,
+      url: `${BASE_URL}/healthy-boutique-style-guide`,
       lastModified: new Date(),
       changeFrequency: "weekly",
       priority: 0.65,

@@ -1,5 +1,5 @@
 const DEFAULT_PRODUCTION_API_URL =
-  "https://healthyonegram-api-v2-xb7znoco6a-uc.a.run.app/api";
+  "https://api.ananyaboutique.com/api";
 
 const sanitizeBaseUrl = (value) =>
   String(value || "")
@@ -35,16 +35,16 @@ const buildMediaProxyUrl = (objectPath) =>
   `${getMediaApiBaseUrl()}/media/gcs?path=${encodeURIComponent(objectPath)}`;
 
 export const DEFAULT_PRODUCT_IMAGE_PATH =
-  "buyonegram/system/product-default.webp";
+  "ananyaboutique/system/product-default.webp";
 export const DEFAULT_HOME_SLIDE_PATHS = [
-  "buyonegram/system/home-slide-default-1.webp",
-  "buyonegram/system/home-slide-default-2.webp",
-  "buyonegram/system/home-slide-default-3.webp",
+  "ananyaboutique/system/home-slide-default-1.webp",
+  "ananyaboutique/system/home-slide-default-2.webp",
+  "ananyaboutique/system/home-slide-default-3.webp",
 ];
 export const DEFAULT_BANNER_IMAGE_PATHS = [
-  "buyonegram/system/banner-default-1.webp",
-  "buyonegram/system/banner-default-2.webp",
-  "buyonegram/system/banner-default-3.webp",
+  "ananyaboutique/system/banner-default-1.webp",
+  "ananyaboutique/system/banner-default-2.webp",
+  "ananyaboutique/system/banner-default-3.webp",
 ];
 
 export const DEFAULT_PRODUCT_IMAGE =

@@ -1,6 +1,7 @@
 "use client";
 
 import { API_BASE_URL } from "@/utils/api";
+import { contactConfig } from "@/config/siteConfig";
 
 import {
   createContext,
@@ -108,11 +109,12 @@ const defaultSettings = {
   },
   // Store info
   storeInfo: {
-    name: "HealthyOneGram",
-    email: "healthyonegram.com",
-    phone: "+91 8619641968",
-    whatsapp: "+918619641968",
-    address: "",
+    name: "Ananya Boutique",
+    email: contactConfig.email,
+    phone: contactConfig.phone,
+    whatsapp: contactConfig.whatsapp,
+    address: contactConfig.address,
+    mapUrl: contactConfig.mapUrl,
     gstNumber: "",
     currency: "INR",
     currencySymbol: "₹",
@@ -168,22 +170,22 @@ const defaultSettings = {
   // Payment
   paymentGatewayEnabled: true,
   defaultPaymentProvider: "PHONEPE",
-  // Homepage flavour buttons
-  flavour_button_1_text: "Creamy",
-  flavour_button_1_bg_color: "#F6E6C9",
-  flavour_button_1_text_color: "#6B4F2A",
-  flavour_button_2_text: "Chocolate",
-  flavour_button_2_bg_color: "#5A3A2E",
-  flavour_button_2_text_color: "#FFFFFF",
-  flavour_button_3_text: "Daizu",
-  flavour_button_3_bg_color: "#8FAE5D",
-  flavour_button_3_text_color: "#2F3E1F",
-  flavour_button_4_text: "Low-calorie",
-  flavour_button_4_bg_color: "#CFEFE8",
-  flavour_button_4_text_color: "#1F4D46",
-  homepage_trust_1_text: "100% Natural",
-  homepage_trust_2_text: "No Palm Oil",
-  homepage_trust_3_text: "High Protein",
+  // Homepage style buttons
+  flavour_button_1_text: "Sarees",
+  flavour_button_1_bg_color: "#FCE7F3",
+  flavour_button_1_text_color: "#831843",
+  flavour_button_2_text: "Suits",
+  flavour_button_2_bg_color: "#EDE9FE",
+  flavour_button_2_text_color: "#4C1D95",
+  flavour_button_3_text: "Kurtis",
+  flavour_button_3_bg_color: "#FDF2F8",
+  flavour_button_3_text_color: "#9D174D",
+  flavour_button_4_text: "Accessories",
+  flavour_button_4_bg_color: "#F3E8FF",
+  flavour_button_4_text_color: "#6B21A8",
+  homepage_trust_1_text: "Boutique Picks",
+  homepage_trust_2_text: "Fresh Arrivals",
+  homepage_trust_3_text: "Curated Styles",
   homepage_trust_4_text: "Fast Moving Picks",
 };
 

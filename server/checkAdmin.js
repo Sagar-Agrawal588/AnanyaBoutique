@@ -9,7 +9,7 @@ const checkAdmin = async () => {
     await mongoose.connect(process.env.MONGO_URI);
     console.log("Connected to MongoDB");
 
-    const admin = await UserModel.findOne({ email: "admin@buyonegram.com" });
+    const admin = await UserModel.findOne({ email: "admin@ananyaboutique.com" });
 
     if (admin) {
       console.log("\n✅ Admin user found:");

@@ -1,32 +1,16 @@
 "use client";
 
-import { useSettings } from "@/context/SettingsContext";
-import { useEffect, useMemo, useState } from "react";
+import { contactConfig, getWhatsAppHref } from "@/config/siteConfig";
+import { useEffect, useState } from "react";
 import { FaWhatsapp } from "react-icons/fa";
 
-const normalizePhoneForWhatsapp = (value = "") =>
-  String(value || "")
-    .replace(/[^\d]/g, "")
-    .replace(/^0+/, "");
-
 export default function WhatsAppFloatingButton() {
-  const { storeInfo } = useSettings();
   const [isMounted, setIsMounted] = useState(false);
-  const phone = normalizePhoneForWhatsapp(
-    storeInfo?.whatsapp || storeInfo?.phone,
-  );
+  const href = getWhatsAppHref(contactConfig.whatsappActions[0]?.message);
 
   useEffect(() => {
     setIsMounted(true);
   }, []);
-
-  const href = useMemo(() => {
-    if (!phone) return "";
-    const message = encodeURIComponent(
-      "Hi Healthy One Gram, I need help with products or my order.",
-    );
-    return `https://wa.me/${phone}?text=${message}`;
-  }, [phone]);
 
   if (!isMounted || !href) return null;
 

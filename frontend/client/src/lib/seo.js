@@ -8,7 +8,7 @@ const normalizeApiBase = (value) =>
     .replace(/^['"]|['"]$/g, "")
     .replace(/\/+$/, "")
     .replace(/\/api$/i, "");
-const DEFAULT_API_BASE_URL = "https://healthyonegram-api-v2-xb7znoco6a-uc.a.run.app";
+const DEFAULT_API_BASE_URL = "https://api.ananyaboutique.com";
 
 export async function fetchSeoSettings() {
   if (cached) return cached;

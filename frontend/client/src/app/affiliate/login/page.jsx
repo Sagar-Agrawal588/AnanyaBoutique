@@ -248,7 +248,7 @@ const InfluencerLoginPage = () => {
               Collaborator Program
             </p>
             <h2 className="mt-5 text-4xl font-black leading-tight">
-              Track your referral growth with Buy One Gram.
+              Track your referral growth with Ananya Boutique.
             </h2>
             <p className="mt-4 text-sm font-medium leading-6 text-white/75">
               Sign in to view earnings, referral activity, and campaign performance from the same storefront experience customers already trust.

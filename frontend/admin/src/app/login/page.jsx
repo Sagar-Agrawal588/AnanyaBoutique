@@ -211,7 +211,7 @@ const Login = () => {
         <div className="w-[90%] mx-auto flex items-center justify-between">
           <img
             src={withAdminBasePath("/logo.png")}
-            alt="logo"
+            alt="Ananya Boutique"
             className="w-[150px]"
           />
 
@@ -229,7 +229,7 @@ const Login = () => {
       <div className="relative z-20 flex flex-col items-center justify-center min-h-screen pt-32 px-4">
         {/* Heading */}
         <h1 className="text-center text-[40px] font-extrabold text-gray-900 mb-8">
-          Admin Panel - Sign In
+          Ananya Boutique Admin - Sign In
         </h1>
 
         {/* Error Message */}

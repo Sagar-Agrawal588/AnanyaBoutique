@@ -161,7 +161,7 @@ const getActiveInfluencerByCodeAndEmail = async ({
 let influencerOtpEmailSender = async ({ email, name, otp }) =>
   sendEmailFun({
     sendTo: email,
-    subject: "HealthyOneGram collaborator portal OTP",
+    subject: "Ananya Boutique collaborator portal OTP",
     html: VerificationEmail(name || "Collaborator", otp),
     context: "influencer-auth",
   });

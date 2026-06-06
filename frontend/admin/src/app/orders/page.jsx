@@ -639,7 +639,7 @@ const OrderRow = ({ order, index, token }) => {
     .toUpperCase();
   const orderDisplayId = String(
     order?.displayOrderId ||
-      (fallbackOrderId ? `BOG-${fallbackOrderId}` : "N/A"),
+      (fallbackOrderId ? `ANB-${fallbackOrderId}` : "N/A"),
   )
     .trim()
     .toUpperCase();

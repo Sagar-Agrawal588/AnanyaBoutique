@@ -307,7 +307,7 @@ const isMaintenanceMode = async () => {
 };
 
 const ORDER_SERIES_DEFAULTS = Object.freeze({
-  prefix: "H1G",
+  prefix: "ANB",
   padding: 4,
 });
 
@@ -707,7 +707,7 @@ const getPrimaryStoreUrl = () =>
   String(
     process.env.CLIENT_URL ||
       process.env.NEXT_PUBLIC_SITE_URL ||
-      "https://healthyonegram.com",
+      "https://ananyaboutique.com",
   )
     .split(",")[0]
     .trim()
@@ -719,7 +719,7 @@ const getSupportContactEmail = () =>
       process.env.SUPPORT_EMAIL ||
       process.env.EMAIL_FROM_ADDRESS ||
       process.env.SMTP_USER ||
-      "support@healthyonegram.com",
+      "support@ananyaboutique.com",
   )
     .trim()
     .toLowerCase();
@@ -954,7 +954,7 @@ const resolveDisplayOrderNumber = (order = {}) => {
 
   const rawOrderId = String(order?._id || "").trim();
   if (!rawOrderId) return "N/A";
-  return `BOG-${rawOrderId.slice(-8).toUpperCase()}`;
+  return `ANB-${rawOrderId.slice(-8).toUpperCase()}`;
 };
 
 const resolveOrderContactIdentity = (order = {}) => {
@@ -2625,7 +2625,7 @@ const getClientBaseUrl = () => {
     return configured;
   }
 
-  return "https://healthyonegram.com";
+  return "https://ananyaboutique.com";
 };
 
 const normalizeHttpOrigin = (value) => {
@@ -2762,7 +2762,7 @@ const buildPhonePeLocalhostProdError = () => ({
   success: false,
   code: "PHONEPE_LOCALHOST_NOT_SUPPORTED",
   message:
-    "PhonePe QR in PROD mode cannot be initiated from localhost/non-whitelisted origins. Open checkout from your registered domain (for example https://healthyonegram.com) or use UAT credentials for local testing.",
+    "PhonePe QR in PROD mode cannot be initiated from localhost/non-whitelisted origins. Open checkout from your registered domain (for example https://ananyaboutique.com) or use UAT credentials for local testing.",
 });
 
 const shouldBlockPhonePeForLocalhost = (req) =>
@@ -3037,7 +3037,7 @@ const redirectPaytmWebhookToClient = (req, res, { orderId, paymentState }) => {
   } catch {
     const fallback = new URL(
       "/my-orders",
-      `${resolveClientBaseUrl(req) || "https://healthyonegram.com"}/`,
+      `${resolveClientBaseUrl(req) || "https://ananyaboutique.com"}/`,
     );
     fallback.searchParams.set("paymentProvider", "PAYTM");
     if (paymentState) {
@@ -3706,7 +3706,7 @@ const getInvoiceSellerDetails = async () => {
   const storeInfo = (await getCachedSetting("storeInfo"))?.value || {};
 
   return {
-    name: "BUY ONE GRAM PRIVATE LIMITED",
+    name: "Ananya Boutique",
     gstin: "08AAJCB3889Q1ZO",
     address: "G-225, RIICO INDUSTRIAL AREA SITAPURA, TONK ROAD, JAIPUR-302022",
     state: "Rajasthan",

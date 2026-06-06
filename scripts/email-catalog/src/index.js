@@ -101,7 +101,7 @@ async function main() {
       imagePath: item.screenshotPath,
     })),
     includeCover: true,
-    coverTitle: "HealthyOneGram Email Catalog",
+    coverTitle: "Ananya Boutique Email Catalog",
   });
 
   const reportPath = path.join(projectRoot, "email-catalog-report.json");

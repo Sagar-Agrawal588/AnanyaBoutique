@@ -239,7 +239,7 @@ export async function registerUserController(req, res) {
     });
     const emailSent = await sendEmailFun({
       sendTo: normalizedEmail,
-      subject: "Verify email from HealthyOneGram",
+      subject: "Verify email from Ananya Boutique",
       text: "",
       html: VerificationEmail(name, verifyCode),
     });
@@ -812,7 +812,7 @@ export async function resendOTPController(req, res) {
     await user.save();
     const emailSent = await sendEmailFun({
       sendTo: normalizedEmail,
-      subject: "Verify email from HealthyOneGram",
+      subject: "Verify email from Ananya Boutique",
       text: "",
       html: VerificationEmail(user?.name, verifyCode),
     });

@@ -4,32 +4,32 @@ runConfig:
 
 env:
   - variable: NEXT_PUBLIC_BACKEND_URL
-    value: "https://healthyonegram-api-v2-xb7znoco6a-uc.a.run.app"
+    value: "https://api.ananyaboutique.com"
     availability:
       - BUILD
       - RUNTIME
   - variable: NEXT_PUBLIC_ADMIN_URL
-    value: "https://healthyonegram-admin-studio-8452116634-cdb59.us-central1.hosted.app/admin"
+    value: "https://admin.ananyaboutique.com/admin"
     availability:
       - BUILD
       - RUNTIME
   - variable: NEXT_PUBLIC_CLIENT_URL
-    value: "https://healthyonegram.com"
+    value: "https://ananyaboutique.com"
     availability:
       - BUILD
       - RUNTIME
   - variable: NEXT_PUBLIC_API_URL
-    value: "https://healthyonegram-api-v2-xb7znoco6a-uc.a.run.app/api"
+    value: "https://api.ananyaboutique.com/api"
     availability:
       - BUILD
       - RUNTIME
   - variable: NEXT_PUBLIC_APP_API_URL
-    value: "https://healthyonegram-api-v2-xb7znoco6a-uc.a.run.app/api"
+    value: "https://api.ananyaboutique.com/api"
     availability:
       - BUILD
       - RUNTIME
   - variable: NEXT_PUBLIC_SITE_URL
-    value: "https://healthyonegram.com"
+    value: "https://ananyaboutique.com"
     availability:
       - BUILD
       - RUNTIME

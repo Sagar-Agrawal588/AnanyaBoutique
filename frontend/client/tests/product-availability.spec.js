@@ -1,7 +1,7 @@
 const { test, expect } = require("@playwright/test");
 
 const DEFAULT_PRODUCT_IMAGE =
-  "buyonegram/system/product-default.webp";
+  "ananyaboutique/system/product-default.webp";
 
 const mockCommonPublicApis = async (page) => {
   await page.route("**/api/settings/header", async (route, request) => {
@@ -141,8 +141,8 @@ test("products page renders reserved stock as unavailable and blocks purchase", 
         data: [
           {
             _id: "product-reserved",
-            name: "Reserved Peanut Butter",
-            brand: "Buy One Gram",
+            name: "Reserved Boutique Style",
+            brand: "Ananya Boutique",
             price: 349,
             originalPrice: 399,
             discount: 13,
@@ -158,8 +158,8 @@ test("products page renders reserved stock as unavailable and blocks purchase", 
           },
           {
             _id: "product-last-unit",
-            name: "Last Unit Peanut Butter",
-            brand: "Buy One Gram",
+            name: "Last Unit Boutique Style",
+            brand: "Ananya Boutique",
             price: 399,
             originalPrice: 449,
             discount: 11,
@@ -185,7 +185,7 @@ test("products page renders reserved stock as unavailable and blocks purchase", 
     '[data-product-card-id="product-reserved"]',
   );
   await expect(page.getByText("Few products are out of stock")).toBeVisible();
-  await expect(reservedCard).toContainText("Reserved Peanut Butter");
+  await expect(reservedCard).toContainText("Reserved Boutique Style");
   await expect(reservedCard).toContainText("Out of stock");
   await expect(reservedCard).toContainText("We're restocking soon");
   await reservedCard
@@ -214,7 +214,7 @@ test("products page renders reserved stock as unavailable and blocks purchase", 
   expect(reservedBox.y).toBeGreaterThan(lastUnitBox.y);
   await expect(lastUnitCard).toContainText("Only 1 left");
   await expect(
-    lastUnitCard.getByLabel("Add Last Unit Peanut Butter to cart"),
+    lastUnitCard.getByLabel("Add Last Unit Boutique Style to cart"),
   ).toBeEnabled();
 });
 

@@ -9,18 +9,18 @@ const homeMembershipContentSchema = new mongoose.Schema(
   {
     title: {
       type: String,
-      default: "Join Our Buy One Gram Club",
+      default: "Join Our Ananya Boutique Club",
     },
     subtitle: {
       type: String,
       default:
-        "Unlock premium benefits, exclusive savings, and prioritize your health journey with us.",
+        "Unlock early access, member-only offers, styling notes, and boutique rewards.",
     },
     benefits: [
       {
-        emoji: { type: String, default: "💰" },
-        title: { type: String, default: "Save ₹2000+" },
-        description: { type: String, default: "Annually with discounts" },
+        emoji: { type: String, default: "VIP" },
+        title: { type: String, default: "Member Savings" },
+        description: { type: String, default: "Exclusive boutique offers" },
       },
     ],
     checkItems: [
@@ -53,37 +53,37 @@ const homeMembershipContentSchema = new mongoose.Schema(
 
 homeMembershipContentSchema.statics.getDefaultContent = function () {
   return {
-    title: "Join Our Buy One Gram Club",
+    title: "Join Our Ananya Boutique Club",
     subtitle:
-      "Unlock premium benefits, exclusive savings, and prioritize your health journey with us.",
+      "Unlock early access, member-only offers, styling notes, and boutique rewards.",
     benefits: [
       {
-        emoji: "💰",
-        title: "Save ₹2000+",
-        description: "Annually with discounts",
+        emoji: "VIP",
+        title: "Member Savings",
+        description: "Exclusive boutique offers",
       },
       {
-        emoji: "📦",
+        emoji: "SHIP",
         title: "Free Shipping",
         description: "On all your orders",
       },
       {
-        emoji: "🎧",
+        emoji: "CARE",
         title: "24/7 Support",
-        description: "Dedicated member hotline",
+        description: "Priority styling and order help",
       },
       {
-        emoji: "🚀",
+        emoji: "DROP",
         title: "Early Access",
-        description: "To new product launches",
+        description: "To new arrivals and festive edits",
       },
     ],
     checkItems: [
       { text: "15% discount on all orders" },
       { text: "Free shipping on every purchase" },
-      { text: "Exclusive member-only products" },
+      { text: "Exclusive member-only drops" },
       { text: "Priority customer support" },
-      { text: "Monthly wellness tips & guides" },
+      { text: "Styling notes and new collection previews" },
     ],
     ctaButtonText: "Explore Plans",
     ctaButtonLink: "/membership",

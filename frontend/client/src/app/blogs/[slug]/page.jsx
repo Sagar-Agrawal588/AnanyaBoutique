@@ -111,7 +111,7 @@ const resolveBlogApiBaseUrl = () => {
     return configuredBase;
   }
 
-  return "https://healthyonegram-api-v2-xb7znoco6a-uc.a.run.app";
+  return "https://api.ananyaboutique.com";
 };
 
 const estimateReadTime = (content) => {

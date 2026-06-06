@@ -256,7 +256,7 @@ export default function ProductPageSettingsSection({
             </h5>
             <p className="text-xs text-gray-500">
               Labels and helper text are editable. Values still come from live
-              product data such as category, selected pack, reviews, and stock.
+              product data such as category, selected option, reviews, and stock.
             </p>
           </div>
 

@@ -1,29 +1,29 @@
 dispatch:
-  - url: "healthyonegram.com/api/*"
+  - url: "ananyaboutique.com/api/*"
     service: default
-  - url: "www.healthyonegram.com/api/*"
-    service: default
-
-  - url: "healthyonegram.com/uploads/*"
-    service: default
-  - url: "www.healthyonegram.com/uploads/*"
+  - url: "www.ananyaboutique.com/api/*"
     service: default
 
-  - url: "healthyonegram.com/socket.io/*"
+  - url: "ananyaboutique.com/uploads/*"
     service: default
-  - url: "www.healthyonegram.com/socket.io/*"
+  - url: "www.ananyaboutique.com/uploads/*"
     service: default
 
-  - url: "healthyonegram.com/admin"
+  - url: "ananyaboutique.com/socket.io/*"
+    service: default
+  - url: "www.ananyaboutique.com/socket.io/*"
+    service: default
+
+  - url: "ananyaboutique.com/admin"
     service: admin
-  - url: "healthyonegram.com/admin/*"
+  - url: "ananyaboutique.com/admin/*"
     service: admin
-  - url: "www.healthyonegram.com/admin"
+  - url: "www.ananyaboutique.com/admin"
     service: admin
-  - url: "www.healthyonegram.com/admin/*"
+  - url: "www.ananyaboutique.com/admin/*"
     service: admin
 
-  - url: "healthyonegram.com/*"
+  - url: "ananyaboutique.com/*"
     service: client
-  - url: "www.healthyonegram.com/*"
+  - url: "www.ananyaboutique.com/*"
     service: client

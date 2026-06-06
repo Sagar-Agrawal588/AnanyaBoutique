@@ -9,9 +9,9 @@ export const DEMO_PRODUCT_ID = "demo-live";
 
 const demoProduct = {
   _id: DEMO_PRODUCT_ID,
-  name: "Clean Whey Protein (Isolate), 2.2 lb Chocolate",
-  title: "Clean Whey Protein (Isolate), 2.2 lb Chocolate",
-  brand: "Healthy One Gram Labs",
+  name: "Ananya Signature Kurta Set",
+  title: "Ananya Signature Kurta Set",
+  brand: "Ananya Boutique Labs",
   price: 4099,
   originalPrice: 4799,
   rating: 4.8,
@@ -20,14 +20,14 @@ const demoProduct = {
   shortDescription:
     "A polished product page with layered imagery, stronger CTAs, and review cards positioned closer to the buying moment.",
   description: `
-    <p><strong>Pure protein. Cleaner storytelling. Better conversion energy.</strong></p>
+    <p><strong>Curated styling. Cleaner storytelling. Better conversion energy.</strong></p>
     <p>This page is designed to feel closer to a premium DTC product detail experience. The layout gives the main product image more presence, keeps pricing and purchase controls highly visible, and adds richer description content that feels editorial instead of plain.</p>
-    <p>Shoppers can move from image discovery to variant selection, delivery preview, feature scanning, and social proof without losing context. The result is a more confident, more visual product page that feels ready for a modern wellness or nutrition catalog.</p>
+    <p>Shoppers can move from image discovery to variant selection, delivery preview, feature scanning, and social proof without losing context. The result is a more confident, more visual product page that feels ready for a modern boutique catalog.</p>
   `,
   sku: "CWPI-2200-CHOC-DEMO",
   category: {
-    _id: "demo-protein",
-    name: "Protein Range",
+    _id: "demo-style",
+    name: "Style Range",
   },
   hasVariants: true,
   variants: [
@@ -117,24 +117,24 @@ const demoReviews = [
   },
 ];
 
-export const DEMO_FLAVORS = ["Chocolate", "Coffee", "Vanilla"];
+export const DEMO_FLAVORS = ["Sarees", "Suits", "Kurtis"];
 
 export const DEMO_TABS = [
   { id: "description", label: "Description" },
-  { id: "details", label: "Nutrition Information" },
+  { id: "details", label: "Style Information" },
   { id: "shipping", label: "Trust & Safety" },
 ];
 
 export const DEMO_STAT_CARDS = [
   {
-    label: "Protein Per Scoop",
+    label: "Style Detail",
     value: "28g",
     helper: "Hero stat presentation",
   },
   {
-    label: "Added Sugar",
-    value: "Zero",
-    helper: "Demo nutrition card",
+    label: "Styling Noise",
+    value: "Low",
+    helper: "Demo style card",
   },
   {
     label: "Mixability",
@@ -150,7 +150,7 @@ export const DEMO_STAT_CARDS = [
 
 export const DEMO_SNAPSHOT = [
   "Designed as a premium demo of the upgraded storefront product detail experience.",
-  "Uses layered visuals, strong spacing, and clear purchase actions inspired by modern wellness brands.",
+  "Uses layered visuals, strong spacing, and clear purchase actions inspired by modern fashion brands.",
   "Balances editorial storytelling with transactional clarity so the page feels beautiful and useful.",
 ];
 

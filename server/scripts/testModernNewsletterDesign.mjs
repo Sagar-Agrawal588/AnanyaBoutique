@@ -12,7 +12,7 @@ const serverRoot = path.resolve(__dirname, "..");
 
 dotenv.config({ path: path.resolve(serverRoot, ".env") });
 
-const siteUrl = "https://healthyonegram.com";
+const siteUrl = "https://ananyaboutique.com";
 const logoUrl = `${siteUrl}/logo-og-v2.png`;
 const heroImageUrl = `${siteUrl}/logo-header.png`;
 
@@ -21,7 +21,7 @@ const html = `
   <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:700px;margin:0 auto;font-family:Arial,sans-serif;color:#1f2937;line-height:1.6;background:#ffffff;border-radius:16px;overflow:hidden;">
     <tr>
       <td style="padding:18px 24px;background:#0f172a;text-align:center;">
-        <img src="${logoUrl}" alt="HealthyOneGram" style="max-width:180px;height:auto;display:block;margin:0 auto 10px;" />
+        <img src="${logoUrl}" alt="Ananya Boutique" style="max-width:180px;height:auto;display:block;margin:0 auto 10px;" />
         <p style="margin:0;color:#d1d5db;font-size:13px;letter-spacing:0.4px;">Healthy living, trusted choices</p>
       </td>
     </tr>
@@ -30,7 +30,7 @@ const html = `
         <div style="background:linear-gradient(135deg,#111827 0%,#1f2937 45%,#c1591c 100%);padding:28px 24px;text-align:left;">
           <h1 style="margin:0 0 10px;color:#ffffff;font-size:34px;line-height:1.25;">Modern Newsletter Design Test</h1>
           <p style="margin:0;color:#f8fafc;font-size:16px;">Hello {{email}}, here is the upgraded newsletter with branding and richer visuals.</p>
-          <img src="${heroImageUrl}" alt="HealthyOneGram" style="margin-top:18px;width:100%;max-width:652px;border-radius:12px;display:block;" />
+          <img src="${heroImageUrl}" alt="Ananya Boutique" style="margin-top:18px;width:100%;max-width:652px;border-radius:12px;display:block;" />
         </div>
       </td>
     </tr>
@@ -46,7 +46,7 @@ const html = `
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:12px;">
           <tr>
             <td style="padding:16px;">
-              <h3 style="margin:0 0 10px;font-size:18px;color:#111827;">Why people love HealthyOneGram</h3>
+              <h3 style="margin:0 0 10px;font-size:18px;color:#111827;">Why people love Ananya Boutique</h3>
               <p style="margin:0 0 8px;color:#374151;">• Premium quality products curated for health-focused families.</p>
               <p style="margin:0 0 8px;color:#374151;">• Faster delivery and transparent order support.</p>
               <p style="margin:0;color:#374151;">• Exclusive subscriber-only offers and updates.</p>
@@ -68,15 +68,15 @@ const html = `
     </tr>
     <tr>
       <td style="padding:20px 24px 24px;text-align:center;">
-        <a href="https://healthyonegram.com/products" style="display:inline-block;background:#c1591c;color:#ffffff;text-decoration:none;padding:12px 22px;border-radius:999px;font-weight:600;font-size:15px;">Explore Products</a>
+        <a href="https://ananyaboutique.com/products" style="display:inline-block;background:#c1591c;color:#ffffff;text-decoration:none;padding:12px 22px;border-radius:999px;font-weight:600;font-size:15px;">Explore Products</a>
         <p style="margin:10px 0 0;color:#6b7280;font-size:13px;">Tap the button to explore latest products and offers.</p>
       </td>
     </tr>
     <tr>
       <td style="padding:0 24px 26px;">
         <div style="border-top:1px solid #e5e7eb;padding-top:16px;">
-          <p style="margin:0 0 8px;color:#111827;font-size:14px;">Warm wishes, HealthyOneGram Team</p>
-          <p style="margin:0;color:#6b7280;font-size:12px;">You are receiving this email because you subscribed at HealthyOneGram.</p>
+          <p style="margin:0 0 8px;color:#111827;font-size:14px;">Warm wishes, Ananya Boutique Team</p>
+          <p style="margin:0;color:#6b7280;font-size:12px;">You are receiving this email because you subscribed at Ananya Boutique.</p>
         </div>
       </td>
     </tr>

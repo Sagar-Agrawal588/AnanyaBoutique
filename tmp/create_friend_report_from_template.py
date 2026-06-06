@@ -7,7 +7,7 @@ from zipfile import ZipFile
 from PIL import Image, ImageDraw, ImageFont
 
 
-ROOT = Path(r"d:\BogEcom")
+ROOT = Path(r"d:\AnanyaBoutique")
 SOURCE_DOCX = Path(r"C:\Users\piyush songara\Downloads\Piyush_Songara_Mid_Review_Report 69.docx")
 OUTPUT_DOCX = Path(r"C:\Users\piyush songara\Downloads\Friend_Mid_Review_Report_Netparam.docx")
 OUTPUT_LOGO = ROOT / "output" / "friend-report-media" / "netparam_logo_generated.png"

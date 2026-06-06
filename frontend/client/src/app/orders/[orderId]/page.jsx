@@ -153,7 +153,7 @@ const resolveOrderDisplayId = (record) => {
 
   const routeId = String(resolveOrderRouteId(record) || "").trim();
   if (!routeId) return "N/A";
-  return `BOG-${routeId.slice(-8).toUpperCase()}`;
+  return `ANB-${routeId.slice(-8).toUpperCase()}`;
 };
 
 const isMatchingOrderIdentifier = (record, identifier) => {

@@ -1,23 +1,9 @@
 "use client";
 
 import { fetchDataFromApi, getStoredAccessToken } from "@/utils/api";
-import { useSettings } from "@/context/SettingsContext";
+import { contactConfig, getMailtoHref } from "@/config/siteConfig";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-
-const FALLBACK_STORE_INFO = {
-  email: "healthyonegram.com",
-  phone: "+91 8619641968",
-};
-
-const normalizeStoreLink = (value) => {
-  const normalized = String(value || "").trim();
-  if (!normalized) return "";
-  if (normalized.includes("@")) return `mailto:${normalized}`;
-  if (/^https?:\/\//i.test(normalized)) return normalized;
-  if (!normalized.includes(" ")) return `https://${normalized}`;
-  return "";
-};
 
 const buildXpressbeesTrackingUrl = (awb, candidateUrl = "") => {
   const normalizedAwb = String(awb || "").trim();
@@ -92,14 +78,9 @@ const FALLBACK_TRACKING_CTA = {
 };
 
 export default function DeliveryPage() {
-  const { storeInfo: liveStoreInfo } = useSettings();
   const [trackingCta, setTrackingCta] = useState(FALLBACK_TRACKING_CTA);
   const [trackingLoading, setTrackingLoading] = useState(true);
-  const storeInfo = {
-    ...FALLBACK_STORE_INFO,
-    ...(liveStoreInfo || {}),
-  };
-  const supportLink = normalizeStoreLink(storeInfo.email);
+  const supportLink = getMailtoHref("Ananya Boutique delivery support");
 
   useEffect(() => {
     let isMounted = true;
@@ -312,20 +293,12 @@ export default function DeliveryPage() {
             Our support team is available 24/7 to help
           </p>
           <div className="flex flex-col md:flex-row gap-4 justify-center items-center">
-            {supportLink ? (
-              <a
-                href={supportLink}
-                className="inline-block bg-orange-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-orange-700 transition"
-                target={supportLink.startsWith("http") ? "_blank" : undefined}
-                rel={supportLink.startsWith("http") ? "noreferrer" : undefined}
-              >
-                {storeInfo.email}
-              </a>
-            ) : (
-              <span className="inline-block bg-orange-600 text-white px-6 py-3 rounded-lg font-semibold">
-                {storeInfo.email}
-              </span>
-            )}
+            <a
+              href={supportLink}
+              className="inline-block bg-orange-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-orange-700 transition"
+            >
+              {contactConfig.email}
+            </a>
             <span className="text-gray-600">or</span>
             <Link
               href="/contact"

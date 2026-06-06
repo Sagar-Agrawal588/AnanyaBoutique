@@ -67,7 +67,7 @@ const DEFAULT_PRODUCT_PAGE_CONFIG = {
         helper: "Live product taxonomy",
       },
       {
-        label: "Selected Pack",
+        label: "Selected Option",
         helper: "Variant-aware display",
       },
       {

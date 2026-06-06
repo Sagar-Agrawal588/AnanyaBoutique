@@ -17,7 +17,7 @@ const B = process.env.TEST_WHATSAPP_RECIPIENT_2 || "+919983531243";
 const imageUrl =
   "https://upload.wikimedia.org/wikipedia/commons/4/47/PNG_transparency_demonstration_1.png";
 const gifUrl =
-  "https://res.cloudinary.com/demo/image/upload/v1/buyonegram/whatsapp/offer.gif";
+  "https://res.cloudinary.com/demo/image/upload/v1/ananyaboutique/whatsapp/offer.gif";
 
 async function upsertContact(phone, name) {
   const existing = await CrmContact.findOne({

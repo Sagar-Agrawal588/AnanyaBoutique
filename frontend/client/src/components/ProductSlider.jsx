@@ -68,7 +68,7 @@ const toComboCardPayload = (combo) => {
     ...combo,
     _id: combo?._id,
     itemType: "combo",
-    brand: combo?.brand || "Buy One Gram",
+    brand: combo?.brand || "Ananya Boutique",
     price,
     originalPrice,
     discount:
@@ -365,7 +365,7 @@ const ProductSlider = ({
               <ProductItem
                 id={product._id}
                 name={product.name}
-                brand={product.brand || "Buy One Gram"}
+                brand={product.brand || "Ananya Boutique"}
                 price={product.price}
                 originalPrice={product.originalPrice}
                 discount={product.discount}
@@ -457,7 +457,7 @@ const ProductSlider = ({
               <ProductItem
                 id={product._id}
                 name={product.name}
-                brand={product.brand || "Buy One Gram"}
+                brand={product.brand || "Ananya Boutique"}
                 price={product.price}
                 originalPrice={product.originalPrice}
                 discount={product.discount}

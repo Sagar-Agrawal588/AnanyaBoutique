@@ -426,7 +426,7 @@ const Influencers = () => {
       return normalizeClientBaseUrl(window.location.origin);
     }
 
-    return "https://healthyonegram.com";
+    return "https://ananyaboutique.com";
   };
 
   const buildInfluencerUrl = (pathname, query = {}) => {

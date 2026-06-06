@@ -1,6 +1,7 @@
 "use client";
 
 import { useCart } from "@/context/CartContext";
+import { fashionMicrocopy } from "@/config/visualIdentity";
 import { useShippingDisplayCharge } from "@/hooks/useShippingDisplayCharge";
 import { fetchDataFromApi } from "@/utils/api";
 import { round2 } from "@/utils/gst";
@@ -164,7 +165,7 @@ const CartDrawer = () => {
           DEFAULT_PRODUCT_IMAGE,
       price: Number(item?.price ?? product?.price ?? 0),
       originalPrice: Number(item?.originalPrice ?? product?.originalPrice ?? 0),
-      brand: product?.brand || "BOG",
+      brand: product?.brand || "Ananya Boutique",
       quantity: Number(item?.quantity || 1),
       quantityUnit: variantName || "Per Unit",
       itemType: "product",
@@ -364,7 +365,7 @@ const CartDrawer = () => {
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 shrink-0">
           <h2 className="text-xl font-bold flex items-center gap-2">
             <IoCartOutline size={24} className="text-primary" />
-            Shopping Cart
+            {fashionMicrocopy.cartTitle}
             <span className="text-sm font-normal text-gray-500 ml-2">
               ({cartItems.length} items)
             </span>
@@ -385,10 +386,10 @@ const CartDrawer = () => {
               </div>
               <div>
                 <p className="text-lg font-bold text-gray-900">
-                  Your cart is empty
+                  {fashionMicrocopy.emptyCartTitle}
                 </p>
                 <p className="text-sm text-gray-500">
-                  Looks like you haven&apos;t added anything yet.
+                  {fashionMicrocopy.emptyCartCopy}
                 </p>
               </div>
               <Link
@@ -396,14 +397,14 @@ const CartDrawer = () => {
                 onClick={handleStartShopping}
                 className="mt-4 px-6 py-2 bg-primary text-white rounded-full font-bold shadow-lg shadow-primary/30 hover:brightness-110 transition-all active:scale-95"
               >
-                Start Shopping
+                {fashionMicrocopy.shopProducts}
               </Link>
             </div>
           ) : (
             <>
               <section className="space-y-3">
                 <p className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-500">
-                  Cart Items
+                  {fashionMicrocopy.cartItems}
                 </p>
 
                 {cartItems.map((item) => {
@@ -672,7 +673,7 @@ const CartDrawer = () => {
                             }
                             className="px-3 py-1.5 rounded-full text-xs font-bold bg-sky-600 text-white hover:bg-sky-700 transition-colors"
                           >
-                            Add Product
+                            {fashionMicrocopy.addToCart}
                           </button>
                         </div>
                       </div>
@@ -715,7 +716,7 @@ const CartDrawer = () => {
 
                 <div className="mb-4">
                   <textarea
-                    placeholder="Add a note to your order..."
+                    placeholder="Add a note for Ananya Boutique..."
                     value={orderNote}
                     onChange={(event) => setOrderNote(event.target.value)}
                     className="w-full text-sm p-3 rounded-xl border border-gray-200 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary resize-none h-20 bg-white"
@@ -726,7 +727,7 @@ const CartDrawer = () => {
                   onClick={handleCheckout}
                   className="w-full py-4 rounded-full bg-linear-to-r from-primary to-[var(--flavor-hover)] text-white font-bold text-lg shadow-lg shadow-primary/30 hover:shadow-xl hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2"
                 >
-                  Checkout <IoBagCheckOutline size={20} />
+                  {fashionMicrocopy.checkout} <IoBagCheckOutline size={20} />
                 </button>
                 <p className="text-[10px] text-center text-gray-400 mt-3 flex items-center justify-center gap-1">
                   <IoCartOutline /> Secure Checkout

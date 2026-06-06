@@ -18,11 +18,11 @@ import ProductItem from "./ProductItem";
  * @param {boolean} props.isNewArrivals - Show newest products
  * @param {boolean} props.isBestSeller - Show best sellers
  * @param {number} props.limit - Number of products to fetch
- * @param {string} props.viewAllLink - Link for "View All" button
+ * @param {string} props.viewAllLink - Link for the discovery button
  */
 const ProductRow = ({
-  title = "Products",
-  subtitle = "Discover our handpicked selection of premium products",
+  title = "Boutique Picks",
+  subtitle = "Discover styles selected with care by Ananya Boutique",
   categorySlug,
   isNewArrivals = false,
   isBestSeller = false,
@@ -138,7 +138,7 @@ const ProductRow = ({
                 ? "New Arrivals"
                 : isBestSeller
                   ? "Best Sellers"
-                  : "Shop Now"}
+                  : "Curated With Love"}
             </span>
 
             {/* Title */}
@@ -170,7 +170,7 @@ const ProductRow = ({
               e.currentTarget.style.color = flavor.color;
             }}
           >
-            View All
+            Discover More
           </Link>
         </div>
 
@@ -189,7 +189,7 @@ const ProductRow = ({
               <ProductItem
                 id={product._id}
                 name={product.name}
-                brand={product.brand || "Buy One Gram"}
+                brand={product.brand || "Ananya Boutique"}
                 price={product.price}
                 originalPrice={product.originalPrice}
                 discount={product.discount}

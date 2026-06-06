@@ -17,7 +17,7 @@ const geistMono = Geist_Mono({
 
 const adminUrl = String(
   process.env.NEXT_PUBLIC_ADMIN_URL ||
-    "https://healthyonegram-admin-studio-8452116634-cdb59.us-central1.hosted.app/admin",
+    "https://admin.ananyaboutique.com/admin",
 )
   .trim()
   .replace(/^["']|["']$/g, "")
@@ -25,11 +25,11 @@ const adminUrl = String(
 
 export const metadata = {
   metadataBase: new URL(adminUrl),
-  title: "BuyOneGram Admin Panel",
-  description: "Admin dashboard for BuyOneGram Peanut Butter Store",
+  title: "Ananya Boutique Admin Panel",
+  description: "Admin dashboard for Ananya Boutique Fashion Boutique",
   openGraph: {
-    title: "BuyOneGram Admin Panel",
-    description: "Admin dashboard for BuyOneGram Peanut Butter Store",
+    title: "Ananya Boutique Admin Panel",
+    description: "Admin dashboard for Ananya Boutique Fashion Boutique",
     url: adminUrl,
     type: "website",
     images: [
@@ -37,14 +37,14 @@ export const metadata = {
         url: withAdminBasePath("/logo-og-v2.png"),
         width: 512,
         height: 512,
-        alt: "BuyOneGram Admin",
+        alt: "Ananya Boutique Admin",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "BuyOneGram Admin Panel",
-    description: "Admin dashboard for BuyOneGram Peanut Butter Store",
+    title: "Ananya Boutique Admin Panel",
+    description: "Admin dashboard for Ananya Boutique Fashion Boutique",
     images: [withAdminBasePath("/logo-og-v2.png")],
   },
   icons: {

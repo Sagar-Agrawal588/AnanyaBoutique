@@ -19,7 +19,7 @@ const membershipPageSchema = new mongoose.Schema(
       },
       title: {
         type: String,
-        default: "Buy One Gram Club",
+        default: "Ananya Boutique Club",
       },
       titleHighlight: {
         type: String,
@@ -28,7 +28,7 @@ const membershipPageSchema = new mongoose.Schema(
       description: {
         type: String,
         default:
-          "Join our exclusive community and unlock premium benefits designed for your wellness journey.",
+          "Join our exclusive community and unlock premium fashion benefits, early access, and member-only rewards.",
       },
       note: {
         type: String,
@@ -43,16 +43,16 @@ const membershipPageSchema = new mongoose.Schema(
       subtitle: {
         type: String,
         default:
-          "Start earning rewards today and take your health journey to the next level with premium perks.",
+          "Start earning rewards today and enjoy a smoother boutique shopping experience.",
       },
       items: [
         {
-          icon: { type: String, default: "⭐" },
+          icon: { type: String, default: "VIP" },
           title: { type: String, default: "Earn Points" },
           description: {
             type: String,
             default:
-              "Get 1 point for every ₹1 spent. Redeem points for discounts and exclusive products.",
+              "Get 1 point for every Rs. 1 spent. Redeem points for discounts and exclusive styles.",
           },
         },
       ],
@@ -78,7 +78,7 @@ const membershipPageSchema = new mongoose.Schema(
     cta: {
       title: {
         type: String,
-        default: "Ready to upgrade your daily nutrition?",
+        default: "Ready to upgrade your daily style?",
       },
       description: {
         type: String,
@@ -114,40 +114,40 @@ membershipPageSchema.statics.getDefaultContent = function () {
     theme: { style: "mint" },
     hero: {
       badge: "Premium Membership",
-      title: "Buy One Gram Club",
+      title: "Ananya Boutique Club",
       titleHighlight: "Premium",
       description:
-        "Join our exclusive community and unlock premium benefits designed for your wellness journey.",
+        "Join our exclusive community and unlock premium fashion benefits, early access, and member-only rewards.",
       note: "Limited member slots refreshed monthly",
     },
     benefits: {
       title: "Unlock Exclusive Benefits",
       subtitle:
-        "Start earning rewards today and take your health journey to the next level with premium perks.",
+        "Start earning rewards today and enjoy a smoother boutique shopping experience.",
       items: [
         {
-          icon: "⭐",
+          icon: "VIP",
           title: "Earn Points",
           description:
-            "Get 1 point for every ₹1 spent. Redeem points for discounts and exclusive products.",
+            "Get 1 point for every Rs. 1 spent. Redeem points for discounts and exclusive styles.",
         },
         {
-          icon: "🚀",
+          icon: "DROP",
           title: "Early Access",
           description:
             "Be the first to try our latest products before they're available to the public.",
         },
         {
-          icon: "💎",
+          icon: "DEAL",
           title: "Special Discounts",
           description:
             "Enjoy exclusive pricing and promotions available only to our members.",
         },
         {
-          icon: "🚚",
+          icon: "SHIP",
           title: "Free Shipping",
           description:
-            "Enjoy free shipping on all orders above ₹500. No hidden charges.",
+            "Enjoy free shipping on member-eligible orders. No hidden charges.",
         },
         {
           icon: "🎁",
@@ -170,7 +170,7 @@ membershipPageSchema.statics.getDefaultContent = function () {
       note: "Instant access after checkout.",
     },
     cta: {
-      title: "Ready to upgrade your daily nutrition?",
+      title: "Ready to upgrade your daily style?",
       description:
         "Members get early access, exclusive drops, and a smoother checkout experience.",
       buttonText: "Explore Plans",

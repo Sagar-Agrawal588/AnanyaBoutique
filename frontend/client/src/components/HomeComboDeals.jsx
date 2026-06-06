@@ -122,7 +122,7 @@ const HomeComboDeals = ({ initialCombos = [] }) => {
                 "linear-gradient(135deg, var(--color-primary) 0%, var(--flavor-hover) 100%)",
             }}
           >
-            View All Combos
+            Discover Combos
           </Link>
         </div>
 

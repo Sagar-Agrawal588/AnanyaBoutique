@@ -63,7 +63,7 @@ const run = async () => {
   const baseUrl = (
     readArg("baseUrl") ||
     process.env.PARTNER_API_BASE_URL ||
-    "https://healthyonegram-api-v2-xb7znoco6a-uc.a.run.app/api/v1/partner"
+    "https://api.ananyaboutique.com/api/v1/partner"
   )
     .trim()
     .replace(/\/+$/, "");

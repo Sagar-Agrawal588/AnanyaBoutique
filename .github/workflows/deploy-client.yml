@@ -21,7 +21,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  FIREBASE_APP_HOSTING_BACKEND: healthyonegram-client
+  FIREBASE_APP_HOSTING_BACKEND: ananyaboutique-client
   FIREBASE_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
   FIREBASE_LOCATION: us-central1
 
@@ -70,8 +70,8 @@ jobs:
 
       - name: Validate production API config
         run: |
-          grep -q "healthyonegram-api-v2" frontend/client/apphosting.yaml
-          ! grep -E "localhost|127\.0\.0\.1|healthyonegram-backend" frontend/client/apphosting.yaml
+          grep -q "ananyaboutique-api" frontend/client/apphosting.yaml
+          ! grep -E "localhost|127\.0\.0\.1|ananyaboutique-backend" frontend/client/apphosting.yaml
 
       - name: Sync App Hosting secrets
         run: |

@@ -17,7 +17,7 @@ dotenv.config({ path: new URL("../server/.env", import.meta.url) });
 dotenv.config();
 
 const FIXED_SELLER_DETAILS = Object.freeze({
-  name: "BUY ONE GRAM PRIVATE LIMITED",
+  name: "Ananya Boutique",
   gstin: "08AAJCB3889Q1ZO",
   address: "G-225, RIICO INDUSTRIAL AREA SITAPURA, TONK ROAD, JAIPUR-302022",
   state: "Rajasthan",

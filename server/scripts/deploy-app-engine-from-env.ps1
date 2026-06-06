@@ -1,10 +1,10 @@
 param(
-  [string]$ProjectId = "healthy-one-gram",
+  [string]$ProjectId = "ananya-boutique",
   [string]$EnvFile = "",
-  [string]$BackendUrl = "https://healthyonegram-api-v2-xb7znoco6a-uc.a.run.app",
-  [string]$ClientUrl = "https://healthyonegram.com",
-  [string]$AdminUrl = "https://healthyonegram-admin-studio-8452116634-cdb59.us-central1.hosted.app",
-  [string]$CorsOrigins = "https://healthyonegram.com,https://healthyonegram-client-studio-8452116634-cdb59.us-central1.hosted.app,https://healthyonegram-admin-studio-8452116634-cdb59.us-central1.hosted.app",
+  [string]$BackendUrl = "https://api.ananyaboutique.com",
+  [string]$ClientUrl = "https://ananyaboutique.com",
+  [string]$AdminUrl = "https://admin.ananyaboutique.com",
+  [string]$CorsOrigins = "https://ananyaboutique.com,https://ananyaboutique.com,https://admin.ananyaboutique.com",
   [switch]$DryRun
 )
 

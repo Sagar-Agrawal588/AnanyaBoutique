@@ -31,7 +31,7 @@ const aboutPageSchema = new mongoose.Schema(
       },
       title: {
         type: String,
-        default: "Nutrition without the",
+        default: "Style without the",
       },
       titleHighlight: {
         type: String,
@@ -40,7 +40,7 @@ const aboutPageSchema = new mongoose.Schema(
       description: {
         type: String,
         default:
-          "We built Buy One Gram to answer a simple question: Why is it so hard to find peanut butter that is exactly what it says it is? No palm oil, no hidden sugars—just pure, verified nutrition.",
+          "We built Ananya Boutique to answer a simple question: Why is it so hard to find boutique styling that feels clear, wearable, and thoughtfully curated.",
       },
       image: {
         type: String,
@@ -56,12 +56,12 @@ const aboutPageSchema = new mongoose.Schema(
       },
       title: {
         type: String,
-        default: 'The "One Gram" Philosophy.',
+        default: "The Curated Style Philosophy.",
       },
       description: {
         type: String,
         default:
-          "The peanut butter industry is crowded with misleading labels. We prefer transparency. Buy One Gram was founded to bridge the gap between premium ingredients and everyday nutrition. We source peanuts based on quality, not cost.",
+          "The fashion marketplace is crowded with fast trends. We prefer clarity. Ananya Boutique was founded to bridge the gap between curated pieces and everyday style.",
       },
       image: {
         type: String,
@@ -116,12 +116,12 @@ const aboutPageSchema = new mongoose.Schema(
     cta: {
       title: {
         type: String,
-        default: "Ready to taste the difference?",
+        default: "Ready to style your next look?",
       },
       description: {
         type: String,
         default:
-          "Join thousands of health-conscious customers who trust Buy One Gram for their daily nutrition.",
+          "Join customers who trust Ananya Boutique for thoughtful everyday styling.",
       },
       buttonText: {
         type: String,
@@ -162,23 +162,23 @@ aboutPageSchema.statics.getDefaultContent = function () {
     },
     hero: {
       badge: "About Us",
-      title: "Nutrition without the",
+      title: "Style without the",
       titleHighlight: "noise.",
       description:
-        "We built Buy One Gram to answer a simple question: Why is it so hard to find peanut butter that is exactly what it says it is? No palm oil, no hidden sugars—just pure, verified nutrition.",
+        "We built Ananya Boutique to answer a simple question: Why is it so hard to find boutique styling that feels clear, wearable, and thoughtfully curated.",
       image: "",
     },
     standard: {
       subtitle: "Our Standard",
-      title: 'The "One Gram" Philosophy.',
+      title: "The Curated Style Philosophy.",
       description:
-        "The peanut butter industry is crowded with misleading labels. We prefer transparency. Buy One Gram was founded to bridge the gap between premium ingredients and everyday nutrition. We source peanuts based on quality, not cost.",
+        "The fashion marketplace is crowded with fast trends. We prefer clarity. Ananya Boutique was founded to bridge the gap between curated pieces and everyday style.",
       image: "",
       stats: [
-        { value: "100%", label: "Roasted Peanuts" },
-        { value: "0g", label: "Added Sugar" },
-        { value: "No", label: "Palm Oil" },
-        { value: "Lab", label: "Tested Quality" },
+        { value: "100%", label: "Curated Pieces" },
+        { value: "New", label: "Seasonal Edits" },
+        { value: "Easy", label: "Styling" },
+        { value: "Care", label: "Checked Quality" },
       ],
     },
     whyUs: {
@@ -187,23 +187,23 @@ aboutPageSchema.statics.getDefaultContent = function () {
       features: [
         {
           icon: "🥜",
-          title: "Premium Sourcing",
-          description: "Hand-selected peanuts from trusted farms",
+          title: "Curated Sourcing",
+          description: "Hand-selected boutique pieces from trusted suppliers",
         },
         {
           icon: "🔬",
-          title: "Lab Tested",
-          description: "Every batch verified for quality and safety",
+          title: "Quality Checked",
+          description: "Each placeholder collection is reviewed for fit and finish",
         },
         {
           icon: "🌿",
-          title: "Clean Ingredients",
-          description: "No additives, preservatives, or hidden sugars",
+          title: "Clear Styling",
+          description: "Simple styling guidance without noisy trend claims",
         },
         {
           icon: "📦",
           title: "Fresh Delivery",
-          description: "Made fresh and shipped directly to you",
+          description: "Packed carefully and shipped directly to you",
         },
       ],
     },
@@ -212,24 +212,24 @@ aboutPageSchema.statics.getDefaultContent = function () {
       title: "What We Stand For",
       items: [
         {
-          title: "Transparency",
+          title: "Clarity",
           description:
-            "We believe you deserve to know exactly what's in your food.",
+            "We believe boutique shopping should feel clear, useful, and easy to compare.",
         },
         {
           title: "Quality",
-          description: "We never compromise on ingredients or processes.",
+          description: "We never compromise on presentation, fit notes, or collection quality.",
         },
         {
-          title: "Health",
-          description: "Your wellness is at the heart of everything we do.",
+          title: "Style",
+          description: "Your everyday confidence is at the heart of everything we do.",
         },
       ],
     },
     cta: {
-      title: "Ready to taste the difference?",
+      title: "Ready to style your next look?",
       description:
-        "Join thousands of health-conscious customers who trust Buy One Gram for their daily nutrition.",
+        "Join customers who trust Ananya Boutique for thoughtful everyday styling.",
       buttonText: "Shop Now",
       buttonLink: "/products",
     },

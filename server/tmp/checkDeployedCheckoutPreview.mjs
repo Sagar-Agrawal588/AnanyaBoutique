@@ -1,5 +1,5 @@
 const baseUrl = String(
-  process.argv[2] || "https://healthyonegram-api-v2-xb7znoco6a-uc.a.run.app",
+  process.argv[2] || "https://api.ananyaboutique.com",
 )
   .trim()
   .replace(/\/+$/, "");

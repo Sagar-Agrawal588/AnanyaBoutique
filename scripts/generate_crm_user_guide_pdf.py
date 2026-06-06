@@ -56,11 +56,11 @@ def main():
         rightMargin=0.9 * inch,
         topMargin=0.8 * inch,
         bottomMargin=0.8 * inch,
-        title="BuyOneGram CRM - Non-Technical User Guide",
+        title="Ananya Boutique CRM - Non-Technical User Guide",
     )
 
     story = []
-    story.append(Paragraph("BuyOneGram CRM - Non-Technical User Guide", styles["Heading1Large"]))
+    story.append(Paragraph("Ananya Boutique CRM - Non-Technical User Guide", styles["Heading1Large"]))
     story.append(Paragraph("Purpose", styles["Heading2Space"]))
     story.append(
         Paragraph(
@@ -244,7 +244,7 @@ def main():
                 "Template body: Hi {{1}}, enjoy {{2}} today!",
                 "Body Variables line 1: customer name.",
                 "Body Variables line 2: offer text.",
-                "Example values: Amit, 15% OFF on Peanut Butter.",
+                "Example values: Amit, 15% OFF on Boutique Style.",
             ],
             styles["BodySpace"],
         )

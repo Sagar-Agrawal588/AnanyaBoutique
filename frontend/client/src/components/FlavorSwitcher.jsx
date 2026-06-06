@@ -3,24 +3,24 @@ import { useState } from "react";
 
 const FLAVORS = [
   {
-    name: "Creamy",
-    color: "#F6E6C9",
-    glass: "rgba(246,230,201,0.6)",
+    name: "Sarees",
+    color: "#FCE7F3",
+    glass: "rgba(252,231,243,0.6)",
   },
   {
-    name: "Chocolate",
-    color: "#5A3A2E",
-    glass: "rgba(90,58,46,0.6)",
+    name: "Suits",
+    color: "#7C3AED",
+    glass: "rgba(124,58,237,0.45)",
   },
   {
-    name: "Daizu",
-    color: "#8FAE5D",
-    glass: "rgba(143,174,93,0.6)",
+    name: "Kurtis",
+    color: "#DB2777",
+    glass: "rgba(219,39,119,0.42)",
   },
   {
-    name: "Low-calorie",
-    color: "#CFEFE8",
-    glass: "rgba(207,239,232,0.6)",
+    name: "Accessories",
+    color: "#C4B5FD",
+    glass: "rgba(196,181,253,0.5)",
   },
 ];
 

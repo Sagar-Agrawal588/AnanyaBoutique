@@ -35,7 +35,7 @@ const folderArgs = process.argv.slice(2).filter(Boolean);
 const folders =
   folderArgs.length > 0
     ? folderArgs
-    : ["buyonegram/slides", "buyonegram/banners", "buyonegram/products"];
+    : ["ananyaboutique/slides", "ananyaboutique/banners", "ananyaboutique/products"];
 
 const buildPublicUrl = (bucketName, objectPath) => {
   const encodedPath = String(objectPath || "")

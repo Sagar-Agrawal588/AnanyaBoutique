@@ -91,7 +91,7 @@ const toFeaturedHomeReview = (review) => {
         : null;
   const itemName =
     String(itemRef?.name || itemRef?.title || "").trim() ||
-    (comboRef ? "Combo deal" : "Healthy One Gram");
+    (comboRef ? "Combo deal" : "Ananya Boutique");
   const itemImage =
     itemRef?.thumbnail ||
     itemRef?.image ||

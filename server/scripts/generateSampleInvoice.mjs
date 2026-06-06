@@ -42,7 +42,7 @@ const sampleOrder = {
   products: [
     {
       productId: "PB-CRNCHY",
-      productTitle: "Peanut Butter Crunchy",
+      productTitle: "Boutique Style Crunchy",
       quantity: 3,
       price: 257.18,
       subTotal: 771.54,
@@ -50,7 +50,7 @@ const sampleOrder = {
     },
     {
       productId: "PB-CHOC",
-      productTitle: "Peanut Butter Chocolate",
+      productTitle: "Boutique Style Chocolate",
       quantity: 5,
       price: 466.74,
       subTotal: 2333.7,
@@ -58,7 +58,7 @@ const sampleOrder = {
     },
     {
       productId: "PB-CRMY",
-      productTitle: "Peanut Butter Creamy",
+      productTitle: "Boutique Style Creamy",
       quantity: 1,
       price: 52.38,
       subTotal: 52.38,
@@ -68,7 +68,7 @@ const sampleOrder = {
 };
 
 const sellerDetails = {
-  name: "BUY ONE GRAM PRIVATE LIMITED",
+  name: "Ananya Boutique",
   gstin: "08AAJCB3889Q1ZO",
   address: "G-225, RIICO INDUSTRIAL AREA SITAPURA, TONK ROAD, JAIPUR-302022",
   state: "Rajasthan",

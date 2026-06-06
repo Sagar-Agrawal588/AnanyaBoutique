@@ -37,7 +37,7 @@ const FIREBASE_DEFAULT_BANNERS = DEFAULT_BANNER_IMAGE_PATHS;
 /**
  * Database Seeder
  *
- * Seeds initial data for peanut butter products.
+ * Seeds initial placeholder data for the boutique storefront.
  * Also creates an admin user if none exists.
  *
  * Usage: node seeder.js
@@ -75,12 +75,12 @@ const SEED_MANAGER_DEFAULT_PERMISSIONS = normalizeManagerPermissions(
     .filter(Boolean),
 );
 const ADMIN_SEED_EMAIL = String(
-  process.env.ADMIN_PRIMARY_EMAIL || "admin@buyonegram.com",
+  process.env.ADMIN_PRIMARY_EMAIL || "admin@ananyaboutique.com",
 )
   .trim()
   .toLowerCase();
 const MANAGER_SEED_EMAIL = String(
-  process.env.MANAGER_PRIMARY_EMAIL || "manager@buyonegram.com",
+  process.env.MANAGER_PRIMARY_EMAIL || "manager@ananyaboutique.com",
 )
   .trim()
   .toLowerCase();
@@ -91,358 +91,234 @@ const MANAGER_SEED_PASSWORD = String(
   process.env.MANAGER_PRIMARY_PASSWORD || "",
 ).trim();
 
-// Peanut Butter Categories
+// Boutique Categories
 const categories = [
   {
-    name: "Classic Peanut Butter",
-    slug: "classic-peanut-butter",
-    description: "Traditional creamy and crunchy peanut butter",
-    icon: "🥜",
+    name: "New Arrivals",
+    slug: "new-arrivals",
+    description: "Temporary collection for freshly added boutique pieces.",
+    icon: "new",
     image: FIREBASE_DEFAULT_PRODUCT_IMAGE,
     isFeatured: true,
     isActive: true,
     sortOrder: 1,
   },
   {
-    name: "Flavored Peanut Butter",
-    slug: "flavored-peanut-butter",
-    description: "Unique flavored peanut butter varieties",
-    icon: "🍫",
+    name: "Ethnic Wear",
+    slug: "ethnic-wear",
+    description: "Sarees, kurta sets, and occasion-ready silhouettes.",
+    icon: "ethnic",
     image: FIREBASE_DEFAULT_PRODUCT_IMAGE,
     isFeatured: true,
     isActive: true,
     sortOrder: 2,
   },
   {
-    name: "Organic & Natural",
-    slug: "organic-natural",
-    description: "100% organic and all-natural peanut butter",
-    icon: "🌿",
+    name: "Accessories",
+    slug: "accessories",
+    description: "Jewellery, clutches, and finishing touches for every look.",
+    icon: "accessories",
     image: FIREBASE_DEFAULT_PRODUCT_IMAGE,
     isFeatured: true,
     isActive: true,
     sortOrder: 3,
   },
   {
-    name: "Protein Peanut Butter",
-    slug: "protein-peanut-butter",
-    description: "High protein peanut butter for fitness enthusiasts",
-    icon: "💪",
+    name: "Occasion Edit",
+    slug: "occasion-edit",
+    description: "Curated looks for events, gifting, and celebrations.",
+    icon: "occasion",
     image: FIREBASE_DEFAULT_PRODUCT_IMAGE,
-    isFeatured: true,
+    isFeatured: false,
     isActive: true,
     sortOrder: 4,
   },
-  {
-    name: "Gift Packs",
-    slug: "gift-packs",
-    description: "Peanut butter gift sets and combos",
-    icon: "🎁",
-    image: FIREBASE_DEFAULT_PRODUCT_IMAGE,
-    isFeatured: false,
-    isActive: true,
-    sortOrder: 5,
-  },
 ];
 
-// Peanut Butter Products
+// Boutique Products
 const products = [
-  // Classic Peanut Butter
   {
-    name: "Classic Creamy Peanut Butter",
-    slug: "classic-creamy-peanut-butter",
+    name: "Ananya Signature Kurta Set",
+    slug: "ananya-signature-kurta-set",
     description:
-      "Our signature creamy peanut butter made from premium roasted peanuts. Smooth texture, rich taste. No added sugar, no preservatives. Perfect for spreading on toast, making smoothies, or baking.",
-    shortDescription: "Smooth & creamy, made from 100% roasted peanuts",
-    brand: "Buy One Gram",
-    price: 299,
-    originalPrice: 399,
-    stock: 150,
-    rating: 4.8,
-    numReviews: 245,
-    isFeatured: true,
-    isNewArrival: false,
-    isBestSeller: true,
-    tags: ["creamy", "classic", "bestseller", "no-sugar"],
-    categorySlug: "classic-peanut-butter",
-    weight: 500,
-    unit: "g",
-  },
-  {
-    name: "Classic Crunchy Peanut Butter",
-    slug: "classic-crunchy-peanut-butter",
-    description:
-      "Crunchy peanut butter with real peanut chunks. Made from hand-picked peanuts, roasted to perfection. The perfect balance of smooth and crunchy. No added oils or preservatives.",
-    shortDescription: "Crunchy texture with real peanut chunks",
-    brand: "Buy One Gram",
-    price: 349,
-    originalPrice: 499,
-    stock: 120,
-    rating: 4.7,
-    numReviews: 189,
-    isFeatured: true,
-    isNewArrival: false,
-    isBestSeller: true,
-    tags: ["crunchy", "classic", "bestseller", "chunky"],
-    categorySlug: "classic-peanut-butter",
-    weight: 500,
-    unit: "g",
-  },
-  {
-    name: "Classic Creamy - Large Pack",
-    slug: "classic-creamy-large",
-    description:
-      "Family size classic creamy peanut butter. Same great taste, bigger jar. Perfect for peanut butter lovers.",
-    shortDescription: "1kg family pack of our classic creamy",
-    brand: "Buy One Gram",
-    price: 549,
-    originalPrice: 749,
-    stock: 80,
-    rating: 4.9,
-    numReviews: 67,
-    isFeatured: false,
-    isNewArrival: false,
-    tags: ["creamy", "family-pack", "value"],
-    categorySlug: "classic-peanut-butter",
-    weight: 1000,
-    unit: "g",
-  },
-
-  // Flavored Peanut Butter
-  {
-    name: "Chocolate Peanut Butter",
-    slug: "chocolate-peanut-butter",
-    description:
-      "Rich dark chocolate meets creamy peanut butter. Made with premium cocoa and roasted peanuts. A guilt-free indulgence with no added sugar.",
-    shortDescription: "Dark chocolate + creamy peanut butter",
-    brand: "Buy One Gram",
-    price: 399,
-    originalPrice: 549,
-    stock: 100,
-    rating: 4.9,
-    numReviews: 312,
-    isFeatured: true,
-    isNewArrival: false,
-    isBestSeller: true,
-    tags: ["chocolate", "flavored", "bestseller", "indulgent"],
-    categorySlug: "flavored-peanut-butter",
-    weight: 350,
-    unit: "g",
-  },
-  {
-    name: "Honey Peanut Butter",
-    slug: "honey-peanut-butter",
-    description:
-      "Natural honey blended with creamy peanut butter. Sweet, smooth, and absolutely delicious. Made with organic honey.",
-    shortDescription: "Sweet honey meets creamy peanut butter",
-    brand: "Buy One Gram",
-    price: 379,
-    originalPrice: 499,
-    stock: 90,
-    rating: 4.6,
-    numReviews: 156,
-    isFeatured: true,
-    isNewArrival: true,
-    tags: ["honey", "sweet", "flavored", "new"],
-    categorySlug: "flavored-peanut-butter",
-    weight: 350,
-    unit: "g",
-  },
-  {
-    name: "Maple Cinnamon Peanut Butter",
-    slug: "maple-cinnamon-peanut-butter",
-    description:
-      "Warm cinnamon and pure maple syrup combined with our creamy peanut butter base. Perfect for fall mornings.",
-    shortDescription: "Maple syrup + cinnamon + peanut butter",
-    brand: "Buy One Gram",
-    price: 429,
-    originalPrice: 549,
-    stock: 60,
-    rating: 4.5,
-    numReviews: 89,
-    isFeatured: false,
-    isNewArrival: true,
-    tags: ["maple", "cinnamon", "seasonal", "new"],
-    categorySlug: "flavored-peanut-butter",
-    weight: 350,
-    unit: "g",
-  },
-  {
-    name: "Coffee Peanut Butter",
-    slug: "coffee-peanut-butter",
-    description:
-      "Premium arabica coffee infused peanut butter. A morning game-changer. Rich, bold, and energizing.",
-    shortDescription: "Arabica coffee infused peanut butter",
-    brand: "Buy One Gram",
-    price: 449,
-    originalPrice: 599,
-    stock: 50,
-    rating: 4.4,
-    numReviews: 45,
-    isFeatured: false,
-    isNewArrival: true,
-    tags: ["coffee", "energizing", "unique", "new"],
-    categorySlug: "flavored-peanut-butter",
-    weight: 350,
-    unit: "g",
-  },
-
-  // Organic & Natural
-  {
-    name: "Organic Peanut Butter - Unsweetened",
-    slug: "organic-peanut-butter-unsweetened",
-    description:
-      "100% certified organic peanuts. Single ingredient. No salt, no sugar, no oil. Just pure peanuts, stone-ground to perfection.",
-    shortDescription: "100% organic, single ingredient",
-    brand: "Buy One Gram",
-    price: 449,
-    originalPrice: 599,
-    stock: 70,
-    rating: 4.7,
-    numReviews: 134,
-    isFeatured: true,
-    isNewArrival: false,
-    tags: ["organic", "natural", "unsweetened", "pure"],
-    categorySlug: "organic-natural",
-    weight: 400,
-    unit: "g",
-  },
-  {
-    name: "Stone Ground Natural Peanut Butter",
-    slug: "stone-ground-natural",
-    description:
-      "Traditional stone-ground peanut butter with natural oil separation. Stir before use for the most authentic peanut butter experience.",
-    shortDescription: "Traditional stone-ground, natural separation",
-    brand: "Buy One Gram",
-    price: 399,
-    originalPrice: 499,
-    stock: 80,
-    rating: 4.6,
-    numReviews: 98,
-    isFeatured: false,
-    isNewArrival: false,
-    tags: ["stone-ground", "traditional", "natural"],
-    categorySlug: "organic-natural",
-    weight: 400,
-    unit: "g",
-  },
-
-  // Protein Peanut Butter
-  {
-    name: "High Protein Peanut Butter",
-    slug: "high-protein-peanut-butter",
-    description:
-      "32g protein per 100g. Enhanced with whey protein isolate. Perfect post-workout fuel for athletes and fitness enthusiasts.",
-    shortDescription: "32g protein per 100g serving",
-    brand: "Buy One Gram",
-    price: 549,
-    originalPrice: 749,
-    stock: 90,
-    rating: 4.8,
-    numReviews: 203,
-    isFeatured: true,
-    isNewArrival: false,
-    isBestSeller: true,
-    tags: ["protein", "fitness", "gym", "post-workout"],
-    categorySlug: "protein-peanut-butter",
-    weight: 500,
-    unit: "g",
-  },
-  {
-    name: "Protein Peanut Butter - Chocolate",
-    slug: "protein-peanut-butter-chocolate",
-    description:
-      "High protein meets chocolate indulgence. 30g protein per 100g with rich cocoa flavor. Guilt-free gains.",
-    shortDescription: "30g protein + chocolate flavor",
-    brand: "Buy One Gram",
-    price: 599,
-    originalPrice: 799,
-    stock: 70,
-    rating: 4.7,
-    numReviews: 156,
-    isFeatured: true,
-    isNewArrival: false,
-    tags: ["protein", "chocolate", "fitness", "indulgent"],
-    categorySlug: "protein-peanut-butter",
-    weight: 500,
-    unit: "g",
-  },
-
-  // Gift Packs
-  {
-    name: "Peanut Butter Lovers Gift Box",
-    slug: "peanut-butter-lovers-gift-box",
-    description:
-      "The ultimate gift for peanut butter lovers. Includes: Classic Creamy, Crunchy, Chocolate, and Honey variants. Beautifully packaged.",
-    shortDescription: "4 flavors gift set - perfect gift",
-    brand: "Buy One Gram",
-    price: 1299,
-    originalPrice: 1699,
+      "A temporary boutique placeholder for a polished kurta set with refined detailing and an easy festive fit.",
+    shortDescription: "Signature kurta set for everyday occasions.",
+    brand: "Ananya Boutique",
+    price: 2499,
+    originalPrice: 3299,
     stock: 40,
-    rating: 4.9,
-    numReviews: 78,
+    rating: 4.8,
+    numReviews: 42,
     isFeatured: true,
-    isNewArrival: false,
-    tags: ["gift", "combo", "variety", "special"],
-    categorySlug: "gift-packs",
-    weight: 1400,
-    unit: "g",
+    isNewArrival: true,
+    isBestSeller: true,
+    tags: ["kurta-set", "ethnic", "featured"],
+    categorySlug: "ethnic-wear",
+    weight: 1,
+    unit: "pcs",
+    specifications: {
+      Material: "Boutique fabric placeholder",
+      Fit: "Regular fit",
+      Care: "Dry clean recommended",
+    },
   },
   {
-    name: "Fitness Pack - Protein Duo",
-    slug: "fitness-pack-protein-duo",
+    name: "Festive Saree Draped Set",
+    slug: "festive-saree-draped-set",
     description:
-      "2 jars of our best-selling protein peanut butter. Original and Chocolate. Perfect for gym enthusiasts.",
-    shortDescription: "2x Protein Peanut Butter combo",
-    brand: "Buy One Gram",
-    price: 999,
-    originalPrice: 1299,
-    stock: 50,
-    rating: 4.8,
-    numReviews: 45,
+      "A temporary placeholder for a graceful festive drape styled for celebrations, receptions, and special evenings.",
+    shortDescription: "Celebration-ready saree edit.",
+    brand: "Ananya Boutique",
+    price: 3999,
+    originalPrice: 5299,
+    stock: 25,
+    rating: 4.7,
+    numReviews: 31,
+    isFeatured: true,
+    isNewArrival: false,
+    tags: ["saree", "festive", "occasion"],
+    categorySlug: "ethnic-wear",
+    weight: 1,
+    unit: "pcs",
+    specifications: {
+      Material: "Saree fabric placeholder",
+      Includes: "Drape and blouse piece placeholder",
+      Care: "Dry clean recommended",
+    },
+  },
+  {
+    name: "Everyday Co-ord Set",
+    slug: "everyday-coord-set",
+    description:
+      "A temporary placeholder for a versatile co-ord set designed for relaxed styling and boutique-ready daily wear.",
+    shortDescription: "Easy co-ord set for daily styling.",
+    brand: "Ananya Boutique",
+    price: 1899,
+    originalPrice: 2499,
+    stock: 55,
+    rating: 4.6,
+    numReviews: 28,
+    isFeatured: true,
+    isNewArrival: true,
+    tags: ["coord", "new-arrival", "daily-style"],
+    categorySlug: "new-arrivals",
+    weight: 1,
+    unit: "pcs",
+    specifications: {
+      Material: "Soft fabric placeholder",
+      Fit: "Relaxed fit",
+      Care: "Gentle wash",
+    },
+  },
+  {
+    name: "Pearl Accent Earrings",
+    slug: "pearl-accent-earrings",
+    description:
+      "A temporary placeholder for elegant earrings that complete ethnic, festive, and evening looks.",
+    shortDescription: "Pearl accent jewellery placeholder.",
+    brand: "Ananya Boutique",
+    price: 799,
+    originalPrice: 1199,
+    stock: 80,
+    rating: 4.5,
+    numReviews: 19,
     isFeatured: false,
     isNewArrival: true,
-    tags: ["gift", "protein", "fitness", "combo"],
-    categorySlug: "gift-packs",
-    weight: 1000,
-    unit: "g",
+    tags: ["jewellery", "earrings", "accessories"],
+    categorySlug: "accessories",
+    weight: 1,
+    unit: "pcs",
+    specifications: {
+      Material: "Jewellery placeholder",
+      Finish: "Pearl accent",
+      Care: "Store separately",
+    },
+  },
+  {
+    name: "Embroidered Clutch",
+    slug: "embroidered-clutch",
+    description:
+      "A temporary placeholder for a compact embroidered clutch made to pair with festive and occasion outfits.",
+    shortDescription: "Occasion clutch placeholder.",
+    brand: "Ananya Boutique",
+    price: 1299,
+    originalPrice: 1799,
+    stock: 35,
+    rating: 4.7,
+    numReviews: 22,
+    isFeatured: false,
+    isNewArrival: false,
+    tags: ["clutch", "accessories", "occasion"],
+    categorySlug: "accessories",
+    weight: 1,
+    unit: "pcs",
+    specifications: {
+      Material: "Embroidered fabric placeholder",
+      Closure: "Snap closure",
+      Care: "Wipe gently",
+    },
+  },
+  {
+    name: "Celebration Gift Edit",
+    slug: "celebration-gift-edit",
+    description:
+      "A temporary placeholder bundle for gifting-ready boutique picks curated for festive moments and special occasions.",
+    shortDescription: "Curated boutique gift edit.",
+    brand: "Ananya Boutique",
+    price: 2999,
+    originalPrice: 3799,
+    stock: 20,
+    rating: 4.9,
+    numReviews: 16,
+    isFeatured: true,
+    isNewArrival: false,
+    isBestSeller: true,
+    tags: ["gift", "occasion", "curated"],
+    categorySlug: "occasion-edit",
+    weight: 1,
+    unit: "pcs",
+    specifications: {
+      Includes: "Curated boutique placeholders",
+      Packaging: "Gift-ready placeholder",
+      Care: "Handle with care",
+    },
   },
 ];
 
-// Home Slides for Peanut Butter Store
+// Home Slides for Boutique Store
 const homeSlides = [
   {
-    title: "Pure Peanut Goodness",
-    subtitle: "100% Natural",
+    title: "Ananya Boutique Edit",
+    subtitle: "New Arrivals",
     description:
-      "Made from premium hand-picked peanuts. No added sugar, no preservatives. Just pure, delicious peanut butter.",
+      "Temporary hero content for curated boutique pieces, festive styling, and everyday elegance.",
     image: FIREBASE_DEFAULT_HOME_SLIDES[0],
-    buttonText: "Shop Now",
-    buttonLink: "/products",
+    buttonText: "Shop New Arrivals",
+    buttonLink: "/products?category=new-arrivals",
     textPosition: "left",
     isActive: true,
     sortOrder: 1,
   },
   {
-    title: "New: Chocolate Peanut Butter",
-    subtitle: "Bestseller",
+    title: "Occasion Ready Styles",
+    subtitle: "Festive Edit",
     description:
-      "Rich dark chocolate meets creamy peanut butter. Try our most loved flavor today!",
+      "Placeholder banner copy for celebration looks, elegant drapes, and refined accessories.",
     image: FIREBASE_DEFAULT_HOME_SLIDES[1],
-    buttonText: "Try Now",
-    buttonLink: "/product/chocolate-peanut-butter",
+    buttonText: "Explore Occasion Edit",
+    buttonLink: "/products?category=occasion-edit",
     textPosition: "center",
     isActive: true,
     sortOrder: 2,
   },
   {
-    title: "Fuel Your Workout",
-    subtitle: "32g Protein",
+    title: "Accessories That Finish The Look",
+    subtitle: "Boutique Details",
     description:
-      "High protein peanut butter for fitness enthusiasts. Power up your gains!",
+      "Temporary content for jewellery, clutches, and styling accents from Ananya Boutique.",
     image: FIREBASE_DEFAULT_HOME_SLIDES[2],
-    buttonText: "Shop Protein",
-    buttonLink: "/products?category=protein-peanut-butter",
+    buttonText: "Shop Accessories",
+    buttonLink: "/products?category=accessories",
     textPosition: "right",
     isActive: true,
     sortOrder: 3,
@@ -452,8 +328,8 @@ const homeSlides = [
 // Banners
 const banners = [
   {
-    title: "Free Delivery",
-    subtitle: "On orders above ₹499",
+    title: "Boutique Launch Edit",
+    subtitle: "Temporary Ananya Boutique storefront placeholder",
     image: FIREBASE_DEFAULT_BANNERS[0],
     link: "/products",
     position: "home-top",
@@ -461,16 +337,15 @@ const banners = [
     sortOrder: 1,
   },
   {
-    title: "Subscribe & Save 10%",
-    subtitle: "Monthly peanut butter delivery",
+    title: "Curated Occasion Looks",
+    subtitle: "Fresh placeholders for festive and everyday collections",
     image: FIREBASE_DEFAULT_BANNERS[1],
-    link: "/subscribe",
+    link: "/products?category=occasion-edit",
     position: "home-middle",
     isActive: true,
-    sortOrder: 1,
+    sortOrder: 2,
   },
 ];
-
 // Seed functions
 const seedCategories = async () => {
   await CategoryModel.deleteMany({});
@@ -515,22 +390,16 @@ const seedProducts = async (createdCategories) => {
       isOnSale: product.originalPrice > product.price,
       tags: product.tags,
       specifications: {
-        Weight: `${product.weight}${product.unit}`,
-        "Shelf Life": "6 months",
-        Storage: "Store in a cool, dry place",
+        Quantity: `${product.weight} ${product.unit}`,
+        ...(product.specifications || {}),
       },
-      ingredients: "Roasted Peanuts",
-      nutritionalInfo: {
-        Protein: "25g per 100g",
-        Fat: "50g per 100g",
-        Carbs: "20g per 100g",
-        Fiber: "8g per 100g",
-      },
+      ingredients: "",
+      nutritionalInfo: {},
     };
   });
 
   const createdProducts = await ProductModel.insertMany(productsWithCategories);
-  console.log(`✅ ${createdProducts.length} peanut butter products seeded`);
+  console.log(`✅ ${createdProducts.length} boutique products seeded`);
 
   // Update category product counts
   for (const category of createdCategories) {
@@ -558,11 +427,11 @@ const seedCombos = async (createdProducts = []) => {
 
   const comboSeeds = [
     {
-      name: "Classic Duo Combo",
-      slug: "classic-duo-combo",
-      shortDescription: "Creamy + Crunchy â€” save more together",
+      name: "Festive Ready Combo",
+      slug: "festive-ready-combo",
+      shortDescription: "Kurta set plus clutch placeholder bundle",
       description:
-        "Our two all-time classics bundled together for better value and everyday use.",
+        "A temporary boutique combo pairing an occasion outfit with a finishing accessory.",
       tags: ["best_seller", "featured"],
       priority: 60,
       isFeatured: true,
@@ -570,71 +439,31 @@ const seedCombos = async (createdProducts = []) => {
       pricing: { type: "percent_discount", value: 12 },
       items: [
         {
-          productId: getProductId("classic-creamy-peanut-butter"),
+          productId: getProductId("ananya-signature-kurta-set"),
           quantity: 1,
         },
         {
-          productId: getProductId("classic-crunchy-peanut-butter"),
+          productId: getProductId("embroidered-clutch"),
           quantity: 1,
         },
       ],
     },
     {
-      name: "Breakfast Flavors Combo",
-      slug: "breakfast-flavors-combo",
-      shortDescription: "Chocolate + Honey + Maple Cinnamon bundle",
+      name: "Accessory Finish Combo",
+      slug: "accessory-finish-combo",
+      shortDescription: "Earrings plus clutch placeholder bundle",
       description:
-        "Three sweet favorites that go perfectly with toast, oats, and smoothies.",
+        "A temporary accessories combo for completing festive and evening looks.",
       tags: ["trending", "recommended"],
       priority: 50,
       isFeatured: true,
       pricing: { type: "percent_discount", value: 10 },
       items: [
-        { productId: getProductId("chocolate-peanut-butter"), quantity: 1 },
-        { productId: getProductId("honey-peanut-butter"), quantity: 1 },
-        {
-          productId: getProductId("maple-cinnamon-peanut-butter"),
-          quantity: 1,
-        },
-      ],
-    },
-    {
-      name: "Protein Duo Combo",
-      slug: "protein-duo-combo",
-      shortDescription: "High Protein + Chocolate Protein pack",
-      description:
-        "A gym-friendly duo with extra protein â€” perfect for pre or post workout.",
-      tags: ["high_demand", "featured"],
-      priority: 45,
-      isBestSeller: true,
-      pricing: { type: "percent_discount", value: 15 },
-      items: [
-        { productId: getProductId("high-protein-peanut-butter"), quantity: 1 },
-        {
-          productId: getProductId("protein-peanut-butter-chocolate"),
-          quantity: 1,
-        },
-      ],
-    },
-    {
-      name: "Organic Essentials Combo",
-      slug: "organic-essentials-combo",
-      shortDescription: "Organic Unsweetened + Stone Ground bundle",
-      description:
-        "Two clean, single-ingredient picks for a more natural peanut butter routine.",
-      tags: ["recommended"],
-      priority: 40,
-      pricing: { type: "percent_discount", value: 8 },
-      items: [
-        {
-          productId: getProductId("organic-peanut-butter-unsweetened"),
-          quantity: 1,
-        },
-        { productId: getProductId("stone-ground-peanut-butter"), quantity: 1 },
+        { productId: getProductId("pearl-accent-earrings"), quantity: 1 },
+        { productId: getProductId("embroidered-clutch"), quantity: 1 },
       ],
     },
   ];
-
   const createdCombos = [];
 
   for (const comboSeed of comboSeeds) {
@@ -656,7 +485,7 @@ const seedCombos = async (createdProducts = []) => {
       slug: comboSeed.slug,
       shortDescription: comboSeed.shortDescription || "",
       description: comboSeed.description || "",
-      brand: "Buy One Gram",
+      brand: "Ananya Boutique",
       sku: buildComboSkuFromItems(snapshots),
       comboType: "fixed_bundle",
       items: snapshots,

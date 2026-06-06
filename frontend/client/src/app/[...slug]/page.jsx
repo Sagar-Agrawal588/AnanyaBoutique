@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 const SITE_URL = String(
-  process.env.NEXT_PUBLIC_SITE_URL || "https://healthyonegram.com",
+  process.env.NEXT_PUBLIC_SITE_URL || "https://ananyaboutique.com",
 )
   .trim()
   .replace(/^["']|["']$/g, "")
@@ -15,27 +15,27 @@ const normalizeBaseUrl = (value) =>
     .replace(/\/+$/, "")
     .replace(/\/api$/i, "");
 
-const DEFAULT_API_BASE_URL = "https://healthyonegram-api-v2-xb7znoco6a-uc.a.run.app";
+const DEFAULT_API_BASE_URL = "https://api.ananyaboutique.com";
 
 const DEFAULT_METADATA = {
-  title: "Healthy One Gram - Premium Peanut Butter Store",
+  title: "Ananya Boutique - Curated Fashion Boutique",
   description:
-    "Shop premium quality peanut butter and healthy food products at Healthy One Gram. Natural, organic, and delicious options for a healthier lifestyle.",
+    "Shop boutique apparel, accessories, and curated occasion edits at Ananya Boutique.",
   keywords:
-    "peanut butter, healthy food, organic, natural, protein, healthy one gram",
+    "boutique fashion, sarees, suits, kurtis, leggings, cosmetics, accessories, occasion wear, ananya boutique",
 };
 
 const DEFAULT_HIGHLIGHTS = [
-  "Premium ingredients",
-  "Everyday wellness support",
-  "Thoughtful product selection",
+  "Curated boutique fashion",
+  "Everyday styling support",
+  "Thoughtful collection selection",
   "Fast online ordering",
 ];
 
 const DEFAULT_CTA_LINKS = [
   { label: "Browse all products", href: "/products" },
   { label: "Check membership benefits", href: "/membership" },
-  { label: "Read wellness articles", href: "/blogs" },
+  { label: "Read style journal", href: "/blogs" },
 ];
 
 const normalizePath = (segments = []) => {
@@ -172,7 +172,7 @@ export async function generateMetadata({ params }) {
                 url: toAbsoluteUrl(page.heroImageUrl),
                 alt:
                   String(page?.heroImageAlt || page?.heroTitle || page?.label || "")
-                    .trim() || "Healthy One Gram SEO page banner",
+                    .trim() || "Ananya Boutique SEO page banner",
               },
             ],
           }
@@ -201,7 +201,7 @@ const SeoLandingPage = async ({ params }) => {
     notFound();
   }
 
-  const title = String(page?.metaTitle || page?.label || "Healthy One Gram").trim();
+  const title = String(page?.metaTitle || page?.label || "Ananya Boutique").trim();
   const description = String(page?.metaDescription || "").trim();
   const keywords = String(page?.keywords || "").trim();
   const notes = String(page?.notes || "").trim();
@@ -210,7 +210,7 @@ const SeoLandingPage = async ({ params }) => {
   const heroImageUrl = String(page?.heroImageUrl || "").trim();
   const heroImageAlt =
     String(page?.heroImageAlt || page?.heroTitle || page?.label || title).trim() ||
-    "Healthy One Gram SEO banner";
+    "Ananya Boutique SEO banner";
   const ctaLabel =
     String(page?.ctaLabel || "Explore Products").trim() || "Explore Products";
   const ctaHref = normalizeCtaHref(page?.ctaHref);
@@ -304,7 +304,7 @@ const SeoLandingPage = async ({ params }) => {
 
             <div className="rounded-[2rem] border border-[#eadfcd] bg-white p-7 shadow-sm">
               <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#8a5b18]">
-                Why Healthy One Gram
+                Why Ananya Boutique
               </p>
               <div className="mt-5 grid gap-4">
                 {highlights.map((highlight, index) => (

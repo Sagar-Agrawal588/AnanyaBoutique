@@ -100,7 +100,7 @@ const seedCatalog = async () => {
     stock: 20,
     stock_quantity: 20,
     reserved_quantity: 2,
-    tags: ["dry-fruits", "protein"],
+    tags: ["dry-fruits", "style"],
     isActive: true,
   });
 
@@ -189,13 +189,13 @@ test("GET /api/v1/partner/inventory enforces scope checks", async () => {
 test("GET /api/v1/partner/inventory returns variant-wise stock breakup", async () => {
   const { apiKey } = await seedPartner({ scopes: ["inventory.read"] });
   const category = await Category.create({
-    name: "Peanut Butter",
-    slug: `peanut-butter-${Date.now()}`,
+    name: "Boutique Style",
+    slug: `boutique-style-${Date.now()}`,
     isActive: true,
   });
 
   const product = await Product.create({
-    name: "Dark Chocolate Smooth Peanut Butter",
+    name: "Dark Chocolate Smooth Boutique Style",
     slug: `dark-choco-peanut-${Date.now()}`,
     price: 449,
     category: category._id,
@@ -260,13 +260,13 @@ test("GET /api/v1/partner/inventory returns variant-wise stock breakup", async (
 test("GET /api/v1/partner/products returns variant-wise stock breakup", async () => {
   const { apiKey } = await seedPartner({ scopes: ["catalog.read"] });
   const category = await Category.create({
-    name: "Peanut Butter",
-    slug: `peanut-butter-products-${Date.now()}`,
+    name: "Boutique Style",
+    slug: `boutique-style-products-${Date.now()}`,
     isActive: true,
   });
 
   await Product.create({
-    name: "Choco Millet Crisp Peanut Butter",
+    name: "Choco Millet Crisp Boutique Style",
     slug: `choco-millet-${Date.now()}`,
     price: 399,
     category: category._id,
@@ -303,7 +303,7 @@ test("GET /api/v1/partner/products returns variant-wise stock breakup", async ()
   assert.equal(payload.success, true);
   assert.ok(Array.isArray(payload.data));
 
-  const item = payload.data.find((entry) => entry.name === "Choco Millet Crisp Peanut Butter");
+  const item = payload.data.find((entry) => entry.name === "Choco Millet Crisp Boutique Style");
   assert.ok(item);
   assert.ok(item.stock);
   assert.equal(item.stock.availableQuantity, 100);

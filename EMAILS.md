@@ -14,7 +14,7 @@ This document lists all client-facing emails, when they are sent, and the conten
 
 ### Account & Access
 - Email verification OTP
-  Subject: `Verify email from HealthyOneGram`
+  Subject: `Verify email from Ananya Boutique`
   Template: `server/utils/verifyEmailTemplate.js`
   Trigger: User registration and resend OTP
   Audience: All users who register or request OTP
@@ -77,7 +77,7 @@ This document lists all client-facing emails, when they are sent, and the conten
 
 ### Promotions & Marketing
 - Promotional email campaign
-  Subject: `Special Offer from HealthyOneGram` (admin can edit copy inside template variables)
+  Subject: `Special Offer from Ananya Boutique` (admin can edit copy inside template variables)
   Template: `server/emails/promotionalOffer.html`
   Trigger: Admin sends from Notifications page
   Audience: Users with email and `notificationSettings.promotionalEmails` enabled
@@ -86,7 +86,7 @@ This document lists all client-facing emails, when they are sent, and the conten
   Route: `POST /api/notifications/admin/send-promotional-email`
 
 - Newsletter welcome
-  Subject: `Welcome to HealthyOneGram`
+  Subject: `Welcome to Ananya Boutique`
   Template: `server/emails/newsletterConfirmation.html`
   Trigger: Newsletter subscription confirmation
   Audience: Newsletter subscribers

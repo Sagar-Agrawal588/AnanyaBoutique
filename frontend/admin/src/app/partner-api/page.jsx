@@ -279,7 +279,7 @@ const PartnerApiPage = () => {
       const blob = await response.blob();
       const contentDisposition = response.headers.get("content-disposition") || "";
       const match = contentDisposition.match(/filename=\"?([^\";]+)\"?/i);
-      const fileName = match?.[1] || `healthyonegram-partner-credentials-${Date.now()}.pdf`;
+      const fileName = match?.[1] || `ananyaboutique-partner-credentials-${Date.now()}.pdf`;
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;

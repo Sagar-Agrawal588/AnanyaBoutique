@@ -2102,7 +2102,7 @@ const Checkout = () => {
             Your cart is empty
           </h1>
           <p className="text-gray-500 mb-8 max-w-xs mx-auto font-medium">
-            Looks like you have not added any peanut butter goodness yet!
+            Looks like you have not added any boutique picks yet!
           </p>
           <Link
             href="/products"

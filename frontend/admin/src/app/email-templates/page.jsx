@@ -11,7 +11,7 @@ const EmailTemplatesPage = () => {
   const { token, isAuthenticated, loading } = useAdmin();
   const router = useRouter();
 
-  const [subject, setSubject] = useState("Latest updates from HealthyOneGram");
+  const [subject, setSubject] = useState("Latest updates from Ananya Boutique");
   const [html, setHtml] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -28,7 +28,7 @@ const EmailTemplatesPage = () => {
       setIsLoading(true);
       const response = await getData("/api/newsletter/admin/template", token);
       if (response?.success && response?.data) {
-        setSubject(response.data.subject || "Latest updates from HealthyOneGram");
+        setSubject(response.data.subject || "Latest updates from Ananya Boutique");
         setHtml(response.data.html || "");
       } else {
         toast.error(response?.message || "Failed to load template");

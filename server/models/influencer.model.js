@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 
-const DEFAULT_PUBLIC_CLIENT_URL = "https://healthyonegram.com";
+const DEFAULT_PUBLIC_CLIENT_URL = "https://ananyaboutique.com";
 
 const getFirstConfiguredUrl = (value) =>
   String(value || "")

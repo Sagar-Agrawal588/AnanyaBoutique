@@ -1,626 +1,509 @@
 "use client";
 
-import { fetchDataFromApi } from "@/utils/api";
-import { CircularProgress } from "@mui/material";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { motion } from "framer-motion";
+import {
+  ArrowRight,
+  CalendarDays,
+  Gem,
+  Heart,
+  Home,
+  Sparkles,
+  Star,
+  Store,
+  Users,
+} from "lucide-react";
+import BrandArtworkFrame from "@/components/brand/BrandArtworkFrame";
+import {
+  BrandPillarGrid,
+  FounderSignatureSection,
+} from "@/components/brand/BrandTrust";
+import { fashionMicrocopy } from "@/config/visualIdentity";
 
-const THEME_PRESETS = {
-  mint: {
-    bg: "from-emerald-50/80 via-white to-teal-50/80",
-    glowA: "bg-emerald-200/40",
-    glowB: "bg-teal-200/30",
-    accent: "from-emerald-600 via-teal-600 to-green-600",
-    badge: "from-emerald-500 to-teal-500",
-    border: "border-emerald-200/50",
-    focusRing: "focus:ring-emerald-200/60",
-    chip: "text-emerald-700 bg-emerald-50/70 border-emerald-200/60",
-  },
-  sky: {
-    bg: "from-sky-50/80 via-white to-cyan-50/80",
-    glowA: "bg-sky-200/40",
-    glowB: "bg-cyan-200/30",
-    accent: "from-sky-600 via-cyan-600 to-blue-600",
-    badge: "from-sky-500 to-cyan-500",
-    border: "border-sky-200/50",
-    focusRing: "focus:ring-sky-200/60",
-    chip: "text-sky-700 bg-sky-50/70 border-sky-200/60",
-  },
-  aurora: {
-    bg: "from-lime-50/80 via-white to-emerald-50/80",
-    glowA: "bg-lime-200/35",
-    glowB: "bg-emerald-200/30",
-    accent: "from-lime-600 via-emerald-600 to-teal-600",
-    badge: "from-lime-500 to-emerald-500",
-    border: "border-emerald-200/50",
-    focusRing: "focus:ring-emerald-200/60",
-    chip: "text-emerald-700 bg-emerald-50/70 border-emerald-200/60",
-  },
-  lavender: {
-    bg: "from-indigo-50/80 via-white to-purple-50/80",
-    glowA: "bg-indigo-200/35",
-    glowB: "bg-purple-200/30",
-    accent: "from-indigo-600 via-purple-600 to-fuchsia-600",
-    badge: "from-indigo-500 to-purple-500",
-    border: "border-indigo-200/50",
-    focusRing: "focus:ring-indigo-200/60",
-    chip: "text-indigo-700 bg-indigo-50/70 border-indigo-200/60",
-  },
-  sunset: {
-    bg: "from-orange-50/80 via-white to-rose-50/80",
-    glowA: "bg-orange-200/35",
-    glowB: "bg-rose-200/30",
-    accent: "from-orange-600 via-rose-600 to-pink-600",
-    badge: "from-orange-500 to-rose-500",
-    border: "border-rose-200/50",
-    focusRing: "focus:ring-rose-200/60",
-    chip: "text-rose-700 bg-rose-50/70 border-rose-200/60",
-  },
-  midnight: {
-    bg: "from-slate-50/80 via-white to-gray-50/80",
-    glowA: "bg-slate-200/35",
-    glowB: "bg-gray-200/30",
-    accent: "from-slate-700 via-gray-800 to-zinc-800",
-    badge: "from-slate-700 to-gray-800",
-    border: "border-slate-200/50",
-    focusRing: "focus:ring-slate-200/60",
-    chip: "text-slate-700 bg-slate-50/70 border-slate-200/60",
+const fadeUp = {
+  hidden: { opacity: 0, y: 34 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.72, ease: [0.22, 1, 0.36, 1] },
   },
 };
 
-const DEFAULT_CONTENT = {
-  theme: { style: "mint", layout: "glass" },
-  sections: {
-    hero: true,
-    standard: true,
-    whyUs: true,
-    values: true,
-    cta: true,
+const fadeIn = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: { duration: 0.8, ease: [0.22, 1, 0.36, 1] },
   },
-  hero: {
-    badge: "About Us",
-    title: "Nutrition without the",
-    titleHighlight: "noise.",
-    description: "",
-    image: "",
+};
+
+const stagger = {
+  hidden: {},
+  visible: {
+    transition: { staggerChildren: 0.12 },
   },
-  standard: { subtitle: "", title: "", description: "", image: "", stats: [] },
-  whyUs: { subtitle: "", title: "", features: [] },
-  values: { subtitle: "", title: "", items: [] },
-  cta: { title: "", description: "", buttonText: "", buttonLink: "/products" },
 };
 
-const GlassCard = ({ className = "", children }) => (
-  <div
-    className={[
-      "relative overflow-hidden rounded-3xl bg-white/65 backdrop-blur-xl border border-white/60 shadow-xl shadow-black/5",
-      className,
-    ].join(" ")}
-  >
-    {children}
-  </div>
-);
+const storySections = [
+  {
+    title: "Every Dream Begins With Courage",
+    visualTitle: "The First Dream",
+    visualSubtext: "A quiet beginning, a brave heart, and a home full of hope.",
+    artworkKey: "story.founder",
+    orientation: "portrait",
+    icon: Heart,
+    paragraphs: [
+      "Some businesses begin with investors.",
+      "Some begin with funding.",
+      "Ours began with a mother, a dream, and the determination to create something meaningful for her family.",
+      "Ananya Boutique is not just a store.",
+      "It is the result of years of dedication, sacrifice, patience, and belief.",
+      "What you see today started as a small dream inside a home and grew one customer, one order, and one smile at a time.",
+    ],
+  },
+  {
+    title: "A Dream Born Inside A Home",
+    visualTitle: "16 August 2012",
+    visualSubtext: "Fashion selected by hand, trust built one customer at a time.",
+    artworkKey: "story.homemaker",
+    orientation: "wide",
+    icon: Home,
+    reverse: true,
+    paragraphs: [
+      "On 16 August 2012, a homemaker with a passion for fashion decided to take a chance on her dream.",
+      "Without a large investment, without a team, and while managing her household responsibilities, she began selling sarees, suits, leggings, and ladies' wear.",
+      "Every product was selected carefully.",
+      "Every customer interaction mattered.",
+      "Every sale became motivation to continue.",
+      "What started as a small effort slowly became something much larger.",
+      "There were challenges.",
+      "There were moments of uncertainty.",
+      "But there was never a moment when the dream was abandoned.",
+    ],
+  },
+  {
+    title: "A Mother Before Everything Else",
+    visualTitle: "Built Between Responsibilities",
+    visualSubtext: "The work continued before sunrise, after bedtime, and between every duty.",
+    artworkKey: "story.homemaker",
+    orientation: "portrait",
+    icon: Users,
+    paragraphs: [
+      "Behind Ananya Boutique is a mother raising three children.",
+      "Two sons.",
+      "One daughter.",
+      "While taking care of her family, managing household responsibilities, and fulfilling the role of a homemaker, she continued building her business day after day.",
+      "There were no fixed working hours.",
+      "No weekends.",
+      "No holidays.",
+      "Many nights ended after everyone else had gone to sleep.",
+      "Many mornings started before sunrise.",
+      "The business was built between household chores, family responsibilities, and countless sacrifices.",
+      "Yet she continued because she believed that hard work and consistency would eventually create opportunities.",
+    ],
+  },
+  {
+    title: "Powered By Family",
+    visualTitle: "Strength At Home",
+    visualSubtext: "Every small win became a family celebration.",
+    artworkKey: "story.family",
+    orientation: "wide",
+    icon: Sparkles,
+    reverse: true,
+    paragraphs: [
+      "No journey is successful alone.",
+      "The encouragement of her husband.",
+      "The smiles of her children.",
+      "The support of family.",
+      "These became the strength behind every difficult day and every small victory.",
+      "Every milestone was celebrated together.",
+      "Every challenge was faced together.",
+      "Family remains the foundation of Ananya Boutique.",
+    ],
+  },
+  {
+    title: "Growing Beyond Fashion",
+    visualTitle: "25 January 2024",
+    visualSubtext: "A new chapter of beauty, accessories, and finishing details.",
+    artworkKey: "story.growth",
+    orientation: "portrait",
+    icon: Gem,
+    paragraphs: [
+      "For years, customers trusted Ananya Boutique for fashionable and affordable clothing.",
+      "That trust inspired growth.",
+      "On 25 January 2024, a new chapter began.",
+      "Cosmetics and artificial jewellery were added to the business.",
+      "This expansion allowed customers to discover fashion, beauty, and accessories in one place.",
+      "Yet despite the growth, one thing never changed.",
+      "The commitment to quality, affordability, and customer satisfaction.",
+    ],
+  },
+  {
+    title: "More Than A Business",
+    visualTitle: "A Shared Journey",
+    visualSubtext: "Every order supports determination, confidence, and possibility.",
+    artworkKey: "story.community",
+    orientation: "wide",
+    icon: Store,
+    reverse: true,
+    paragraphs: [
+      "Ananya Boutique was never built only for profit.",
+      "It was built to create value.",
+      "It was built to give women access to affordable fashion.",
+      "It was built to prove that dreams can grow even when circumstances are difficult.",
+      "Every order supports a story of determination.",
+      "Every customer becomes part of the journey.",
+      "Every purchase helps a dream continue.",
+    ],
+  },
+  {
+    title: "The Journey Continues",
+    visualTitle: "Still Being Written",
+    visualSubtext: "A growing fashion and beauty destination shaped by every customer.",
+    artworkKey: "story.community",
+    orientation: "portrait",
+    icon: Star,
+    paragraphs: [
+      "From a small beginning in 2012 to a growing fashion and beauty destination today, the story of Ananya Boutique is still being written.",
+      "Every customer who visits.",
+      "Every woman who finds confidence through our products.",
+      "Every family that supports our journey.",
+      "Becomes a part of our story.",
+      "Thank you for believing in us.",
+      "Thank you for supporting a dream.",
+      "Welcome to the Ananya Boutique family.",
+    ],
+  },
+];
 
-const DIRECT_IMAGE_EXTENSION_RE =
-  /\.(avif|bmp|gif|ico|jpe?g|jfif|png|svg|webp)(\?.*)?$/i;
-const FREEIMAGE_HOSTS = new Set([
-  "freeimage.host",
-  "www.freeimage.host",
-  "iili.io",
-  "www.iili.io",
-]);
+const timelineItems = [
+  {
+    year: "2012",
+    title: "Ananya Boutique Founded",
+    text: "A homemaker's dream began inside a home on 16 August 2012.",
+  },
+  {
+    year: "2024",
+    title: "Cosmetics & Artificial Jewellery Added",
+    text: "The boutique expanded into beauty, accessories, and jewellery.",
+  },
+  {
+    year: "Present",
+    title: "Growing Online & Offline",
+    text: "A family-built brand continues to grow with every customer.",
+  },
+];
 
-const normalizeImageUrl = (rawValue) => {
-  const value = String(rawValue || "").trim();
-  if (!value) return "";
-  if (value.startsWith("data:image/")) return value;
-  if (value.startsWith("//")) return `https:${value}`;
-  if (/^https?:\/\//i.test(value)) return value;
-  if (value.startsWith("/")) return value;
-  return `https://${value}`;
-};
+const stats = [
+  { value: "13+", label: "Years of Trust" },
+  { value: "Growing", label: "Happy Customers" },
+  { value: "Fashion + Beauty", label: "Products Available" },
+  { value: "Every Day", label: "Orders Delivered" },
+];
 
-const extractFreeImageId = (rawUrl) => {
-  try {
-    const parsed = new URL(rawUrl);
-    const host = parsed.hostname.toLowerCase();
-    if (!FREEIMAGE_HOSTS.has(host)) return "";
+const quotes = [
+  "A dream built inside a home can still become a story that inspires many women.",
+  "Every order carries more than a product. It carries belief, effort, and a family's journey.",
+];
 
-    const lastSegment = parsed.pathname.split("/").filter(Boolean).pop() || "";
-    if (!lastSegment) return "";
-
-    // freeimage.host often uses page links like /i/some-slug.<id>; id is usually the last token.
-    const token = lastSegment.includes(".")
-      ? lastSegment.split(".").pop()
-      : lastSegment;
-    return token.replace(/[^A-Za-z0-9]/g, "");
-  } catch {
-    return "";
-  }
-};
-
-const buildImageCandidates = (rawUrl) => {
-  const normalized = normalizeImageUrl(rawUrl);
-  if (!normalized) return [];
-
-  const candidates = new Set([normalized]);
-  try {
-    const parsed = new URL(normalized, "https://healthyonegram.com");
-    const host = parsed.hostname.toLowerCase();
-    const isDirectUrl = DIRECT_IMAGE_EXTENSION_RE.test(parsed.pathname);
-
-    if (FREEIMAGE_HOSTS.has(host) && !isDirectUrl) {
-      const imageId = extractFreeImageId(normalized);
-      if (imageId) {
-        ["jpg", "png", "jpeg", "webp"].forEach((ext) => {
-          candidates.add(`https://iili.io/${imageId}.${ext}`);
-        });
-      }
-    }
-  } catch {
-    // Ignore URL parse failures and keep original candidate only.
-  }
-
-  return Array.from(candidates);
-};
-
-const AboutSectionImage = ({
-  src,
-  alt,
-  className,
-  loading = "lazy",
-  placeholder,
-}) => {
-  const candidates = useMemo(() => buildImageCandidates(src), [src]);
-  const [activeIndex, setActiveIndex] = useState(0);
-  const [allFailed, setAllFailed] = useState(false);
-
-  useEffect(() => {
-    setActiveIndex(0);
-    setAllFailed(false);
-  }, [src]);
-
-  if (!candidates.length || allFailed) {
-    return placeholder;
-  }
+function StoryArtwork({
+  title,
+  subtext,
+  orientation = "wide",
+  Icon = Sparkles,
+  artworkKey,
+}) {
+  const isPortrait = orientation === "portrait";
 
   return (
-    <img
-      src={candidates[activeIndex]}
-      alt={alt}
-      className={className}
-      loading={loading}
-      onError={() => {
-        setActiveIndex((prev) => {
-          if (prev < candidates.length - 1) {
-            return prev + 1;
-          }
-          setAllFailed(true);
-          return prev;
-        });
-      }}
+    <motion.div
+      variants={fadeUp}
+      whileHover={{ y: -6, scale: 1.01 }}
+      transition={{ duration: 0.35, ease: "easeOut" }}
+      className={isPortrait ? "mx-auto w-full max-w-[520px]" : "w-full"}
+    >
+      <BrandArtworkFrame
+        artworkKey={artworkKey}
+        title={title}
+        copy={subtext}
+        aspect={isPortrait ? "portrait" : "wide"}
+        icon={Icon}
+        motionEnabled={false}
+      />
+    </motion.div>
+  );
+}
+
+function StorySection({ section, index }) {
+  const Icon = section.icon;
+  const content = (
+    <motion.div
+      variants={fadeUp}
+      className="flex flex-col justify-center"
+    >
+      <div className="mb-5 inline-flex w-fit items-center gap-2 rounded-full border border-[#e8c67a]/45 bg-white/70 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-[#8a5a12] shadow-sm">
+        <Icon className="h-4 w-4" aria-hidden="true" />
+        Chapter {index + 1}
+      </div>
+      <h2 className="font-serif text-4xl font-semibold leading-tight text-[#2f1325] sm:text-5xl">
+        {section.title}
+      </h2>
+      <div className="mt-6 space-y-4 text-base leading-8 text-[#604354] sm:text-lg">
+        {section.paragraphs.map((paragraph) => (
+          <p key={paragraph}>{paragraph}</p>
+        ))}
+      </div>
+    </motion.div>
+  );
+
+  const artwork = (
+    <StoryArtwork
+      title={section.visualTitle}
+      subtext={section.visualSubtext}
+      orientation={section.orientation}
+      Icon={Icon}
+      artworkKey={section.artworkKey}
     />
   );
-};
 
-/**
- * About Us Page
- * Theme/layout and content are fully controlled from admin CMS.
- */
-export default function AboutUsPage() {
-  const [content, setContent] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    const fetchContent = async () => {
-      try {
-        const response = await fetchDataFromApi("/api/about/public", {
-          skipCache: true,
-        });
-        if (response?.success && response?.data) {
-          setContent(response.data);
-        } else {
-          setContent(DEFAULT_CONTENT);
-          setError("Unable to load content");
-        }
-      } catch (err) {
-        console.error("AboutUsPage fetch error:", err);
-        setContent(DEFAULT_CONTENT);
-        setError("Unable to load content");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchContent();
-  }, []);
-
-  const pageContent = content || DEFAULT_CONTENT;
-  const themeStyle = pageContent?.theme?.style || DEFAULT_CONTENT.theme.style;
-  const layout = pageContent?.theme?.layout || DEFAULT_CONTENT.theme.layout;
-  const theme = useMemo(
-    () => THEME_PRESETS[themeStyle] || THEME_PRESETS.mint,
-    [themeStyle],
-  );
-
-  const sections = pageContent?.sections || DEFAULT_CONTENT.sections;
-  const showHero = sections.hero !== false;
-  const showStandard = sections.standard !== false;
-  const showWhyUs = sections.whyUs !== false;
-  const showValues = sections.values !== false;
-  const showCta = sections.cta !== false;
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <CircularProgress />
-      </div>
-    );
-  }
-
-  const { hero, standard, whyUs, values, cta } = pageContent;
-
-  if (layout === "minimal") {
-    return (
-      <main className="min-h-screen bg-white">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-12">
-          {showHero && (
-            <section className="max-w-3xl">
-              {hero?.badge && (
-                <span
-                  className={[
-                    "inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide border",
-                    theme.chip,
-                  ].join(" ")}
-                >
-                  {hero.badge}
-                </span>
-              )}
-              <h1 className="mt-5 text-4xl sm:text-5xl font-extrabold tracking-tight text-gray-900">
-                {hero?.title}{" "}
-                <span
-                  className={`bg-gradient-to-r ${theme.accent} bg-clip-text text-transparent`}
-                >
-                  {hero?.titleHighlight}
-                </span>
-              </h1>
-              {hero?.description && (
-                <p className="mt-5 text-gray-600 text-lg leading-relaxed">
-                  {hero.description}
-                </p>
-              )}
-            </section>
-          )}
-
-          {showStandard && (
-            <section className="mt-12 border-t border-gray-100 pt-10">
-              <h2 className="text-xl font-semibold text-gray-900">
-                {standard?.title || "Our Standard"}
-              </h2>
-              {standard?.description && (
-                <p className="mt-3 text-gray-600 leading-relaxed">
-                  {standard.description}
-                </p>
-              )}
-              {standard?.stats?.length > 0 && (
-                <div className="mt-6 grid grid-cols-2 sm:grid-cols-4 gap-4">
-                  {standard.stats.map((stat, idx) => (
-                    <div
-                      key={`${stat?.label || "stat"}-${idx}`}
-                      className="rounded-2xl border border-gray-100 bg-gray-50 p-4"
-                    >
-                      <div className="text-2xl font-extrabold text-gray-900">
-                        {stat?.value}
-                      </div>
-                      <div className="text-xs uppercase tracking-wide text-gray-500 mt-1">
-                        {stat?.label}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
-          )}
-
-          {showWhyUs && whyUs?.features?.length > 0 && (
-            <section className="mt-12 border-t border-gray-100 pt-10">
-              <h2 className="text-xl font-semibold text-gray-900">
-                {whyUs?.title || "Why Choose Us"}
-              </h2>
-              <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-                {whyUs.features.map((feature, idx) => (
-                  <div
-                    key={`${feature?.title || "feature"}-${idx}`}
-                    className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm"
-                  >
-                    <div className="text-2xl">{feature?.icon}</div>
-                    <div className="mt-3 font-semibold text-gray-900">
-                      {feature?.title}
-                    </div>
-                    <div className="mt-2 text-sm text-gray-600 leading-relaxed">
-                      {feature?.description}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
-
-          {showValues && values?.items?.length > 0 && (
-            <section className="mt-12 border-t border-gray-100 pt-10">
-              <h2 className="text-xl font-semibold text-gray-900">
-                {values?.title || "Our Values"}
-              </h2>
-              <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-                {values.items.map((item, idx) => (
-                  <div
-                    key={`${item?.title || "value"}-${idx}`}
-                    className="rounded-2xl border border-gray-100 bg-gray-50 p-5"
-                  >
-                    <div className="font-semibold text-gray-900">
-                      {item?.title}
-                    </div>
-                    <div className="mt-2 text-sm text-gray-600 leading-relaxed">
-                      {item?.description}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
-
-          {showCta && cta?.title && (
-            <section className="mt-14 rounded-3xl border border-gray-100 bg-gray-50 p-8 sm:p-10">
-              <h2 className="text-2xl font-extrabold text-gray-900">
-                {cta.title}
-              </h2>
-              {cta?.description && (
-                <p className="mt-3 text-gray-600 leading-relaxed">
-                  {cta.description}
-                </p>
-              )}
-              {cta?.buttonText && (
-                <Link
-                  href={cta?.buttonLink || "/products"}
-                  className={`inline-flex mt-6 items-center justify-center px-6 py-3 rounded-2xl font-semibold text-white bg-gradient-to-r ${theme.accent} shadow-lg shadow-black/10 hover:scale-[1.01] transition-transform`}
-                >
-                  {cta.buttonText}
-                </Link>
-              )}
-            </section>
-          )}
-        </div>
-      </main>
-    );
-  }
-
-  // Default: "glass" layout (membership-style liquid glass)
   return (
-    <main
-      className={`relative min-h-screen bg-gradient-to-b ${theme.bg} overflow-hidden`}
+    <motion.section
+      variants={stagger}
+      initial="hidden"
+      whileInView="visible"
+      viewport={{ once: true, amount: 0.22 }}
+      className="mx-auto grid max-w-7xl gap-9 px-4 py-12 sm:px-6 lg:grid-cols-2 lg:gap-14 lg:px-8 lg:py-20"
     >
-      <div className="absolute inset-0 pointer-events-none">
-        <div
-          className={`absolute -top-24 -left-24 h-80 w-80 rounded-full blur-3xl ${theme.glowA}`}
-        />
-        <div
-          className={`absolute top-1/3 -right-24 h-96 w-96 rounded-full blur-3xl ${theme.glowB}`}
-        />
-      </div>
+      {section.reverse ? (
+        <>
+          <div className="lg:order-2">{content}</div>
+          <div className="lg:order-1">{artwork}</div>
+        </>
+      ) : (
+        <>
+          {content}
+          {artwork}
+        </>
+      )}
+    </motion.section>
+  );
+}
 
-      <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 py-12 sm:py-16">
-        {showHero && (
-          <section className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
-            <div className="lg:col-span-7">
-              {hero?.badge && (
-                <span
-                  className={`inline-flex items-center px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wide bg-gradient-to-r ${theme.badge} text-white shadow-sm`}
-                >
-                  {hero.badge}
-                </span>
-              )}
-              <h1 className="mt-5 text-4xl sm:text-5xl md:text-6xl font-extrabold tracking-tight text-gray-900">
-                {hero?.title}{" "}
-                <span
-                  className={`bg-gradient-to-r ${theme.accent} bg-clip-text text-transparent`}
-                >
-                  {hero?.titleHighlight}
-                </span>
-              </h1>
-              {hero?.description && (
-                <p className="mt-6 text-gray-600 text-lg leading-relaxed max-w-2xl">
-                  {hero.description}
-                </p>
-              )}
-            </div>
+function TimelineSection() {
+  return (
+    <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8 lg:py-16">
+      <motion.div
+        variants={stagger}
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true, amount: 0.25 }}
+        className="rounded-[2rem] border border-[#efd8b0]/75 bg-white/75 p-6 shadow-[0_22px_80px_rgba(93,45,74,0.12)] backdrop-blur sm:p-8 lg:p-10"
+      >
+        <motion.div variants={fadeUp} className="max-w-3xl">
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#9d6b19]">
+            Milestones
+          </p>
+          <h2 className="mt-3 font-serif text-3xl font-semibold text-[#2f1325] sm:text-4xl">
+            A timeline of courage, trust, and growth
+          </h2>
+        </motion.div>
 
-            <div className="lg:col-span-5">
-              <GlassCard className={`border ${theme.border}`}>
-                <AboutSectionImage
-                  src={hero?.image}
-                  alt={hero?.title || "About us"}
-                  className="w-full h-80 sm:h-[420px] lg:h-[440px] rounded-3xl object-cover object-center scale-[1.06]"
-                  placeholder={
-                    <div className="w-full h-80 sm:h-[420px] lg:h-[440px] rounded-3xl border border-dashed border-gray-200 bg-white/40 flex items-center justify-center">
-                      <div className="text-center px-6">
-                        <div className="text-sm font-semibold text-gray-800">
-                          Optional hero image
-                        </div>
-                        <div className="text-xs text-gray-500 mt-1">
-                          Use a direct image URL (or upload from admin)
-                        </div>
-                      </div>
-                    </div>
-                  }
-                />
-              </GlassCard>
-            </div>
-          </section>
-        )}
-
-        {showStandard && (
-          <section className="mt-10 sm:mt-14">
-            <GlassCard className="p-6 sm:p-8">
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-start">
-                <div className="lg:col-span-7">
-                  {standard?.subtitle && (
-                    <div className="text-xs font-bold uppercase tracking-[0.18em] text-gray-500">
-                      {standard.subtitle}
-                    </div>
-                  )}
-                  <h2 className="mt-2 text-2xl sm:text-3xl font-extrabold text-gray-900">
-                    {standard?.title}
-                  </h2>
-                  {standard?.description && (
-                    <p className="mt-4 text-gray-600 leading-relaxed">
-                      {standard.description}
-                    </p>
-                  )}
-
-                  {standard?.stats?.length > 0 && (
-                    <div className="mt-7 grid grid-cols-2 sm:grid-cols-4 gap-4">
-                      {standard.stats.map((stat, idx) => (
-                        <div
-                          key={`${stat?.label || "stat"}-${idx}`}
-                          className="rounded-2xl bg-white/70 border border-white/60 p-4 shadow-sm"
-                        >
-                          <div
-                            className={`text-xl sm:text-2xl font-extrabold bg-gradient-to-r ${theme.accent} bg-clip-text text-transparent`}
-                          >
-                            {stat?.value}
-                          </div>
-                          <div className="mt-1 text-[11px] uppercase tracking-wide text-gray-500">
-                            {stat?.label}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <div className="lg:col-span-5">
-                  <div className="relative overflow-hidden rounded-3xl border border-white/60 bg-transparent">
-                    <AboutSectionImage
-                      src={standard?.image}
-                      alt={standard?.title || "Our standard"}
-                      className="w-full h-full min-h-[360px] object-cover object-center"
-                      placeholder={
-                        <div className="h-full min-h-[360px] rounded-3xl border border-dashed border-gray-200 bg-white/40 p-6 text-sm text-gray-600">
-                          Add a direct image URL for this section.
-                        </div>
-                      }
-                    />
-                  </div>
-                </div>
-              </div>
-            </GlassCard>
-          </section>
-        )}
-
-        {showWhyUs && whyUs?.features?.length > 0 && (
-          <section className="mt-10 sm:mt-14">
-            <div className="text-center max-w-2xl mx-auto">
-              {whyUs?.subtitle && (
-                <div className="text-xs font-bold uppercase tracking-[0.18em] text-gray-500">
-                  {whyUs.subtitle}
-                </div>
-              )}
-              <h2 className="mt-2 text-2xl sm:text-3xl font-extrabold text-gray-900">
-                {whyUs?.title}
-              </h2>
-            </div>
-
-            <div className="mt-7 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-              {whyUs.features.map((feature, idx) => (
-                <GlassCard
-                  key={`${feature?.title || "feature"}-${idx}`}
-                  className="p-6"
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="text-2xl">{feature?.icon}</div>
-                    <div>
-                      <div className="font-bold text-gray-900">
-                        {feature?.title}
-                      </div>
-                      <div className="mt-2 text-sm text-gray-600 leading-relaxed">
-                        {feature?.description}
-                      </div>
-                    </div>
-                  </div>
-                </GlassCard>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {showValues && values?.items?.length > 0 && (
-          <section className="mt-10 sm:mt-14">
-            <div className="text-center max-w-2xl mx-auto">
-              {values?.subtitle && (
-                <div className="text-xs font-bold uppercase tracking-[0.18em] text-gray-500">
-                  {values.subtitle}
-                </div>
-              )}
-              <h2 className="mt-2 text-2xl sm:text-3xl font-extrabold text-gray-900">
-                {values?.title}
-              </h2>
-            </div>
-
-            <div className="mt-7 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-              {values.items.map((item, idx) => (
-                <GlassCard
-                  key={`${item?.title || "value"}-${idx}`}
-                  className="p-6"
-                >
-                  <div className="font-bold text-gray-900">{item?.title}</div>
-                  <div className="mt-2 text-sm text-gray-600 leading-relaxed">
-                    {item?.description}
-                  </div>
-                </GlassCard>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {showCta && cta?.title && (
-          <section className="mt-12 sm:mt-16">
-            <div
-              className={`relative overflow-hidden rounded-3xl border border-white/60 bg-white/55 backdrop-blur-xl shadow-2xl shadow-black/10`}
+        <div className="mt-8 grid gap-5 lg:grid-cols-3">
+          {timelineItems.map((item) => (
+            <motion.article
+              key={item.year}
+              variants={fadeUp}
+              whileHover={{ y: -4 }}
+              className="relative overflow-hidden rounded-3xl border border-[#f1d7df] bg-gradient-to-br from-white via-[#fff8f4] to-[#fae8ff] p-6 shadow-lg shadow-[#7a335e]/10"
             >
-              <div className="absolute inset-0 pointer-events-none opacity-60">
-                <div
-                  className={`absolute -top-16 -right-16 h-48 w-48 rounded-full blur-3xl ${theme.glowB}`}
-                />
-                <div
-                  className={`absolute -bottom-20 -left-20 h-56 w-56 rounded-full blur-3xl ${theme.glowA}`}
-                />
+              <div className="mb-5 grid h-12 w-12 place-items-center rounded-full bg-[#2f1325] text-white">
+                <CalendarDays className="h-5 w-5" aria-hidden="true" />
               </div>
+              <p className="font-serif text-4xl font-semibold text-[#9d6b19]">
+                {item.year}
+              </p>
+              <h3 className="mt-3 text-lg font-semibold text-[#2f1325]">
+                {item.title}
+              </h3>
+              <p className="mt-3 text-sm leading-6 text-[#6c4b5d]">{item.text}</p>
+            </motion.article>
+          ))}
+        </div>
+      </motion.div>
+    </section>
+  );
+}
 
-              <div className="relative z-10 px-8 sm:px-10 py-10 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-                <div>
-                  <h3 className="text-2xl sm:text-3xl font-extrabold text-gray-900">
-                    {cta.title}
-                  </h3>
-                  {cta?.description && (
-                    <p className="mt-2 text-gray-600 max-w-2xl leading-relaxed">
-                      {cta.description}
-                    </p>
-                  )}
-                </div>
-                {cta?.buttonText && (
-                  <Link
-                    href={cta?.buttonLink || "/products"}
-                    className={`inline-flex items-center justify-center px-8 py-3 rounded-2xl font-semibold text-white bg-gradient-to-r ${theme.accent} shadow-lg shadow-black/15 hover:scale-[1.02] transition-transform`}
-                  >
-                    {cta.buttonText}
-                  </Link>
-                )}
-              </div>
-            </div>
-          </section>
-        )}
+function StatsSection() {
+  return (
+    <section className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8 lg:py-14">
+      <motion.div
+        variants={stagger}
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true, amount: 0.25 }}
+        className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
+      >
+        {stats.map((stat) => (
+          <motion.div
+            key={stat.label}
+            variants={fadeUp}
+            whileHover={{ y: -5 }}
+            className="rounded-3xl border border-[#efd8b0]/75 bg-white/85 p-6 text-center shadow-[0_18px_60px_rgba(93,45,74,0.12)]"
+          >
+            <p className="font-serif text-3xl font-semibold text-[#2f1325] sm:text-4xl">
+              {stat.value}
+            </p>
+            <p className="mt-3 text-xs font-semibold uppercase tracking-[0.2em] text-[#9d6b19]">
+              {stat.label}
+            </p>
+          </motion.div>
+        ))}
+      </motion.div>
+    </section>
+  );
+}
+
+function QuoteSection({ quote, index }) {
+  return (
+    <motion.section
+      variants={fadeIn}
+      initial="hidden"
+      whileInView="visible"
+      viewport={{ once: true, amount: 0.35 }}
+      className="px-4 py-10 sm:px-6 lg:px-8 lg:py-16"
+    >
+      <div className="mx-auto max-w-6xl overflow-hidden rounded-[2rem] border border-[#efd8b0]/80 bg-[#2f1325] px-6 py-12 text-center shadow-[0_28px_90px_rgba(47,19,37,0.26)] sm:px-10 lg:px-16">
+        <div className="mx-auto mb-6 flex w-fit items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-[#f8d88a]">
+          <Sparkles className="h-4 w-4" aria-hidden="true" />
+          Ananya Note {index + 1}
+        </div>
+        <blockquote className="font-serif text-3xl font-semibold leading-tight text-white sm:text-4xl lg:text-5xl">
+          "{quote}"
+        </blockquote>
       </div>
+    </motion.section>
+  );
+}
+
+export default function AboutUsPage() {
+  return (
+    <main className="overflow-hidden bg-[linear-gradient(180deg,#fffaf6_0%,#ffffff_34%,#fff3f8_70%,#ffffff_100%)] text-[#2f1325]">
+      <section className="relative px-4 pb-12 pt-10 sm:px-6 sm:pt-16 lg:px-8 lg:pb-20">
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#e8c67a] to-transparent" />
+        <motion.div
+          variants={stagger}
+          initial="hidden"
+          animate="visible"
+          className="mx-auto grid max-w-7xl items-center gap-10 lg:grid-cols-[1.02fr_0.98fr] lg:gap-14"
+        >
+          <motion.div variants={fadeUp}>
+            <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-[#efd8b0] bg-white/80 px-4 py-2 text-xs font-semibold uppercase tracking-[0.24em] text-[#9d6b19] shadow-sm">
+              <Sparkles className="h-4 w-4 text-[#cc7a9b]" aria-hidden="true" />
+              Ananya Boutique
+            </div>
+            <h1 className="font-serif text-6xl font-semibold leading-none text-[#2f1325] sm:text-7xl lg:text-8xl">
+              OUR STORY
+            </h1>
+            <p className="mt-6 max-w-2xl text-xl leading-8 text-[#604354] sm:text-2xl">
+              Behind every product is a dream, a family, and years of determination.
+            </p>
+            <p className="mt-6 max-w-2xl text-base leading-8 text-[#765d6c]">
+              This is a story for every woman who has carried a dream quietly,
+              worked for it patiently, and kept going even when the world did not
+              see the effort.
+            </p>
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+              <Link
+                href="/products"
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-[#2f1325] px-6 text-sm font-semibold text-white shadow-xl shadow-[#2f1325]/20 transition hover:-translate-y-0.5 hover:bg-[#4b1f3a]"
+              >
+                {fashionMicrocopy.shopCollection}
+                <ArrowRight className="h-4 w-4" aria-hidden="true" />
+              </Link>
+              <Link
+                href="/contact"
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-full border border-[#efd8b0] bg-white px-6 text-sm font-semibold text-[#8a5a12] shadow-sm transition hover:-translate-y-0.5 hover:bg-[#fff8f0]"
+              >
+                Connect With Us
+                <Heart className="h-4 w-4" aria-hidden="true" />
+              </Link>
+            </div>
+          </motion.div>
+
+          <StoryArtwork
+            title="A Dream That Grew With Love"
+            subtext="A founder's journey held in soft colour, quiet strength, and family belief."
+            orientation="portrait"
+            Icon={Heart}
+            artworkKey="story.founder"
+          />
+        </motion.div>
+      </section>
+
+      <section className="px-4 py-8 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-7xl">
+          <FounderSignatureSection />
+          <BrandPillarGrid className="mt-5" />
+        </div>
+      </section>
+
+      <TimelineSection />
+      <StatsSection />
+      <QuoteSection quote={quotes[0]} index={0} />
+
+      {storySections.map((section, index) => (
+        <StorySection key={section.title} section={section} index={index} />
+      ))}
+
+      <QuoteSection quote={quotes[1]} index={1} />
+
+      <section className="px-4 py-12 sm:px-6 lg:px-8 lg:py-20">
+        <motion.div
+          variants={stagger}
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, amount: 0.25 }}
+          className="mx-auto grid max-w-7xl gap-9 overflow-hidden rounded-[2rem] border border-[#efd8b0]/85 bg-gradient-to-br from-white via-[#fff8f3] to-[#fae8ff] p-6 shadow-[0_28px_100px_rgba(93,45,74,0.16)] sm:p-8 lg:grid-cols-[0.92fr_1.08fr] lg:p-10"
+        >
+          <StoryArtwork
+            title="Welcome To The Family"
+            subtext="A warm community frame for women, families, and shared support."
+            orientation="wide"
+            Icon={Users}
+            artworkKey="story.community"
+          />
+          <motion.div variants={fadeUp} className="flex flex-col justify-center">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#9d6b19]">
+              The story continues with you
+            </p>
+            <h2 className="mt-3 font-serif text-4xl font-semibold leading-tight text-[#2f1325] sm:text-5xl">
+              Every purchase becomes part of this journey.
+            </h2>
+            <p className="mt-5 text-base leading-8 text-[#604354] sm:text-lg">
+              Ananya Boutique is built on family, trust, courage, and the belief
+              that women deserve beauty, confidence, and opportunity at every
+              stage of life.
+            </p>
+            <div className="mt-7 flex flex-col gap-3 sm:flex-row">
+              <Link
+                href="/products"
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-[#2f1325] px-6 text-sm font-semibold text-white shadow-xl shadow-[#2f1325]/20 transition hover:-translate-y-0.5 hover:bg-[#4b1f3a]"
+              >
+                {fashionMicrocopy.shopProducts}
+                <ArrowRight className="h-4 w-4" aria-hidden="true" />
+              </Link>
+              <Link
+                href="/membership"
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-full border border-[#efd8b0] bg-white px-6 text-sm font-semibold text-[#8a5a12] shadow-sm transition hover:-translate-y-0.5 hover:bg-[#fff8f0]"
+              >
+                Join The Family
+                <Sparkles className="h-4 w-4" aria-hidden="true" />
+              </Link>
+            </div>
+          </motion.div>
+        </motion.div>
+      </section>
     </main>
   );
 }

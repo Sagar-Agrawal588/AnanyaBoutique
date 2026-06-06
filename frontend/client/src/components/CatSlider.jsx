@@ -207,7 +207,7 @@ const CatSlider = ({
               className="text-[1.55rem] font-extrabold tracking-tight transition-colors duration-500 sm:text-3xl"
               style={{ color: "var(--color-primary)" }}
             >
-              Shop by Category
+              Discover by Style
             </h2>
 
             <Link
@@ -218,7 +218,7 @@ const CatSlider = ({
                   "linear-gradient(135deg, var(--color-primary) 0%, var(--flavor-hover) 100%)",
               }}
             >
-              View All
+              Discover More
               <FiArrowRight className="h-4 w-4" />
             </Link>
           </div>

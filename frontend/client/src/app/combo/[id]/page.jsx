@@ -12,6 +12,7 @@ import {
 import ProductImage from "@/components/ProductImage";
 import ShareButton from "@/components/ShareButton";
 import { formatPrice } from "@/config/siteConfig";
+import { fashionMicrocopy } from "@/config/visualIdentity";
 import { useCart } from "@/context/CartContext";
 import { trackEvent } from "@/utils/analyticsTracker";
 import { fetchDataFromApi, postData } from "@/utils/api";
@@ -1222,7 +1223,7 @@ export default function ComboDetailPage() {
                 className="flex flex-1 items-center justify-center gap-3 rounded-[22px] border border-[#6a4331] px-6 py-4 text-base font-semibold text-[#6a4331] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <IoMdCart className="text-xl" />
-                {isAdding ? "Adding..." : "Add to Cart"}
+                {isAdding ? "Adding..." : fashionMicrocopy.addToCart}
               </button>
               <button
                 type="button"
@@ -1889,7 +1890,7 @@ export default function ComboDetailPage() {
                                 }
                           }
                         >
-                          {isAdded ? "Added" : "Add to Cart"}
+                          {isAdded ? "Added" : fashionMicrocopy.addToCart}
                         </button>
                       </div>
                     );

@@ -1,8 +1,8 @@
-const DEFAULT_PUBLIC_SITE_URL = "https://healthyonegram.com";
+const DEFAULT_PUBLIC_SITE_URL = "https://ananyaboutique.com";
 
 const HEALTHY_ONE_GRAM_HOSTS = new Set([
-  "healthyonegram.com",
-  "www.healthyonegram.com",
+  "ananyaboutique.com",
+  "www.ananyaboutique.com",
 ]);
 
 const isHostedAppHost = (hostname) =>

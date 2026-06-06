@@ -4,8 +4,14 @@
 
 import ComboCard from "@/components/ComboCard";
 import ProductImage from "@/components/ProductImage";
+import ProductItem from "@/components/ProductItem";
 import ShareButton from "@/components/ShareButton";
 import StockNotificationButton from "@/components/StockNotificationButton";
+import ZoomableImage from "@/components/ZoomableImage";
+import {
+  BrandTrustStrip,
+  FounderStoryBadge,
+} from "@/components/brand/BrandTrust";
 import {
   DEMO_PRODUCT_ID,
   buildDemoProduct,
@@ -18,7 +24,9 @@ import {
   normalizeProductPageConfig,
 } from "@/components/productDetail/pageConfig";
 import { formatPrice } from "@/config/siteConfig";
+import { fashionMicrocopy } from "@/config/visualIdentity";
 import { useCart } from "@/context/CartContext";
+import { useWishlist } from "@/context/WishlistContext";
 import useIndiaPincodeLookup from "@/hooks/useIndiaPincodeLookup";
 import {
   subscribeToStockConnection,
@@ -41,6 +49,7 @@ import {
   stripWeightRange,
 } from "@/utils/weightDisplay";
 import { Alert, CircularProgress, Rating, Snackbar } from "@mui/material";
+import { Ruler } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
@@ -52,16 +61,21 @@ import {
 } from "react";
 import {
   FiCheckCircle,
+  FiChevronDown,
   FiChevronLeft,
   FiChevronRight,
+  FiExternalLink,
+  FiHeadphones,
   FiMaximize2,
   FiPackage,
   FiPlayCircle,
+  FiRotateCcw,
   FiShield,
+  FiShoppingBag,
   FiTruck,
   FiX,
 } from "react-icons/fi";
-import { IoMdCart } from "react-icons/io";
+import { IoMdCart, IoMdHeart, IoMdHeartEmpty } from "react-icons/io";
 import { MdVerified } from "react-icons/md";
 
 const DEFAULT_TABS = [
@@ -70,6 +84,8 @@ const DEFAULT_TABS = [
   { id: "shipping", label: "Shipping & Trust" },
 ];
 const FALLBACK_POLL_INTERVAL_MS = 30000;
+const RECENTLY_VIEWED_STORAGE_KEY = "ananya_recently_viewed_products";
+const MAX_RECENTLY_VIEWED_PRODUCTS = 8;
 const DEFAULT_REVIEW_SETTINGS = {
   allowPublicSubmissions: true,
   autoPublishPublicReviews: true,
@@ -247,7 +263,7 @@ const getHeroStatusLabel = (product, reviewCount) => {
     return "High demand";
   }
   if (Number(reviewCount || 0) > 0) return "Top rated";
-  return "Healthy One Gram";
+  return "Ananya Boutique";
 };
 
 const buildDescriptionParagraphs = (product) => {
@@ -310,7 +326,7 @@ const buildDetailCards = ({
       helper: "Live product taxonomy",
     },
     {
-      label: "Selected Pack",
+      label: "Selected Option",
       value: selectedLabel,
       helper: "Variant-aware display",
     },
@@ -335,26 +351,128 @@ const buildShippingPoints = () => [
 
 const DEFAULT_SUPPORT_CARDS = [
   {
-    title: "Free Delivery",
-    description: "Stronger utility near the CTA block.",
-    Icon: FiTruck,
-  },
-  {
-    title: "Secure Payment",
-    description: "Checkout trust signal stays visible.",
+    title: "Secure Checkout",
+    description: "Protected payment flow with verified order handling.",
     Icon: FiShield,
   },
   {
-    title: "Authentic Product",
-    description: "Premium surface with useful proof points.",
+    title: "Easy Support",
+    description: "Boutique support for sizing, delivery, and order help.",
+    Icon: FiHeadphones,
+  },
+  {
+    title: "Quality Assurance",
+    description: "Every piece is checked before it leaves the boutique.",
     Icon: FiCheckCircle,
   },
   {
-    title: "Clear Inventory",
-    description: "Variant-aware stock display for better decisions.",
-    Icon: FiPackage,
+    title: "Trusted Boutique Since 2012",
+    description: "A long-running boutique experience with loyal customers.",
+    Icon: FiShoppingBag,
   },
 ];
+
+const SIZE_GUIDE_ROWS = [
+  {
+    size: "XS",
+    bust: "32-33 in",
+    waist: "26-27 in",
+    hip: "34-35 in",
+    shoulder: "13.5 in",
+  },
+  {
+    size: "S",
+    bust: "34-35 in",
+    waist: "28-29 in",
+    hip: "36-37 in",
+    shoulder: "14 in",
+  },
+  {
+    size: "M",
+    bust: "36-37 in",
+    waist: "30-31 in",
+    hip: "38-39 in",
+    shoulder: "14.5 in",
+  },
+  {
+    size: "L",
+    bust: "38-40 in",
+    waist: "32-34 in",
+    hip: "40-42 in",
+    shoulder: "15 in",
+  },
+  {
+    size: "XL",
+    bust: "41-43 in",
+    waist: "35-37 in",
+    hip: "43-45 in",
+    shoulder: "15.5 in",
+  },
+  {
+    size: "XXL",
+    bust: "44-46 in",
+    waist: "38-40 in",
+    hip: "46-48 in",
+    shoulder: "16 in",
+  },
+];
+
+const SIZE_GUIDE_TIPS = [
+  "Measure over light clothing and keep the tape comfortably close.",
+  "For relaxed silhouettes, choose the size matching the fullest bust or hip measurement.",
+  "When between two sizes, size up for drape and size down for a closer fit.",
+];
+
+const buildRecentlyViewedSnapshot = ({
+  product,
+  selectedVariant,
+  image,
+  activePrice,
+  activeOriginalPrice,
+}) => {
+  const productId = getResolvedProductId(product);
+  if (!productId) return null;
+
+  const variantId = selectedVariant?._id || selectedVariant?.id || "";
+  const fallbackImage =
+    image || product?.thumbnail || product?.images?.[0] || DEFAULT_PRODUCT_IMAGE;
+  const displayPrice = toNumber(activePrice, toNumber(product?.price, 0));
+  const displayOriginalPrice = toNumber(
+    activeOriginalPrice,
+    toNumber(product?.originalPrice, displayPrice),
+  );
+
+  return {
+    _id: productId,
+    id: productId,
+    slug: product?.slug || productId,
+    name: product?.name || product?.title || "Ananya Boutique piece",
+    title: product?.title || product?.name || "Ananya Boutique piece",
+    brand: product?.brand || "Ananya Boutique",
+    shortDescription: product?.shortDescription || product?.description || "",
+    price: displayPrice,
+    originalPrice: Math.max(displayOriginalPrice, displayPrice),
+    thumbnail: fallbackImage,
+    images: [fallbackImage].filter(Boolean),
+    variantId,
+    selectedVariant: selectedVariant
+      ? {
+          _id: variantId,
+          id: variantId,
+          name: selectedVariant.name,
+          sku: selectedVariant.sku,
+          price: selectedVariant.price,
+        }
+      : null,
+    hasVariants: false,
+    isBestSeller: Boolean(product?.isBestSeller || product?.bestSeller),
+    isNewArrival: Boolean(product?.isNewArrival || product?.newArrival),
+    demandStatus: product?.demandStatus || "",
+    rating: product?.rating || 0,
+    reviewsCount: product?.reviewsCount || product?.reviews?.length || 0,
+    viewedAt: new Date().toISOString(),
+  };
+};
 
 const resolveVariantLabel = (variant, baseProduct) => {
   const weightLabel = getVariantWeightLabel(variant);
@@ -472,6 +590,241 @@ const ReviewCard = ({ review, compact = false }) => (
   </article>
 );
 
+const WishlistActionButton = ({
+  active,
+  onClick,
+  label = "Wishlist",
+  compact = false,
+  className = "",
+}) => {
+  const Icon = active ? IoMdHeart : IoMdHeartEmpty;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      aria-label={active ? "Remove from wishlist" : "Add to wishlist"}
+      className={`inline-flex items-center justify-center gap-2 rounded-full border border-[#e4d5ca] bg-white/90 font-semibold text-[#4b2b1e] shadow-sm transition hover:-translate-y-0.5 hover:border-[#c9a891] ${compact ? "h-11 w-11 px-0 text-lg" : "min-h-[44px] px-4 py-2 text-sm"} ${className}`}
+    >
+      <Icon className={active ? "text-xl text-[#b91c1c]" : "text-xl"} />
+      {compact ? null : <span>{active ? "Saved" : label}</span>}
+    </button>
+  );
+};
+
+const ProductRail = ({
+  eyebrow,
+  title,
+  products = [],
+  loading = false,
+  emptyText = "",
+}) => {
+  if (!loading && products.length === 0 && !emptyText) return null;
+
+  return (
+    <section className="product-reveal product-reveal-delay-3 mt-12">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7b6355]">
+            {eyebrow}
+          </p>
+          <h2 className="mt-2 text-3xl font-semibold text-[#24150f]">
+            {title}
+          </h2>
+        </div>
+      </div>
+
+      <div className="mt-6 overflow-x-auto pb-3">
+        {loading ? (
+          <div className="flex gap-4">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <div
+                key={`rail-skeleton-${index}`}
+                className="min-h-[320px] min-w-[210px] animate-pulse rounded-[28px] border border-[#eadbd0] bg-white/70 sm:min-w-[240px]"
+              />
+            ))}
+          </div>
+        ) : products.length > 0 ? (
+          <div className="flex gap-4">
+            {products.map((railProduct, index) => {
+              const railProductId =
+                getResolvedProductId(railProduct) ||
+                railProduct?.slug ||
+                railProduct?.name ||
+                index;
+
+              return (
+                <div
+                  key={`${railProductId}-${index}`}
+                  className="min-w-[210px] max-w-[230px] sm:min-w-[240px] sm:max-w-[260px]"
+                >
+                  <ProductItem product={railProduct} compactListing />
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="rounded-[24px] border border-[#eadbd0] bg-white/78 px-5 py-4 text-sm text-[#6d584a]">
+            {emptyText}
+          </p>
+        )}
+      </div>
+    </section>
+  );
+};
+
+const SizeGuideModal = ({ open, onClose, selectedLabel }) => {
+  if (!open) return null;
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Size guide"
+      className="fixed inset-0 z-[1450] flex items-center justify-center bg-[#21140f]/70 p-4 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-[32px] border border-[#eadbd0] bg-[#fffaf5] p-5 shadow-[0_34px_90px_-50px_rgba(31,18,13,0.55)] sm:p-7"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7b6355]">
+              Size Guide
+            </p>
+            <h2 className="mt-2 text-2xl font-semibold text-[#24150f]">
+              Boutique Fit Reference
+            </h2>
+            {selectedLabel ? (
+              <p className="mt-2 text-sm text-[#6d584a]">
+                Selected option: {selectedLabel}
+              </p>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="slider-nav shrink-0 transition hover:bg-white"
+            aria-label="Close size guide"
+          >
+            <FiX className="text-xl" />
+          </button>
+        </div>
+
+        <div className="mt-6 overflow-x-auto rounded-[24px] border border-[#eadbd0] bg-white">
+          <table className="w-full min-w-[640px] text-left text-sm">
+            <thead className="bg-[#f7efe8] text-xs uppercase tracking-[0.16em] text-[#7b6355]">
+              <tr>
+                <th className="px-4 py-3">Size</th>
+                <th className="px-4 py-3">Bust</th>
+                <th className="px-4 py-3">Waist</th>
+                <th className="px-4 py-3">Hip</th>
+                <th className="px-4 py-3">Shoulder</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#eadbd0] text-[#3f2a20]">
+              {SIZE_GUIDE_ROWS.map((row) => (
+                <tr key={row.size}>
+                  <td className="px-4 py-3 font-semibold">{row.size}</td>
+                  <td className="px-4 py-3">{row.bust}</td>
+                  <td className="px-4 py-3">{row.waist}</td>
+                  <td className="px-4 py-3">{row.hip}</td>
+                  <td className="px-4 py-3">{row.shoulder}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="mt-5 grid gap-3 sm:grid-cols-3">
+          {SIZE_GUIDE_TIPS.map((tip, index) => (
+            <div
+              key={tip}
+              className="rounded-[22px] border border-[#eadbd0] bg-white/78 p-4 text-sm leading-6 text-[#5d4b41]"
+            >
+              <span className="mb-2 inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#f4eadf] text-xs font-bold text-[#6a4b39]">
+                {index + 1}
+              </span>
+              <p>{tip}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const ProductInfoAccordion = ({ panels, openPanelId, onToggle }) => (
+  <div className="mt-8 rounded-[28px] border border-[#e7dad1] bg-[#fbf7f2] p-2">
+    {panels.map((panel) => {
+      const isOpen = openPanelId === panel.id;
+      const PanelIcon = panel.Icon;
+
+      return (
+        <div
+          key={panel.id}
+          className="overflow-hidden rounded-[22px] border border-transparent"
+        >
+          <button
+            type="button"
+            onClick={() => onToggle(isOpen ? "" : panel.id)}
+            className="flex w-full items-center justify-between gap-4 px-4 py-4 text-left"
+            aria-expanded={isOpen}
+          >
+            <span className="flex min-w-0 items-center gap-3">
+              <span className="product-trust-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl">
+                {PanelIcon ? <PanelIcon className="h-5 w-5" /> : null}
+              </span>
+              <span>
+                <span className="block text-xs font-semibold uppercase tracking-[0.16em] text-[#7b6355]">
+                  {panel.eyebrow}
+                </span>
+                <span className="mt-1 block text-base font-semibold text-[#24150f]">
+                  {panel.title}
+                </span>
+              </span>
+            </span>
+            <FiChevronDown
+              className={`shrink-0 text-lg text-[#6a4b39] transition ${isOpen ? "rotate-180" : ""}`}
+            />
+          </button>
+
+          {isOpen ? (
+            <div className="px-4 pb-5">
+              <div className="rounded-[20px] bg-white/78 p-4">
+                <ul className="space-y-3 text-sm leading-6 text-[#5d4b41]">
+                  {panel.points.map((point) => (
+                    <li key={point} className="flex gap-2">
+                      <FiCheckCircle className="mt-1 h-4 w-4 shrink-0 text-[#3f6b54]" />
+                      <span>{point}</span>
+                    </li>
+                  ))}
+                </ul>
+                {panel.links?.length ? (
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {panel.links.map((link) => (
+                      <Link
+                        key={link.href}
+                        href={link.href}
+                        className="inline-flex items-center gap-2 rounded-full border border-[#e3d4c9] bg-[#fffaf5] px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-[#4b2b1e] transition hover:border-[#c9a891]"
+                      >
+                        {link.label}
+                        <FiExternalLink className="h-3.5 w-3.5" />
+                      </Link>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      );
+    })}
+  </div>
+);
+
 const ProductDetailPage = () => {
   const { id } = useParams();
   const router = useRouter();
@@ -481,6 +834,7 @@ const ProductDetailPage = () => {
   const isDemoPreview = routeId.toLowerCase() === DEMO_PRODUCT_ID;
   const { addToCart, removeFromCart, isInCart, cartItems, isComboCartItem } =
     useCart();
+  const { toggleWishlist, isInWishlist } = useWishlist();
 
   const [product, setProduct] = useState(null);
   const [customerReviews, setCustomerReviews] = useState([]);
@@ -501,6 +855,9 @@ const ProductDetailPage = () => {
   const [fbtLoading, setFbtLoading] = useState(false);
   const [recommendedCombos, setRecommendedCombos] = useState([]);
   const [recommendedLoading, setRecommendedLoading] = useState(false);
+  const [relatedProducts, setRelatedProducts] = useState([]);
+  const [relatedLoading, setRelatedLoading] = useState(false);
+  const [recentlyViewedProducts, setRecentlyViewedProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [quantity, setQuantity] = useState(1);
@@ -508,6 +865,9 @@ const ProductDetailPage = () => {
   const [activeTab, setActiveTab] = useState("description");
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [isImageZoomOpen, setIsImageZoomOpen] = useState(false);
+  const [zoomScale, setZoomScale] = useState(1);
+  const [isSizeGuideOpen, setIsSizeGuideOpen] = useState(false);
+  const [openInfoPanel, setOpenInfoPanel] = useState("delivery");
   const [deliveryPincode, setDeliveryPincode] = useState("");
   const [deliveryPreview, setDeliveryPreview] = useState({
     status: "idle",
@@ -582,6 +942,12 @@ const ProductDetailPage = () => {
   const productId = getResolvedProductId(product);
   const currentVariantInCart =
     productId && isInCart(productId, selectedVariantId);
+  const wishlistVariantId = product?.hasVariants
+    ? selectedVariantId || defaultVariant?._id || defaultVariant?.id || null
+    : null;
+  const isProductWishlisted = productId
+    ? isInWishlist(productId, wishlistVariantId, "product")
+    : false;
   const effectiveReviewVariantId = product?.hasVariants
     ? reviewVariantFilter ||
       selectedVariantId ||
@@ -734,6 +1100,7 @@ const ProductDetailPage = () => {
   const activeGalleryItem = galleryItems[activeImageIndex] ||
     galleryItems[0] || { type: "image", src: DEFAULT_PRODUCT_IMAGE };
   const activeImage = activeGalleryItem.src;
+  const primaryProductImage = images[0] || activeImage;
   const isActiveVideo = activeGalleryItem.type === "video";
   const visibleGalleryItems = galleryItems.slice(0, 4);
   const remainingGalleryCount = Math.max(galleryItems.length - 4, 0);
@@ -766,6 +1133,52 @@ const ProductDetailPage = () => {
     deliveryPreview.status === "idle"
       ? deliveryIdleMessage
       : deliveryPreview.message;
+  const deliveryEstimatePoint =
+    deliveryPreview.status === "live" ||
+    deliveryPreview.status === "unavailable"
+      ? deliveryMessage
+      : "Enter your pincode above to preview delivery timing for this item.";
+  const productInfoPanels = [
+    {
+      id: "delivery",
+      eyebrow: "Delivery",
+      title: "Delivery Information",
+      Icon: FiTruck,
+      points: [
+        deliveryEstimatePoint,
+        "Shipping estimates are calculated with order value, product weight, and delivery pincode.",
+        "Orders are packed with boutique quality checks before dispatch.",
+      ],
+      links: [{ href: "/delivery", label: "Delivery Details" }],
+    },
+    {
+      id: "tracking",
+      eyebrow: "Tracking",
+      title: "Tracking Information",
+      Icon: FiPackage,
+      points: [
+        "Tracking details are shared after dispatch through the existing order flow.",
+        "Courier and estimated delivery updates appear when serviceability data is available.",
+        "Support can help with delivery questions after an order is placed.",
+      ],
+      links: [{ href: "/delivery", label: "Track Support" }],
+    },
+    {
+      id: "returns",
+      eyebrow: "Returns",
+      title: "Returns, Exchanges, and Cancellation",
+      Icon: FiRotateCcw,
+      points: [
+        "Return and exchange eligibility follows the existing boutique policy.",
+        "Cancellation policy details remain available before checkout.",
+        "Keep product tags, packaging, and invoice details available for support.",
+      ],
+      links: [
+        { href: "/return-policy", label: "Return Policy" },
+        { href: "/cancellation", label: "Cancellation" },
+      ],
+    },
+  ];
   const showDescriptionSection =
     pageConfig?.tabs?.showDescription !== false &&
     pageConfig?.descriptionSection?.show !== false;
@@ -1092,6 +1505,39 @@ const ProductDetailPage = () => {
     }
   }, []);
 
+  const fetchRelatedProducts = useCallback(async (productValueId) => {
+    if (!productValueId) {
+      setRelatedProducts([]);
+      return;
+    }
+
+    try {
+      setRelatedLoading(true);
+      const response = await fetchDataFromApi(
+        `/api/products/${productValueId}/related?limit=8`,
+      );
+      const items = (
+        Array.isArray(response?.data)
+          ? response.data
+          : Array.isArray(response?.products)
+            ? response.products
+            : []
+      ).filter((item) => {
+        const itemId = getResolvedProductId(item);
+        return (
+          !isExclusiveProduct(item) &&
+          String(itemId || "") !== String(productValueId || "")
+        );
+      });
+      setRelatedProducts(items);
+    } catch (error) {
+      console.error("Error fetching related products:", error);
+      setRelatedProducts([]);
+    } finally {
+      setRelatedLoading(false);
+    }
+  }, []);
+
   const fetchProduct = useCallback(
     async ({ showLoader = true, preserveCurrent = false } = {}) => {
       try {
@@ -1248,6 +1694,8 @@ const ProductDetailPage = () => {
       setCustomerReviews(buildDemoReviews());
       setFrequentlyBought([]);
       setRecommendedCombos([]);
+      setRelatedProducts([]);
+      setRecentlyViewedProducts([]);
       setLoading(false);
       window.scrollTo({ top: 0, behavior: "smooth" });
       return;
@@ -1265,6 +1713,16 @@ const ProductDetailPage = () => {
 
     void fetchReviewSettings();
   }, [fetchReviewSettings, isDemoPreview, routeId]);
+
+  useEffect(() => {
+    if (isDemoPreview || !productId) {
+      setRelatedProducts([]);
+      setRelatedLoading(false);
+      return;
+    }
+
+    void fetchRelatedProducts(productId);
+  }, [fetchRelatedProducts, isDemoPreview, productId]);
 
   useEffect(() => {
     if (isDemoPreview || !productId) return;
@@ -1371,6 +1829,72 @@ const ProductDetailPage = () => {
       setActiveImageIndex(0);
     }
   }, [activeImageIndex, galleryItems.length]);
+
+  useEffect(() => {
+    if (isImageZoomOpen) {
+      setZoomScale(1);
+    }
+  }, [activeImage, activeImageIndex, isImageZoomOpen]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    if (isDemoPreview || !productId || !product) {
+      setRecentlyViewedProducts([]);
+      return;
+    }
+
+    try {
+      const storedValue = window.localStorage.getItem(
+        RECENTLY_VIEWED_STORAGE_KEY,
+      );
+      const parsedValue = storedValue ? JSON.parse(storedValue) : [];
+      const storedItems = Array.isArray(parsedValue)
+        ? parsedValue.filter(Boolean)
+        : [];
+      const currentProductId = String(productId || "");
+      const withoutCurrent = storedItems.filter(
+        (item) => String(getResolvedProductId(item) || "") !== currentProductId,
+      );
+
+      setRecentlyViewedProducts(
+        withoutCurrent
+          .filter((item) => !isExclusiveProduct(item))
+          .slice(0, MAX_RECENTLY_VIEWED_PRODUCTS),
+      );
+
+      const snapshot = buildRecentlyViewedSnapshot({
+        product,
+        selectedVariant: resolvedSelectedVariant,
+        image: primaryProductImage,
+        activePrice,
+        activeOriginalPrice,
+      });
+
+      if (!snapshot) return;
+
+      const nextItems = [snapshot, ...withoutCurrent].slice(
+        0,
+        MAX_RECENTLY_VIEWED_PRODUCTS,
+      );
+      window.localStorage.setItem(
+        RECENTLY_VIEWED_STORAGE_KEY,
+        JSON.stringify(nextItems),
+      );
+    } catch (error) {
+      console.error("Error updating recently viewed products:", error);
+      setRecentlyViewedProducts([]);
+    }
+  }, [
+    activeImage,
+    activeOriginalPrice,
+    activePrice,
+    isDemoPreview,
+    primaryProductImage,
+    product,
+    productId,
+    resolvedSelectedVariant,
+  ]);
 
   useEffect(() => {
     if (tabs.length === 0) return;
@@ -1711,6 +2235,27 @@ const ProductDetailPage = () => {
     openSnackbar(message, "success");
   };
 
+  const handleToggleWishlist = async () => {
+    if (!product) return;
+
+    if (isDemoPreview) {
+      handleDemoAction(
+        "Demo preview only. Wishlist changes are disabled on this mock route.",
+      );
+      return;
+    }
+
+    const wishlistProduct = buildCartProduct() || product;
+    await toggleWishlist(wishlistProduct, {
+      itemType: "product",
+      variantId: wishlistVariantId || undefined,
+      variantName: resolvedSelectedVariant
+        ? formatVariantLabel(resolvedSelectedVariant)
+        : "",
+      quantity: 1,
+    });
+  };
+
   const handleAddToCart = async () => {
     if (!product) return;
 
@@ -1733,7 +2278,7 @@ const ProductDetailPage = () => {
       if (availableQty < quantity) {
         openSnackbar(
           availableQty > 0
-            ? "Limited stock available for this selected pack."
+            ? "Limited stock available for this selected option."
             : "This product is currently unavailable.",
           "error",
         );
@@ -1774,7 +2319,7 @@ const ProductDetailPage = () => {
         if (availableQty < quantity) {
           openSnackbar(
             availableQty > 0
-              ? "Limited stock available for this selected pack."
+              ? "Limited stock available for this selected option."
               : "This product is currently unavailable.",
             "error",
           );
@@ -1972,8 +2517,15 @@ const ProductDetailPage = () => {
                 <div className="inline-flex items-center gap-2 rounded-full border border-[#eadfd5] bg-white/90 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#6a4b39] backdrop-blur">
                   Product gallery
                 </div>
-                {galleryItems.length > 1 ? (
-                  <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2">
+                  <WishlistActionButton
+                    active={isProductWishlisted}
+                    onClick={handleToggleWishlist}
+                    compact
+                    className="border-white/70"
+                  />
+                  {galleryItems.length > 1 ? (
+                    <>
                     <button
                       type="button"
                       onClick={showPreviousImage}
@@ -1990,8 +2542,9 @@ const ProductDetailPage = () => {
                     >
                       <FiChevronRight />
                     </button>
-                  </div>
-                ) : null}
+                    </>
+                  ) : null}
+                </div>
               </div>
 
               <div className={galleryGridClassName}>
@@ -2170,7 +2723,7 @@ const ProductDetailPage = () => {
           <div className="xl:sticky xl:top-[calc(var(--header-height)+20px)]">
             <div className="product-reveal product-reveal-delay-2 rounded-[36px] border border-[#e1cdbf] bg-white/88 p-6 shadow-[0_34px_90px_-55px_rgba(44,29,20,0.38)] backdrop-blur sm:p-8">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7b6355]">
-                {product?.brand || "Healthy One Gram"}
+                {product?.brand || "Ananya Boutique"}
               </p>
               <h1 className="mt-3 text-3xl font-semibold leading-tight text-[#24150f] sm:text-[2.55rem]">
                 {product?.name || product?.title}
@@ -2214,6 +2767,10 @@ const ProductDetailPage = () => {
                 {product?.shortDescription ||
                   "A richer product detail layout with stronger visual storytelling, better CTA placement, and a cleaner lower content section."}
               </p>
+              <div className="mt-5 flex flex-wrap gap-2">
+                <FounderStoryBadge label="Curated with Love" compact />
+                <FounderStoryBadge label="Trusted Since 2012" compact />
+              </div>
 
               <div className="mt-7 flex flex-wrap items-end gap-3">
                 <p className="text-4xl font-semibold text-[#24150f]">
@@ -2282,6 +2839,20 @@ const ProductDetailPage = () => {
                   </div>
                 </div>
               ) : null}
+
+              <div className="mt-5 flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsSizeGuideOpen(true)}
+                  className="inline-flex min-h-[44px] items-center gap-2 rounded-full border border-[#d8c6bb] bg-[#fffaf5] px-4 py-2 text-sm font-semibold text-[#4b2b1e] transition hover:-translate-y-0.5 hover:border-[#c9a891]"
+                >
+                  <Ruler className="h-4 w-4" />
+                  Size Guide
+                </button>
+                <span className="text-sm text-[#6d584a]">
+                  Boutique fit reference for apparel and occasion pieces.
+                </span>
+              </div>
 
               <div
                 className={`mt-8 grid gap-4 ${showHeroDeliveryPreview ? "xl:grid-cols-2" : ""}`}
@@ -2391,13 +2962,13 @@ const ProductDetailPage = () => {
                   </div>
                   <p className="mt-3 text-lg font-semibold text-[#24150f]">
                     {isReservedForCheckout
-                      ? "This pack is temporarily reserved"
+                      ? "This option is temporarily reserved"
                       : "We're restocking soon"}
                   </p>
                   <p className="mt-1 text-sm leading-6 text-[#6b5144]">
                     {isReservedForCheckout
-                      ? "Another customer has this pack in checkout right now. If payment is not completed, the reservation will expire and the pack will return automatically."
-                      : "This pack is currently unavailable, but we can alert you the moment it is ready to order again."}
+                      ? "Another customer has this option in checkout right now. If payment is not completed, the reservation will expire and the option will return automatically."
+                      : "This option is currently unavailable, but we can alert you the moment it is ready to order again."}
                   </p>
                   <div className="mt-4 grid gap-3 sm:grid-cols-3">
                     <div className="rounded-2xl border border-[#ead7cb] bg-white px-4 py-3">
@@ -2461,7 +3032,9 @@ const ProductDetailPage = () => {
                     }
                   >
                     <IoMdCart className="text-xl" />
-                    {currentVariantInCart ? "Remove from Cart" : "Add to Cart"}
+                    {currentVariantInCart
+                      ? fashionMicrocopy.removeFromCart
+                      : fashionMicrocopy.addToCart}
                   </button>
                   <button
                     type="button"
@@ -2477,6 +3050,13 @@ const ProductDetailPage = () => {
                   </button>
                 </div>
               )}
+
+              <WishlistActionButton
+                active={isProductWishlisted}
+                onClick={handleToggleWishlist}
+                label="Save to Wishlist"
+                className="mt-4 w-full rounded-2xl"
+              />
 
               {showHeroSupportCards ? (
                 <div className="mt-8 grid gap-3 sm:grid-cols-2">
@@ -2509,9 +3089,17 @@ const ProductDetailPage = () => {
                   })}
                 </div>
               ) : null}
+
+              <ProductInfoAccordion
+                panels={productInfoPanels}
+                openPanelId={openInfoPanel}
+                onToggle={setOpenInfoPanel}
+              />
             </div>
           </div>
         </div>
+
+        <BrandTrustStrip className="mt-8" />
 
         {showHeroInsightCards ? (
           <div className="mt-8 grid gap-4 md:grid-cols-3">
@@ -3056,6 +3644,19 @@ const ProductDetailPage = () => {
 
         {!isDemoPreview ? (
           <>
+            <ProductRail
+              eyebrow="Related Styles"
+              title="More Boutique Pieces To Explore"
+              products={relatedProducts}
+              loading={relatedLoading}
+            />
+
+            <ProductRail
+              eyebrow="Recently Viewed"
+              title="Your Recent Boutique Finds"
+              products={recentlyViewedProducts}
+            />
+
             {showFrequentlyBoughtSection ? (
               <div className="product-reveal product-reveal-delay-3 mt-12 rounded-[36px] border border-[#e1cdbf] bg-white/88 p-6 shadow-[0_34px_90px_-55px_rgba(44,29,20,0.38)] backdrop-blur sm:p-8">
                 <div className="flex flex-wrap items-center justify-between gap-4">
@@ -3085,7 +3686,7 @@ const ProductDetailPage = () => {
                   >
                     {mergeTextOverride(
                       pageConfig?.frequentlyBoughtSection?.buttonText,
-                      "Add All To Cart",
+                      "Add All To Wardrobe",
                     )}
                   </button>
                 </div>
@@ -3195,7 +3796,7 @@ const ProductDetailPage = () => {
                                     }
                               }
                             >
-                              {isAdded ? "Added" : "Add to Cart"}
+                              {isAdded ? "Added" : fashionMicrocopy.addToCart}
                             </button>
                           </div>
                         );
@@ -3334,6 +3935,58 @@ const ProductDetailPage = () => {
         </div>
       ) : null}
 
+      <div className="fixed inset-x-0 bottom-0 z-[1200] border-t border-[#e1cdbf] bg-white/95 px-3 py-3 shadow-[0_-20px_55px_-32px_rgba(42,28,20,0.45)] backdrop-blur xl:hidden">
+        <div className="mx-auto flex max-w-2xl items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#7b6355]">
+              Price
+            </p>
+            <p className="truncate text-base font-semibold text-[#24150f]">
+              {formatPrice(toNumber(activePrice, 0))}
+            </p>
+          </div>
+          <WishlistActionButton
+            active={isProductWishlisted}
+            onClick={handleToggleWishlist}
+            compact
+            className="shrink-0"
+          />
+          <button
+            type="button"
+            onClick={handleAddToCart}
+            disabled={actionLoading || (isOutOfStock && !currentVariantInCart)}
+            className="flex min-h-[46px] shrink-0 items-center justify-center gap-1.5 rounded-2xl border border-[#d8c6bb] bg-white px-3 text-xs font-semibold text-[#4b2b1e] transition disabled:cursor-not-allowed disabled:opacity-50 sm:px-4 sm:text-sm"
+          >
+            <IoMdCart className="text-lg" />
+            <span>
+              {currentVariantInCart
+                ? "Remove"
+                : isOutOfStock
+                  ? "Sold Out"
+                  : "Add"}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={handleBuyNow}
+            disabled={isBuyNowDisabled}
+            className="product-cta-primary min-h-[46px] shrink-0 rounded-2xl px-4 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 sm:px-5 sm:text-sm"
+            style={{
+              backgroundColor: "var(--primary)",
+              color: "var(--flavor-text, #ffffff)",
+            }}
+          >
+            Buy Now
+          </button>
+        </div>
+      </div>
+
+      <SizeGuideModal
+        open={isSizeGuideOpen}
+        onClose={() => setIsSizeGuideOpen(false)}
+        selectedLabel={selectedPackLabel}
+      />
+
       {isImageZoomOpen ? (
         <div
           role="dialog"
@@ -3384,7 +4037,7 @@ const ProductDetailPage = () => {
             ) : null}
 
             <div className="pointer-events-none absolute top-0 left-1/2 -translate-x-1/2 rounded-full bg-white/15 px-4 py-1.5 text-sm font-semibold text-white">
-              100%
+              {isActiveVideo ? "Video" : `${Math.round(zoomScale * 100)}%`}
             </div>
 
             {isActiveVideo ? (
@@ -3397,20 +4050,22 @@ const ProductDetailPage = () => {
                 onClick={(event) => event.stopPropagation()}
               />
             ) : (
-              <ProductImage
-                src={activeImage}
-                alt={product?.name || product?.title || "Zoomed product image"}
-                responsiveProfile="zoom"
-                sizes="92vw"
+              <div
+                className="flex h-[88vh] w-[92vw] max-w-[1180px] items-center justify-center overflow-hidden rounded-2xl bg-black/20"
                 onClick={(event) => event.stopPropagation()}
-                aspect=""
-                padding="p-0"
-                fit="cover"
-                rounded="rounded-2xl"
-                natural
-                className="flex max-h-[88vh] max-w-[92vw] items-center justify-center bg-transparent"
-                imgClassName="max-h-[88vh] max-w-[92vw] object-contain"
-              />
+              >
+                <ZoomableImage
+                  key={`${activeImage}-${activeImageIndex}`}
+                  src={activeImage}
+                  alt={
+                    product?.name || product?.title || "Zoomed product image"
+                  }
+                  minScale={1}
+                  maxScale={3}
+                  onScaleChange={setZoomScale}
+                  className="flex h-full w-full items-center justify-center"
+                />
+              </div>
             )}
           </div>
         </div>

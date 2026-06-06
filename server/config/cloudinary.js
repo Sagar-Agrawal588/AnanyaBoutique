@@ -21,7 +21,7 @@ if (shouldLoadLocalDotEnv) {
 
 const isProduction = process.env.NODE_ENV === "production";
 const DEFAULT_PRODUCTION_BACKEND_URL =
-  "https://healthyonegram-api-v2-xb7znoco6a-uc.a.run.app";
+  "https://api.ananyaboutique.com";
 const mediaStorageProvider = String(
   process.env.MEDIA_STORAGE_PROVIDER || "firebase",
 )
@@ -142,8 +142,8 @@ const isLikelyMissingBucketError = (error) => {
   );
 };
 
-const normalizeFolder = (folder = "buyonegram") =>
-  String(folder || "buyonegram")
+const normalizeFolder = (folder = "ananyaboutique") =>
+  String(folder || "ananyaboutique")
     .trim()
     .replace(/^\/+|\/+$/g, "")
     .replace(/\\/g, "/");
@@ -227,7 +227,7 @@ const isAllowedGcsMediaPath = (objectPath = "") => {
     .replace(/^\/+/, "");
 
   if (!normalized || normalized.includes("..")) return false;
-  return /^buyonegram\//i.test(normalized);
+  return /^ananyaboutique\//i.test(normalized);
 };
 
 const getGcsMediaProxyUrl = (objectPath) => {
@@ -306,7 +306,7 @@ export const normalizeStoredMediaUrl = (value = "") => {
 
 const uploadToGcsMediaStorage = async (
   file,
-  folder = "buyonegram",
+  folder = "ananyaboutique",
   { mimeType = "image/jpeg" } = {},
 ) => {
   if (!gcsMediaBucketName) {
@@ -357,7 +357,7 @@ const uploadToGcsMediaStorage = async (
  */
 export const uploadToCloudinary = async (
   file,
-  folder = "buyonegram",
+  folder = "ananyaboutique",
   { mimeType = "image/jpeg", resourceType = "", preserveQuality = false } = {},
 ) => {
   try {
@@ -436,7 +436,7 @@ export const uploadToCloudinary = async (
  */
 export const uploadMultipleToCloudinary = async (
   files,
-  folder = "buyonegram",
+  folder = "ananyaboutique",
 ) => {
   try {
     const uploadPromises = files.map((file) => {
@@ -470,7 +470,7 @@ export const uploadMultipleToCloudinary = async (
  */
 export const uploadVideoToCloudinary = async (
   file,
-  folder = "buyonegram/videos",
+  folder = "ananyaboutique/videos",
   { mimeType = "video/mp4" } = {},
 ) => {
   try {

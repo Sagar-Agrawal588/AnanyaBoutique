@@ -85,7 +85,7 @@ function wrapper({ title, subtitle, body, footer, accent, soft }) {
       <td style="padding:0;">
         <div style="background:linear-gradient(135deg, ${brand.primary}, ${brand.secondary});padding:18px 22px;border-radius:14px 14px 0 0;color:#fff;display:flex;justify-content:space-between;align-items:center;">
           <div>
-            <div style="font-size:12px;letter-spacing:1.3px;opacity:0.85;">HEALTHYONEGRAM</div>
+            <div style="font-size:12px;letter-spacing:1.3px;opacity:0.85;">ANANYA BOUTIQUE</div>
             <div style="font-size:16px;font-weight:700;">Fresh choices, delivered with care</div>
           </div>
           <div style="height:44px;width:44px;border-radius:12px;background:rgba(255,255,255,0.18);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;">HOG</div>
@@ -109,7 +109,7 @@ function wrapper({ title, subtitle, body, footer, accent, soft }) {
 </html>`;
 }
 
-function ctaButton(label, accent, href = "https://healthyonegram.com") {
+function ctaButton(label, accent, href = "https://ananyaboutique.com") {
   return `<a href="${href}" style="display:inline-block;background:${accent};color:#fff;text-decoration:none;padding:12px 18px;border-radius:10px;font-weight:600;font-size:14px;">${escapeHtml(label)}</a>`;
 }
 
@@ -128,7 +128,7 @@ function orderRows(items) {
 function buildBody(emailType, data, theme) {
   const commonFooter = `
     <p style="margin:0 0 6px;font-size:13px;color:${brand.lightInk};">Need help? Reach us at <a href="mailto:${data.supportEmail}" style="color:${brand.primary};">${data.supportEmail}</a> or call ${data.supportPhone}</p>
-    <p style="margin:0;font-size:12px;color:${brand.lightInk};">HealthyOneGram, Jaipur, Rajasthan</p>
+    <p style="margin:0;font-size:12px;color:${brand.lightInk};">Ananya Boutique, Jaipur, Rajasthan</p>
   `;
 
   switch (emailType) {
@@ -282,7 +282,7 @@ function buildBody(emailType, data, theme) {
           </div>
           <p style="margin:0 0 10px;font-size:14px;color:${brand.lightInk};">Discover our latest products made for healthy living. Be the first to try them and share your feedback.</p>
           <div style="margin:0 0 10px;padding:12px;border:1px solid ${brand.border};border-radius:10px;background:#f8fafc;">
-            <div style="font-size:14px;font-weight:700;color:${brand.ink};margin-bottom:6px;">Why people love HealthyOneGram</div>
+            <div style="font-size:14px;font-weight:700;color:${brand.ink};margin-bottom:6px;">Why people love Ananya Boutique</div>
             <ul style="margin:0;padding-left:18px;color:${brand.lightInk};font-size:13px;line-height:1.6;">
               <li>Premium quality products curated for health-focused families.</li>
               <li>Faster delivery and transparent order support.</li>

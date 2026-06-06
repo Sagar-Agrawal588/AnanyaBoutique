@@ -26,7 +26,7 @@ const REPORT_MAX_LIMIT = 100;
 const deriveLegacyDisplayOrderId = (orderId) => {
   const rawOrderId = String(orderId || "").trim();
   if (!rawOrderId) return "";
-  return `BOG-${rawOrderId.slice(-8).toUpperCase()}`;
+  return `ANB-${rawOrderId.slice(-8).toUpperCase()}`;
 };
 
 const CONFIRMED_STATUSES = [

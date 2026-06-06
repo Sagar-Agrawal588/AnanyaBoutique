@@ -1,7 +1,7 @@
 const { test, expect } = require("@playwright/test");
 
 const DEFAULT_HOME_SLIDE =
-  "buyonegram/system/home-slide-default-1.webp";
+  "ananyaboutique/system/home-slide-default-1.webp";
 
 const buildSlidesPayload = () => ({
   error: false,

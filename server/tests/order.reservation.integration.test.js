@@ -30,7 +30,7 @@ let initSocket;
 
 const TEST_SECRET = "reservation_integration_secret_1234567890";
 const DEFAULT_PRODUCT_IMAGE =
-  "buyonegram/system/product-default.webp";
+  "ananyaboutique/system/product-default.webp";
 const SOCKET_CONNECT_TIMEOUT_MS = process.env.CI ? 15000 : 8000;
 const SOCKET_EVENT_TIMEOUT_MS = process.env.CI ? 12000 : 5000;
 const MONGO_SELECTION_TIMEOUT_MS = process.env.CI ? 15000 : 5000;

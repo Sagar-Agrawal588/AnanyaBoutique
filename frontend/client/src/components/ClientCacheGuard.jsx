@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 
-const CACHE_GUARD_VERSION = "healthyonegram-client-2026-05-28-v5";
+const CACHE_GUARD_VERSION = "ananyaboutique-client-2026-05-28-v5";
 const CACHE_GUARD_KEY = "hog_client_cache_guard_version";
 const FORCE_CACHE_RESET_PARAMS = [
   "__hog_sw_reset",
@@ -10,10 +10,10 @@ const FORCE_CACHE_RESET_PARAMS = [
   "force",
 ];
 const HOSTS_TO_GUARD = new Set([
-  "healthyonegram.com",
-  "www.healthyonegram.com",
-  "healthyonegram-client-studio-8452116634-cdb59.us-central1.hosted.app",
-  "healthyonegram-client--studio-8452116634-cdb59.us-central1.hosted.app",
+  "ananyaboutique.com",
+  "www.ananyaboutique.com",
+  "ananyaboutique.com",
+  "ananyaboutique.com",
 ]);
 
 const LEGACY_LOCAL_STORAGE_KEYS = [

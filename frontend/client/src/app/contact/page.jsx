@@ -1,5 +1,4 @@
 "use client";
-import { useSettings } from "@/context/SettingsContext";
 import {
   Button,
   CircularProgress,
@@ -9,13 +8,30 @@ import {
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "react-hot-toast";
-import { FiClock, FiMail, FiMapPin, FiPhone, FiSend, FiX } from "react-icons/fi";
-import { IoChatboxOutline } from "react-icons/io5";
+import {
+  FiClock,
+  FiHeart,
+  FiMail,
+  FiMapPin,
+  FiNavigation,
+  FiPhone,
+  FiSend,
+  FiX,
+} from "react-icons/fi";
+import { FaInstagram, FaWhatsapp } from "react-icons/fa";
 import {
   createSupportTicket,
   fetchSupportOrderContext,
   fetchSupportOrderOptions,
 } from "@/services/supportApi";
+import {
+  contactConfig,
+  getMailtoHref,
+  getMapHref,
+  getPhoneHref,
+  getWhatsAppHref,
+} from "@/config/siteConfig";
+import BrandArtworkFrame from "@/components/brand/BrandArtworkFrame";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const MAX_IMAGES = 5;
@@ -54,30 +70,7 @@ const createFileId = (file) =>
   `${file.name}-${file.size}-${file.lastModified}-${Math.random().toString(36).slice(2, 8)}`;
 
 const formatFileSize = (bytes) => `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-const FALLBACK_STORE_INFO = {
-  email: "healthyonegram.com",
-  phone: "+91 8619641968",
-  address: "G-220,225, RIICO, Sitapura Industrial Area, Jaipur, Rajasthan 302022",
-};
-const normalizeStoreLink = (value) => {
-  const normalized = String(value || "").trim();
-  if (!normalized) return "";
-  if (normalized.includes("@")) return `mailto:${normalized}`;
-  if (/^https?:\/\//i.test(normalized)) return normalized;
-  if (!normalized.includes(" ")) return `https://${normalized}`;
-  return "";
-};
-const normalizePhoneHref = (value) => {
-  const digits = String(value || "").replace(/[^\d+]/g, "");
-  return digits ? `tel:${digits}` : "";
-};
-const normalizeWhatsappHref = (value) => {
-  const digits = String(value || "").replace(/\D/g, "");
-  return digits ? `https://wa.me/${digits}?text=Hello%20Healthy%20One%20Gram,%20I%20need%20help%20with...` : "";
-};
-
 const Contact = () => {
-  const { storeInfo: liveStoreInfo } = useSettings();
   const [formData, setFormData] = useState(defaultFormState);
   const [fieldErrors, setFieldErrors] = useState({});
   const [uploadErrors, setUploadErrors] = useState({ images: "", videos: "" });
@@ -94,13 +87,10 @@ const Contact = () => {
   const previewUrlsRef = useRef(new Set());
   const submitInProgressRef = useRef(false);
   const lastSubmitRef = useRef({ signature: "", submittedAt: 0 });
-  const storeInfo = {
-    ...FALLBACK_STORE_INFO,
-    ...(liveStoreInfo || {}),
-  };
-  const supportLink = normalizeStoreLink(storeInfo.email);
-  const supportPhoneHref = normalizePhoneHref(storeInfo.phone);
-  const whatsappHref = normalizeWhatsappHref(storeInfo.phone);
+  const supportLink = getMailtoHref("Ananya Boutique customer support");
+  const supportPhoneHref = getPhoneHref();
+  const mapHref = getMapHref();
+  const whatsappActions = contactConfig.whatsappActions;
 
   useEffect(() => {
     let isActive = true;
@@ -523,6 +513,18 @@ const Contact = () => {
       </div>
 
       <div className="container mx-auto px-4 py-12">
+        <div className="mb-10 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {contactConfig.trustSignals.map((signal) => (
+            <div
+              key={signal}
+              className="rounded-2xl border border-pink-100 bg-white p-5 text-center shadow-sm"
+            >
+              <FiHeart className="mx-auto mb-3 text-xl text-pink-600" />
+              <p className="text-sm font-bold text-gray-800">{signal}</p>
+            </div>
+          ))}
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Contact Info Cards */}
           <div className="lg:col-span-1 space-y-6">
@@ -535,8 +537,26 @@ const Contact = () => {
                 <div>
                   <h3 className="font-bold text-gray-800 mb-2">Our Address</h3>
                   <p className="text-gray-600 text-sm leading-relaxed">
-                    {storeInfo.address}
+                    {contactConfig.address}
                   </p>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <a
+                      href={mapHref}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 rounded-full bg-[#2f1325] px-4 py-2 text-xs font-semibold text-white transition hover:-translate-y-0.5"
+                    >
+                      <FiMapPin /> View on Map
+                    </a>
+                    <a
+                      href={mapHref}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 rounded-full border border-pink-200 bg-pink-50 px-4 py-2 text-xs font-semibold text-pink-800 transition hover:-translate-y-0.5"
+                    >
+                      <FiNavigation /> Get Directions
+                    </a>
+                  </div>
                 </div>
               </div>
             </div>
@@ -554,11 +574,11 @@ const Contact = () => {
                       href={supportPhoneHref}
                       className="text-primary font-semibold hover:underline"
                     >
-                      {storeInfo.phone}
+                      {contactConfig.phone}
                     </a>
                   ) : (
                     <span className="text-primary font-semibold">
-                      {storeInfo.phone}
+                      {contactConfig.phone}
                     </span>
                   )}
                   <p className="text-gray-500 text-sm mt-1">
@@ -585,11 +605,11 @@ const Contact = () => {
                       target={supportLink.startsWith("http") ? "_blank" : undefined}
                       rel={supportLink.startsWith("http") ? "noreferrer" : undefined}
                     >
-                      {storeInfo.email}
+                      {contactConfig.email}
                     </a>
                   ) : (
                     <span className="text-primary font-semibold">
-                      {storeInfo.email}
+                      {contactConfig.email}
                     </span>
                   )}
                   <p className="text-gray-500 text-sm mt-1">
@@ -599,20 +619,32 @@ const Contact = () => {
               </div>
             </div>
 
-            {/* WhatsApp Card */}
-            <Link
-              href={whatsappHref || "/contact"}
-              target={whatsappHref ? "_blank" : undefined}
-              className="block bg-gradient-to-r from-green-500 to-green-600 rounded-xl p-6 shadow-md hover:shadow-lg transition-all hover:-translate-y-1"
-            >
-              <div className="flex items-center gap-4 text-white">
-                <IoChatboxOutline className="text-4xl" />
+            {/* WhatsApp Actions */}
+            <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-xl p-6 shadow-md">
+              <div className="mb-4 flex items-center gap-4 text-white">
+                <FaWhatsapp className="text-4xl" />
                 <div>
-                  <h3 className="font-bold mb-1">Chat on WhatsApp</h3>
-                  <p className="text-green-100 text-sm">Get instant support</p>
+                  <h3 className="font-bold mb-1">WhatsApp Support</h3>
+                  <p className="text-green-100 text-sm">
+                    Quick help for fashion, products, and orders
+                  </p>
                 </div>
               </div>
-            </Link>
+              <div className="grid gap-2">
+                {whatsappActions.map((action) => (
+                  <a
+                    key={action.label}
+                    href={getWhatsAppHref(action.message)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-between rounded-full bg-white/95 px-4 py-2 text-sm font-semibold text-green-800 transition hover:-translate-y-0.5 hover:bg-white"
+                  >
+                    {action.label}
+                    <FaWhatsapp className="text-green-600" />
+                  </a>
+                ))}
+              </div>
+            </div>
 
             {/* Business Hours */}
             <div className="bg-white rounded-xl p-6 shadow-md">
@@ -902,6 +934,51 @@ const Contact = () => {
             </div>
           </div>
         </div>
+
+        <section className="mt-12 overflow-hidden rounded-3xl border border-pink-100 bg-gradient-to-br from-white via-pink-50 to-purple-50 p-6 shadow-lg sm:p-8">
+          <div className="grid gap-6 lg:grid-cols-[0.85fr_1.15fr] lg:items-center">
+            <BrandArtworkFrame
+              artworkKey="contact.community"
+              icon={FaInstagram}
+              aspect="wide"
+              className="min-h-[260px]"
+            />
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-pink-700">
+                Instagram
+              </p>
+              <h2 className="mt-3 font-serif text-3xl font-semibold text-gray-950 sm:text-4xl">
+                {contactConfig.instagramTitle}
+              </h2>
+              <p className="mt-4 max-w-2xl text-sm leading-7 text-gray-600 sm:text-base">
+                {contactConfig.instagramContent}
+              </p>
+              <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+                <a
+                  href={contactConfig.instagramUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-gradient-to-r from-pink-600 to-purple-700 px-6 text-sm font-semibold text-white shadow-lg transition hover:-translate-y-0.5"
+                >
+                  <FaInstagram />
+                  Follow Our Journey
+                </a>
+                <a
+                  href={contactConfig.instagramUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex h-12 items-center justify-center rounded-full border border-pink-200 bg-white px-6 text-sm font-semibold text-pink-800 transition hover:-translate-y-0.5 hover:bg-pink-50"
+                >
+                  {contactConfig.instagramHandle}
+                </a>
+              </div>
+              <p className="mt-4 text-sm font-medium text-gray-500">
+                Fashion inspiration, boutique updates, customer stories, and
+                behind-the-scenes moments.
+              </p>
+            </div>
+          </div>
+        </section>
       </div>
     </section>
   );
