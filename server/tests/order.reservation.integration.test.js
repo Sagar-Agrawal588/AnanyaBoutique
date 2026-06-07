@@ -386,7 +386,7 @@ test("POST /api/orders reserves the last unit and product APIs expose zero avail
   assert.ok(String(createResult.payload?.data?.paymentUrl || "").trim());
   assert.ok(
     String(createResult.payload?.data?.merchantTransactionId || "").startsWith(
-      "BOG_",
+      "ANBORD_",
     ),
   );
 

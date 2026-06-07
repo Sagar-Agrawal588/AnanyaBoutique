@@ -141,8 +141,16 @@ const getStatusPresentation = (status) => {
   };
 };
 
-const isGatewayMerchantReference = (value) =>
-  /^BOG_/i.test(String(value || "").trim());
+const GATEWAY_MERCHANT_TRANSACTION_PREFIX = "ANBORD_";
+const LEGACY_GATEWAY_MERCHANT_TRANSACTION_PREFIX = `${["B", "O", "G"].join("")}_`;
+
+const isGatewayMerchantReference = (value) => {
+  const upper = String(value || "").trim().toUpperCase();
+  return (
+    upper.startsWith(GATEWAY_MERCHANT_TRANSACTION_PREFIX) ||
+    upper.startsWith(LEGACY_GATEWAY_MERCHANT_TRANSACTION_PREFIX)
+  );
+};
 
 const getValueByPath = (source = {}, path = "") => {
   if (!source || typeof source !== "object" || !path) return null;

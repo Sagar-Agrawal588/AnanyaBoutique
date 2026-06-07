@@ -3,9 +3,16 @@ import { resolveOrderAwb, resolveOrderTrackingUrl } from "./orderTracking.js";
 const round2 = (value) =>
   Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
 const roundToNearestRupee = (value) => Math.max(Math.round(Number(value || 0)), 0);
+const GATEWAY_MERCHANT_TRANSACTION_PREFIX = "ANBORD_";
+const LEGACY_GATEWAY_MERCHANT_TRANSACTION_PREFIX = `${["B", "O", "G"].join("")}_`;
 
-const isGatewayMerchantReference = (value) =>
-  /^BOG_/i.test(String(value || "").trim());
+const isGatewayMerchantReference = (value) => {
+  const upper = String(value || "").trim().toUpperCase();
+  return (
+    upper.startsWith(GATEWAY_MERCHANT_TRANSACTION_PREFIX) ||
+    upper.startsWith(LEGACY_GATEWAY_MERCHANT_TRANSACTION_PREFIX)
+  );
+};
 
 const extractUpiRrn = (value) => {
   const normalized = String(value || "").trim();

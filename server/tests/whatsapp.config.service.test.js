@@ -5,7 +5,7 @@ import { generateWhatsappWebhookVerifyToken } from "../services/whatsapp/whatsap
 test("generateWhatsappWebhookVerifyToken builds a prefixed token with year and secure suffix", () => {
   const token = generateWhatsappWebhookVerifyToken({ year: 2031 });
 
-  assert.match(token, /^bog_whatsapp_verify_2031_[a-f0-9]{40}$/);
+  assert.match(token, /^ananya_whatsapp_verify_2031_[a-f0-9]{40}$/);
 });
 
 test("generateWhatsappWebhookVerifyToken returns unique values across calls", () => {

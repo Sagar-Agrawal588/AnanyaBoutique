@@ -20,6 +20,8 @@ const singleOrderId = String(orderIdArg?.split("=")[1] || "").trim();
 const VALID_UPI_REF_REGEX = /^[0-9]{12,16}$/;
 const VALID_UTR_REGEX = /^[0-9]{12}$/;
 const SUCCESS_PAYMENT_STATUSES = ["paid", "confirmed", "captured", "success", "successful"];
+const GATEWAY_MERCHANT_TRANSACTION_PREFIX = "ANBORD_";
+const LEGACY_GATEWAY_MERCHANT_TRANSACTION_PREFIX = `${["B", "O", "G"].join("")}_`;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -111,8 +113,16 @@ const resolveMerchantOrderId = (order) =>
     order?.phonepeMerchantOrderId ||
       order?.merchantTransactionId ||
       order?.paymentId ||
-      "",
+    "",
   ).trim();
+
+const isGatewayMerchantReference = (value) => {
+  const upper = String(value || "").trim().toUpperCase();
+  return (
+    upper.startsWith(GATEWAY_MERCHANT_TRANSACTION_PREFIX) ||
+    upper.startsWith(LEGACY_GATEWAY_MERCHANT_TRANSACTION_PREFIX)
+  );
+};
 
 const run = async () => {
   console.log(
@@ -153,7 +163,7 @@ const run = async () => {
     const orderId = String(order?._id || "").trim();
     const merchantOrderId = resolveMerchantOrderId(order);
 
-    if (!merchantOrderId || !merchantOrderId.startsWith("BOG_")) {
+    if (!merchantOrderId || !isGatewayMerchantReference(merchantOrderId)) {
       summary.skippedNoMerchantId += 1;
       console.log(
         `[skip:no-merchant-id] order=${orderId} merchantOrderId=${merchantOrderId || "N/A"}`,

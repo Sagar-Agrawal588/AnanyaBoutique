@@ -74,7 +74,7 @@ export const ProductProvider = ({ children }) => {
   const fetchFeaturedProducts = useCallback(async () => {
     try {
       const response = await fetchDataFromApi(
-        "/api/products?bestSeller=true&sortBy=createdAt&order=desc",
+        "/api/products/featured?limit=10",
         {
           timeoutMs: PUBLIC_SECTION_REQUEST_TIMEOUT_MS,
         },

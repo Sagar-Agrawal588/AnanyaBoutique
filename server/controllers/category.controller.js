@@ -7,6 +7,35 @@ import { normalizeProductMediaUrls } from "../utils/productMedia.js";
 const CATEGORY_RESPONSE_CACHE_NAMESPACES = ["categories", "products", "combos"];
 const withCategoryMediaUrls = (value) => normalizeProductMediaUrls(value);
 
+const toPlainCategory = (category) =>
+  category && typeof category.toObject === "function"
+    ? category.toObject()
+    : category;
+
+const withCategoryAliases = (value) => {
+  if (Array.isArray(value)) return value.map(withCategoryAliases);
+  const category = toPlainCategory(value);
+  if (!category || typeof category !== "object") return category;
+
+  const subcategories = Array.isArray(category.subcategories)
+    ? category.subcategories.map(withCategoryAliases)
+    : category.subcategories;
+  const children = Array.isArray(category.children)
+    ? category.children.map(withCategoryAliases)
+    : subcategories || category.children;
+
+  return {
+    ...category,
+    parent: category.parentCategory || category.parent || null,
+    parentCategory: category.parentCategory || category.parent || null,
+    ...(subcategories ? { subcategories } : {}),
+    ...(children ? { children } : {}),
+  };
+};
+
+const withCategoryResponsePayload = (value) =>
+  withCategoryMediaUrls(withCategoryAliases(value));
+
 /**
  * Category Controller
  *
@@ -27,7 +56,7 @@ export const getCategories = async (req, res) => {
       return res.status(200).json({
         error: false,
         success: true,
-        data: withCategoryMediaUrls(firebaseCategories),
+        data: withCategoryResponsePayload(firebaseCategories),
         total: firebaseCategories.length,
       });
     }
@@ -59,7 +88,9 @@ export const getCategories = async (req, res) => {
       filter.isActive = true;
     }
 
-    let query = CategoryModel.find(filter).sort({ sortOrder: 1, name: 1 });
+    let query = CategoryModel.find(filter)
+      .populate("parentCategory", "name slug")
+      .sort({ sortOrder: 1, name: 1 });
 
     // Populate subcategories if not flat view
     if (flat !== "true") {
@@ -75,7 +106,7 @@ export const getCategories = async (req, res) => {
     res.status(200).json({
       error: false,
       success: true,
-      data: withCategoryMediaUrls(categories),
+      data: withCategoryResponsePayload(categories),
       total: categories.length,
     });
   } catch (error) {
@@ -114,7 +145,7 @@ export const getCategoryById = async (req, res) => {
       return res.status(200).json({
         error: false,
         success: true,
-        data: withCategoryMediaUrls(category),
+        data: withCategoryResponsePayload(category),
       });
     }
 
@@ -146,7 +177,7 @@ export const getCategoryById = async (req, res) => {
     res.status(200).json({
       error: false,
       success: true,
-      data: withCategoryMediaUrls(category),
+      data: withCategoryResponsePayload(category),
     });
   } catch (error) {
     res.status(500).json({
@@ -168,7 +199,7 @@ export const getCategoryTree = async (req, res) => {
       return res.status(200).json({
         error: false,
         success: true,
-        data: withCategoryMediaUrls(firebaseCategories.map((category) => ({
+        data: withCategoryResponsePayload(firebaseCategories.map((category) => ({
           ...category,
           children: [],
         }))),
@@ -206,7 +237,7 @@ export const getCategoryTree = async (req, res) => {
     res.status(200).json({
       error: false,
       success: true,
-      data: withCategoryMediaUrls(categoryTree),
+      data: withCategoryResponsePayload(categoryTree),
     });
   } catch (error) {
     res.status(500).json({
@@ -231,6 +262,7 @@ export const createCategory = async (req, res) => {
       description,
       image,
       icon,
+      parent,
       parentCategory,
       isFeatured,
       sortOrder,
@@ -269,10 +301,12 @@ export const createCategory = async (req, res) => {
 
     // Determine level based on parent
     let level = 0;
-    if (parentCategory) {
-      const parent = await CategoryModel.findById(parentCategory);
-      if (parent) {
-        level = parent.level + 1;
+    const resolvedParentCategory = parentCategory || parent || null;
+
+    if (resolvedParentCategory) {
+      const parentDoc = await CategoryModel.findById(resolvedParentCategory);
+      if (parentDoc) {
+        level = parentDoc.level + 1;
       }
     }
 
@@ -282,7 +316,7 @@ export const createCategory = async (req, res) => {
       description,
       image,
       icon,
-      parentCategory: parentCategory || null,
+      parentCategory: resolvedParentCategory,
       level,
       isFeatured: isFeatured || false,
       sortOrder: sortOrder || 0,
@@ -298,7 +332,7 @@ export const createCategory = async (req, res) => {
       error: false,
       success: true,
       message: "Category created successfully",
-      data: withCategoryMediaUrls(category),
+      data: withCategoryResponsePayload(category),
     });
   } catch (error) {
     console.error("Error creating category:", error);
@@ -323,6 +357,13 @@ export const updateCategory = async (req, res) => {
     // Remove fields that shouldn't be updated directly
     delete updateData._id;
     delete updateData.productCount;
+    if (
+      Object.prototype.hasOwnProperty.call(updateData, "parent") &&
+      !Object.prototype.hasOwnProperty.call(updateData, "parentCategory")
+    ) {
+      updateData.parentCategory = updateData.parent || null;
+    }
+    delete updateData.parent;
 
     const category = await CategoryModel.findById(id);
     if (!category) {
@@ -336,6 +377,13 @@ export const updateCategory = async (req, res) => {
     // If parent is being changed, update level
     if (updateData.parentCategory !== undefined) {
       if (updateData.parentCategory) {
+        if (String(updateData.parentCategory) === String(id)) {
+          return res.status(400).json({
+            error: true,
+            success: false,
+            message: "Category cannot be its own parent",
+          });
+        }
         const parent = await CategoryModel.findById(updateData.parentCategory);
         updateData.level = parent ? parent.level + 1 : 0;
       } else {
@@ -354,7 +402,7 @@ export const updateCategory = async (req, res) => {
       error: false,
       success: true,
       message: "Category updated successfully",
-      data: withCategoryMediaUrls(updatedCategory),
+      data: withCategoryResponsePayload(updatedCategory),
     });
   } catch (error) {
     res.status(500).json({

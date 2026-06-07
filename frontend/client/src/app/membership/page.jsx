@@ -24,6 +24,7 @@ import {
   WandSparkles,
 } from "lucide-react";
 import BrandArtworkFrame from "@/components/brand/BrandArtworkFrame";
+import useStorefrontContent from "@/hooks/useStorefrontContent";
 
 const API_URL = API_BASE_URL.endsWith("/api")
   ? API_BASE_URL.slice(0, -4)
@@ -168,6 +169,29 @@ const dashboardPreview = [
   { label: "Benefits unlocked", value: 12, suffix: "" },
 ];
 
+const benefitIconMap = {
+  sparkles: WandSparkles,
+  percent: BadgePercent,
+  gift: Gift,
+  cake: Cake,
+  trophy: Trophy,
+  support: Headphones,
+  lock: LockKeyhole,
+  gem: Gem,
+};
+
+const withBenefitIcons = (items = []) =>
+  (Array.isArray(items) ? items : []).map((item, index) => ({
+    ...item,
+    icon:
+      item.icon && typeof item.icon !== "string"
+        ? item.icon
+        : benefitIconMap[item.icon] ||
+          [WandSparkles, BadgePercent, Cake, Trophy, Headphones, LockKeyhole][
+            index % 6
+          ],
+  }));
+
 const formatPrice = (value) => {
   const amount = Number(value);
   if (!Number.isFinite(amount)) return "";
@@ -258,8 +282,17 @@ function LuxuryArtwork({
   ratio = "wide",
   icon: Icon = Sparkles,
   artworkKey,
+  imageUrl = "",
 }) {
   const isPortrait = ratio === "portrait";
+  const customArtwork = imageUrl
+    ? {
+        source: imageUrl,
+        title,
+        copy,
+        aspect: isPortrait ? "portrait" : "wide",
+      }
+    : null;
 
   return (
     <motion.div
@@ -269,6 +302,7 @@ function LuxuryArtwork({
       className="w-full"
     >
       <BrandArtworkFrame
+        artwork={customArtwork}
         artworkKey={artworkKey}
         title={title}
         copy={copy}
@@ -368,8 +402,13 @@ function TierCard({ tier, onJoin }) {
   );
 }
 
-function RewardsDashboardPreview({ isMemberActive, activePlan }) {
+function RewardsDashboardPreview({
+  isMemberActive,
+  activePlan,
+  items = dashboardPreview,
+}) {
   const level = isMemberActive ? "Boutique Elite" : "Fashion Icon";
+  const safeItems = Array.isArray(items) && items.length ? items : dashboardPreview;
 
   return (
     <motion.section
@@ -398,7 +437,7 @@ function RewardsDashboardPreview({ isMemberActive, activePlan }) {
           Your club benefits, styled like a private wardrobe.
         </h2>
         <div className="mt-7 grid gap-4 sm:grid-cols-3">
-          {dashboardPreview.map((item) => (
+          {safeItems.map((item) => (
             <div
               key={item.label}
               className="rounded-3xl border border-[#f4dce5] bg-gradient-to-br from-white to-[#fff4fa] p-5"
@@ -434,6 +473,33 @@ function RewardsDashboardPreview({ isMemberActive, activePlan }) {
 }
 
 export default function MembershipPage() {
+  const { content: storefrontContent } = useStorefrontContent();
+  const membershipContent = storefrontContent.membership;
+  const mediaSlots = storefrontContent.mediaSlots || {};
+  const hero = membershipContent.hero || {};
+  const benefitsSection = membershipContent.benefits || {};
+  const benefitItems = withBenefitIcons(benefitsSection.items || clubBenefits);
+  const howItWorksItems =
+    Array.isArray(membershipContent.howItWorks) &&
+    membershipContent.howItWorks.length
+      ? membershipContent.howItWorks
+      : howItWorks;
+  const tierItems =
+    Array.isArray(membershipContent.tiers) && membershipContent.tiers.length
+      ? membershipContent.tiers
+      : membershipTiers;
+  const dashboardItems =
+    Array.isArray(membershipContent.dashboard) &&
+    membershipContent.dashboard.length
+      ? membershipContent.dashboard
+      : dashboardPreview;
+  const storyItems =
+    Array.isArray(membershipContent.testimonials) &&
+    membershipContent.testimonials.length
+      ? membershipContent.testimonials
+      : successStories;
+  const vip = membershipContent.vip || {};
+  const finalCta = membershipContent.finalCta || {};
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [membershipStatus, setMembershipStatus] = useState(null);
@@ -568,14 +634,13 @@ export default function MembershipPage() {
           <motion.div variants={fadeUp}>
             <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-[#efd8b0] bg-white/85 px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-[#9d6b19] shadow-sm">
               <Crown className="h-4 w-4 text-[#cc7a9b]" aria-hidden="true" />
-              Luxury Loyalty Program
+              {hero.eyebrow || "Luxury Loyalty Program"}
             </div>
             <h1 className="font-serif text-5xl font-semibold leading-tight text-[#2f1325] sm:text-6xl lg:text-7xl">
-              Fashion Insider Club
+              {hero.title || "Fashion Insider Club"}
             </h1>
             <p className="mt-6 max-w-2xl text-lg leading-8 text-[#604354] sm:text-xl">
-              Unlock exclusive fashion experiences, rewards, and member-only
-              benefits designed for women who love style.
+              {hero.description}
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
               <button
@@ -584,14 +649,14 @@ export default function MembershipPage() {
                 disabled={isMemberActive}
                 className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-[#2f1325] px-6 text-sm font-semibold text-white shadow-xl shadow-[#2f1325]/20 transition hover:-translate-y-0.5 hover:bg-[#4b1f3a] disabled:cursor-default disabled:opacity-80"
               >
-                {isMemberActive ? "Club Active" : "Join The Club"}
+                {isMemberActive ? "Club Active" : hero.primaryButtonText || "Join The Club"}
                 <ArrowRight className="h-4 w-4" aria-hidden="true" />
               </button>
               <a
                 href="#club-benefits"
                 className="inline-flex h-12 items-center justify-center gap-2 rounded-full border border-[#efd8b0] bg-white px-6 text-sm font-semibold text-[#8a5a12] shadow-sm transition hover:-translate-y-0.5 hover:bg-[#fff8f0]"
               >
-                Explore Benefits
+                {hero.secondaryButtonText || "Explore Benefits"}
                 <Sparkles className="h-4 w-4" aria-hidden="true" />
               </a>
             </div>
@@ -619,11 +684,15 @@ export default function MembershipPage() {
           </motion.div>
 
           <LuxuryArtwork
-            title="The Insider Wardrobe"
-            copy="A private style world with early access, rewards, and boutique care."
+            title={hero.visualTitle || "The Insider Wardrobe"}
+            copy={
+              hero.visualCopy ||
+              "A private style world with early access, rewards, and boutique care."
+            }
             ratio="portrait"
             icon={Gem}
             artworkKey="membership.hero"
+            imageUrl={mediaSlots?.[hero.mediaSlot]}
           />
         </motion.div>
       </section>
@@ -636,12 +705,7 @@ export default function MembershipPage() {
           viewport={{ once: true, amount: 0.25 }}
           className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
         >
-          {[
-            { label: "Luxury Benefits", value: 6, suffix: "" },
-            { label: "Style Tiers", value: 3, suffix: "" },
-            { label: "Years of Trust", value: 13, suffix: "+" },
-            { label: "Priority Support", value: 24, suffix: "h" },
-          ].map((stat) => (
+          {(membershipContent.stats || []).map((stat) => (
             <motion.div
               key={stat.label}
               variants={fadeUp}
@@ -668,13 +732,19 @@ export default function MembershipPage() {
         className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8 lg:py-16"
       >
         <SectionHeading
-          eyebrow="Membership Benefits"
-          title="A private circle of fashion, rewards, and care"
-          copy="Every benefit is designed to make shopping feel more personal, more rewarding, and more beautifully yours."
+          eyebrow={benefitsSection.eyebrow || "Membership Benefits"}
+          title={
+            benefitsSection.title ||
+            "A private circle of fashion, rewards, and care"
+          }
+          copy={
+            benefitsSection.copy ||
+            "Every benefit is designed to make shopping feel more personal, more rewarding, and more beautifully yours."
+          }
           align="center"
         />
         <div className="mt-9 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {clubBenefits.map((benefit, index) => (
+          {benefitItems.map((benefit, index) => (
             <BenefitCard
               key={benefit.title}
               benefit={benefit}
@@ -688,7 +758,7 @@ export default function MembershipPage() {
             copy="Every benefit is curated to make fashion feel more personal."
             ratio="wide"
             icon={Gift}
-            artworkKey="membership.tiers"
+            artworkKey="membership.tierCards"
           />
         </div>
       </motion.section>
@@ -706,7 +776,7 @@ export default function MembershipPage() {
           copy="The existing membership checkout activates the club. The experience around it now feels like a modern fashion loyalty program."
         />
         <div className="mt-9 grid gap-5 lg:grid-cols-4">
-          {howItWorks.map((item, index) => (
+          {howItWorksItems.map((item, index) => (
             <motion.article
               key={item.step}
               variants={fadeUp}
@@ -746,7 +816,7 @@ export default function MembershipPage() {
         />
 
         <div className="mt-9 grid gap-5 lg:grid-cols-3">
-          {membershipTiers.map((tier) => (
+          {tierItems.map((tier) => (
             <TierCard key={tier.name} tier={tier} onJoin={handleSubscribe} />
           ))}
         </div>
@@ -808,12 +878,15 @@ export default function MembershipPage() {
       >
         <motion.div variants={fadeUp} className="flex flex-col justify-center">
           <SectionHeading
-            eyebrow="VIP Experience"
-            title="A member world made for women who love style"
-            copy="Private launches, thoughtful rewards, and boutique attention come together in a softer, more personal loyalty experience."
+            eyebrow={vip.eyebrow || "VIP Experience"}
+            title={vip.title || "A member world made for women who love style"}
+            copy={
+              vip.copy ||
+              "Private launches, thoughtful rewards, and boutique attention come together in a softer, more personal loyalty experience."
+            }
           />
           <div className="mt-7 grid gap-4 sm:grid-cols-2">
-            {["Private collection previews", "Birthday styling gifts", "Priority customer care", "Member-only fashion notes"].map((item) => (
+            {(vip.items || []).map((item) => (
               <div
                 key={item}
                 className="rounded-3xl border border-[#f0d8df] bg-white/90 p-5 shadow-[0_14px_46px_rgba(93,45,74,0.1)]"
@@ -838,6 +911,7 @@ export default function MembershipPage() {
       <RewardsDashboardPreview
         isMemberActive={isMemberActive}
         activePlan={activePlan}
+        items={dashboardItems}
       />
 
       <motion.section
@@ -854,7 +928,7 @@ export default function MembershipPage() {
           align="center"
         />
         <div className="mt-9 grid gap-5 md:grid-cols-3">
-          {successStories.map((story) => (
+          {storyItems.map((story) => (
             <motion.article
               key={story.name}
               variants={fadeUp}
@@ -891,18 +965,17 @@ export default function MembershipPage() {
             copy="A lifestyle invitation into rewards, confidence, and private fashion moments."
             ratio="wide"
             icon={ShoppingBag}
-            artworkKey="membership.hero"
+            artworkKey="membership.finalCta"
           />
           <motion.div variants={fadeUp} className="flex flex-col justify-center">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#f8d88a]">
-              Your private fashion circle awaits
+              {finalCta.eyebrow || "Your private fashion circle awaits"}
             </p>
             <h2 className="mt-3 font-serif text-4xl font-semibold leading-tight sm:text-5xl">
-              Step into the Fashion Insider Club.
+              {finalCta.title || "Step into the Fashion Insider Club."}
             </h2>
             <p className="mt-5 text-base leading-8 text-white/75 sm:text-lg">
-              Join for early access, exclusive discounts, birthday rewards,
-              fashion points, priority support, and member-only collections.
+              {finalCta.description}
             </p>
             <button
               type="button"
@@ -910,7 +983,7 @@ export default function MembershipPage() {
               disabled={isMemberActive}
               className="mt-7 inline-flex h-12 w-fit items-center justify-center gap-2 rounded-full bg-white px-7 text-sm font-semibold text-[#2f1325] shadow-xl shadow-black/20 transition hover:-translate-y-0.5 hover:bg-[#fff8ef] disabled:cursor-default disabled:opacity-80"
             >
-              {isMemberActive ? "Already A Member" : "Join The Club"}
+              {isMemberActive ? "Already A Member" : finalCta.buttonText || "Join The Club"}
               <ArrowRight className="h-4 w-4" aria-hidden="true" />
             </button>
           </motion.div>

@@ -171,6 +171,7 @@ export const getPublicSettings = async (req, res) => {
       "orderSettings",
       "discountSettings",
       "storeInfo",
+      "storefrontContent",
       "headerSettings",
       "reviewSettings",
       // Expose SEO settings so the storefront can build sitemap and meta tags
@@ -705,6 +706,7 @@ export const deleteSetting = async (req, res) => {
       "taxSettings",
       "orderSettings",
       "storeInfo",
+      "storefrontContent",
       "discountSettings",
       "offerCountdownSettings",
       "popupSettings",

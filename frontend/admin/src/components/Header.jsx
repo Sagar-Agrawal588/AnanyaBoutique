@@ -1,9 +1,9 @@
 "use client";
 import { useAdmin } from "@/context/AdminContext";
+import AdminBrandLogo from "@/components/brand/AdminBrandLogo";
 import { useAdminRealtime } from "@/hooks/useAdminRealtime";
 import { useOrderNotifications } from "@/hooks/useOrderNotifications";
 import { hasAdminPermission } from "@/utils/adminPermissions";
-import { withAdminBasePath } from "@/utils/basePath";
 import { ADMIN_PLACEHOLDER_IMAGE } from "@/utils/mediaDefaults";
 import { Avatar, Badge, Button, Menu, MenuItem, Tooltip } from "@mui/material";
 import { useRouter } from "next/navigation";
@@ -70,6 +70,11 @@ const Header = ({ onMenuClick }) => {
         >
           <FiMenu size={22} />
         </Button>
+        <AdminBrandLogo
+          slot="header"
+          className="hidden sm:inline-flex"
+          imageClassName="h-8 w-auto"
+        />
         <span
           className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${
             liveConnected

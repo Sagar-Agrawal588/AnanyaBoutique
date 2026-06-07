@@ -219,10 +219,10 @@ const OfferPopup = ({ userId = null, isLoggedIn = false }) => {
       />
 
       <div className="fixed left-1/2 top-1/2 z-[9999] w-[92%] max-w-[460px] -translate-x-1/2 -translate-y-1/2 animate-[offerPopupIn_300ms_cubic-bezier(0.16,1,0.3,1)]">
-        <div className="relative overflow-hidden rounded-[28px] border border-[#ead7bd] bg-gradient-to-b from-[#fff9ed] via-[#fffdf8] to-[#fffefb] shadow-[0_35px_80px_-32px_rgba(57,32,10,0.65)]">
-          <div className="relative overflow-hidden px-6 pb-5 pt-6 text-white bg-gradient-to-br from-[#3c220e] via-[#6e3f14] to-[#9d6220]">
+        <div className="relative overflow-hidden rounded-[30px] border border-[#f0d7e2] bg-gradient-to-b from-[#fff8fb] via-[#fffdfb] to-[#f7f0ff] shadow-[0_35px_90px_-34px_rgba(47,19,37,0.62)]">
+          <div className="relative overflow-hidden px-6 pb-5 pt-6 text-white bg-gradient-to-br from-[#2f1325] via-[#7c2d62] to-[#d8b46b]">
             <div className="absolute -left-8 -top-10 h-24 w-24 rounded-full bg-white/18 blur-xl" />
-            <div className="absolute -right-6 bottom-0 h-20 w-20 rounded-full bg-amber-100/20 blur-lg" />
+            <div className="absolute -right-6 bottom-0 h-20 w-20 rounded-full bg-pink-100/20 blur-lg" />
             <button
               onClick={handleDismiss}
               className="absolute right-4 top-4 rounded-full border border-white/25 bg-white/10 p-1.5 text-white/90 transition hover:bg-white/20"
@@ -241,7 +241,7 @@ const OfferPopup = ({ userId = null, isLoggedIn = false }) => {
                 <h2 className="text-[1.3rem] font-extrabold leading-tight drop-shadow-sm">
                   {offer.title}
                 </h2>
-                <p className="mt-1 text-sm font-medium text-amber-50/95">
+                <p className="mt-1 text-sm font-medium text-pink-50/95">
                   {offer.discountText}
                 </p>
               </div>
@@ -249,23 +249,23 @@ const OfferPopup = ({ userId = null, isLoggedIn = false }) => {
           </div>
 
           <div className="space-y-4 px-6 pb-4 pt-5">
-            <p className="text-[15px] leading-relaxed text-[#5b4636]">
+            <p className="text-[15px] leading-relaxed text-[#604354]">
               {offer.description}
             </p>
 
-            <div className="rounded-2xl border border-[#f0ddc3] bg-white p-4 shadow-[0_16px_32px_-24px_rgba(90,52,22,0.75)]">
-              <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#a07443]">
+            <div className="rounded-[24px] border border-[#f0d7e2] bg-white p-4 shadow-[0_16px_34px_-24px_rgba(124,45,98,0.7)]">
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#9d174d]">
                 Your Coupon Code
               </p>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <span className="truncate text-[1.85rem] font-black tracking-[0.15em] text-[#603512]">
+                <span className="truncate text-[1.85rem] font-black tracking-[0.15em] text-[#2f1325]">
                   {offer.couponCode}
                 </span>
                 <button
                   onClick={handleOfferAccept}
                   className={`relative inline-flex h-11 min-w-[130px] items-center justify-center overflow-hidden rounded-xl px-4 text-sm font-bold transition-all duration-200 ${copied
                     ? "border border-[#b7f0cd] bg-gradient-to-br from-[#56bd7c]/75 via-[#3ea969]/72 to-[#2e9258]/78 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_12px_24px_-16px_rgba(27,90,52,0.85)]"
-                    : "border border-white/65 bg-gradient-to-br from-white/70 via-[#fff4dd]/55 to-white/45 text-[#4d2e15] backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.8),inset_0_-1px_0_rgba(255,255,255,0.3),0_12px_24px_-16px_rgba(120,74,10,0.8)] hover:from-white/78 hover:via-[#fff7e8]/62 hover:to-white/55"
+                    : "border border-[#ead3df] bg-gradient-to-br from-white/78 via-[#fff1f7]/72 to-white/56 text-[#2f1325] backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.8),inset_0_-1px_0_rgba(255,255,255,0.3),0_12px_24px_-16px_rgba(124,45,98,0.7)] hover:from-white hover:via-[#fff8fb] hover:to-white/78"
                     }`}
                 >
                   {copied ? "Copied" : "Copy Code"}
@@ -311,10 +311,10 @@ const OfferPopup = ({ userId = null, isLoggedIn = false }) => {
             )}
           </div>
 
-          <div className="bg-[#f7f0e1] px-6 pb-5 pt-3">
+          <div className="bg-[#fff1f7] px-6 pb-5 pt-3">
             <button
               onClick={handleDismiss}
-              className="relative h-11 w-full overflow-hidden rounded-xl border border-white/70 bg-gradient-to-br from-white/62 via-[#fff8ef]/45 to-white/32 text-sm font-semibold text-[#5f4328] backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.85),inset_0_-1px_0_rgba(255,255,255,0.35),0_10px_20px_-16px_rgba(97,63,28,0.75)] transition-all duration-200 hover:from-white/72 hover:via-[#fffaf3]/55 hover:to-white/4"
+              className="relative h-11 w-full overflow-hidden rounded-2xl border border-white/80 bg-gradient-to-br from-white/80 via-[#fff8fb]/72 to-white/50 text-sm font-semibold text-[#604354] backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.85),inset_0_-1px_0_rgba(255,255,255,0.35),0_10px_20px_-16px_rgba(124,45,98,0.55)] transition-all duration-200 hover:from-white hover:via-[#fff8fb] hover:to-white/70"
             >
               Maybe later
             </button>

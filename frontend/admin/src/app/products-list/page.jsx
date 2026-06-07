@@ -3,7 +3,7 @@ import { useAdmin } from "@/context/AdminContext";
 import { useAdminRealtime } from "@/hooks/useAdminRealtime";
 import { withAdminBasePath } from "@/utils/basePath";
 import { ADMIN_PLACEHOLDER_IMAGE } from "@/utils/mediaDefaults";
-import { deleteData, getData, patchData } from "@/utils/api";
+import { deleteData, getBlobData, getData, patchData, postData } from "@/utils/api";
 import { getImageUrl } from "@/utils/imageUtils";
 import { Button, Chip } from "@mui/material";
 import MenuItem from "@mui/material/MenuItem";
@@ -20,7 +20,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { toast } from "react-hot-toast";
 import { FaRegTrashAlt } from "react-icons/fa";
-import { FiSearch } from "react-icons/fi";
+import { FiCopy, FiDatabase, FiDownload, FiSearch, FiUpload } from "react-icons/fi";
 import { HiOutlineFire } from "react-icons/hi";
 import { IoEyeOutline } from "react-icons/io5";
 import { RiEdit2Line } from "react-icons/ri";
@@ -30,12 +30,13 @@ const columns = [
   { id: "PRODUCT", label: "PRODUCT", minWidth: 300 },
   { id: "CATEGORY", label: "CATEGORY", minWidth: 100 },
   { id: "PRICE", label: "PRICE", minWidth: 100 },
+  { id: "STATUS", label: "STATUS", minWidth: 140 },
   { id: "AVAILABLE", label: "AVAILABLE", minWidth: 180 },
   { id: "LOWSTOCK", label: "LOW STOCK", minWidth: 120 },
   { id: "DEMAND", label: "DEMAND STATUS", minWidth: 120 },
   { id: "ACCESS", label: "ACCESS", minWidth: 120 },
   { id: "RATING", label: "RATING", minWidth: 100 },
-  { id: "ACTIONS", label: "ACTIONS", minWidth: 280 },
+  { id: "ACTIONS", label: "ACTIONS", minWidth: 340 },
 ];
 
 const normalizeVariantLabel = (variant) => {
@@ -154,6 +155,7 @@ const ProductsListContent = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [lowStockOnly, setLowStockOnly] = useState(false);
   const [fetchError, setFetchError] = useState("");
+  const [catalogActionLoading, setCatalogActionLoading] = useState(false);
 
   useAdminRealtime({
     token,
@@ -181,7 +183,7 @@ const ProductsListContent = () => {
     setIsLoading(true);
     setFetchError("");
     try {
-      let url = `/api/products?page=${page + 1}&limit=${rowsPerPage}`;
+      let url = `/api/products/admin/list?page=${page + 1}&limit=${rowsPerPage}&includeDrafts=true`;
       if (category) url += `&category=${category}`;
       if (search) url += `&search=${search}`;
       if (lowStockOnly) url += `&lowStock=true`;
@@ -264,6 +266,114 @@ const ProductsListContent = () => {
     }
   };
 
+  const handleDuplicateProduct = async (productId) => {
+    setCatalogActionLoading(true);
+    try {
+      const response = await postData(
+        `/api/products/${productId}/duplicate`,
+        {},
+        token,
+      );
+      if (response.success) {
+        toast.success("Product duplicated as a draft");
+        fetchProducts();
+      } else {
+        toast.error(response.message || "Failed to duplicate product");
+      }
+    } catch (error) {
+      toast.error("Failed to duplicate product");
+    } finally {
+      setCatalogActionLoading(false);
+    }
+  };
+
+  const handleExportCsv = async () => {
+    setCatalogActionLoading(true);
+    try {
+      const response = await getBlobData("/api/products/admin/export.csv", token);
+      if (!response.success || !response.blob) {
+        toast.error(response.message || "Failed to export products");
+        return;
+      }
+
+      const blob =
+        response.blob instanceof Blob
+          ? response.blob
+          : new Blob([response.blob], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `ananya-products-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      toast.success("Product CSV exported");
+    } catch (error) {
+      toast.error("Failed to export products");
+    } finally {
+      setCatalogActionLoading(false);
+    }
+  };
+
+  const handleImportCsv = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setCatalogActionLoading(true);
+    try {
+      const csv = await file.text();
+      const response = await postData(
+        "/api/products/admin/import-csv",
+        { csv },
+        token,
+      );
+      if (response.success) {
+        const summary = response.data || {};
+        toast.success(
+          `${summary.inserted || 0} imported, ${summary.updated || 0} updated`,
+        );
+        fetchProducts();
+      } else {
+        toast.error(response.message || "Failed to import CSV");
+      }
+    } catch (error) {
+      toast.error("Failed to import CSV");
+    } finally {
+      event.target.value = "";
+      setCatalogActionLoading(false);
+    }
+  };
+
+  const handleSeedDemoCatalog = async () => {
+    if (
+      !confirm(
+        "Generate 100 boutique demo products? Existing products will remain unchanged.",
+      )
+    ) {
+      return;
+    }
+
+    setCatalogActionLoading(true);
+    try {
+      const response = await postData(
+        "/api/products/admin/seed-demo",
+        { count: 100 },
+        token,
+      );
+      if (response.success) {
+        toast.success(response.message || "Demo catalog seeded");
+        fetchProducts();
+      } else {
+        toast.error(response.message || "Failed to seed demo catalog");
+      }
+    } catch (error) {
+      toast.error("Failed to seed demo catalog");
+    } finally {
+      setCatalogActionLoading(false);
+    }
+  };
+
   const handleChangePage = (event, newPage) => {
     setPage(newPage);
   };
@@ -308,14 +418,49 @@ const ProductsListContent = () => {
     <section className="w-full py-3 px-5">
       <div className="flex items-center justify-between">
         <h2 className="text-[18px] text-gray-700 font-[600]">Products</h2>
-        <Link href="/products-list/add-product">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <Button
-            className="!bg-blue-600 !text-white !px-4 !py-2 !rounded-md hover:!bg-blue-700"
+            onClick={handleSeedDemoCatalog}
+            disabled={catalogActionLoading}
+            startIcon={<FiDatabase />}
+            className="!border !border-pink-200 !bg-white !text-pink-700 !px-4 !py-2 !rounded-md hover:!bg-pink-50"
             size="small"
           >
-            Add Product
+            Seed Demo Catalog
           </Button>
-        </Link>
+          <Button
+            onClick={handleExportCsv}
+            disabled={catalogActionLoading}
+            startIcon={<FiDownload />}
+            className="!border !border-gray-300 !bg-white !text-gray-700 !px-4 !py-2 !rounded-md hover:!bg-gray-50"
+            size="small"
+          >
+            Export CSV
+          </Button>
+          <Button
+            component="label"
+            disabled={catalogActionLoading}
+            startIcon={<FiUpload />}
+            className="!border !border-gray-300 !bg-white !text-gray-700 !px-4 !py-2 !rounded-md hover:!bg-gray-50"
+            size="small"
+          >
+            Import CSV
+            <input
+              type="file"
+              accept=".csv,text/csv"
+              hidden
+              onChange={handleImportCsv}
+            />
+          </Button>
+          <Link href="/products-list/add-product">
+            <Button
+              className="!bg-blue-600 !text-white !px-4 !py-2 !rounded-md hover:!bg-blue-700"
+              size="small"
+            >
+              Add Product
+            </Button>
+          </Link>
+        </div>
       </div>
 
       <div className="w-full p-4 rounded-md shadow-md bg-white mt-3">
@@ -335,6 +480,7 @@ const ProductsListContent = () => {
               </MenuItem>
               {categories.map((cat) => (
                 <MenuItem key={cat._id} value={cat._id}>
+                  {"- ".repeat(Number(cat.level || 0))}
                   {cat.name}
                 </MenuItem>
               ))}
@@ -473,6 +619,9 @@ const ProductsListContent = () => {
                               {product.isBestSeller && (
                                 <Chip label="Best Seller" size="small" color="warning" />
                               )}
+                              {product.isFeatured && (
+                                <Chip label="Featured" size="small" color="secondary" />
+                              )}
                             </div>
                           </div>
                         </div>
@@ -490,6 +639,23 @@ const ProductsListContent = () => {
                               ₹{product.oldPrice}
                             </span>
                           )}
+                        </div>
+                      </TableCell>
+
+                      <TableCell>
+                        <div className="flex flex-col gap-1">
+                          <Chip
+                            label={product.status === "draft" ? "Draft" : "Published"}
+                            size="small"
+                            color={product.status === "draft" ? "default" : "success"}
+                            variant={product.status === "draft" ? "outlined" : "filled"}
+                          />
+                          {Array.isArray(product.collections) &&
+                          product.collections.length > 0 ? (
+                            <span className="text-xs text-gray-500">
+                              {product.collections.slice(0, 2).join(", ")}
+                            </span>
+                          ) : null}
                         </div>
                       </TableCell>
 
@@ -605,6 +771,14 @@ const ProductsListContent = () => {
                               Reviews
                             </Button>
                           </Link>
+
+                          <Button
+                            className="!w-[40px] !h-[40px] !min-w-[20px] !rounded-full !text-gray-900"
+                            disabled={catalogActionLoading}
+                            onClick={() => handleDuplicateProduct(product._id)}
+                          >
+                            <FiCopy size={18} />
+                          </Button>
 
                           <Button
                             className="!w-[40px] !h-[40px] !min-w-[20px] !rounded-full !text-red-600"

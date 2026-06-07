@@ -8,6 +8,15 @@
  * For now, they serve as defaults and structure reference.
  */
 
+import {
+  BRAND_DESCRIPTION,
+  BRAND_NAME,
+  BRAND_TAGLINE,
+  brandAssets,
+  getBrandLogo,
+  getBrandSocialImage,
+} from "./brandAssets";
+
 const BUSINESS_PHONE = "+91 6396789311";
 const BUSINESS_EMAIL = "sagaragrawal.588@gmail.com";
 const BUSINESS_INSTAGRAM_URL = "https://www.instagram.com/ananya___boutique";
@@ -18,12 +27,11 @@ const normalizePhoneDigits = (value = "") =>
 
 // ========== SITE INFO ==========
 export const siteConfig = {
-  name: "Ananya Boutique",
-  tagline: "Fashion created with love, trust, and years of dedication",
-  description:
-    "A family-owned boutique built by a mother, trusted by women since 2012 for affordable fashion, accessories, and occasion-ready edits.",
-  logo: "/logo.png",
-  favicon: "/favicon.ico",
+  name: BRAND_NAME,
+  tagline: BRAND_TAGLINE,
+  description: BRAND_DESCRIPTION,
+  logo: getBrandLogo("main").src,
+  favicon: brandAssets.favicon.src,
 
   // Contact Information
   contact: {
@@ -42,11 +50,10 @@ export const siteConfig = {
 
   // SEO Defaults
   seo: {
-    title: "Ananya Boutique - Fashion Created With Love Since 2012",
-    description:
-      "Discover sarees, suits, kurtis, leggings, cosmetics, jewellery, and fashion accessories from a family-owned boutique trusted since 2012.",
+    title: BRAND_NAME,
+    description: BRAND_DESCRIPTION,
     keywords: ["boutique fashion", "sarees", "suits", "kurtis", "leggings", "cosmetics", "artificial jewellery", "fashion accessories", "ananya boutique"],
-    ogImage: "/og-image.jpg",
+    ogImage: getBrandSocialImage("openGraphImage").src,
   },
 };
 

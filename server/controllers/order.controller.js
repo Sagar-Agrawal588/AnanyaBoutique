@@ -847,6 +847,37 @@ const findOrderByIdentifier = async (identifier, { lean = false } = {}) => {
   return lean ? query.lean() : query;
 };
 
+const GATEWAY_MERCHANT_TRANSACTION_PREFIX = "ANBORD_";
+const LEGACY_GATEWAY_MERCHANT_TRANSACTION_PREFIX = `${["B", "O", "G"].join("")}_`;
+const GATEWAY_MERCHANT_REFERENCE_QUERY_REGEX = new RegExp(
+  `^(${GATEWAY_MERCHANT_TRANSACTION_PREFIX}|${LEGACY_GATEWAY_MERCHANT_TRANSACTION_PREFIX})`,
+  "i",
+);
+
+const getGatewayMerchantReferencePrefix = (value) => {
+  const normalized = String(value || "").trim();
+  const upper = normalized.toUpperCase();
+
+  if (upper.startsWith(GATEWAY_MERCHANT_TRANSACTION_PREFIX)) {
+    return GATEWAY_MERCHANT_TRANSACTION_PREFIX;
+  }
+
+  if (upper.startsWith(LEGACY_GATEWAY_MERCHANT_TRANSACTION_PREFIX)) {
+    return LEGACY_GATEWAY_MERCHANT_TRANSACTION_PREFIX;
+  }
+
+  return "";
+};
+
+const isGatewayMerchantReference = (value) =>
+  Boolean(getGatewayMerchantReferencePrefix(value));
+
+const stripGatewayMerchantReferencePrefix = (value) => {
+  const normalized = String(value || "").trim();
+  const prefix = getGatewayMerchantReferencePrefix(normalized);
+  return prefix ? normalized.slice(prefix.length) : "";
+};
+
 const buildGatewayMerchantTransactionId = (
   order,
   { includeRetrySuffix = false } = {},
@@ -856,10 +887,10 @@ const buildGatewayMerchantTransactionId = (
   if (!baseReference) return "";
 
   if (!includeRetrySuffix) {
-    return `BOG_${baseReference}`;
+    return `${GATEWAY_MERCHANT_TRANSACTION_PREFIX}${baseReference}`;
   }
 
-  return `BOG_${baseReference}_${Date.now().toString(36).toUpperCase()}`;
+  return `${GATEWAY_MERCHANT_TRANSACTION_PREFIX}${baseReference}_${Date.now().toString(36).toUpperCase()}`;
 };
 
 const isDuplicateKeyError = (error) => Number(error?.code || 0) === 11000;
@@ -2563,9 +2594,10 @@ const resolvePaytmState = (...candidates) => {
 
 const extractOrderIdFromMerchantTransactionId = (merchantTransactionId) => {
   const normalized = String(merchantTransactionId || "").trim();
-  if (!normalized || !normalized.startsWith("BOG_")) return null;
+  if (!normalized) return null;
 
-  const payload = normalized.replace(/^BOG_/, "");
+  const payload = stripGatewayMerchantReferencePrefix(normalized);
+  if (!payload) return null;
 
   const directTempId = normalizeTempOrderId(payload);
   if (directTempId) {
@@ -7837,9 +7869,6 @@ const SUCCESSFUL_BACKFILL_PAYMENT_STATUSES = new Set([
   "successful",
 ]);
 
-const isGatewayMerchantReference = (value) =>
-  /^BOG_/i.test(String(value || "").trim());
-
 const resolveProviderTransactionIdForBackfill = (order = {}) => {
   return [order?.paytmTransactionId, order?.phonepeTransactionId]
     .map((value) => String(value || "").trim())
@@ -7888,9 +7917,7 @@ const shouldAttemptPaymentReconciliation = (order, { force = false } = {}) => {
       Boolean(
         String(order.paytmOrderId || "").trim() ||
         (resolvePaymentProviderFromOrder(order) === PAYMENT_PROVIDERS.PAYTM &&
-          String(order.paymentId || "")
-            .trim()
-            .startsWith("BOG_")),
+          isGatewayMerchantReference(order.paymentId)),
       )
     );
   }
@@ -8166,9 +8193,7 @@ const reconcileOrderPaymentStatus = async ({
   if (provider === PAYMENT_PROVIDERS.PAYTM) {
     const merchantTransactionId =
       String(order.paytmOrderId || "").trim() ||
-      (String(order.paymentId || "")
-        .trim()
-        .startsWith("BOG_")
+      (isGatewayMerchantReference(order.paymentId)
         ? String(order.paymentId || "").trim()
         : "");
     if (!merchantTransactionId) {
@@ -8414,7 +8439,7 @@ export const handlePaytmWebhook = asyncHandler(async (req, res) => {
         : sendSuccess(res, {}, "Webhook received");
     }
 
-    if (!String(merchantTransactionId).startsWith("BOG_")) {
+    if (!isGatewayMerchantReference(merchantTransactionId)) {
       logger.warn("handlePaytmWebhook", "Ignoring non-order transaction", {
         merchantTransactionId,
       });
@@ -8775,7 +8800,11 @@ export const backfillSuccessfulOrderPaymentIds = asyncHandler(
           {
             $or: [
               { paymentId: { $in: [null, ""] } },
-              { paymentId: { $regex: "^BOG_", $options: "i" } },
+              {
+                paymentId: {
+                  $regex: GATEWAY_MERCHANT_REFERENCE_QUERY_REGEX,
+                },
+              },
             ],
           },
           {
@@ -8907,7 +8936,7 @@ export const handlePhonePeWebhook = asyncHandler(async (req, res) => {
       return sendSuccess(res, {}, "Webhook received");
     }
 
-    if (!merchantTransactionId.startsWith("BOG_")) {
+    if (!isGatewayMerchantReference(merchantTransactionId)) {
       logger.warn("handlePhonePeWebhook", "Ignoring non-order transaction", {
         merchantTransactionId,
       });

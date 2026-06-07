@@ -1,5 +1,6 @@
 "use client";
 
+import { brandAssets } from "@/config/brandAssets";
 import { useAdmin } from "@/context/AdminContext";
 import {
   deleteData,
@@ -114,8 +115,14 @@ const getNewsletterAssetBaseUrl = () => {
   return "https://ananyaboutique.com";
 };
 
-const DEFAULT_LOGO_URL = `${getNewsletterAssetBaseUrl()}/logo-og-v2.png`;
-const DEFAULT_HERO_URL = `${getNewsletterAssetBaseUrl()}/logo-header.png`;
+const NEWSLETTER_LOGO_ASSET = brandAssets.email.logo;
+const NEWSLETTER_HERO_ASSET = brandAssets.email.heroPlaceholder;
+const buildNewsletterAssetUrl = (path, baseUrl = getNewsletterAssetBaseUrl()) =>
+  `${String(baseUrl || "").replace(/\/+$/, "")}${
+    String(path || "").startsWith("/") ? "" : "/"
+  }${path}`;
+const DEFAULT_LOGO_URL = buildNewsletterAssetUrl(NEWSLETTER_LOGO_ASSET.src);
+const DEFAULT_HERO_URL = buildNewsletterAssetUrl(NEWSLETTER_HERO_ASSET.src);
 
 const buildSimpleNewsletterHtml = ({
   title,
@@ -146,11 +153,11 @@ const buildSimpleNewsletterHtml = ({
   const assetBaseUrl = getNewsletterAssetBaseUrl() || siteUrl;
   const resolvedLogoUrl = resolveImageUrl(
     logoUrl,
-    `${assetBaseUrl}/logo-og-v2.png`,
+    buildNewsletterAssetUrl(NEWSLETTER_LOGO_ASSET.src, assetBaseUrl),
   );
   const resolvedHeroImageUrl = resolveImageUrl(
     heroImageUrl,
-    `${assetBaseUrl}/logo-header.png`,
+    buildNewsletterAssetUrl(NEWSLETTER_HERO_ASSET.src, assetBaseUrl),
   );
 
   return `
@@ -165,7 +172,7 @@ const buildSimpleNewsletterHtml = ({
         </div>`
             : ""
         }
-        <p style="margin:0;color:#d1d5db;font-size:13px;letter-spacing:0.4px;">Healthy living, trusted choices</p>
+        <p style="margin:0;color:#d1d5db;font-size:13px;letter-spacing:0.4px;">${brandAssets.tagline}</p>
       </td>
     </tr>
 
@@ -197,9 +204,9 @@ const buildSimpleNewsletterHtml = ({
           <tr>
             <td style="padding:16px;">
               <h3 style="margin:0 0 10px;font-size:18px;color:#111827;">Why people love Ananya Boutique</h3>
-              <p style="margin:0 0 8px;color:#374151;">• Premium quality products curated for health-focused families.</p>
-              <p style="margin:0 0 8px;color:#374151;">• Faster delivery and transparent order support.</p>
-              <p style="margin:0;color:#374151;">• Exclusive subscriber-only offers and updates.</p>
+              <p style="margin:0 0 8px;color:#374151;">• Boutique fashion, beauty, and accessories curated with care.</p>
+              <p style="margin:0 0 8px;color:#374151;">• Thoughtful support from a family-owned business.</p>
+              <p style="margin:0;color:#374151;">• Subscriber-only previews, styling notes, and updates.</p>
             </td>
           </tr>
         </table>
@@ -224,8 +231,8 @@ const buildSimpleNewsletterHtml = ({
             </td>
             <td style="width:33.33%;padding:8px;vertical-align:top;">
               <div style="background:#ecfeff;border:1px solid #a5f3fc;border-radius:10px;padding:12px;min-height:88px;">
-                <p style="margin:0 0 6px;font-size:12px;color:#0e7490;text-transform:uppercase;letter-spacing:.4px;">Wellness Tips</p>
-                <p style="margin:0;color:#155e75;font-size:14px;">Practical ideas to stay healthy every day.</p>
+                <p style="margin:0 0 6px;font-size:12px;color:#0e7490;text-transform:uppercase;letter-spacing:.4px;">Styling Notes</p>
+                <p style="margin:0;color:#155e75;font-size:14px;">Practical ideas to style pieces with confidence.</p>
               </div>
             </td>
           </tr>
@@ -271,9 +278,9 @@ const SIMPLE_NEWSLETTER_PRESETS = {
       ctaLabel: "Claim Offer",
       ctaUrl: "https://ananyaboutique.com/products",
       footer: "Offer valid for a limited time. Ananya Boutique Team",
-      logoUrl: "https://ananyaboutique.com/logo-og-v2.png",
+      logoUrl: DEFAULT_LOGO_URL,
       showLogoImage: true,
-      heroImageUrl: "https://ananyaboutique.com/logo-header.png",
+      heroImageUrl: DEFAULT_HERO_URL,
       showHeroImage: true,
     },
   },
@@ -284,13 +291,13 @@ const SIMPLE_NEWSLETTER_PRESETS = {
       title: "New Arrivals Are Here",
       greeting: "Hello",
       intro: "We just launched something new for you.",
-      body: "Discover our latest products made for healthy living.\nBe the first to try them and share your feedback.",
+      body: "Discover the latest boutique pieces selected with care.\nBe the first to explore them and share your feedback.",
       ctaLabel: "View New Products",
       ctaUrl: "https://ananyaboutique.com/products",
       footer: "Thanks for supporting Ananya Boutique.",
-      logoUrl: "https://ananyaboutique.com/logo-og-v2.png",
+      logoUrl: DEFAULT_LOGO_URL,
       showLogoImage: true,
-      heroImageUrl: "https://ananyaboutique.com/logo-header.png",
+      heroImageUrl: DEFAULT_HERO_URL,
       showHeroImage: true,
     },
   },
@@ -301,13 +308,13 @@ const SIMPLE_NEWSLETTER_PRESETS = {
       title: "Season's Greetings from Ananya Boutique",
       greeting: "Dear",
       intro: "Wishing you and your family joy, health, and happiness.",
-      body: "Celebrate this festive season with healthy choices.\nEnjoy special festive picks curated for you.",
+      body: "Celebrate this festive season with elegant boutique choices.\nEnjoy special festive picks curated for you.",
       ctaLabel: "Shop Festive Picks",
       ctaUrl: "https://ananyaboutique.com/products",
       footer: "Warm wishes, Ananya Boutique Team",
-      logoUrl: "https://ananyaboutique.com/logo-og-v2.png",
+      logoUrl: DEFAULT_LOGO_URL,
       showLogoImage: true,
-      heroImageUrl: "https://ananyaboutique.com/logo-header.png",
+      heroImageUrl: DEFAULT_HERO_URL,
       showHeroImage: true,
     },
   },
@@ -509,11 +516,11 @@ const NewsletterPage = () => {
   const previewAssetBaseUrl = getNewsletterAssetBaseUrl() || previewSiteUrl;
   const previewLogoUrl = resolveImageUrl(
     simpleTemplate.logoUrl,
-    `${previewAssetBaseUrl}/logo-og-v2.png`,
+    buildNewsletterAssetUrl(NEWSLETTER_LOGO_ASSET.src, previewAssetBaseUrl),
   );
   const previewHeroUrl = resolveImageUrl(
     simpleTemplate.heroImageUrl,
-    `${previewAssetBaseUrl}/logo-header.png`,
+    buildNewsletterAssetUrl(NEWSLETTER_HERO_ASSET.src, previewAssetBaseUrl),
   );
   const stockNotificationEmailCount =
     Array.isArray(emailLogSummary?.byType)
@@ -1171,7 +1178,10 @@ const NewsletterPage = () => {
                             alt="Logo preview"
                             className="max-h-12 max-w-full object-contain"
                             onError={(event) => {
-                              event.currentTarget.src = `${previewAssetBaseUrl}/logo-og-v2.png`;
+                              event.currentTarget.src = buildNewsletterAssetUrl(
+                                NEWSLETTER_LOGO_ASSET.src,
+                                previewAssetBaseUrl,
+                              );
                             }}
                           />
                         ) : (
@@ -1190,7 +1200,10 @@ const NewsletterPage = () => {
                             alt="Hero preview"
                             className="w-full h-full object-contain"
                             onError={(event) => {
-                              event.currentTarget.src = `${previewAssetBaseUrl}/logo-header.png`;
+                              event.currentTarget.src = buildNewsletterAssetUrl(
+                                NEWSLETTER_HERO_ASSET.src,
+                                previewAssetBaseUrl,
+                              );
                             }}
                           />
                         ) : (

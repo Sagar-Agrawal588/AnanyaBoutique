@@ -1,3 +1,9 @@
+import {
+  BRAND_DESCRIPTION,
+  BRAND_NAME,
+  getBrandSocialImage,
+} from "@/config/brandAssets";
+
 const DEFAULT_SITE_URL = "https://ananyaboutique.com";
 const DEFAULT_API_ORIGIN = "https://api.ananyaboutique.com";
 
@@ -66,6 +72,8 @@ const toCanonicalPath = (value = "") => {
 
 const getSiteUrl = () =>
   sanitizeBaseUrl(process.env.NEXT_PUBLIC_SITE_URL) || DEFAULT_SITE_URL;
+const getDefaultSocialImageUrl = () =>
+  `${getSiteUrl()}${getBrandSocialImage("openGraphImage").src}`;
 
 const getApiCandidates = () => {
   const configured = [
@@ -123,7 +131,7 @@ const resolveComboImage = (combo, apiBaseUrl) => {
     return `${siteUrl}${normalizedPath}`;
   }
 
-  return `${getSiteUrl()}/logo-og-v2.png`;
+  return getDefaultSocialImageUrl();
 };
 
 const fetchComboForMetadata = async (id) => {
@@ -162,24 +170,24 @@ export async function generateMetadata({ params }) {
 
   if (!routeId) {
     return {
-      title: "Combo Deal | Ananya Boutique",
-      description: "Explore combo offers from Ananya Boutique.",
+      title: `Combo Deal | ${BRAND_NAME}`,
+      description: BRAND_DESCRIPTION,
     };
   }
 
   const { combo, apiBase } = await fetchComboForMetadata(routeId);
   if (!combo) {
     return {
-      title: "Combo Deal | Ananya Boutique",
-      description: "Explore combo offers from Ananya Boutique.",
+      title: `Combo Deal | ${BRAND_NAME}`,
+      description: BRAND_DESCRIPTION,
     };
   }
 
   const slugOrId = String(combo?.slug || combo?._id || routeId);
-  const title = `${String(combo?.name || "Combo Deal").trim()} | Ananya Boutique`;
+  const title = `${String(combo?.name || "Combo Deal").trim()} | ${BRAND_NAME}`;
   const description =
     stripHtml(combo?.shortDescription || combo?.description) ||
-    "Handpicked combo savings from Ananya Boutique.";
+    BRAND_DESCRIPTION;
   const url = `${siteUrl}/combo/${encodeURIComponent(slugOrId)}`;
   const imageUrl = resolveComboImage(combo, apiBase);
 
@@ -195,13 +203,13 @@ export async function generateMetadata({ params }) {
       url,
       type: "website",
       locale: "en_IN",
-      siteName: "Ananya Boutique",
+      siteName: BRAND_NAME,
       images: [
         {
           url: imageUrl,
           width: 1200,
           height: 630,
-          alt: String(combo?.name || "Ananya Boutique Combo"),
+          alt: String(combo?.name || `${BRAND_NAME} Combo`),
         },
       ],
     },

@@ -388,7 +388,7 @@ const ClientShell = ({ children, isAffiliateRoute, enhancementsReady }) => {
           type="button"
           onClick={handleBackToTop}
           aria-label="Back to top"
-          className="group fixed bottom-5 right-5 z-[1200] flex h-12 w-12 items-center justify-center rounded-full border border-[#eaded5] bg-white/95 text-[#2f1b12] shadow-[0_18px_40px_-24px_rgba(47,27,18,0.55)] backdrop-blur transition hover:-translate-y-0.5"
+          className="group fixed bottom-24 right-4 z-[1190] flex h-11 w-11 items-center justify-center rounded-full border border-[#eaded5] bg-white/95 text-[#2f1b12] shadow-[0_18px_40px_-24px_rgba(47,27,18,0.55)] backdrop-blur transition hover:-translate-y-0.5 sm:bottom-5 sm:right-5 sm:h-12 sm:w-12"
         >
           <span className="pointer-events-none absolute right-full mr-3 rounded-full bg-[#2f1b12] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-white opacity-0 translate-x-2 transition group-hover:translate-x-0 group-hover:opacity-100">
             Back to top

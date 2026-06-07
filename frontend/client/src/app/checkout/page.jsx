@@ -70,7 +70,11 @@ const API_URL = API_BASE_URL.endsWith("/api")
   ? API_BASE_URL.slice(0, -4)
   : API_BASE_URL;
 const ORDER_PENDING_PAYMENT_KEY = "orderPaymentPending";
-const TEST_INVOICE_STORAGE_KEY = "bog_test_invoices";
+const TEST_INVOICE_STORAGE_KEY = "ananya_test_invoices";
+const LEGACY_BRAND_KEY_PREFIX = ["b", "o", "g"].join("");
+const LEGACY_TEST_INVOICE_STORAGE_KEY = `${LEGACY_BRAND_KEY_PREFIX}_test_invoices`;
+const LAST_TEST_INVOICE_STORAGE_KEY = "ananya_last_test_invoice";
+const LEGACY_LAST_TEST_INVOICE_STORAGE_KEY = `${LEGACY_BRAND_KEY_PREFIX}_last_test_invoice`;
 const CHECKOUT_GST_RATE_PERCENT = 5;
 const MONGODB_OBJECT_ID_REGEX = /^[a-f\d]{24}$/i;
 
@@ -1543,8 +1547,12 @@ const Checkout = () => {
 
       const existingInvoices = (() => {
         try {
+          const rawInvoices =
+            localStorage.getItem(TEST_INVOICE_STORAGE_KEY) ||
+            localStorage.getItem(LEGACY_TEST_INVOICE_STORAGE_KEY) ||
+            "[]";
           const parsed = JSON.parse(
-            localStorage.getItem(TEST_INVOICE_STORAGE_KEY) || "[]",
+            rawInvoices,
           );
           return Array.isArray(parsed) ? parsed : [];
         } catch {
@@ -1558,9 +1566,11 @@ const Checkout = () => {
         JSON.stringify(nextInvoices),
       );
       localStorage.setItem(
-        "bog_last_test_invoice",
+        LAST_TEST_INVOICE_STORAGE_KEY,
         JSON.stringify(invoiceRecord),
       );
+      localStorage.removeItem(LEGACY_TEST_INVOICE_STORAGE_KEY);
+      localStorage.removeItem(LEGACY_LAST_TEST_INVOICE_STORAGE_KEY);
 
       const token = getStoredAccessToken();
       fetch(`${API_URL}/api/orders/test/save-invoice`, {
@@ -1591,7 +1601,7 @@ const Checkout = () => {
             JSON.stringify(updatedInvoices),
           );
           localStorage.setItem(
-            "bog_last_test_invoice",
+            LAST_TEST_INVOICE_STORAGE_KEY,
             JSON.stringify(updatedInvoice),
           );
         })

@@ -22,7 +22,7 @@ const html = `
     <tr>
       <td style="padding:18px 24px;background:#0f172a;text-align:center;">
         <img src="${logoUrl}" alt="Ananya Boutique" style="max-width:180px;height:auto;display:block;margin:0 auto 10px;" />
-        <p style="margin:0;color:#d1d5db;font-size:13px;letter-spacing:0.4px;">Healthy living, trusted choices</p>
+        <p style="margin:0;color:#d1d5db;font-size:13px;letter-spacing:0.4px;">Fashion, beauty, and accessories curated with love since 2012.</p>
       </td>
     </tr>
     <tr>
@@ -47,9 +47,9 @@ const html = `
           <tr>
             <td style="padding:16px;">
               <h3 style="margin:0 0 10px;font-size:18px;color:#111827;">Why people love Ananya Boutique</h3>
-              <p style="margin:0 0 8px;color:#374151;">• Premium quality products curated for health-focused families.</p>
-              <p style="margin:0 0 8px;color:#374151;">• Faster delivery and transparent order support.</p>
-              <p style="margin:0;color:#374151;">• Exclusive subscriber-only offers and updates.</p>
+              <p style="margin:0 0 8px;color:#374151;">• Boutique fashion, beauty, and accessories curated with care.</p>
+              <p style="margin:0 0 8px;color:#374151;">• Thoughtful support from a family-owned business.</p>
+              <p style="margin:0;color:#374151;">• Subscriber-only previews, styling notes, and updates.</p>
             </td>
           </tr>
         </table>
@@ -61,7 +61,7 @@ const html = `
           <tr>
             <td style="width:33.33%;padding:8px;vertical-align:top;"><div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:12px;min-height:88px;"><p style="margin:0 0 6px;font-size:12px;color:#9a3412;text-transform:uppercase;letter-spacing:.4px;">Fresh Picks</p><p style="margin:0;color:#7c2d12;font-size:14px;">Curated products updated for this week.</p></div></td>
             <td style="width:33.33%;padding:8px;vertical-align:top;"><div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:12px;min-height:88px;"><p style="margin:0 0 6px;font-size:12px;color:#1d4ed8;text-transform:uppercase;letter-spacing:.4px;">Member Perks</p><p style="margin:0;color:#1e3a8a;font-size:14px;">Unlock newsletter-only discounts & rewards.</p></div></td>
-            <td style="width:33.33%;padding:8px;vertical-align:top;"><div style="background:#ecfeff;border:1px solid #a5f3fc;border-radius:10px;padding:12px;min-height:88px;"><p style="margin:0 0 6px;font-size:12px;color:#0e7490;text-transform:uppercase;letter-spacing:.4px;">Wellness Tips</p><p style="margin:0;color:#155e75;font-size:14px;">Practical ideas to stay healthy every day.</p></div></td>
+            <td style="width:33.33%;padding:8px;vertical-align:top;"><div style="background:#ecfeff;border:1px solid #a5f3fc;border-radius:10px;padding:12px;min-height:88px;"><p style="margin:0 0 6px;font-size:12px;color:#0e7490;text-transform:uppercase;letter-spacing:.4px;">Styling Notes</p><p style="margin:0;color:#155e75;font-size:14px;">Practical ideas to style pieces with confidence.</p></div></td>
           </tr>
         </table>
       </td>

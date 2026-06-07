@@ -1242,11 +1242,11 @@ const ProductDetailPage = () => {
   const showRecommendedCombosSection =
     !isDemoPreview && pageConfig?.recommendedCombosSection?.show !== false;
   const galleryGridClassName = showHeroStoryCard
-    ? "relative mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-stretch"
+    ? "relative mt-5 grid gap-5 sm:mt-6 sm:gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-stretch"
     : "relative mt-6";
   const imageStageClassName = showHeroStoryCard
-    ? "product-image-stage relative flex min-h-[480px] overflow-hidden rounded-[30px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.92)_0%,rgba(244,236,229,0.88)_100%)] p-0 lg:h-full lg:min-h-[540px]"
-    : "product-image-stage relative mx-auto flex min-h-[420px] max-w-[840px] overflow-hidden rounded-[30px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.92)_0%,rgba(244,236,229,0.88)_100%)] p-0";
+    ? "product-image-stage relative flex min-h-[380px] overflow-hidden rounded-[26px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.92)_0%,rgba(244,236,229,0.88)_100%)] p-0 sm:min-h-[480px] sm:rounded-[30px] lg:h-full lg:min-h-[540px]"
+    : "product-image-stage relative mx-auto flex min-h-[360px] max-w-[840px] overflow-hidden rounded-[26px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.92)_0%,rgba(244,236,229,0.88)_100%)] p-0 sm:min-h-[420px] sm:rounded-[30px]";
 
   const fetchReviewSettings = useCallback(async () => {
     try {
@@ -2494,8 +2494,8 @@ const ProductDetailPage = () => {
           "var(--flavor-page-bg, radial-gradient(circle_at_top, #f7efe5 0%, #fffaf5 42%, #f4eee7 100%))",
       }}
     >
-      <div className="mx-auto max-w-[1320px] px-4 py-6 sm:px-6 lg:px-8">
-        <div className="flex flex-wrap items-center gap-2 text-sm text-[#7f6657]">
+      <div className="mx-auto max-w-[1320px] px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
+        <div className="flex flex-wrap items-center gap-2 px-1 text-xs text-[#7f6657] sm:px-0 sm:text-sm">
           <Link href="/" className="hover:text-[#23150f]">
             Home
           </Link>
@@ -2509,9 +2509,9 @@ const ProductDetailPage = () => {
           </span>
         </div>
 
-        <div className="mt-6 grid gap-6 xl:items-start xl:grid-cols-[minmax(0,1.05fr)_minmax(360px,0.95fr)]">
+        <div className="mt-5 grid gap-5 sm:mt-6 sm:gap-6 xl:items-start xl:grid-cols-[minmax(0,1.05fr)_minmax(360px,0.95fr)]">
           <div className="space-y-4">
-            <div className="product-hero-shell product-reveal product-reveal-delay-1 relative overflow-hidden rounded-[36px] border border-[#e1cdbf] bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.96)_0%,_rgba(250,240,231,0.95)_38%,_rgba(238,225,210,0.92)_100%)] p-4 shadow-[0_34px_90px_-55px_rgba(44,29,20,0.45)] sm:p-6">
+            <div className="product-hero-shell product-reveal product-reveal-delay-1 relative overflow-hidden rounded-[28px] border border-[#e1cdbf] bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.96)_0%,_rgba(250,240,231,0.95)_38%,_rgba(238,225,210,0.92)_100%)] p-3 shadow-[0_34px_90px_-55px_rgba(44,29,20,0.45)] sm:rounded-[36px] sm:p-6">
               <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.55)_0%,rgba(255,255,255,0)_55%)]" />
               <div className="relative flex flex-wrap items-start justify-between gap-3">
                 <div className="inline-flex items-center gap-2 rounded-full border border-[#eadfd5] bg-white/90 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#6a4b39] backdrop-blur">
@@ -2619,7 +2619,7 @@ const ProductDetailPage = () => {
                         responsiveProfile="gallery"
                         sizes="(max-width: 768px) 92vw, (max-width: 1280px) 54vw, 720px"
                         eager
-                        fit="cover"
+                        fit="contain"
                         aspect=""
                         rounded="rounded-[28px]"
                         className="h-full w-full bg-transparent"
@@ -2656,7 +2656,7 @@ const ProductDetailPage = () => {
             </div>
 
             {galleryItems.length > 1 ? (
-              <div className="grid grid-cols-4 gap-3">
+              <div className="-mx-3 flex gap-3 overflow-x-auto px-3 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mx-0 sm:grid sm:grid-cols-4 sm:px-0">
                 {visibleGalleryItems.map((item, index) => {
                   const showMoreOverlay =
                     index === 3 && remainingGalleryCount > 0;
@@ -2670,7 +2670,7 @@ const ProductDetailPage = () => {
                           setIsImageZoomOpen(true);
                         }
                       }}
-                      className={`overflow-hidden rounded-[22px] border bg-white p-2 shadow-sm transition ${
+                      className={`min-w-[82px] overflow-hidden rounded-[18px] border bg-white p-1.5 shadow-sm transition sm:min-w-0 sm:rounded-[22px] sm:p-2 ${
                         activeImageIndex === index
                           ? "border-[#123b4a] shadow-[0_18px_40px_-28px_rgba(18,59,74,0.7)]"
                           : "border-[#eadcd1] hover:-translate-y-0.5 hover:border-[#b9d0d8]"
@@ -2721,11 +2721,11 @@ const ProductDetailPage = () => {
           </div>
 
           <div className="xl:sticky xl:top-[calc(var(--header-height)+20px)]">
-            <div className="product-reveal product-reveal-delay-2 rounded-[36px] border border-[#e1cdbf] bg-white/88 p-6 shadow-[0_34px_90px_-55px_rgba(44,29,20,0.38)] backdrop-blur sm:p-8">
+            <div className="product-reveal product-reveal-delay-2 rounded-[28px] border border-[#e1cdbf] bg-white/90 p-5 shadow-[0_34px_90px_-55px_rgba(44,29,20,0.38)] backdrop-blur sm:rounded-[36px] sm:p-8">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7b6355]">
                 {product?.brand || "Ananya Boutique"}
               </p>
-              <h1 className="mt-3 text-3xl font-semibold leading-tight text-[#24150f] sm:text-[2.55rem]">
+              <h1 className="mt-3 text-2xl font-semibold leading-tight text-[#24150f] sm:text-[2.55rem]">
                 {product?.name || product?.title}
               </h1>
 
@@ -2773,7 +2773,7 @@ const ProductDetailPage = () => {
               </div>
 
               <div className="mt-7 flex flex-wrap items-end gap-3">
-                <p className="text-4xl font-semibold text-[#24150f]">
+                <p className="text-3xl font-semibold text-[#24150f] sm:text-4xl">
                   {formatPrice(toNumber(activePrice, 0))}
                 </p>
                 {toNumber(activeOriginalPrice, 0) > toNumber(activePrice, 0) ? (
@@ -2801,7 +2801,7 @@ const ProductDetailPage = () => {
                   <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#7b6355]">
                     Weight / Pack
                   </p>
-                  <div className="mt-3 flex flex-wrap gap-3">
+                  <div className="mt-3 flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:flex-wrap sm:gap-3">
                     {product.variants.map((variant) => {
                       const variantId = variant?._id || variant?.id;
                       const isSelected =
@@ -2817,7 +2817,7 @@ const ProductDetailPage = () => {
                             setActiveImageIndex(0);
                             setQuantity(1);
                           }}
-                          className={`rounded-2xl border px-5 py-3 text-left text-sm font-semibold transition ${
+                          className={`min-h-[48px] shrink-0 rounded-2xl border px-4 py-3 text-left text-sm font-semibold transition sm:px-5 ${
                             isSelected
                               ? ""
                               : "border-[#d5c3b7] bg-white text-[#38231a] hover:-translate-y-0.5"
@@ -2849,7 +2849,7 @@ const ProductDetailPage = () => {
                   <Ruler className="h-4 w-4" />
                   Size Guide
                 </button>
-                <span className="text-sm text-[#6d584a]">
+                <span className="max-w-[18rem] text-sm leading-6 text-[#6d584a]">
                   Boutique fit reference for apparel and occasion pieces.
                 </span>
               </div>
@@ -3021,7 +3021,7 @@ const ProductDetailPage = () => {
                     type="button"
                     onClick={handleAddToCart}
                     disabled={actionLoading}
-                    className="flex min-h-[58px] items-center justify-center gap-3 rounded-2xl border bg-white px-5 py-4 text-base font-semibold transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="flex min-h-[56px] items-center justify-center gap-2 rounded-2xl border bg-white px-3 py-4 text-sm font-semibold transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-[58px] sm:gap-3 sm:px-5 sm:text-base"
                     style={
                       currentVariantInCart
                         ? { borderColor: "#dc2626", color: "#dc2626" }
@@ -3040,7 +3040,7 @@ const ProductDetailPage = () => {
                     type="button"
                     onClick={handleBuyNow}
                     disabled={isBuyNowDisabled}
-                    className="product-cta-primary min-h-[58px] rounded-2xl px-5 py-4 text-base font-semibold transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="product-cta-primary min-h-[56px] rounded-2xl px-4 py-4 text-sm font-semibold transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-[58px] sm:px-5 sm:text-base"
                     style={{
                       backgroundColor: "var(--primary)",
                       color: "var(--flavor-text, #ffffff)",
@@ -3059,7 +3059,7 @@ const ProductDetailPage = () => {
               />
 
               {showHeroSupportCards ? (
-                <div className="mt-8 grid gap-3 sm:grid-cols-2">
+                <div className="mt-8 grid grid-cols-2 gap-3">
                   {supportCards.map((card, index) => {
                     const TrustIcon =
                       card.Icon || DEFAULT_SUPPORT_CARDS[index]?.Icon;
@@ -3935,13 +3935,13 @@ const ProductDetailPage = () => {
         </div>
       ) : null}
 
-      <div className="fixed inset-x-0 bottom-0 z-[1200] border-t border-[#e1cdbf] bg-white/95 px-3 py-3 shadow-[0_-20px_55px_-32px_rgba(42,28,20,0.45)] backdrop-blur xl:hidden">
-        <div className="mx-auto flex max-w-2xl items-center gap-2">
+      <div className="fixed inset-x-0 bottom-0 z-[1200] border-t border-[#e1cdbf] bg-white/96 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-20px_55px_-32px_rgba(42,28,20,0.45)] backdrop-blur-xl xl:hidden">
+        <div className="mx-auto grid max-w-2xl grid-cols-[minmax(0,1fr)_44px_auto_auto] items-center gap-2">
           <div className="min-w-0 flex-1">
             <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#7b6355]">
               Price
             </p>
-            <p className="truncate text-base font-semibold text-[#24150f]">
+            <p className="truncate text-[15px] font-semibold text-[#24150f] sm:text-base">
               {formatPrice(toNumber(activePrice, 0))}
             </p>
           </div>
@@ -3955,7 +3955,7 @@ const ProductDetailPage = () => {
             type="button"
             onClick={handleAddToCart}
             disabled={actionLoading || (isOutOfStock && !currentVariantInCart)}
-            className="flex min-h-[46px] shrink-0 items-center justify-center gap-1.5 rounded-2xl border border-[#d8c6bb] bg-white px-3 text-xs font-semibold text-[#4b2b1e] transition disabled:cursor-not-allowed disabled:opacity-50 sm:px-4 sm:text-sm"
+            className="flex min-h-[46px] shrink-0 items-center justify-center gap-1.5 rounded-2xl border border-[#d8c6bb] bg-white px-3 text-xs font-semibold text-[#4b2b1e] transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 sm:px-4 sm:text-sm"
           >
             <IoMdCart className="text-lg" />
             <span>
@@ -3970,7 +3970,7 @@ const ProductDetailPage = () => {
             type="button"
             onClick={handleBuyNow}
             disabled={isBuyNowDisabled}
-            className="product-cta-primary min-h-[46px] shrink-0 rounded-2xl px-4 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 sm:px-5 sm:text-sm"
+            className="product-cta-primary min-h-[46px] shrink-0 rounded-2xl px-4 text-xs font-semibold transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 sm:px-5 sm:text-sm"
             style={{
               backgroundColor: "var(--primary)",
               color: "var(--flavor-text, #ffffff)",
@@ -4183,6 +4183,27 @@ const ProductDetailPage = () => {
 
         .product-review-card:hover {
           transform: translateY(-4px);
+        }
+
+        @media (max-width: 640px) {
+          .product-page-shell {
+            overflow-x: clip;
+          }
+
+          .product-page-shell::before {
+            width: 120vw;
+            height: 280px;
+            opacity: 0.72;
+          }
+
+          .product-hero-shell .slider-nav {
+            width: 38px;
+            height: 38px;
+          }
+
+          .product-image-stage .product-image {
+            padding: 10px;
+          }
         }
 
         @media (prefers-reduced-motion: reduce) {

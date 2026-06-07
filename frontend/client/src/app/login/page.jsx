@@ -1,4 +1,5 @@
 "use client";
+import BrandLogo from "@/components/brand/BrandLogo";
 import { MyContext } from "@/context/ThemeProvider";
 import { firebaseApp } from "@/firebase";
 import { postData } from "@/utils/api";
@@ -356,6 +357,14 @@ const LoginForm = () => {
   return (
     <section className="min-h-screen w-full bg-gray-100 flex items-center justify-center relative overflow-hidden py-10">
       <div className="bg-white p-10 rounded-2xl shadow-xl w-full max-w-md border border-gray-100 mx-4">
+        <div className="mb-6 flex justify-center">
+          <BrandLogo
+            variant="login"
+            showText
+            imageClassName="h-12 w-auto"
+            textClassName="text-gray-800"
+          />
+        </div>
         <h1 className="text-center text-2xl font-bold text-gray-800 mb-6">
           Login to your account
         </h1>

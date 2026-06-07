@@ -2,10 +2,10 @@
 
 import { API_BASE_URL } from "@/utils/api";
 
-const CONSENT_STORAGE_KEY = "hog_analytics_consent";
-const VISITOR_STORAGE_KEY = "hog_analytics_visitor_id";
-const SESSION_STORAGE_KEY = "hog_analytics_session_id";
-const SESSION_LAST_ACTIVITY_KEY = "hog_analytics_session_last_activity";
+const CONSENT_STORAGE_KEY = "ananya_analytics_consent";
+const VISITOR_STORAGE_KEY = "ananya_analytics_visitor_id";
+const SESSION_STORAGE_KEY = "ananya_analytics_session_id";
+const SESSION_LAST_ACTIVITY_KEY = "ananya_analytics_session_last_activity";
 const DEFAULT_FLUSH_MIN_MS = 10000;
 const DEFAULT_FLUSH_MAX_MS = 20000;
 const HEARTBEAT_INTERVAL_MS = 30000;

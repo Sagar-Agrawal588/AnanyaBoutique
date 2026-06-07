@@ -1,9 +1,13 @@
 "use client";
 
 import { motion } from "framer-motion";
-import Image from "next/image";
 import { Sparkles } from "lucide-react";
-import { brandDesignTokens, getArtwork } from "@/config/visualIdentity";
+import ResponsiveMediaImage from "@/components/ResponsiveMediaImage";
+import {
+  brandDesignTokens,
+  getArtwork,
+  getArtworkSource,
+} from "@/config/visualIdentity";
 
 const paletteClasses = {
   blush: "from-[#fff1f7] via-white to-[#ede2ff]",
@@ -18,6 +22,7 @@ const aspectClasses = {
   portrait: "aspect-[4/5] min-h-[420px]",
   wide: "aspect-[16/10] min-h-[320px]",
   banner: "aspect-[5/3] min-h-[220px]",
+  card: "aspect-[5/6] min-h-[260px]",
   square: "aspect-square min-h-[240px]",
 };
 
@@ -31,6 +36,8 @@ export default function BrandArtworkFrame({
   className = "",
   motionEnabled = true,
   label = "Ananya Boutique",
+  loading = "lazy",
+  fetchPriority = "auto",
   children,
 }) {
   const resolvedArtwork =
@@ -44,7 +51,19 @@ export default function BrandArtworkFrame({
   const palette = resolvedArtwork.palette || "blush";
   const gradient = paletteClasses[palette] || paletteClasses.blush;
   const aspectClass = aspectClasses[resolvedAspect] || aspectClasses.wide;
-  const hasSource = Boolean(resolvedArtwork.source);
+  const desktopSrc =
+    getArtworkSource(resolvedArtwork, "desktop") || resolvedArtwork.source || "";
+  const mobileSrc =
+    getArtworkSource(resolvedArtwork, "mobile") ||
+    resolvedArtwork.mobileSource ||
+    desktopSrc;
+  const hasSource = Boolean(desktopSrc || mobileSrc);
+  const desktopProfile =
+    resolvedArtwork.variants?.desktop?.profile ||
+    (resolvedAspect === "banner" ? "bannerDesktop" : "heroDesktop");
+  const mobileProfile =
+    resolvedArtwork.variants?.mobile?.profile ||
+    (resolvedAspect === "banner" ? "bannerMobile" : "heroMobile");
   const Wrapper = motionEnabled ? motion.div : "div";
   const wrapperProps = motionEnabled
     ? {
@@ -62,12 +81,16 @@ export default function BrandArtworkFrame({
       aria-label={`${resolvedTitle} artwork slot`}
     >
       {hasSource ? (
-        <Image
-          src={resolvedArtwork.source}
-          alt={resolvedTitle}
-          fill
-          sizes="(max-width: 768px) 100vw, 50vw"
-          className="object-cover"
+        <ResponsiveMediaImage
+          desktopSrc={desktopSrc}
+          mobileSrc={mobileSrc}
+          alt={resolvedArtwork.alt || resolvedTitle}
+          className="absolute inset-0"
+          imgClassName="object-cover"
+          desktopProfile={desktopProfile}
+          mobileProfile={mobileProfile}
+          loading={loading}
+          fetchPriority={fetchPriority}
         />
       ) : null}
       {hasSource ? (

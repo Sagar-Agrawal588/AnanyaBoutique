@@ -1,6 +1,7 @@
 "use client";
 
 import { firebaseApp } from "@/firebase";
+import { getBrandNotificationAsset } from "@/config/brandAssets";
 import { API_BASE_URL } from "@/utils/api";
 import { deleteToken, getMessaging, getToken, onMessage } from "firebase/messaging";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -16,6 +17,8 @@ const ENABLE_PUSH_IN_DEV =
   String(process.env.NEXT_PUBLIC_ENABLE_PUSH_IN_DEV || "")
     .trim()
     .toLowerCase() === "true";
+const NOTIFICATION_ICON = getBrandNotificationAsset("icon");
+const NOTIFICATION_BADGE = getBrandNotificationAsset("badge");
 
 /**
  * useNotifications Hook
@@ -250,8 +253,8 @@ export const useNotifications = (options = {}) => {
             try {
               new Notification(nextMessage.title, {
                 body: nextMessage.body,
-                icon: "/logo.png",
-                badge: "/logo.png",
+                icon: NOTIFICATION_ICON,
+                badge: NOTIFICATION_BADGE,
                 tag: nextMessage.data?.notificationId || nextMessage.data?.type || "foreground",
               });
             } catch (nativeError) {

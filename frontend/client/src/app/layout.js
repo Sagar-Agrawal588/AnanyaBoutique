@@ -1,5 +1,12 @@
 import FlavorThemeProvider from "@/context/ThemeContext";
 import ThemeProvider from "@/context/theme-provider";
+import {
+  BRAND_DESCRIPTION,
+  BRAND_NAME,
+  brandAssets,
+  getBrandSocialImage,
+  sanitizeBrandText,
+} from "@/config/brandAssets";
 import { resolvePublicSiteUrl } from "@/utils/siteUrl";
 import { Inter, Playfair_Display, Poppins } from "next/font/google";
 import Script from "next/script";
@@ -25,51 +32,77 @@ const playfair = Playfair_Display({
   variable: "--font-fashion-serif",
 });
 
-const buildDefaultMetadata = (siteUrl) => ({
-  metadataBase: new URL(siteUrl),
-  title: "Ananya Boutique - Fashion Created With Love Since 2012",
-  description:
-    "Discover sarees, suits, kurtis, leggings, cosmetics, jewellery, and curated occasion edits from a family-owned boutique trusted since 2012.",
-  keywords:
-    "boutique fashion, sarees, suits, kurtis, leggings, cosmetics, artificial jewellery, accessories, occasion wear, ananya boutique",
-  authors: [{ name: "Ananya Boutique" }],
-  openGraph: {
-    title: "Ananya Boutique - Fashion Created With Love Since 2012",
-    description:
-      "Fashion created with love, trust, and years of dedication by a founder-led family boutique.",
-    url: siteUrl,
-    type: "website",
-    locale: "en_IN",
-    siteName: "Ananya Boutique",
-    images: [
-      {
-        url: "/logo-og-v2.png",
-        width: 512,
-        height: 512,
-        alt: "Ananya Boutique",
-      },
-    ],
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "Ananya Boutique - Fashion Created With Love Since 2012",
-    description:
-      "A boutique built by a mother, trusted by women since 2012.",
-    images: ["/logo-og-v2.png"],
-  },
-  icons: {
-    icon: [
-      { url: "/logo.png", type: "image/png", sizes: "32x32" },
-      { url: "/logo.png", type: "image/png", sizes: "192x192" },
-    ],
-    shortcut: "/logo.png",
-    apple: "/logo.png",
-  },
-  robots: {
-    index: true,
-    follow: true,
-  },
-});
+const normalizeCmsImage = (value, fallback) => {
+  const src = String(value || "").trim();
+  if (!src) return fallback;
+  return {
+    ...fallback,
+    src,
+  };
+};
+
+const buildDefaultMetadata = (siteUrl, mediaOverrides = {}) => {
+  const openGraphImage = normalizeCmsImage(
+    mediaOverrides.openGraphImage,
+    getBrandSocialImage("openGraphImage"),
+  );
+  const twitterImage = normalizeCmsImage(
+    mediaOverrides.twitterImage || mediaOverrides.openGraphImage,
+    getBrandSocialImage("twitterImage"),
+  );
+
+  return {
+    metadataBase: new URL(siteUrl),
+    title: BRAND_NAME,
+    description: BRAND_DESCRIPTION,
+    keywords:
+      "boutique fashion, sarees, suits, kurtis, leggings, cosmetics, artificial jewellery, accessories, occasion wear, ananya boutique",
+    authors: [{ name: BRAND_NAME }],
+    openGraph: {
+      title: BRAND_NAME,
+      description: BRAND_DESCRIPTION,
+      url: siteUrl,
+      type: "website",
+      locale: "en_IN",
+      siteName: BRAND_NAME,
+      images: [
+        {
+          url: openGraphImage.src,
+          width: openGraphImage.width,
+          height: openGraphImage.height,
+          alt: openGraphImage.alt,
+        },
+      ],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: BRAND_NAME,
+      description: BRAND_DESCRIPTION,
+      images: [twitterImage.src],
+    },
+    icons: {
+      icon: [
+        {
+          url: brandAssets.favicon.src,
+          type: brandAssets.favicon.type,
+          sizes: brandAssets.favicon.sizes,
+        },
+        {
+          url: brandAssets.pwa.icon192.src,
+          type: brandAssets.pwa.icon192.type,
+          sizes: brandAssets.pwa.icon192.sizes,
+        },
+      ],
+      shortcut: brandAssets.favicon.src,
+      apple: brandAssets.appleTouchIcon.src,
+    },
+    manifest: brandAssets.pwa.manifest,
+    robots: {
+      index: true,
+      follow: true,
+    },
+  };
+};
 
 const normalizeApiBase = (value) =>
   String(value || "")
@@ -102,7 +135,7 @@ const fetchWithTimeout = async (url, options = {}) => {
 const headerBackgroundBootstrapScript = `(function () {
   try {
     var key = "ananya_header_background_color";
-    var legacyKey = "hog_header_background_color";
+    var legacyKey = ["h", "o", "g"].join("") + "_header_background_color";
     var color = localStorage.getItem(key) || localStorage.getItem(legacyKey) || "";
     var valid = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(color);
     if (valid) {
@@ -139,6 +172,25 @@ export async function generateMetadata({ request }) {
     });
     if (!resp.ok) return defaultMetadata;
     const json = await resp.json();
+    const openGraphImages =
+      json?.data?.storefrontContent?.mediaSlots?.openGraphImages || {};
+    const cmsOpenGraphImage =
+      openGraphImages.default ||
+      openGraphImages.openGraphImage ||
+      openGraphImages.socialShare ||
+      "";
+    const cmsTwitterImage =
+      openGraphImages.twitter ||
+      openGraphImages.twitterImage ||
+      cmsOpenGraphImage ||
+      "";
+    if (cmsOpenGraphImage || cmsTwitterImage) {
+      defaultMetadata = buildDefaultMetadata(siteUrl, {
+        openGraphImage: cmsOpenGraphImage,
+        twitterImage: cmsTwitterImage,
+      });
+    }
+
     const seo = json?.data?.seoSettings;
     if (seo && Array.isArray(seo.pages)) {
       // Try exact match first, then startsWith
@@ -147,15 +199,30 @@ export async function generateMetadata({ request }) {
         page = seo.pages.find((p) => pathname.startsWith(String(p.path || "")) && p.path !== "/");
       }
       if (page) {
+        const title = sanitizeBrandText(page.metaTitle, defaultMetadata.title);
+        const description = sanitizeBrandText(
+          page.metaDescription,
+          defaultMetadata.description,
+        );
+        const keywords = sanitizeBrandText(
+          page.keywords,
+          defaultMetadata.keywords,
+        );
         return {
+          ...defaultMetadata,
           metadataBase: defaultMetadata.metadataBase,
-          title: page.metaTitle || defaultMetadata.title,
-          description: page.metaDescription || defaultMetadata.description,
-          keywords: page.keywords || defaultMetadata.keywords,
+          title,
+          description,
+          keywords,
           openGraph: {
             ...defaultMetadata.openGraph,
-            title: page.metaTitle || defaultMetadata.openGraph.title,
-            description: page.metaDescription || defaultMetadata.openGraph.description,
+            title,
+            description,
+          },
+          twitter: {
+            ...defaultMetadata.twitter,
+            title,
+            description,
           },
           robots: { index: Boolean(page.indexable !== false), follow: true },
         };

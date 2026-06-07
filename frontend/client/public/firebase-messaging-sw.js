@@ -16,6 +16,14 @@ const shouldResetStorefrontWorker =
   STOREFRONT_WORKER_RESET_HOSTS.has(self.location.hostname) ||
   self.location.hostname.endsWith(".hosted.app");
 
+try {
+  importScripts("/brandAssets.js");
+} catch (error) {
+  console.warn("[SW] Brand asset registry unavailable.", error);
+}
+
+const BRAND_NOTIFICATION_ASSETS = self.ANANYA_BRAND_ASSETS?.notification || {};
+
 if (shouldResetStorefrontWorker) {
   self.addEventListener("install", () => {
     self.skipWaiting();
@@ -36,7 +44,7 @@ if (shouldResetStorefrontWorker) {
           windows.map((client) => {
             if (!("navigate" in client)) return undefined;
             const url = new URL(client.url);
-            url.searchParams.set("__hog_sw_reset", "2026-05-28-v5");
+            url.searchParams.set("__ananya_sw_reset", "2026-05-28-v5");
             return client.navigate(url.toString());
           }),
         );
@@ -103,8 +111,8 @@ if (isConfigured) {
       payload.notification?.title || payload.data?.title || "New Notification";
     const notificationOptions = {
       body: payload.notification?.body || payload.data?.body || "",
-      icon: "/logo.png",
-      badge: "/logo.png",
+      icon: BRAND_NOTIFICATION_ASSETS.icon,
+      badge: BRAND_NOTIFICATION_ASSETS.badge,
       tag: payload.data?.notificationId || payload.data?.type || "default",
       data: payload.data || {},
       actions: [

@@ -1,4 +1,5 @@
 "use client";
+import BrandLogo from "@/components/brand/BrandLogo";
 import { MyContext } from "@/context/ThemeProvider";
 import { postData } from "@/utils/api";
 import Button from "@mui/material/Button";
@@ -102,6 +103,13 @@ const ResetPassword = () => {
           onSubmit={handleSubmit}
           className="bg-white p-10 rounded-2xl shadow-xl w-full max-w-[480px] border border-gray-100 flex flex-col items-center"
         >
+          <BrandLogo
+            variant="login"
+            showText
+            imageClassName="h-12 w-auto"
+            textClassName="text-gray-800"
+            className="mb-5"
+          />
           <img
             src="/forgot-password.webp"
             alt="reset-password"

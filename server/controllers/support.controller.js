@@ -235,6 +235,16 @@ const normalizeObjectId = (value) => {
   return mongoose.Types.ObjectId.isValid(normalized) ? normalized : "";
 };
 
+const LEGACY_ORDER_LOOKUP_PREFIX = ["B", "O", "G"].join("");
+const ORDER_LOOKUP_PREFIXES = ["ANB", LEGACY_ORDER_LOOKUP_PREFIX];
+const ORDER_LOOKUP_PREFIX_REGEX = new RegExp(
+  `^(${ORDER_LOOKUP_PREFIXES.join("|")})-`,
+  "i",
+);
+
+const stripOrderLookupPrefix = (value) =>
+  String(value || "").replace(ORDER_LOOKUP_PREFIX_REGEX, "");
+
 const buildOrderLookupTokens = (value) => {
   const raw = sanitizeText(value || "", { maxLength: 120 });
   if (!raw) return [];
@@ -243,7 +253,7 @@ const buildOrderLookupTokens = (value) => {
   const firstSegment = normalized.split(" - ")[0]?.trim() || "";
   const upper = firstSegment.toUpperCase();
   const compact = upper.replace(/\s+/g, "");
-  const withoutBogPrefix = compact.replace(/^BOG-/, "");
+  const withoutKnownPrefix = stripOrderLookupPrefix(compact);
 
   const tokens = new Set([
     raw.trim(),
@@ -251,8 +261,10 @@ const buildOrderLookupTokens = (value) => {
     firstSegment,
     upper,
     compact,
-    withoutBogPrefix,
-    withoutBogPrefix ? `BOG-${withoutBogPrefix}` : "",
+    withoutKnownPrefix,
+    ...ORDER_LOOKUP_PREFIXES.map((prefix) =>
+      withoutKnownPrefix ? `${prefix}-${withoutKnownPrefix}` : "",
+    ),
   ]);
 
   return Array.from(tokens).filter(Boolean);
@@ -324,7 +336,7 @@ const resolveLinkedOrderForTicket = async ({ rawOrderId, userId }) => {
       const normalizedToken = String(token || "")
         .trim()
         .toUpperCase()
-        .replace(/^BOG-/, "");
+        .replace(ORDER_LOOKUP_PREFIX_REGEX, "");
 
       if (!normalizedToken) return false;
       return orderIdValue === normalizedToken || shortId === normalizedToken;

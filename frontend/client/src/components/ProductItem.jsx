@@ -29,6 +29,7 @@ import {
   IoMdHeart,
   IoMdHeartEmpty,
 } from "react-icons/io";
+import { Eye } from "lucide-react";
 import { MdDeleteOutline } from "react-icons/md";
 
 const ProductItem = (props) => {
@@ -46,6 +47,7 @@ const ProductItem = (props) => {
     itemType,
     realtimeManagedExternally = false,
     compactListing = false,
+    collectionListing = false,
   } = props;
 
   const [isAddingToCart, setIsAddingToCart] = useState(false);
@@ -322,13 +324,19 @@ const ProductItem = (props) => {
       data-product-card
       data-product-card-id={productCardId || ""}
       data-product-card-type={resolvedItemType}
-      className={`group relative flex w-full min-w-0 flex-col border bg-white shadow-[0_6px_16px_rgba(0,0,0,0.08)] transition-all ${
-        compactListing
+      className={`group relative flex w-full min-w-0 flex-col overflow-hidden border bg-white transition-all ${
+        collectionListing
+          ? "h-full rounded-[18px] p-2 shadow-[0_16px_42px_rgba(47,19,37,0.08)] sm:rounded-[22px] sm:p-3"
+          : compactListing
           ? "h-full max-sm:h-[390px] rounded-[18px] p-2 sm:rounded-[22px] sm:p-3"
           : "h-full rounded-[22px] p-3"
       } ${
         isOutOfStock
-          ? "border-gray-100"
+          ? collectionListing
+            ? "border-[#eadfe6] bg-[#fffdfb]"
+            : "border-gray-100"
+          : collectionListing
+            ? "border-[#eadfe6] hover:-translate-y-1 hover:border-[#d8b46b] hover:shadow-[0_24px_65px_rgba(47,19,37,0.13)] active:scale-[0.99]"
           : "border-gray-100 hover:-translate-y-0.5 hover:shadow-[0_10px_24px_rgba(0,0,0,0.12)]"
       }`}
     >
@@ -345,13 +353,22 @@ const ProductItem = (props) => {
         src={productData.images?.[0]}
         alt={imgAlt}
         cardImage
-        aspect={compactListing ? "aspect-square sm:aspect-square" : "aspect-square"}
+        aspect={collectionListing ? "aspect-[3/4] sm:aspect-[4/5]" : compactListing ? "aspect-square sm:aspect-square" : "aspect-square"}
         fit="cover"
-        className={compactListing ? "relative mb-1.5 w-full bg-[#f5f5f5] sm:mb-3" : "relative mb-3 w-full bg-[#f5f5f5]"}
+        rounded={collectionListing ? "rounded-[14px] sm:rounded-[18px]" : undefined}
+        className={
+          collectionListing
+            ? "relative mb-3 w-full bg-[#f7f2ed]"
+            : compactListing
+              ? "relative mb-1.5 w-full bg-[#f5f5f5] sm:mb-3"
+              : "relative mb-3 w-full bg-[#f5f5f5]"
+        }
         imgClassName={`object-cover transition-all duration-300 ${
           isOutOfStock
             ? "grayscale-[0.45] saturate-50 opacity-70"
-            : "group-hover:scale-105"
+            : collectionListing
+              ? "group-hover:scale-[1.045] group-hover:saturate-[1.06]"
+              : "group-hover:scale-105"
         }`}
       >
         <ProductCardBadges
@@ -366,8 +383,17 @@ const ProductItem = (props) => {
         {/* Wishlist Button */}
         <button
           onClick={handleWishlistClick}
-          className={`absolute right-2 top-2 z-20 flex items-center justify-center rounded-full bg-white/80 text-gray-400 shadow-sm backdrop-blur-sm transition-all hover:bg-red-50 hover:text-red-500 active:scale-95 ${
-            compactListing ? "h-7 w-7 sm:h-8 sm:w-8" : "h-8 w-8"
+          aria-label={
+            isWishlisted
+              ? `Remove ${displayProductName || productData.name} from wishlist`
+              : `Add ${displayProductName || productData.name} to wishlist`
+          }
+          className={`absolute right-2 top-2 z-20 flex items-center justify-center rounded-full shadow-sm backdrop-blur-sm transition-all hover:bg-red-50 hover:text-red-500 active:scale-95 ${
+            collectionListing
+              ? "h-10 w-10 border border-white/90 bg-white/94 text-[#7c2d62] shadow-[0_10px_26px_rgba(47,19,37,0.14)]"
+              : compactListing
+                ? "h-7 w-7 bg-white/80 text-gray-400 sm:h-8 sm:w-8"
+                : "h-8 w-8 bg-white/80 text-gray-400"
           }`}
         >
           {isWishlisted ? (
@@ -383,7 +409,7 @@ const ProductItem = (props) => {
             e.preventDefault();
             e.stopPropagation();
           }}
-          className="absolute right-2 top-12 z-20"
+          className={collectionListing ? "absolute right-2 top-[56px] z-20" : "absolute right-2 top-12 z-20"}
         >
           <ShareButton
             productId={productCardId}
@@ -393,6 +419,22 @@ const ProductItem = (props) => {
             iconGlyphClass={compactListing ? "h-3.5 w-3.5 sm:h-4 sm:w-4" : "h-4 w-4"}
           />
         </div>
+
+        {collectionListing && !isOutOfStock ? (
+          <button
+            type="button"
+            aria-label={`Quick view for ${displayProductName || productData.name} coming soon`}
+            title="Quick View"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            className="absolute inset-x-3 bottom-3 z-20 inline-flex h-10 items-center justify-center gap-2 rounded-md border border-white/80 bg-white/92 text-xs font-black uppercase tracking-[0.12em] text-[#2f1325] opacity-100 shadow-[0_14px_32px_rgba(47,19,37,0.16)] backdrop-blur transition hover:bg-[#fff8fb] sm:opacity-0 sm:group-hover:opacity-100"
+          >
+            <Eye className="h-4 w-4" aria-hidden="true" />
+            Quick View
+          </button>
+        ) : null}
 
         {isOutOfStock ? (
           <>
@@ -415,15 +457,15 @@ const ProductItem = (props) => {
 
       {/* Content */}
       <div className="relative flex flex-1 flex-col">
-        <p className={compactListing ? "mb-0.5 min-h-[20px] text-[8px] font-semibold uppercase tracking-[0.15em] text-gray-400 line-clamp-2 sm:mb-1 sm:min-h-0 sm:text-[10px]" : "mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-gray-400"}>
+        <p className={collectionListing ? "mb-1 text-[9px] font-black uppercase tracking-[0.16em] text-[#9d6b19] sm:text-[10px]" : compactListing ? "mb-0.5 min-h-[20px] text-[8px] font-semibold uppercase tracking-[0.15em] text-gray-400 line-clamp-2 sm:mb-1 sm:min-h-0 sm:text-[10px]" : "mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-gray-400"}>
           {productData.brand}
         </p>
-        <h3 className={compactListing ? "min-h-[34px] line-clamp-2 text-[12px] font-bold leading-snug text-gray-900 transition-colors group-hover:text-primary sm:min-h-0 sm:text-[13px] sm:font-semibold" : "text-[13px] font-semibold leading-snug text-gray-900 transition-colors group-hover:text-primary"}>
+        <h3 className={collectionListing ? "min-h-[40px] line-clamp-2 text-[13px] font-black leading-snug text-[#2f1325] transition-colors group-hover:text-[#7c2d62] sm:min-h-[42px] sm:text-sm" : compactListing ? "min-h-[34px] line-clamp-2 text-[12px] font-bold leading-snug text-gray-900 transition-colors group-hover:text-primary sm:min-h-0 sm:text-[13px] sm:font-semibold" : "text-[13px] font-semibold leading-snug text-gray-900 transition-colors group-hover:text-primary"}>
           {displayProductName || productData.name}
         </h3>
-        <div className={compactListing ? "mt-1 min-h-[16px] sm:min-h-7" : "mt-1 min-h-7"}>
+        <div className={collectionListing ? "mt-1 min-h-[30px] sm:min-h-8" : compactListing ? "mt-1 min-h-[16px] sm:min-h-7" : "mt-1 min-h-7"}>
           {displayShortDescription ? (
-            <p className={compactListing ? "line-clamp-1 text-[10px] font-medium text-gray-500 sm:line-clamp-2 sm:text-[11px]" : "line-clamp-2 text-[11px] font-medium text-gray-500"}>
+            <p className={collectionListing ? "line-clamp-2 text-[10.5px] font-semibold leading-5 text-[#806574] sm:text-[11px]" : compactListing ? "line-clamp-1 text-[10px] font-medium text-gray-500 sm:line-clamp-2 sm:text-[11px]" : "line-clamp-2 text-[11px] font-medium text-gray-500"}>
               {displayShortDescription}
             </p>
           ) : null}
@@ -431,7 +473,7 @@ const ProductItem = (props) => {
 
         {/* Weight */}
         {displayWeightLabel && (
-          <span className={compactListing ? "mt-1 inline-flex w-fit rounded-full bg-[#f0f0f0] px-2 py-0.5 text-[10px] font-semibold text-gray-600 sm:mt-2 sm:px-2.5 sm:text-[11px]" : "mt-2 inline-flex w-fit rounded-full bg-[#f0f0f0] px-2.5 py-0.5 text-[11px] font-semibold text-gray-600"}>
+          <span className={collectionListing ? "mt-2 inline-flex w-fit rounded-full border border-[#ead3df] bg-[#fff8fb] px-2.5 py-0.5 text-[11px] font-bold text-[#6b244d]" : compactListing ? "mt-1 inline-flex w-fit rounded-full bg-[#f0f0f0] px-2 py-0.5 text-[10px] font-semibold text-gray-600 sm:mt-2 sm:px-2.5 sm:text-[11px]" : "mt-2 inline-flex w-fit rounded-full bg-[#f0f0f0] px-2.5 py-0.5 text-[11px] font-semibold text-gray-600"}>
             {displayWeightLabel}
             {productData.hasVariants && productData.variants?.length > 1 && (
               <span className="ml-1 text-gray-400">
@@ -469,7 +511,7 @@ const ProductItem = (props) => {
         ) : null}
 
         {/* Price & Cart */}
-        <div className={compactListing ? "mt-auto border-t border-[#f3ece6] pt-2 sm:pt-3" : "mt-auto border-t border-[#f3ece6] pt-3"}>
+        <div className={collectionListing ? "mt-auto border-t border-[#eadfe6] pt-2.5 sm:pt-3" : compactListing ? "mt-auto border-t border-[#f3ece6] pt-2 sm:pt-3" : "mt-auto border-t border-[#f3ece6] pt-3"}>
           <div className={compactListing ? "flex items-end sm:min-h-10" : "min-h-10 flex items-end"}>
             <div>
               <ProductCardPriceBlock

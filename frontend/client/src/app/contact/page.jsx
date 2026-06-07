@@ -24,13 +24,8 @@ import {
   fetchSupportOrderContext,
   fetchSupportOrderOptions,
 } from "@/services/supportApi";
-import {
-  contactConfig,
-  getMailtoHref,
-  getMapHref,
-  getPhoneHref,
-  getWhatsAppHref,
-} from "@/config/siteConfig";
+import useStorefrontContent from "@/hooks/useStorefrontContent";
+import { buildContactHelpers } from "@/config/storefrontContent";
 import BrandArtworkFrame from "@/components/brand/BrandArtworkFrame";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
@@ -66,11 +61,34 @@ const defaultFormState = {
 };
 const SUPPORT_ORDER_STORAGE_KEY = "supportOrderData";
 
+const CONTACT_ARTWORK_SLOTS = [
+  {
+    key: "contact.whatsapp",
+    icon: FaWhatsapp,
+  },
+  {
+    key: "contact.location",
+    icon: FiMapPin,
+  },
+  {
+    key: "contact.support",
+    icon: FiMail,
+  },
+  {
+    key: "contact.community",
+    icon: FaInstagram,
+  },
+];
+
 const createFileId = (file) =>
   `${file.name}-${file.size}-${file.lastModified}-${Math.random().toString(36).slice(2, 8)}`;
 
 const formatFileSize = (bytes) => `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 const Contact = () => {
+  const { content: storefrontContent } = useStorefrontContent();
+  const contactContent = storefrontContent.contact;
+  const contactHelpers = buildContactHelpers(contactContent);
+  const contactHeroImage = storefrontContent.mediaSlots?.contactHero || "";
   const [formData, setFormData] = useState(defaultFormState);
   const [fieldErrors, setFieldErrors] = useState({});
   const [uploadErrors, setUploadErrors] = useState({ images: "", videos: "" });
@@ -87,10 +105,10 @@ const Contact = () => {
   const previewUrlsRef = useRef(new Set());
   const submitInProgressRef = useRef(false);
   const lastSubmitRef = useRef({ signature: "", submittedAt: 0 });
-  const supportLink = getMailtoHref("Ananya Boutique customer support");
-  const supportPhoneHref = getPhoneHref();
-  const mapHref = getMapHref();
-  const whatsappActions = contactConfig.whatsappActions;
+  const supportLink = contactHelpers.mailtoHref("Ananya Boutique customer support");
+  const supportPhoneHref = contactHelpers.phoneHref;
+  const mapHref = contactContent.mapUrl || "#";
+  const whatsappActions = contactContent.whatsappActions || [];
 
   useEffect(() => {
     let isActive = true;
@@ -502,7 +520,18 @@ const Contact = () => {
   return (
     <section className="bg-gray-50 min-h-screen">
       {/* Hero Section */}
-      <div className="bg-gradient-to-br from-[#1a1a2e] via-[#16213e] to-[#0f3460] text-white py-16">
+      <div
+        className="bg-gradient-to-br from-[#1a1a2e] via-[#16213e] to-[#0f3460] text-white py-16"
+        style={
+          contactHeroImage
+            ? {
+                backgroundImage: `linear-gradient(135deg, rgba(26,26,46,0.82), rgba(22,33,62,0.78), rgba(15,52,96,0.82)), url(${contactHeroImage})`,
+                backgroundSize: "cover",
+                backgroundPosition: "center",
+              }
+            : undefined
+        }
+      >
         <div className="container mx-auto px-4 text-center">
           <h1 className="text-4xl md:text-5xl font-bold mb-4">Contact Us</h1>
           <p className="text-gray-300 text-lg max-w-2xl mx-auto">
@@ -514,7 +543,7 @@ const Contact = () => {
 
       <div className="container mx-auto px-4 py-12">
         <div className="mb-10 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {contactConfig.trustSignals.map((signal) => (
+          {(contactContent.trustSignals || []).map((signal) => (
             <div
               key={signal}
               className="rounded-2xl border border-pink-100 bg-white p-5 text-center shadow-sm"
@@ -522,6 +551,19 @@ const Contact = () => {
               <FiHeart className="mx-auto mb-3 text-xl text-pink-600" />
               <p className="text-sm font-bold text-gray-800">{signal}</p>
             </div>
+          ))}
+        </div>
+
+        <div className="mb-10 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {CONTACT_ARTWORK_SLOTS.map((slot) => (
+            <BrandArtworkFrame
+              key={slot.key}
+              artworkKey={slot.key}
+              icon={slot.icon}
+              aspect="card"
+              className="min-h-[250px] rounded-2xl"
+              motionEnabled={false}
+            />
           ))}
         </div>
 
@@ -537,7 +579,7 @@ const Contact = () => {
                 <div>
                   <h3 className="font-bold text-gray-800 mb-2">Our Address</h3>
                   <p className="text-gray-600 text-sm leading-relaxed">
-                    {contactConfig.address}
+                    {contactContent.address}
                   </p>
                   <div className="mt-4 flex flex-wrap gap-2">
                     <a
@@ -574,15 +616,15 @@ const Contact = () => {
                       href={supportPhoneHref}
                       className="text-primary font-semibold hover:underline"
                     >
-                      {contactConfig.phone}
+                      {contactContent.phone}
                     </a>
                   ) : (
                     <span className="text-primary font-semibold">
-                      {contactConfig.phone}
+                      {contactContent.phone}
                     </span>
                   )}
                   <p className="text-gray-500 text-sm mt-1">
-                    Mon - Sat: 9:00 AM - 6:00 PM
+                    {contactContent.businessHours}
                   </p>
                 </div>
               </div>
@@ -605,11 +647,11 @@ const Contact = () => {
                       target={supportLink.startsWith("http") ? "_blank" : undefined}
                       rel={supportLink.startsWith("http") ? "noreferrer" : undefined}
                     >
-                      {contactConfig.email}
+                      {contactContent.email}
                     </a>
                   ) : (
                     <span className="text-primary font-semibold">
-                      {contactConfig.email}
+                      {contactContent.email}
                     </span>
                   )}
                   <p className="text-gray-500 text-sm mt-1">
@@ -634,7 +676,7 @@ const Contact = () => {
                 {whatsappActions.map((action) => (
                   <a
                     key={action.label}
-                    href={getWhatsAppHref(action.message)}
+                    href={contactHelpers.whatsappHref(action.message)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center justify-between rounded-full bg-white/95 px-4 py-2 text-sm font-semibold text-green-800 transition hover:-translate-y-0.5 hover:bg-white"
@@ -654,7 +696,9 @@ const Contact = () => {
                 </div>
                 <div>
                   <h3 className="font-bold text-gray-800 mb-1">Business Hours</h3>
-                  <p className="text-primary font-semibold text-base">We Are Open 24/7</p>
+                  <p className="text-primary font-semibold text-base">
+                    {contactContent.businessHours}
+                  </p>
                 </div>
               </div>
             </div>
@@ -948,14 +992,14 @@ const Contact = () => {
                 Instagram
               </p>
               <h2 className="mt-3 font-serif text-3xl font-semibold text-gray-950 sm:text-4xl">
-                {contactConfig.instagramTitle}
+                {contactContent.instagramTitle}
               </h2>
               <p className="mt-4 max-w-2xl text-sm leading-7 text-gray-600 sm:text-base">
-                {contactConfig.instagramContent}
+                {contactContent.instagramContent}
               </p>
               <div className="mt-6 flex flex-col gap-3 sm:flex-row">
                 <a
-                  href={contactConfig.instagramUrl}
+                  href={contactContent.instagramUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-gradient-to-r from-pink-600 to-purple-700 px-6 text-sm font-semibold text-white shadow-lg transition hover:-translate-y-0.5"
@@ -964,12 +1008,12 @@ const Contact = () => {
                   Follow Our Journey
                 </a>
                 <a
-                  href={contactConfig.instagramUrl}
+                  href={contactContent.instagramUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex h-12 items-center justify-center rounded-full border border-pink-200 bg-white px-6 text-sm font-semibold text-pink-800 transition hover:-translate-y-0.5 hover:bg-pink-50"
                 >
-                  {contactConfig.instagramHandle}
+                  {contactContent.instagramHandle}
                 </a>
               </div>
               <p className="mt-4 text-sm font-medium text-gray-500">

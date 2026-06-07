@@ -1,4 +1,11 @@
 import AdminLayout from "@/components/AdminLayout";
+import {
+  ADMIN_BRAND_TITLE,
+  BRAND_DESCRIPTION,
+  BRAND_NAME,
+  brandAssets,
+  getAdminBrandSocialImage,
+} from "@/config/brandAssets";
 import { AdminProvider } from "@/context/AdminContext";
 import { withAdminBasePath } from "@/utils/basePath";
 import { Geist, Geist_Mono } from "next/font/google";
@@ -25,44 +32,46 @@ const adminUrl = String(
 
 export const metadata = {
   metadataBase: new URL(adminUrl),
-  title: "Ananya Boutique Admin Panel",
-  description: "Admin dashboard for Ananya Boutique Fashion Boutique",
+  title: ADMIN_BRAND_TITLE,
+  description: `${BRAND_DESCRIPTION} Admin dashboard.`,
   openGraph: {
-    title: "Ananya Boutique Admin Panel",
-    description: "Admin dashboard for Ananya Boutique Fashion Boutique",
+    title: ADMIN_BRAND_TITLE,
+    description: `${BRAND_DESCRIPTION} Admin dashboard.`,
     url: adminUrl,
     type: "website",
     images: [
       {
-        url: withAdminBasePath("/logo-og-v2.png"),
-        width: 512,
-        height: 512,
-        alt: "Ananya Boutique Admin",
+        url: withAdminBasePath(getAdminBrandSocialImage("openGraphImage").src),
+        width: getAdminBrandSocialImage("openGraphImage").width,
+        height: getAdminBrandSocialImage("openGraphImage").height,
+        alt: getAdminBrandSocialImage("openGraphImage").alt,
       },
     ],
+    siteName: BRAND_NAME,
   },
   twitter: {
     card: "summary_large_image",
-    title: "Ananya Boutique Admin Panel",
-    description: "Admin dashboard for Ananya Boutique Fashion Boutique",
-    images: [withAdminBasePath("/logo-og-v2.png")],
+    title: ADMIN_BRAND_TITLE,
+    description: `${BRAND_DESCRIPTION} Admin dashboard.`,
+    images: [withAdminBasePath(getAdminBrandSocialImage("twitterImage").src)],
   },
   icons: {
     icon: [
       {
-        url: withAdminBasePath("/logo.png"),
-        type: "image/png",
-        sizes: "32x32",
+        url: withAdminBasePath(brandAssets.favicon.src),
+        type: brandAssets.favicon.type,
+        sizes: brandAssets.favicon.sizes,
       },
       {
-        url: withAdminBasePath("/logo.png"),
-        type: "image/png",
-        sizes: "192x192",
+        url: withAdminBasePath(brandAssets.pwa.icon192.src),
+        type: brandAssets.pwa.icon192.type,
+        sizes: brandAssets.pwa.icon192.sizes,
       },
     ],
-    shortcut: withAdminBasePath("/logo.png"),
-    apple: withAdminBasePath("/logo.png"),
+    shortcut: withAdminBasePath(brandAssets.favicon.src),
+    apple: withAdminBasePath(brandAssets.appleTouchIcon.src),
   },
+  manifest: brandAssets.pwa.manifest,
 };
 
 export default function RootLayout({ children }) {

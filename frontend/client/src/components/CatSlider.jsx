@@ -14,6 +14,8 @@ import { FiArrowRight, FiChevronLeft, FiChevronRight } from "react-icons/fi";
 import { Navigation } from "swiper/modules";
 import { Swiper, SwiperSlide } from "swiper/react";
 import PopularProducts from "./PopularProducts";
+import ResponsiveMediaImage from "./ResponsiveMediaImage";
+import { getArtworkSource, getCategoryArtwork } from "@/config/visualIdentity";
 
 import "swiper/css";
 import "swiper/css/navigation";
@@ -105,59 +107,80 @@ const CatSlider = ({
     category,
     index,
     { compact = false } = {},
-  ) => (
-    <motion.div
-      initial={{ opacity: 0, scale: 0.88 }}
-      whileInView={{ opacity: 1, scale: 1 }}
-      transition={{ duration: 0.45, delay: index * 0.06 }}
-      viewport={{ once: true }}
-      className="h-full"
-    >
-      <Link
-        href={resolveComboLink(category)}
-        className={`group flex h-full w-full flex-col items-center justify-center border border-white/75 text-center shadow-[0_16px_42px_rgba(90,58,34,0.08)] transition-all duration-500 hover:-translate-y-2 hover:border-primary/25 hover:shadow-[0_24px_56px_rgba(90,58,34,0.14)] ${
-          compact
-            ? "min-h-[176px] rounded-[1.6rem] px-4 py-5"
-            : "min-h-[230px] rounded-[2rem] p-6"
-        }`}
-        style={{
-          background: `linear-gradient(180deg, rgba(255,255,255,0.99) 0%, ${flavor.cardBg || "#FCF8F6"} 100%)`,
-        }}
-      >
-        <div
-          className={`relative mb-5 flex items-center justify-center overflow-hidden border border-white/80 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_28px_rgba(90,58,34,0.08)] ring-8 ring-transparent transition-transform duration-500 group-hover:scale-105 group-hover:ring-primary/15 ${
-            compact
-              ? "h-20 w-20 rounded-[1.35rem]"
-              : "h-24 w-24 rounded-[1.75rem] sm:h-28 sm:w-28"
-          }`}
-        >
-          {category.image ? (
-            <Image
-              src={getCategoryImageUrl(category.image)}
-              alt={category.name}
-              fill
-              sizes="(max-width: 640px) 80px, 112px"
-              className="object-cover p-2"
-            />
-          ) : (
-            <span className="text-sm font-black tracking-[0.28em] text-primary/75">
-              PB
-            </span>
-          )}
-        </div>
+  ) => {
+    const registryArtwork = getCategoryArtwork(
+      category?.slug || category?.name,
+      "card",
+    );
+    const registryDesktopSrc = getArtworkSource(registryArtwork, "desktop");
+    const registryMobileSrc =
+      getArtworkSource(registryArtwork, "mobile") || registryDesktopSrc;
 
-        <h3
-          className={`text-slate-800 transition-colors group-hover:text-primary ${
+    return (
+      <motion.div
+        initial={{ opacity: 0, scale: 0.88 }}
+        whileInView={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.45, delay: index * 0.06 }}
+        viewport={{ once: true }}
+        className="h-full"
+      >
+        <Link
+          href={resolveComboLink(category)}
+          className={`group flex h-full w-full flex-col items-center justify-center border border-white/75 text-center shadow-[0_16px_42px_rgba(90,58,34,0.08)] transition-all duration-500 hover:-translate-y-2 hover:border-primary/25 hover:shadow-[0_24px_56px_rgba(90,58,34,0.14)] ${
             compact
-              ? "min-h-[38px] text-[11px] font-black uppercase tracking-[0.16em]"
-              : "min-h-[42px] text-[13px] font-black uppercase tracking-[0.18em]"
+              ? "min-h-[176px] rounded-[1.6rem] px-4 py-5"
+              : "min-h-[230px] rounded-[2rem] p-6"
           }`}
+          style={{
+            background: `linear-gradient(180deg, rgba(255,255,255,0.99) 0%, ${flavor.cardBg || "#FCF8F6"} 100%)`,
+          }}
         >
-          {category.name}
-        </h3>
-      </Link>
-    </motion.div>
-  );
+          <div
+            className={`relative mb-5 flex items-center justify-center overflow-hidden border border-white/80 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_28px_rgba(90,58,34,0.08)] ring-8 ring-transparent transition-transform duration-500 group-hover:scale-105 group-hover:ring-primary/15 ${
+              compact
+                ? "h-20 w-20 rounded-[1.35rem]"
+                : "h-24 w-24 rounded-[1.75rem] sm:h-28 sm:w-28"
+            }`}
+          >
+            {category.image ? (
+              <Image
+                src={getCategoryImageUrl(category.image)}
+                alt={category.name}
+                fill
+                sizes="(max-width: 640px) 80px, 112px"
+                className="object-cover p-2"
+              />
+            ) : registryDesktopSrc || registryMobileSrc ? (
+              <ResponsiveMediaImage
+                desktopSrc={registryDesktopSrc}
+                mobileSrc={registryMobileSrc}
+                alt={registryArtwork.alt || category.name}
+                className="absolute inset-0"
+                imgClassName="p-2"
+                desktopProfile={registryArtwork.variants?.desktop?.profile || "card"}
+                mobileProfile={registryArtwork.variants?.mobile?.profile || "card"}
+                loading="lazy"
+              />
+            ) : (
+              <span className="text-sm font-black tracking-[0.28em] text-primary/75">
+                AB
+              </span>
+            )}
+          </div>
+
+          <h3
+            className={`text-slate-800 transition-colors group-hover:text-primary ${
+              compact
+                ? "min-h-[38px] text-[11px] font-black uppercase tracking-[0.16em]"
+                : "min-h-[42px] text-[13px] font-black uppercase tracking-[0.18em]"
+            }`}
+          >
+            {category.name}
+          </h3>
+        </Link>
+      </motion.div>
+    );
+  };
 
   return (
     <div>

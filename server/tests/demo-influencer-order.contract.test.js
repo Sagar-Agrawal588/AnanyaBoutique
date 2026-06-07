@@ -47,8 +47,9 @@ test("demo order route is available only in non-production mode", async () => {
 test("checkout persists demo test invoice into local storage", async () => {
   const source = await fs.readFile(checkoutPagePath, "utf8");
 
-  assert.match(source, /TEST_INVOICE_STORAGE_KEY = "bog_test_invoices"/);
-  assert.match(source, /localStorage\.setItem\(\s*"bog_last_test_invoice"/);
+  assert.match(source, /TEST_INVOICE_STORAGE_KEY = "ananya_test_invoices"/);
+  assert.match(source, /LAST_TEST_INVOICE_STORAGE_KEY = "ananya_last_test_invoice"/);
+  assert.match(source, /localStorage\.setItem\(\s*LAST_TEST_INVOICE_STORAGE_KEY/);
   assert.match(source, /fetch\(`\$\{API_URL\}\/api\/orders\/test\/create`/);
   assert.match(source, /fetch\(`\$\{API_URL\}\/api\/orders\/test\/save-invoice`/);
 });

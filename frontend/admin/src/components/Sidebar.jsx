@@ -1,10 +1,9 @@
 "use client";
 import { useAdmin } from "@/context/AdminContext";
+import AdminBrandLogo from "@/components/brand/AdminBrandLogo";
 import { fetchUnresolvedSupportCount } from "@/services/supportApi";
 import { hasAdminPermission } from "@/utils/adminPermissions";
-import { withAdminBasePath } from "@/utils/basePath";
 import { Button } from "@mui/material";
-import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -132,6 +131,12 @@ const Sidebar = ({ isOpen = false, onClose }) => {
       name: "Banners",
       icon: <PiImageSquare size={22} />,
       href: "/banners",
+      requiredPermission: "manage_settings",
+    },
+    {
+      name: "Storefront CMS",
+      icon: <MdOutlineArticle size={22} />,
+      href: "/storefront-cms",
       requiredPermission: "manage_settings",
     },
     {
@@ -336,15 +341,7 @@ const Sidebar = ({ isOpen = false, onClose }) => {
       {/* Logo */}
       <div className="p-4 border-b border-gray-100 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2">
-          <Image
-            src={withAdminBasePath("/logo.png")}
-            alt="Logo"
-            width={140}
-            height={40}
-            className="h-10"
-            style={{ width: "auto" }}
-            loading="eager"
-          />
+          <AdminBrandLogo slot="admin" imageClassName="h-10 w-auto" />
         </Link>
         <button
           type="button"

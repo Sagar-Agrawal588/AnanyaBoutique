@@ -1,5 +1,6 @@
 "use client";
 
+import { getAdminBrandLogo } from "@/config/brandAssets";
 import { getData, putData, uploadFile } from "@/utils/api";
 import { getImageUrl } from "@/utils/imageUtils";
 import Image from "next/image";
@@ -307,7 +308,7 @@ const DEFAULT_SEO_PAGE_ENTRIES = [
 const DEFAULT_SEO_IMAGE_ENTRIES = [
   {
     label: "Logo",
-    target: "/logo.png",
+    target: getAdminBrandLogo("admin").src,
     altText: "Ananya Boutique logo",
     titleText: "Ananya Boutique",
     notes: "Keep the brand logo alt text short.",

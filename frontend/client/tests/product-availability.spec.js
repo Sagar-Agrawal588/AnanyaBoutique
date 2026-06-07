@@ -251,7 +251,7 @@ test("pay-order page shows active reservation countdown from backend response", 
         success: true,
         data: {
           orderId: "order-123",
-          displayOrderId: "BOG-ORDER-123",
+          displayOrderId: "ANB-ORDER-123",
           payable: true,
           paymentStatus: "pending",
           reservationStatus: "reserved",

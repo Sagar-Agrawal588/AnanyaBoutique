@@ -101,6 +101,21 @@ const variantSchema = new mongoose.Schema({
     type: String,
     default: "g", // g, kg, ml, L, pcs
   },
+  color: {
+    type: String,
+    default: "",
+    trim: true,
+  },
+  size: {
+    type: String,
+    default: "",
+    trim: true,
+  },
+  material: {
+    type: String,
+    default: "",
+    trim: true,
+  },
   isDefault: {
     type: Boolean,
     default: false,
@@ -177,6 +192,11 @@ const productSchema = new mongoose.Schema(
       type: Number,
       required: [true, "Product price is required"],
       min: [0, "Price cannot be negative"],
+    },
+    salePrice: {
+      type: Number,
+      default: 0,
+      min: [0, "Sale price cannot be negative"],
     },
     originalPrice: {
       type: Number,
@@ -345,6 +365,17 @@ const productSchema = new mongoose.Schema(
       default: true,
       index: true,
     },
+    status: {
+      type: String,
+      enum: ["draft", "published"],
+      default: "published",
+      index: true,
+    },
+    isFeatured: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
     isNewArrival: {
       type: Boolean,
       default: false,
@@ -370,6 +401,11 @@ const productSchema = new mongoose.Schema(
     },
     // Tags for search
     tags: {
+      type: [String],
+      default: [],
+      index: true,
+    },
+    collections: {
       type: [String],
       default: [],
       index: true,
@@ -531,6 +567,19 @@ productSchema.pre("validate", function () {
 
 // Pre-save middleware
 productSchema.pre("save", async function () {
+  if (!this.status) {
+    this.status = this.isActive === false ? "draft" : "published";
+  }
+  if (this.status === "draft") {
+    this.isActive = false;
+  } else if (this.isActive === false) {
+    this.status = "draft";
+  }
+
+  if (!this.salePrice && this.price) {
+    this.salePrice = this.price;
+  }
+
   // Keep sale flag derived from pricing. Discount percentages are computed at read time.
   if (this.originalPrice && this.originalPrice > this.price) {
     this.isOnSale = true;

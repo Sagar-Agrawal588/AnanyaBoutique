@@ -1,6 +1,7 @@
 "use client";
 
 import { useNotifications } from "@/hooks/useNotifications";
+import { getBrandNotificationAsset } from "@/config/brandAssets";
 import { API_BASE_URL } from "@/utils/api";
 import cookies from "js-cookie";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -40,6 +41,8 @@ const LIVE_FEED_CURSOR_KEY = "live_offer_last_seen_ms";
 const DEFAULT_LIVE_FEED_LOOKBACK_MS = 2 * 60 * 1000; // 2 minutes
 const AUTO_PROMPT_KEY = "push_prompt_last_shown_at";
 const AUTO_PROMPT_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 hours
+const NOTIFICATION_ICON = getBrandNotificationAsset("icon");
+const NOTIFICATION_BADGE = getBrandNotificationAsset("badge");
 
 const readLiveFeedCursor = () => {
   if (typeof window === "undefined") return 0;
@@ -274,8 +277,8 @@ const NotificationHandler = () => {
         try {
           new Notification(title, {
             body,
-            icon: "/logo.png",
-            badge: "/logo.png",
+            icon: NOTIFICATION_ICON,
+            badge: NOTIFICATION_BADGE,
             tag:
               normalizedMessage.data?.notificationId ||
               normalizedMessage.data?.type ||

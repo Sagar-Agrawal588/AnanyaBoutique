@@ -28,11 +28,7 @@ const EditCategory = () => {
     try {
       const response = await getData("/api/categories", token);
       if (response.success) {
-        // Only show parent categories (no parent), and exclude current category
-        const parentCategories = (response.data || []).filter(
-          (cat) => !cat.parent && cat._id !== categoryId,
-        );
-        setCategories(parentCategories);
+        setCategories((response.data || []).filter((cat) => cat._id !== categoryId));
       }
     } catch (error) {
       console.error("Failed to fetch categories:", error);
@@ -46,7 +42,13 @@ const EditCategory = () => {
       if (response.success && response.data) {
         const cat = response.data;
         setCategoryName(cat.name || "");
-        setParentCategory(cat.parent?._id || cat.parent || "");
+        setParentCategory(
+          cat.parentCategory?._id ||
+            cat.parentCategory ||
+            cat.parent?._id ||
+            cat.parent ||
+            "",
+        );
         setColor(cat.color || "#3b82f6");
         if (cat.image) {
           setImages([{ preview: cat.image, isExisting: true }]);
@@ -132,7 +134,7 @@ const EditCategory = () => {
         name: categoryName,
         image: imageUrl,
         color,
-        parent: parentCategory || null,
+        parentCategory: parentCategory || null,
       };
 
       const response = await putData(
@@ -208,6 +210,7 @@ const EditCategory = () => {
               </MenuItem>
               {categories.map((cat) => (
                 <MenuItem key={cat._id} value={cat._id}>
+                  {"- ".repeat(Number(cat.level || 0))}
                   {cat.name}
                 </MenuItem>
               ))}

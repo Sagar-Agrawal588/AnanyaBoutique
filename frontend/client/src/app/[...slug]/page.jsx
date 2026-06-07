@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { sanitizeBrandText } from "@/config/brandAssets";
 
 const SITE_URL = String(
   process.env.NEXT_PUBLIC_SITE_URL || "https://ananyaboutique.com",
@@ -73,14 +74,14 @@ const findSeoPageByPath = (seoSettings, pathName) => {
 };
 
 const toKeywordList = (value) =>
-  String(value || "")
+  sanitizeBrandText(value)
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean)
     .slice(0, 8);
 
 const toSentenceBlocks = (value) =>
-  String(value || "")
+  sanitizeBrandText(value)
     .split(/(?<=[.!?])\s+/)
     .map((item) => item.trim())
     .filter(Boolean)
@@ -111,8 +112,8 @@ const toBodySections = (value) =>
   Array.isArray(value)
     ? value
         .map((section) => ({
-          heading: String(section?.heading || "").trim(),
-          content: String(section?.content || "").trim(),
+          heading: sanitizeBrandText(section?.heading),
+          content: sanitizeBrandText(section?.content),
         }))
         .filter((section) => section.heading || section.content)
     : [];
@@ -121,8 +122,8 @@ const toFaqItems = (value) =>
   Array.isArray(value)
     ? value
         .map((item) => ({
-          question: String(item?.question || "").trim(),
-          answer: String(item?.answer || "").trim(),
+          question: sanitizeBrandText(item?.question),
+          answer: sanitizeBrandText(item?.answer),
         }))
         .filter((item) => item.question && item.answer)
     : [];
@@ -152,10 +153,17 @@ export async function generateMetadata({ params }) {
     return DEFAULT_METADATA;
   }
 
+  const title = sanitizeBrandText(page.metaTitle, DEFAULT_METADATA.title);
+  const description = sanitizeBrandText(
+    page.metaDescription,
+    DEFAULT_METADATA.description,
+  );
+  const keywords = sanitizeBrandText(page.keywords, DEFAULT_METADATA.keywords);
+
   return {
-    title: page.metaTitle || DEFAULT_METADATA.title,
-    description: page.metaDescription || DEFAULT_METADATA.description,
-    keywords: page.keywords || DEFAULT_METADATA.keywords,
+    title,
+    description,
+    keywords,
     robots: {
       index: Boolean(page.indexable !== false),
       follow: true,
@@ -171,8 +179,10 @@ export async function generateMetadata({ params }) {
               {
                 url: toAbsoluteUrl(page.heroImageUrl),
                 alt:
-                  String(page?.heroImageAlt || page?.heroTitle || page?.label || "")
-                    .trim() || "Ananya Boutique SEO page banner",
+                  sanitizeBrandText(
+                    page?.heroImageAlt || page?.heroTitle || page?.label,
+                    "Ananya Boutique SEO page banner",
+                  ),
               },
             ],
           }
@@ -180,8 +190,8 @@ export async function generateMetadata({ params }) {
     },
     twitter: {
       card: "summary_large_image",
-      title: page.metaTitle || DEFAULT_METADATA.title,
-      description: page.metaDescription || DEFAULT_METADATA.description,
+      title,
+      description,
       ...(page?.heroImageUrl
         ? {
             images: [toAbsoluteUrl(page.heroImageUrl)],
@@ -201,16 +211,21 @@ const SeoLandingPage = async ({ params }) => {
     notFound();
   }
 
-  const title = String(page?.metaTitle || page?.label || "Ananya Boutique").trim();
-  const description = String(page?.metaDescription || "").trim();
-  const keywords = String(page?.keywords || "").trim();
-  const notes = String(page?.notes || "").trim();
-  const heroTitle = String(page?.heroTitle || title).trim() || title;
-  const heroSubtitle = String(page?.heroSubtitle || description).trim();
+  const title = sanitizeBrandText(
+    page?.metaTitle || page?.label,
+    "Ananya Boutique",
+  );
+  const description = sanitizeBrandText(page?.metaDescription);
+  const keywords = sanitizeBrandText(page?.keywords);
+  const notes = sanitizeBrandText(page?.notes);
+  const heroTitle = sanitizeBrandText(page?.heroTitle, title);
+  const heroSubtitle = sanitizeBrandText(page?.heroSubtitle, description);
   const heroImageUrl = String(page?.heroImageUrl || "").trim();
   const heroImageAlt =
-    String(page?.heroImageAlt || page?.heroTitle || page?.label || title).trim() ||
-    "Ananya Boutique SEO banner";
+    sanitizeBrandText(
+      page?.heroImageAlt || page?.heroTitle || page?.label || title,
+      "Ananya Boutique SEO banner",
+    );
   const ctaLabel =
     String(page?.ctaLabel || "Explore Products").trim() || "Explore Products";
   const ctaHref = normalizeCtaHref(page?.ctaHref);
@@ -224,7 +239,7 @@ const SeoLandingPage = async ({ params }) => {
       ? keywordList.slice(0, 4)
       : DEFAULT_HIGHLIGHTS;
   const breadcrumbs = buildBreadcrumbs(pathName);
-  const eyebrow = String(page?.label || "SEO Landing Page").trim();
+  const eyebrow = sanitizeBrandText(page?.label, "SEO Landing Page");
 
   return (
     <main className="min-h-screen bg-[linear-gradient(180deg,#fff8ee_0%,#fffdf8_28%,#ffffff_100%)] text-slate-900">

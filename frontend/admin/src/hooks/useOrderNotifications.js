@@ -4,7 +4,7 @@ import { getData } from "@/utils/api";
 import { useAdminRealtime } from "@/hooks/useAdminRealtime";
 import { useLiveRefresh } from "@/hooks/useLiveRefresh";
 
-const SEEN_STORAGE_KEY = "hog_admin_seen_order_ids";
+const SEEN_STORAGE_KEY = "ananya_admin_seen_order_ids";
 
 const safeParse = (value, fallback = []) => {
   try {

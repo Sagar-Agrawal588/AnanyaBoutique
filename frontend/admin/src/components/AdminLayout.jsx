@@ -110,7 +110,7 @@ export default function AdminLayout({ children }) {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const reloadKey = "hog_admin_chunk_reload_attempted";
+    const reloadKey = "ananya_admin_chunk_reload_attempted";
     const shouldReload = (message) =>
       /ChunkLoadError|Loading chunk|failed to fetch dynamically imported module|CSS chunk/i.test(
         String(message || ""),

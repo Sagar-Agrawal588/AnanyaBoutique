@@ -199,7 +199,7 @@ test("GET /api/v1/partner/inventory returns variant-wise stock breakup", async (
     slug: `dark-choco-peanut-${Date.now()}`,
     price: 449,
     category: category._id,
-    sku: `BOG-${Date.now()}`,
+    sku: `ANB-${Date.now()}`,
     isActive: true,
     hasVariants: true,
     stock: 37,
@@ -208,7 +208,7 @@ test("GET /api/v1/partner/inventory returns variant-wise stock breakup", async (
     variants: [
       {
         name: "500g",
-        sku: `BOG-500-${Date.now()}`,
+        sku: `ANB-500-${Date.now()}`,
         price: 449,
         stock: 16,
         stock_quantity: 16,
@@ -216,7 +216,7 @@ test("GET /api/v1/partner/inventory returns variant-wise stock breakup", async (
       },
       {
         name: "1kg",
-        sku: `BOG-1KG-${Date.now()}`,
+        sku: `ANB-1KG-${Date.now()}`,
         price: 799,
         stock: 21,
         stock_quantity: 21,
@@ -270,13 +270,13 @@ test("GET /api/v1/partner/products returns variant-wise stock breakup", async ()
     slug: `choco-millet-${Date.now()}`,
     price: 399,
     category: category._id,
-    sku: `BOG-PROD-${Date.now()}`,
+    sku: `ANB-PROD-${Date.now()}`,
     isActive: true,
     hasVariants: true,
     variants: [
       {
         name: "500g",
-        sku: `BOG-PROD-500-${Date.now()}`,
+        sku: `ANB-PROD-500-${Date.now()}`,
         price: 399,
         stock: 50,
         stock_quantity: 50,
@@ -284,7 +284,7 @@ test("GET /api/v1/partner/products returns variant-wise stock breakup", async ()
       },
       {
         name: "1kg",
-        sku: `BOG-PROD-1KG-${Date.now()}`,
+        sku: `ANB-PROD-1KG-${Date.now()}`,
         price: 699,
         stock: 50,
         stock_quantity: 50,

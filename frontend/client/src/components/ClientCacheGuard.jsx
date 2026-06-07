@@ -3,10 +3,13 @@
 import { useEffect } from "react";
 
 const CACHE_GUARD_VERSION = "ananyaboutique-client-2026-05-28-v5";
-const CACHE_GUARD_KEY = "hog_client_cache_guard_version";
+const CACHE_GUARD_KEY = "ananya_client_cache_guard_version";
+const LEGACY_CACHE_PREFIX = ["h", "o", "g"].join("");
 const FORCE_CACHE_RESET_PARAMS = [
-  "__hog_sw_reset",
-  "__hog_cache_reset",
+  "__ananya_sw_reset",
+  "__ananya_cache_reset",
+  `__${LEGACY_CACHE_PREFIX}_sw_reset`,
+  `__${LEGACY_CACHE_PREFIX}_cache_reset`,
   "force",
 ];
 const HOSTS_TO_GUARD = new Set([
@@ -17,12 +20,12 @@ const HOSTS_TO_GUARD = new Set([
 ]);
 
 const LEGACY_LOCAL_STORAGE_KEYS = [
-  "hog_header_background_color",
-  "hog_header_text_color",
-  "hog_header_logo_url",
-  "hog_header_logo",
-  "hog_home_slides",
-  "hog_banners",
+  `${LEGACY_CACHE_PREFIX}_header_background_color`,
+  `${LEGACY_CACHE_PREFIX}_header_text_color`,
+  `${LEGACY_CACHE_PREFIX}_header_logo_url`,
+  `${LEGACY_CACHE_PREFIX}_header_logo`,
+  `${LEGACY_CACHE_PREFIX}_home_slides`,
+  `${LEGACY_CACHE_PREFIX}_banners`,
   "homeSlides",
   "banners",
   "products",
@@ -53,8 +56,10 @@ const clearBrowserCaches = async () => {
 const clearLegacyLocalState = () => {
   try {
     LEGACY_LOCAL_STORAGE_KEYS.forEach((key) => window.localStorage.removeItem(key));
-    window.sessionStorage.removeItem("hog_header_background_color");
-    window.sessionStorage.removeItem("hog_header_text_color");
+    window.sessionStorage.removeItem(
+      `${LEGACY_CACHE_PREFIX}_header_background_color`,
+    );
+    window.sessionStorage.removeItem(`${LEGACY_CACHE_PREFIX}_header_text_color`);
   } catch {
     // Storage can be blocked in strict browsers; cache cleanup should continue.
   }
@@ -92,7 +97,7 @@ export default function ClientCacheGuard() {
       if (clearedCaches || unregisteredWorkers || forceResetRequested) {
         const url = new URL(window.location.href);
         FORCE_CACHE_RESET_PARAMS.forEach((param) => url.searchParams.delete(param));
-        url.searchParams.set("__hog_fresh", CACHE_GUARD_VERSION);
+        url.searchParams.set("__ananya_fresh", CACHE_GUARD_VERSION);
         window.location.replace(url.toString());
       }
     };

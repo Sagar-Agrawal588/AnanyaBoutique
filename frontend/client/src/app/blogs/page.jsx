@@ -1,91 +1,170 @@
 "use client";
 
+import BlogMediaAsset from "@/components/BlogMediaAsset";
+import ResponsiveMediaImage from "@/components/ResponsiveMediaImage";
+import BrandArtworkFrame from "@/components/brand/BrandArtworkFrame";
+import { contactConfig } from "@/config/siteConfig";
+import useStorefrontContent from "@/hooks/useStorefrontContent";
+import {
+  getArtwork,
+  getArtworkSource,
+} from "@/config/visualIdentity";
 import { fetchDataFromApi, postData } from "@/utils/api";
 import { extractImageCandidatesFromBlogHtml } from "@/utils/blogHtml";
-import BlogMediaAsset from "@/components/BlogMediaAsset";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
+import {
+  ArrowRight,
+  BookOpen,
+  CalendarDays,
+  Clock3,
+  Gem,
+  Heart,
+  Instagram,
+  Mail,
+  PenLine,
+  Quote,
+  Sparkles,
+  UserRound,
+} from "lucide-react";
 
 const DEFAULT_PAGE = {
-  theme: { style: "mint", layout: "magazine" },
+  theme: { style: "journal", layout: "magazine" },
   sections: { hero: true, featured: true, grid: true, newsletter: true },
   hero: {
-    badge: "Style Journal",
+    badge: "Ananya Boutique Editorial",
     title: "The Journal",
     description:
-      "Styling notes, collection updates, and boutique guidance for everyday and occasion-ready looks.",
+      "Fashion inspiration, styling guides, boutique stories, and curated advice from Ananya Boutique.",
   },
   newsletter: {
-    title: "Don't Miss Our Latest Articles",
+    title: "Join The Boutique Family",
     description:
-      "Subscribe to get weekly styling notes, collection updates, and boutique recommendations delivered to your inbox.",
+      "Receive styling advice, fashion inspiration, exclusive previews, and boutique updates.",
     inputPlaceholder: "Enter your email address",
-    buttonText: "Subscribe",
+    buttonText: "Join Now",
     note: "We respect your privacy. Unsubscribe at any time.",
   },
   article: {
-    bannerStartColor: "#f97316",
-    bannerEndColor: "#ec4899",
+    bannerStartColor: "#2f1325",
+    bannerEndColor: "#7c2d62",
     fontFamily: "modern-sans",
   },
 };
 
-const THEME_PRESETS = {
-  mint: {
-    accent: "from-emerald-600 to-teal-600",
-    accentStrong: "from-emerald-500 to-teal-500",
-    accentText: "text-emerald-600",
-    accentSoft: "bg-emerald-600/10 border-emerald-600/20 text-emerald-600",
-    glowA: "bg-emerald-500",
-    glowB: "bg-teal-400",
+const FEATURED_TOPICS = [
+  {
+    title: "Saree Styling",
+    copy: "Drapes, colors, and graceful finishing notes.",
+    palette: "from-[#fff1f7] via-white to-[#efe8ff]",
+    artworkKey: "categories.sarees",
   },
-  sky: {
-    accent: "from-sky-600 to-cyan-600",
-    accentStrong: "from-sky-500 to-cyan-500",
-    accentText: "text-sky-600",
-    accentSoft: "bg-sky-600/10 border-sky-600/20 text-sky-600",
-    glowA: "bg-sky-500",
-    glowB: "bg-cyan-400",
+  {
+    title: "Suit Collection",
+    copy: "Coordinated looks for visits, work, and occasions.",
+    palette: "from-[#f2ecff] via-white to-[#ffeaf2]",
+    artworkKey: "categories.suits",
   },
-  aurora: {
-    accent: "from-lime-600 to-emerald-600",
-    accentStrong: "from-lime-500 to-emerald-500",
-    accentText: "text-emerald-700",
-    accentSoft: "bg-emerald-600/10 border-emerald-600/20 text-emerald-700",
-    glowA: "bg-lime-500",
-    glowB: "bg-emerald-400",
+  {
+    title: "Kurti Trends",
+    copy: "Everyday silhouettes with boutique detail.",
+    palette: "from-[#ffeaf2] via-white to-[#eaf6ef]",
+    artworkKey: "categories.kurtis",
   },
-  lavender: {
-    accent: "from-indigo-600 to-purple-600",
-    accentStrong: "from-indigo-500 to-purple-500",
-    accentText: "text-indigo-700",
-    accentSoft: "bg-indigo-600/10 border-indigo-600/20 text-indigo-700",
-    glowA: "bg-indigo-500",
-    glowB: "bg-purple-400",
+  {
+    title: "Jewellery Styling",
+    copy: "Statement details and delicate accents.",
+    palette: "from-[#fff6dc] via-white to-[#ffeaf1]",
+    artworkKey: "categories.artificial-jewellery",
   },
-  sunset: {
-    accent: "from-orange-500 to-rose-500",
-    accentStrong: "from-orange-600 to-rose-600",
-    accentText: "text-rose-600",
-    accentSoft: "bg-rose-600/10 border-rose-600/20 text-rose-600",
-    glowA: "bg-orange-400",
-    glowB: "bg-rose-400",
+  {
+    title: "Beauty & Cosmetics",
+    copy: "Finishing touches for a polished glow.",
+    palette: "from-[#fff0ef] via-white to-[#f2ecff]",
+    artworkKey: "categories.cosmetics",
   },
-  midnight: {
-    accent: "from-slate-700 to-slate-900",
-    accentStrong: "from-slate-800 to-slate-950",
-    accentText: "text-slate-700",
-    accentSoft: "bg-slate-600/10 border-slate-600/20 text-slate-700",
-    glowA: "bg-slate-500",
-    glowB: "bg-gray-400",
+  {
+    title: "Boutique Stories",
+    copy: "The people, care, and memories behind the collection.",
+    palette: "from-[#fff8ef] via-white to-[#f0e8ff]",
+    artworkKey: "story.homemaker",
+  },
+];
+
+const STYLE_GUIDES = [
+  {
+    title: "Wedding Styling Guide",
+    copy: "Elegant layers, jewellery pairings, and celebration-ready choices.",
+    label: "Occasion Edit",
+    palette: "from-[#fff4dc] via-white to-[#ffe8f0]",
+  },
+  {
+    title: "Festive Fashion Guide",
+    copy: "Color, comfort, and festive sparkle chosen with balance.",
+    label: "Seasonal Edit",
+    palette: "from-[#f3ecff] via-white to-[#fff1f7]",
+  },
+  {
+    title: "Everyday Elegance Guide",
+    copy: "Easy styling ideas for confidence in daily dressing.",
+    label: "Daily Style",
+    palette: "from-[#eaf6ef] via-white to-[#fff4dc]",
+  },
+];
+
+const INSTAGRAM_PLACEHOLDERS = [
+  "New Arrivals",
+  "Styling Notes",
+  "Saree Moments",
+  "Jewellery Details",
+  "Beauty Picks",
+  "Boutique Stories",
+];
+
+const BLOG_MEDIA_VARIANTS = {
+  hero: {
+    shell: "relative min-h-[360px] overflow-hidden bg-[#f8f0f4] p-3 sm:min-h-[460px]",
+    frame:
+      "relative h-full min-h-[330px] w-full overflow-hidden rounded-lg border border-white/80 bg-white shadow-[0_22px_60px_rgba(47,19,37,0.13)]",
+    media: "h-full w-full object-cover transition-transform duration-500",
+  },
+  featured: {
+    shell: "relative aspect-[16/10] overflow-hidden bg-[#f8f0f4] p-3",
+    frame:
+      "relative h-full w-full overflow-hidden rounded-lg border border-white/80 bg-white shadow-[0_18px_50px_rgba(47,19,37,0.12)]",
+    media: "h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.04]",
+  },
+  grid: {
+    shell: "relative aspect-[4/5] overflow-hidden bg-[#f8f0f4] p-2",
+    frame:
+      "relative h-full w-full overflow-hidden rounded-md border border-white/80 bg-white shadow-[0_14px_35px_rgba(47,19,37,0.1)]",
+    media: "h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.04]",
   },
 };
 
+const fadeUp = {
+  hidden: { opacity: 1, y: 0 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.55, ease: [0.22, 1, 0.36, 1] },
+  },
+};
+
+const staggerContainer = {
+  hidden: {},
+  visible: {
+    transition: { staggerChildren: 0.08 },
+  },
+};
+
+const sectionViewport = { once: true, amount: 0.18 };
+
 const formatDate = (dateString) => {
   try {
-    return new Date(dateString).toLocaleDateString("en-US", {
+    return new Date(dateString).toLocaleDateString("en-IN", {
       year: "numeric",
       month: "long",
       day: "numeric",
@@ -95,74 +174,294 @@ const formatDate = (dateString) => {
   }
 };
 
-const fadeInUp = {
-  hidden: { opacity: 0, y: 30 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: "easeOut" } },
+const getBlogText = (blog = {}) =>
+  String(
+    blog.excerpt ||
+      blog.description ||
+      blog.content ||
+      String(blog.contentHtml || "").replace(/<[^>]*>/g, " "),
+  )
+    .replace(/\s+/g, " ")
+    .trim();
+
+const getReadingTime = (blog = {}) => {
+  const source = `${blog.title || ""} ${getBlogText(blog)}`;
+  const words = source.split(/\s+/).filter(Boolean).length;
+  return Math.max(Math.ceil(words / 180), 1);
 };
 
-const staggerContainer = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.15,
-    },
-  },
-};
+const getAuthorName = (blog = {}) => blog.author || blog.createdBy || "Ananya Boutique";
 
-const BLOG_MEDIA_VARIANTS = {
-  minimal: {
-    shell:
-      "relative aspect-[4/3] overflow-hidden rounded-[1.5rem] bg-gradient-to-br from-slate-100 via-white to-slate-100 p-3",
-    frame:
-      "relative h-full w-full overflow-hidden rounded-[1.2rem] border border-white/70 shadow-[0_18px_50px_rgba(15,23,42,0.12)]",
-    media: "h-full w-full object-contain transition-transform duration-500",
-  },
-  featured: {
-    shell:
-      "relative min-h-[260px] sm:min-h-[360px] lg:min-h-full overflow-hidden bg-gradient-to-br from-slate-100 via-white to-indigo-50 p-4 sm:p-6",
-    frame:
-      "relative h-full w-full overflow-hidden rounded-[1.75rem] border border-white/70 shadow-[0_22px_60px_rgba(15,23,42,0.14)]",
-    media: "h-full w-full object-contain transition-transform duration-500",
-  },
-  grid: {
-    shell:
-      "relative aspect-[4/3] overflow-hidden bg-gradient-to-br from-slate-100 via-white to-slate-100 p-3",
-    frame:
-      "relative h-full w-full overflow-hidden rounded-[1.2rem] border border-white/70 shadow-[0_18px_50px_rgba(15,23,42,0.12)]",
-    media: "h-full w-full object-contain transition-transform duration-500",
-  },
-};
+const getBlogCategory = (blog = {}) => blog.category || blog.topic || "Fashion Journal";
 
-const BlogMediaFallback = ({ title = "", className = "" }) => (
-  <div
-    className={`flex h-full w-full items-center justify-center bg-gradient-to-br from-slate-100 via-white to-slate-200 p-6 text-center ${className}`}
-  >
-    <div>
-      <p className="text-[0.65rem] font-semibold uppercase tracking-[0.28em] text-slate-400">
-        Blog Cover
-      </p>
-      <p className="mt-3 line-clamp-3 text-sm font-semibold text-slate-600">
-        {title || "Media unavailable"}
-      </p>
+function BlogMediaFallback({ title = "", className = "" }) {
+  return (
+    <div
+      className={`flex h-full w-full items-center justify-center bg-[linear-gradient(135deg,#fff8f1_0%,#ffffff_48%,#f1ecff_100%)] p-6 text-center ${className}`}
+    >
+      <div>
+        <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#9d6b19]">
+          Journal Cover
+        </p>
+        <p className="mt-3 line-clamp-3 text-sm font-black text-[#2f1325]">
+          {title || "Ananya Boutique"}
+        </p>
+      </div>
     </div>
-  </div>
-);
+  );
+}
+
+function SectionHeading({ eyebrow, title, copy, centered = false }) {
+  return (
+    <motion.div
+      variants={fadeUp}
+      className={`${centered ? "mx-auto text-center" : ""} max-w-3xl`}
+    >
+      {eyebrow ? (
+        <p className="text-xs font-black uppercase tracking-[0.2em] text-[#9d6b19]">
+          {eyebrow}
+        </p>
+      ) : null}
+      <h2 className="brand-story-heading mt-2 text-3xl font-semibold leading-tight text-[#2f1325] sm:text-4xl lg:text-5xl">
+        {title}
+      </h2>
+      {copy ? (
+        <p className="mt-4 text-base font-medium leading-7 text-[#6c4b5d] sm:text-lg">
+          {copy}
+        </p>
+      ) : null}
+    </motion.div>
+  );
+}
+
+function EditorialArtwork({ artwork, artworkKey, label = "Artwork Placeholder" }) {
+  return (
+    <BrandArtworkFrame
+      artwork={artwork}
+      artworkKey={artworkKey}
+      aspect="wide"
+      icon={Sparkles}
+      label={label}
+      motionEnabled={false}
+      className="rounded-lg shadow-[0_24px_70px_rgba(47,19,37,0.15)]"
+    />
+  );
+}
+
+function TopicArtwork({ palette, artworkKey }) {
+  const artwork = getArtwork(artworkKey);
+  const desktopSrc = getArtworkSource(artwork, "desktop");
+  const mobileSrc = getArtworkSource(artwork, "mobile") || desktopSrc;
+
+  if (desktopSrc || mobileSrc) {
+    return (
+      <div
+        className={`relative aspect-[16/11] overflow-hidden bg-gradient-to-br ${palette}`}
+        data-artwork-key={artwork?.key || artworkKey || ""}
+      >
+        <ResponsiveMediaImage
+          desktopSrc={desktopSrc}
+          mobileSrc={mobileSrc}
+          alt={artwork?.alt || artwork?.title || "Featured topic artwork"}
+          className="absolute inset-0"
+          imgClassName="transition duration-500 group-hover:scale-[1.04]"
+          desktopProfile={artwork?.variants?.desktop?.profile || "card"}
+          mobileProfile={artwork?.variants?.mobile?.profile || "card"}
+          loading="lazy"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={`relative aspect-[16/11] overflow-hidden bg-gradient-to-br ${palette}`}
+      data-artwork-key={artwork?.key || artworkKey || ""}
+    >
+      <span className="absolute inset-4 rounded-lg border border-white/75" />
+      <span className="absolute left-6 top-6 h-24 w-16 rounded-t-full rounded-b-lg bg-white/82 shadow-lg transition duration-500 group-hover:-translate-y-1" />
+      <span className="absolute bottom-6 left-12 h-28 w-24 rounded-lg bg-[#f8d7e7]/80 shadow-lg transition duration-500 group-hover:translate-x-1" />
+      <span className="absolute right-8 top-8 h-32 w-24 rounded-t-full rounded-b-lg bg-white/88 shadow-xl transition duration-500 group-hover:translate-y-1" />
+      <span className="absolute bottom-8 right-14 h-16 w-16 rounded-lg border border-[#d8b46b]/45 bg-[#fff8e8]/90 shadow-lg" />
+    </div>
+  );
+}
+
+function FeaturedArticleCard({ blog, resolveBlogHref }) {
+  if (!blog) {
+    return (
+      <div className="rounded-lg border border-[#eadfe6] bg-white/92 p-5 shadow-[0_18px_50px_rgba(47,19,37,0.1)]">
+        <p className="text-xs font-black uppercase tracking-[0.18em] text-[#9d6b19]">
+          Featured Article
+        </p>
+        <h2 className="brand-story-heading mt-3 text-3xl font-semibold text-[#2f1325]">
+          Stories From The Boutique
+        </h2>
+        <p className="mt-3 text-sm font-medium leading-6 text-[#6c4b5d]">
+          Editorial stories and styling advice will appear here as the journal grows.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <Link href={resolveBlogHref(blog)} className="block">
+      <article className="group rounded-lg border border-[#eadfe6] bg-white/94 p-5 shadow-[0_18px_50px_rgba(47,19,37,0.1)] transition hover:-translate-y-1 hover:border-[#d8b46b] hover:shadow-[0_26px_70px_rgba(47,19,37,0.15)]">
+        <div className="flex items-center justify-between gap-3">
+          <span className="inline-flex items-center gap-2 rounded-full border border-[#ead3df] bg-[#fff8fb] px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-[#6b244d]">
+            <BookOpen className="h-3.5 w-3.5" aria-hidden="true" />
+            Featured Article
+          </span>
+          <span className="text-xs font-bold text-[#9b7b8d]">
+            {getReadingTime(blog)} min read
+          </span>
+        </div>
+        <h2 className="brand-story-heading mt-4 line-clamp-3 text-3xl font-semibold leading-tight text-[#2f1325] transition group-hover:text-[#7c2d62]">
+          {blog.title}
+        </h2>
+        <p className="mt-3 line-clamp-3 text-sm font-medium leading-6 text-[#6c4b5d]">
+          {getBlogText(blog)}
+        </p>
+        <div className="mt-5 flex items-center justify-between border-t border-[#eadfe6] pt-4">
+          <span className="text-xs font-black uppercase tracking-[0.14em] text-[#9d6b19]">
+            {getBlogCategory(blog)}
+          </span>
+          <span className="inline-flex items-center gap-1 text-sm font-black text-[#2f1325]">
+            Read
+            <ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" />
+          </span>
+        </div>
+      </article>
+    </Link>
+  );
+}
+
+function BlogCard({ blog, resolveBlogHref, renderBlogMediaSurface, featured = false }) {
+  const readingTime = getReadingTime(blog);
+  const author = getAuthorName(blog);
+  const category = getBlogCategory(blog);
+
+  return (
+    <Link href={resolveBlogHref(blog)} className="block h-full">
+      <motion.article
+        variants={fadeUp}
+        whileHover={{ y: -6 }}
+        className={`group flex h-full flex-col overflow-hidden rounded-lg border border-[#eadfe6] bg-white shadow-[0_16px_45px_rgba(47,19,37,0.08)] transition hover:border-[#d8b46b] hover:shadow-[0_24px_65px_rgba(47,19,37,0.13)] ${
+          featured ? "lg:grid lg:grid-cols-[0.95fr_1.05fr]" : ""
+        }`}
+      >
+        <div className="relative">
+          {renderBlogMediaSurface(blog, featured ? "featured" : "grid")}
+          <span className="absolute left-3 top-3 rounded-full border border-white/80 bg-white/90 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-[#6b244d] shadow-sm">
+            {category}
+          </span>
+          <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full border border-white/80 bg-white/90 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-[#2f1325] shadow-sm">
+            <Clock3 className="h-3 w-3" aria-hidden="true" />
+            {readingTime} min
+          </span>
+        </div>
+
+        <div className="flex flex-1 flex-col p-5 sm:p-6">
+          <div className="flex flex-wrap items-center gap-3 text-xs font-bold text-[#9b7b8d]">
+            <span className="inline-flex items-center gap-1.5">
+              <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />
+              {formatDate(blog.createdAt)}
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <UserRound className="h-3.5 w-3.5" aria-hidden="true" />
+              {author}
+            </span>
+          </div>
+
+          <h3
+            className={`brand-story-heading mt-4 line-clamp-3 font-semibold leading-tight text-[#2f1325] transition group-hover:text-[#7c2d62] ${
+              featured ? "text-3xl sm:text-4xl" : "text-2xl"
+            }`}
+          >
+            {blog.title}
+          </h3>
+          <p className="mt-3 line-clamp-3 text-sm font-medium leading-6 text-[#6c4b5d]">
+            {getBlogText(blog)}
+          </p>
+
+          <div className="mt-auto flex items-center justify-between border-t border-[#eadfe6] pt-5">
+            <span className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-[0.14em] text-[#9d6b19]">
+              <PenLine className="h-3.5 w-3.5" aria-hidden="true" />
+              Editorial
+            </span>
+            <span className="inline-flex items-center gap-1 text-sm font-black text-[#2f1325]">
+              Read Article
+              <ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" />
+            </span>
+          </div>
+        </div>
+      </motion.article>
+    </Link>
+  );
+}
+
+function NewsletterForm({
+  pageConfig,
+  newsletterEmail,
+  newsletterStatus,
+  newsletterMessage,
+  handleNewsletterEmailChange,
+  handleNewsletterSubmit,
+}) {
+  return (
+    <form onSubmit={handleNewsletterSubmit} className="mt-7 max-w-2xl">
+      <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+        <input
+          type="email"
+          value={newsletterEmail}
+          onChange={handleNewsletterEmailChange}
+          placeholder={
+            pageConfig?.newsletter?.inputPlaceholder ||
+            DEFAULT_PAGE.newsletter.inputPlaceholder
+          }
+          required
+          disabled={newsletterStatus === "loading" || newsletterStatus === "success"}
+          className="h-12 rounded-lg border border-[#ead3df] bg-white px-4 text-sm font-bold text-[#2f1325] outline-none transition placeholder:text-[#a68c9d] focus:border-[#7c2d62] focus:ring-4 focus:ring-[#f8d7e7]/55"
+        />
+        <button
+          type="submit"
+          disabled={newsletterStatus === "loading" || newsletterStatus === "success"}
+          className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-[#2f1325] px-6 text-sm font-black uppercase tracking-[0.14em] text-white shadow-[0_18px_40px_rgba(47,19,37,0.22)] transition hover:-translate-y-0.5 hover:bg-[#4b1f3a] disabled:cursor-not-allowed disabled:opacity-70"
+        >
+          <Mail className="h-4 w-4" aria-hidden="true" />
+          {newsletterStatus === "loading"
+            ? "Joining..."
+            : newsletterStatus === "success"
+              ? "Joined"
+              : pageConfig?.newsletter?.buttonText || DEFAULT_PAGE.newsletter.buttonText}
+        </button>
+      </div>
+      {pageConfig?.newsletter?.note ? (
+        <p className="mt-3 text-xs font-medium text-[#8a7180]">
+          {pageConfig.newsletter.note}
+        </p>
+      ) : null}
+      {newsletterMessage ? (
+        <p
+          className={`mt-3 text-sm font-bold ${
+            newsletterStatus === "success" ? "text-emerald-700" : "text-rose-700"
+          }`}
+        >
+          {newsletterMessage}
+        </p>
+      ) : null}
+    </form>
+  );
+}
 
 export default function BlogPage() {
+  const { content: storefrontContent } = useStorefrontContent();
   const [blogs, setBlogs] = useState([]);
   const [blogsLoading, setBlogsLoading] = useState(true);
   const [pageConfig, setPageConfig] = useState(DEFAULT_PAGE);
   const [newsletterEmail, setNewsletterEmail] = useState("");
   const [newsletterStatus, setNewsletterStatus] = useState(null);
   const [newsletterMessage, setNewsletterMessage] = useState("");
-
-  const themeStyle = pageConfig?.theme?.style || DEFAULT_PAGE.theme.style;
-  const layout = pageConfig?.theme?.layout || DEFAULT_PAGE.theme.layout;
-  const theme = useMemo(
-    () => THEME_PRESETS[themeStyle] || THEME_PRESETS.mint,
-    [themeStyle],
-  );
 
   const sections = pageConfig?.sections || DEFAULT_PAGE.sections;
   const showHero = sections.hero !== false;
@@ -173,18 +472,21 @@ export default function BlogPage() {
   const featuredBlog = blogs.length > 0 ? blogs[0] : null;
   const otherBlogs = blogs.slice(1);
 
+  const heroTitle = DEFAULT_PAGE.hero.title;
+  const heroDescription = DEFAULT_PAGE.hero.description;
+  const heroBadge = DEFAULT_PAGE.hero.badge;
+  const blogHeroImage = storefrontContent.mediaSlots?.blogHero || "";
+  const newsletterTitle = DEFAULT_PAGE.newsletter.title;
+  const newsletterDescription = DEFAULT_PAGE.newsletter.description;
+
   const resolveBlogHref = (blog) => `/blogs/${blog.slug || blog._id}`;
   const getBlogPreviewImage = (blog) => {
     if (blog?.image) return blog.image;
-    return (
-      extractImageCandidatesFromBlogHtml(blog?.contentHtml || "")?.[0] || ""
-    );
+    return extractImageCandidatesFromBlogHtml(blog?.contentHtml || "")?.[0] || "";
   };
-  const hasBlogMedia = (blog) =>
-    Boolean(blog?.videoUrl || getBlogPreviewImage(blog));
   const renderBlogMedia = (blog, className = "") => {
     const previewImage = getBlogPreviewImage(blog);
-    if (blog.videoUrl) {
+    if (blog?.videoUrl) {
       return (
         <video
           src={blog.videoUrl}
@@ -203,18 +505,14 @@ export default function BlogPage() {
           src={previewImage}
           alt={blog.title}
           className={className}
-          fallback={
-            <BlogMediaFallback title={blog.title} className={className} />
-          }
+          fallback={<BlogMediaFallback title={blog.title} className={className} />}
         />
       );
     }
 
-    return null;
+    return <BlogMediaFallback title={blog?.title} className={className} />;
   };
   const renderBlogMediaSurface = (blog, variant = "grid") => {
-    if (!hasBlogMedia(blog)) return null;
-
     const styles = BLOG_MEDIA_VARIANTS[variant] || BLOG_MEDIA_VARIANTS.grid;
     const mediaTone = blog?.videoUrl ? "bg-black" : "bg-white";
 
@@ -227,24 +525,25 @@ export default function BlogPage() {
     );
   };
 
-  // Email validation helper - matches server-side validation
+  const visibleBlogs = useMemo(
+    () => blogs.filter((blog) => blog && (blog._id || blog.slug)),
+    [blogs],
+  );
+
   const isValidEmail = (email) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailRegex.test(email);
   };
 
-  // Sanitize email - remove invisible/zero-width characters
-  const sanitizeEmail = (email) => {
-    return email
-      .replace(/[\u200B-\u200D\uFEFF\u00A0]/g, "") // Remove zero-width & non-breaking spaces
-      .replace(/[^\x20-\x7E]/g, "") // Keep only printable ASCII
+  const sanitizeEmail = (email) =>
+    email
+      .replace(/[\u200B-\u200D\uFEFF\u00A0]/g, "")
+      .replace(/[^\x20-\x7E]/g, "")
       .trim()
       .toLowerCase();
-  };
 
   const handleNewsletterEmailChange = (event) => {
     setNewsletterEmail(event.target.value);
-    // Reset error state when user starts typing again
     if (newsletterStatus === "error") {
       setNewsletterStatus(null);
       setNewsletterMessage("");
@@ -283,9 +582,7 @@ export default function BlogPage() {
         setNewsletterMessage(
           response?.message || "Failed to subscribe. Please try again.",
         );
-        toast.error(
-          response?.message || "Failed to subscribe. Please try again.",
-        );
+        toast.error(response?.message || "Failed to subscribe. Please try again.");
       }
     } catch (error) {
       console.error("Blog newsletter subscription error:", error);
@@ -357,487 +654,438 @@ export default function BlogPage() {
     return () => window.removeEventListener("blogUpdated", handleBlogUpdate);
   }, []);
 
-  if (layout === "minimal") {
-    return (
-      <main className="bg-white min-h-screen">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-12">
-          {showHero && (
-            <motion.section
+  return (
+    <main className="min-h-screen bg-[#fffdfb] text-[#2f1325]">
+      {showHero ? (
+        <section className="border-b border-[#eadfe6] bg-[linear-gradient(135deg,#fff8f1_0%,#fffdfb_42%,#f3ecff_100%)]">
+          <div className="container mx-auto grid gap-8 px-4 py-10 sm:py-12 lg:grid-cols-[1fr_0.95fr] lg:items-center lg:py-16">
+            <motion.div
               initial="hidden"
               animate="visible"
-              variants={fadeInUp}
+              variants={staggerContainer}
               className="max-w-3xl"
             >
-              {pageConfig?.hero?.badge && (
-                <span
-                  className={[
-                    "inline-flex px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide border",
-                    theme.accentSoft,
-                  ].join(" ")}
-                >
-                  {pageConfig.hero.badge}
-                </span>
-              )}
-              <h1 className="mt-5 text-4xl sm:text-5xl font-extrabold text-gray-900 tracking-tight">
-                {pageConfig?.hero?.title || DEFAULT_PAGE.hero.title}
-              </h1>
-              {pageConfig?.hero?.description && (
-                <p className="mt-4 text-gray-600 text-lg leading-relaxed">
-                  {pageConfig.hero.description}
-                </p>
-              )}
-            </motion.section>
-          )}
+              <motion.span
+                variants={fadeUp}
+                className="inline-flex items-center gap-2 rounded-full border border-[#ead3df] bg-white/82 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-[#6b244d] shadow-sm"
+              >
+                <PenLine className="h-3.5 w-3.5 text-[#9d6b19]" aria-hidden="true" />
+                {heroBadge}
+              </motion.span>
+              <motion.h1
+                variants={fadeUp}
+                className="brand-story-heading mt-6 text-5xl font-semibold leading-[0.95] text-[#2f1325] sm:text-6xl lg:text-7xl"
+              >
+                {heroTitle}
+              </motion.h1>
+              <motion.p
+                variants={fadeUp}
+                className="mt-5 max-w-2xl text-base font-medium leading-7 text-[#6c4b5d] sm:text-lg"
+              >
+                {heroDescription}
+              </motion.p>
+              <motion.div variants={fadeUp} className="mt-8">
+                <FeaturedArticleCard
+                  blog={showFeatured ? featuredBlog : null}
+                  resolveBlogHref={resolveBlogHref}
+                />
+              </motion.div>
+            </motion.div>
 
-          {showGrid && (
-            <section className="mt-16">
-              {blogsLoading ? (
-                <div className="rounded-2xl border border-gray-100 bg-gray-50 p-8 text-center text-gray-500">
-                  Loading blogs...
-                </div>
-              ) : blogs.length === 0 ? (
-                <div className="rounded-2xl border border-gray-100 bg-gray-50 p-8 text-center text-gray-600">
-                  No blogs yet.
-                </div>
-              ) : (
-                <motion.div
-                  initial="hidden"
-                  whileInView="visible"
-                  viewport={{ once: true, margin: "-50px" }}
-                  variants={staggerContainer}
-                  className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8"
-                >
-                  {blogs.map((blog) => (
-                    <Link key={blog._id} href={resolveBlogHref(blog)}>
-                      <motion.article
-                        variants={fadeInUp}
-                        whileHover={{ y: -5 }}
-                        className="group h-full flex flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm hover:shadow-lg transition-all duration-300"
-                      >
-                        {hasBlogMedia(blog) &&
-                          renderBlogMediaSurface(blog, "minimal")}
-                        <div className="p-6 flex-1 flex flex-col">
-                          <div className="text-xs text-gray-400 font-medium mb-2">
-                            {formatDate(blog.createdAt)}
-                          </div>
-                          <h2 className="text-xl font-bold text-gray-900 line-clamp-2 group-hover:text-gray-700 transition-colors">
-                            {blog.title}
-                          </h2>
-                          <p className="mt-3 text-sm text-gray-600 line-clamp-3 mb-4 flex-1">
-                            {blog.excerpt ||
-                              blog.description ||
-                              blog.content?.substring(0, 120)}
-                          </p>
-                          <div
-                            className={`text-sm font-semibold flex items-center gap-1 ${theme.accentText}`}
-                          >
-                            Read more{" "}
-                            <span className="group-hover:translate-x-1 transition-transform">
-                              →
-                            </span>
-                          </div>
-                        </div>
-                      </motion.article>
-                    </Link>
-                  ))}
-                </motion.div>
-              )}
-            </section>
-          )}
-
-          {showNewsletter && (
-            <motion.section
-              initial="hidden"
-              whileInView="visible"
-              viewport={{ once: true }}
-              variants={fadeInUp}
-              className="mt-20 rounded-3xl border border-gray-100 bg-gray-50 p-8 sm:p-12 relative overflow-hidden"
-            >
-              <div className="relative z-10">
-                <h2 className="text-2xl sm:text-3xl font-extrabold text-gray-900">
-                  {pageConfig?.newsletter?.title ||
-                    DEFAULT_PAGE.newsletter.title}
-                </h2>
-                {pageConfig?.newsletter?.description && (
-                  <p className="mt-3 text-gray-600 leading-relaxed max-w-2xl">
-                    {pageConfig.newsletter.description}
-                  </p>
-                )}
-                <form
-                  onSubmit={handleNewsletterSubmit}
-                  className="mt-8 flex flex-col sm:flex-row gap-3 max-w-xl"
-                >
-                  <input
-                    type="email"
-                    value={newsletterEmail}
-                    onChange={handleNewsletterEmailChange}
-                    placeholder={
-                      pageConfig?.newsletter?.inputPlaceholder ||
-                      DEFAULT_PAGE.newsletter.inputPlaceholder
+            <EditorialArtwork
+              artwork={
+                blogHeroImage
+                  ? {
+                      source: blogHeroImage,
+                      title: heroTitle,
+                      copy: heroDescription,
+                      aspect: "wide",
                     }
-                    required
-                    disabled={
-                      newsletterStatus === "loading" ||
-                      newsletterStatus === "success"
-                    }
-                    className="flex-1 px-5 py-3.5 rounded-xl border border-gray-200 outline-none focus:ring-2 focus:ring-black/5 transition-shadow"
-                  />
-                  <button
-                    type="submit"
-                    disabled={
-                      newsletterStatus === "loading" ||
-                      newsletterStatus === "success"
-                    }
-                    className={`px-8 py-3.5 rounded-xl font-bold text-white bg-gradient-to-r ${theme.accent} shadow-md transition-all duration-300 disabled:opacity-70 disabled:cursor-not-allowed ${newsletterStatus === "loading" || newsletterStatus === "success" ? "" : "hover:shadow-lg hover:-translate-y-0.5"}`}
-                  >
-                    {newsletterStatus === "loading"
-                      ? "Subscribing..."
-                      : newsletterStatus === "success"
-                        ? "Subscribed"
-                        : pageConfig?.newsletter?.buttonText ||
-                          DEFAULT_PAGE.newsletter.buttonText}
-                  </button>
-                </form>
-                {pageConfig?.newsletter?.note && (
-                  <p className="mt-4 text-xs text-gray-500">
-                    {pageConfig.newsletter.note}
-                  </p>
-                )}
-                {newsletterStatus === "success" && (
-                  <p className="mt-2 text-xs font-semibold text-emerald-600">
-                    {newsletterMessage || "Thank you for subscribing!"}
-                  </p>
-                )}
-                {newsletterStatus === "error" && (
-                  <p className="mt-2 text-xs font-semibold text-rose-600">
-                    {newsletterMessage ||
-                      "Failed to subscribe. Please try again."}
-                  </p>
-                )}
-              </div>
-            </motion.section>
-          )}
-        </div>
-      </main>
-    );
-  }
-
-  return (
-    <main className="bg-gray-50 min-h-screen">
-      {/* Hero Section */}
-      {showHero && (
-        <section className="relative bg-[#0f1016] text-white py-24 sm:py-32 overflow-hidden">
-          {/* Animated Background */}
-          <div className="absolute inset-0">
-            <div className="absolute inset-0 bg-gradient-to-br from-[#1a1a2e] via-[#16213e] to-[#0f3460] opacity-90" />
-            <motion.div
-              animate={{
-                scale: [1, 1.2, 1],
-                opacity: [0.3, 0.5, 0.3],
-              }}
-              transition={{
-                duration: 8,
-                repeat: Infinity,
-                ease: "easeInOut",
-              }}
-              className={`absolute top-0 left-1/4 w-[600px] h-[600px] ${theme.glowA} rounded-full blur-[120px] mix-blend-screen opacity-30`}
-            />
-            <motion.div
-              animate={{
-                scale: [1, 1.3, 1],
-                opacity: [0.3, 0.6, 0.3],
-              }}
-              transition={{
-                duration: 10,
-                repeat: Infinity,
-                ease: "easeInOut",
-                delay: 1,
-              }}
-              className={`absolute bottom-0 right-1/4 w-[500px] h-[500px] ${theme.glowB} rounded-full blur-[100px] mix-blend-screen opacity-30`}
+                  : undefined
+              }
+              artworkKey="blog.hero"
+              label="Journal Hero"
             />
           </div>
-
-          <motion.div
-            initial="hidden"
-            animate="visible"
-            variants={fadeInUp}
-            className="container mx-auto px-4 text-center relative z-10"
-          >
-            {pageConfig?.hero?.badge && (
-              <motion.span
-                whileHover={{ scale: 1.05 }}
-                className="inline-block px-5 py-2 bg-white/10 border border-white/10 rounded-full text-sm font-semibold mb-8 backdrop-blur-md shadow-lg"
-              >
-                {pageConfig.hero.badge}
-              </motion.span>
-            )}
-            <h1 className="text-5xl sm:text-6xl md:text-7xl font-bold mb-6 bg-gradient-to-b from-white to-white/70 bg-clip-text text-transparent tracking-tight">
-              {pageConfig?.hero?.title || DEFAULT_PAGE.hero.title}
-            </h1>
-            <p className="text-xl sm:text-2xl text-gray-300 max-w-2xl mx-auto leading-relaxed">
-              {pageConfig?.hero?.description || DEFAULT_PAGE.hero.description}
-            </p>
-          </motion.div>
         </section>
-      )}
+      ) : null}
 
-      {/* Featured Blog */}
-      {showFeatured && featuredBlog && (
-        <section className="py-16 sm:py-20 relative z-20 -mt-10 sm:-mt-16">
-          <div className="container mx-auto px-4">
-            <motion.div
-              initial={{ opacity: 0, y: 40 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: "-50px" }}
-              transition={{ duration: 0.7 }}
-              className={`grid grid-cols-1 ${hasBlogMedia(featuredBlog) ? "lg:grid-cols-2" : ""} gap-0 items-stretch bg-white rounded-3xl overflow-hidden shadow-2xl shadow-black/5`}
-            >
-              {hasBlogMedia(featuredBlog) && (
-                <div className="relative group">
-                  {renderBlogMediaSurface(featuredBlog, "featured")}
-                  <div
-                    className={`absolute top-6 left-6 bg-gradient-to-r ${theme.accentStrong} text-white px-5 py-2 rounded-full text-sm font-bold shadow-lg`}
-                  >
-                    Featured
-                  </div>
-                </div>
-              )}
-
-              <div className="p-8 lg:p-14 flex flex-col justify-center bg-white">
-                <div className="flex items-center gap-4 mb-6">
-                  <span
-                    className={`px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider border ${theme.accentSoft}`}
-                  >
-                    {featuredBlog.category || "General"}
-                  </span>
-                  <span className="text-gray-400 text-sm font-medium">
-                    {formatDate(featuredBlog.createdAt)}
-                  </span>
-                </div>
-
-                <h2 className="text-3xl lg:text-4xl font-bold text-gray-900 mb-6 leading-tight">
-                  <Link
-                    href={resolveBlogHref(featuredBlog)}
-                    className="hover:text-gray-600 transition-colors"
-                  >
-                    {featuredBlog.title}
-                  </Link>
-                </h2>
-
-                <p className="text-gray-600 text-lg mb-8 leading-relaxed line-clamp-3">
-                  {featuredBlog.excerpt ||
-                    featuredBlog.description ||
-                    featuredBlog.content?.substring(0, 220)}
-                </p>
-
-                <Link
-                  href={resolveBlogHref(featuredBlog)}
-                  className={`inline-flex items-center gap-2 font-bold text-lg ${theme.accentText} group`}
-                >
-                  Read Full Article{" "}
-                  <span className="group-hover:translate-x-1.5 transition-transform">
-                    →
-                  </span>
-                </Link>
-              </div>
+      <motion.section
+        initial="hidden"
+        whileInView="visible"
+        viewport={sectionViewport}
+        variants={staggerContainer}
+        className="bg-white"
+      >
+        <div className="container mx-auto px-4 py-8 sm:py-10">
+          <div className="grid gap-5 border-y border-[#eadfe6] py-7 lg:grid-cols-[0.8fr_1.2fr] lg:items-center">
+            <motion.div variants={fadeUp}>
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-[#9d6b19]">
+                Editor&apos;s Note
+              </p>
+              <h2 className="brand-story-heading mt-2 text-3xl font-semibold leading-tight text-[#2f1325] sm:text-4xl">
+                A note from the boutique
+              </h2>
+            </motion.div>
+            <motion.div variants={fadeUp} className="space-y-4">
+              <p className="text-base font-medium leading-8 text-[#60485a] sm:text-lg">
+                For over a decade, Ananya Boutique has helped women discover styles that make them feel confident, elegant, and comfortable.
+              </p>
+              <p className="text-base font-medium leading-8 text-[#60485a] sm:text-lg">
+                The Journal is where we share inspiration, fashion guidance, seasonal trends, and stories behind the collections we love.
+              </p>
             </motion.div>
           </div>
-        </section>
-      )}
+        </div>
+      </motion.section>
 
-      {/* Blog Grid */}
-      {showGrid && (
-        <section className="py-16 sm:py-24">
-          <div className="container mx-auto px-4">
+      <motion.section
+        initial="hidden"
+        whileInView="visible"
+        viewport={sectionViewport}
+        variants={staggerContainer}
+        className="bg-[#fffdfb]"
+      >
+        <div className="container mx-auto px-4 py-10 sm:py-12">
+          <div className="mb-7 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <SectionHeading
+              eyebrow="Featured Topics"
+              title="Curated fashion conversations"
+              copy="Explore editorial themes across styling, beauty, jewellery, and boutique stories."
+            />
+            <a
+              href="#journal-stories"
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-[#ead3df] bg-white px-4 text-sm font-black text-[#6b244d] transition hover:border-[#d8b46b]"
+            >
+              Browse Stories
+              <ArrowRight className="h-4 w-4" aria-hidden="true" />
+            </a>
+          </div>
+
+          <div className="mb-6">
+            <EditorialArtwork
+              artworkKey="blog.featuredTopics"
+              label="Featured Topics"
+            />
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {FEATURED_TOPICS.map((topic) => (
+              <motion.a
+                key={topic.title}
+                variants={fadeUp}
+                href="#journal-stories"
+                className="group overflow-hidden rounded-lg border border-[#eadfe6] bg-white shadow-[0_16px_45px_rgba(47,19,37,0.08)] transition hover:-translate-y-1 hover:border-[#d8b46b] hover:shadow-[0_24px_60px_rgba(47,19,37,0.13)]"
+              >
+                <TopicArtwork
+                  palette={topic.palette}
+                  artworkKey={topic.artworkKey}
+                />
+                <div className="p-4">
+                  <h3 className="text-lg font-black text-[#2f1325]">
+                    {topic.title}
+                  </h3>
+                  <p className="mt-1 text-sm font-semibold leading-6 text-[#806574]">
+                    {topic.copy}
+                  </p>
+                </div>
+              </motion.a>
+            ))}
+          </div>
+        </div>
+      </motion.section>
+
+      {showGrid ? (
+        <section
+          id="journal-stories"
+          className="scroll-mt-[calc(var(--header-height,118px)+28px)] border-y border-[#eadfe6] bg-[linear-gradient(180deg,#fff8fb_0%,#ffffff_100%)]"
+        >
+          <div className="container mx-auto px-4 py-10 sm:py-14">
+            <motion.div
+              initial="hidden"
+              whileInView="visible"
+              viewport={sectionViewport}
+              variants={staggerContainer}
+              className="mb-7"
+            >
+              <SectionHeading
+                eyebrow="Latest Articles"
+                title="Editorial style notes"
+                copy="Premium guides, collection stories, and boutique advice from Ananya Boutique."
+              />
+            </motion.div>
+
             {blogsLoading ? (
-              <div className="text-center py-20 bg-white rounded-3xl shadow-sm border border-gray-100">
-                <p className="text-gray-500 text-lg">Loading blogs...</p>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {[1, 2, 3, 4, 5, 6].map((item) => (
+                  <div
+                    key={item}
+                    className="aspect-[4/5] animate-pulse rounded-lg bg-[#efe8e1]"
+                  />
+                ))}
               </div>
-            ) : otherBlogs.length === 0 ? (
-              <div className="text-center py-20 bg-white rounded-3xl shadow-sm border border-gray-100">
-                <p className="text-gray-500 text-lg">
-                  No additional stories to explore yet.
+            ) : visibleBlogs.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-[#d9c8d2] bg-white px-5 py-16 text-center shadow-sm">
+                <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-lg bg-[#fff1f7] text-[#7c2d62]">
+                  <BookOpen className="h-6 w-6" aria-hidden="true" />
+                </div>
+                <h3 className="text-xl font-black text-[#2f1325]">
+                  No journal stories yet
+                </h3>
+                <p className="mt-2 text-[#6c4b5d]">
+                  New fashion stories will appear here soon.
                 </p>
               </div>
             ) : (
               <motion.div
                 initial="hidden"
                 whileInView="visible"
-                viewport={{ once: true, margin: "-50px" }}
+                viewport={sectionViewport}
                 variants={staggerContainer}
-                className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8"
+                className="space-y-5"
               >
-                {otherBlogs.map((blog) => (
-                  <Link
-                    key={blog._id}
-                    href={resolveBlogHref(blog)}
-                    className="block h-full"
-                  >
-                    <motion.article
-                      variants={fadeInUp}
-                      whileHover={{ y: -8 }}
-                      className="h-full flex flex-col bg-white rounded-2xl shadow-md hover:shadow-xl transition-all duration-300 overflow-hidden group border border-gray-100"
-                    >
-                      {hasBlogMedia(blog) && (
-                        <div className="relative">
-                          {renderBlogMediaSurface(blog, "grid")}
-                          <div className="absolute top-4 left-4">
-                            <span className="px-3 py-1 bg-white/90 backdrop-blur-sm rounded-lg text-xs font-bold text-gray-900 shadow-sm">
-                              {blog.category || "General"}
-                            </span>
-                          </div>
-                        </div>
-                      )}
+                {showFeatured && featuredBlog ? (
+                  <BlogCard
+                    blog={featuredBlog}
+                    resolveBlogHref={resolveBlogHref}
+                    renderBlogMediaSurface={renderBlogMediaSurface}
+                    featured
+                  />
+                ) : null}
 
-                      <div className="p-7 flex-1 flex flex-col">
-                        <div className="flex items-center justify-between mb-4">
-                          <span className="text-xs text-gray-500 font-medium flex items-center gap-1.5">
-                            <span
-                              className={`w-2 h-2 rounded-full ${theme.glowA}`}
-                            />
-                            {formatDate(blog.createdAt)}
-                          </span>
-                          <span className="text-xs text-gray-400">
-                            {blog.viewCount || 0} views
-                          </span>
-                        </div>
-
-                        <h3 className="text-xl font-bold text-gray-900 group-hover:text-gray-700 transition-colors mb-3 line-clamp-2 leading-snug">
-                          {blog.title}
-                        </h3>
-
-                        <p className="text-gray-500 text-sm mb-6 line-clamp-3 leading-relaxed flex-1">
-                          {blog.excerpt ||
-                            blog.description ||
-                            blog.content?.substring(0, 120)}
-                        </p>
-
-                        <div className="pt-5 border-t border-gray-100 flex items-center justify-between mt-auto">
-                          <div className="flex items-center gap-2.5">
-                            <div
-                              className={`w-8 h-8 rounded-full bg-gradient-to-br ${theme.accentStrong} flex items-center justify-center text-white text-xs font-bold shadow-sm`}
-                            >
-                              {(blog.author || "A")[0]}
-                            </div>
-                            <span className="text-sm font-medium text-gray-700">
-                              {blog.author || "Admin"}
-                            </span>
-                          </div>
-                          <span
-                            className={`${theme.accentText} font-semibold text-sm group-hover:translate-x-1 transition-transform`}
-                          >
-                            Read →
-                          </span>
-                        </div>
-                      </div>
-                    </motion.article>
-                  </Link>
-                ))}
+                {otherBlogs.length > 0 ? (
+                  <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+                    {otherBlogs.map((blog) => (
+                      <BlogCard
+                        key={blog._id || blog.slug}
+                        blog={blog}
+                        resolveBlogHref={resolveBlogHref}
+                        renderBlogMediaSurface={renderBlogMediaSurface}
+                      />
+                    ))}
+                  </div>
+                ) : null}
               </motion.div>
             )}
           </div>
         </section>
-      )}
+      ) : null}
 
-      {/* Newsletter CTA */}
-      {showNewsletter && (
-        <section className="relative py-24 overflow-hidden">
-          <div className="absolute inset-0 bg-[#0f1016]">
-            <div
-              className={`absolute top-0 right-0 w-[600px] h-[600px] ${theme.glowA} rounded-full blur-[120px] opacity-20`}
+      <motion.section
+        initial="hidden"
+        whileInView="visible"
+        viewport={sectionViewport}
+        variants={staggerContainer}
+        className="bg-white"
+      >
+        <div className="container mx-auto grid gap-8 px-4 py-10 sm:py-14 lg:grid-cols-[1fr_0.9fr] lg:items-center">
+          <motion.div variants={fadeUp}>
+            <SectionHeading
+              eyebrow="Founder Insights"
+              title="Lessons From A Boutique Built With Love"
+              copy="Ananya Boutique grew through patience, trust, and a homemaker's courage to serve women with honesty. Every collection carries that same belief: style should feel personal, graceful, useful, and chosen with care."
             />
-            <div
-              className={`absolute bottom-0 left-0 w-[600px] h-[600px] ${theme.glowB} rounded-full blur-[120px] opacity-20`}
+            <div className="mt-6 rounded-lg border border-[#eadfe6] bg-[#fff8fb] p-5">
+              <Quote className="h-6 w-6 text-[#9d6b19]" aria-hidden="true" />
+              <p className="mt-3 text-base font-semibold leading-7 text-[#60485a]">
+                The best fashion advice begins with listening: to comfort, to confidence, to family moments, and to the woman wearing the outfit.
+              </p>
+            </div>
+          </motion.div>
+          <motion.div variants={fadeUp}>
+            <EditorialArtwork
+              artworkKey="blog.founderInsights"
+              label="Founder Artwork"
+            />
+          </motion.div>
+        </div>
+      </motion.section>
+
+      <motion.section
+        initial="hidden"
+        whileInView="visible"
+        viewport={sectionViewport}
+        variants={staggerContainer}
+        className="bg-[#fffdfb]"
+      >
+        <div className="container mx-auto px-4 py-10 sm:py-14">
+          <div className="mb-7 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <SectionHeading
+              eyebrow="Style Guides"
+              title="Guides for every fashion moment"
+              copy="Reference cards for future editorial guides and seasonal content."
             />
           </div>
 
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            whileInView={{ opacity: 1, scale: 1 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.6 }}
-            className="container mx-auto px-4 text-center max-w-3xl relative z-10"
-          >
-            <span className="inline-block mb-6 text-gray-400 font-medium tracking-widest text-sm uppercase">
-              Stay Updated
-            </span>
-            <h2 className="text-4xl md:text-5xl font-bold mb-6 text-white tracking-tight">
-              {pageConfig?.newsletter?.title || DEFAULT_PAGE.newsletter.title}
-            </h2>
-            <p className="text-gray-400 text-lg mb-10 leading-relaxed">
-              {pageConfig?.newsletter?.description ||
-                DEFAULT_PAGE.newsletter.description}
-            </p>
+          <div className="mb-6">
+            <EditorialArtwork artworkKey="blog.styleGuides" label="Style Guides" />
+          </div>
 
-            <form
-              onSubmit={handleNewsletterSubmit}
-              className="flex flex-col sm:flex-row gap-4 max-w-lg mx-auto"
-            >
-              <input
-                type="email"
-                value={newsletterEmail}
-                onChange={handleNewsletterEmailChange}
-                placeholder={
-                  pageConfig?.newsletter?.inputPlaceholder ||
-                  DEFAULT_PAGE.newsletter.inputPlaceholder
-                }
-                required
-                disabled={
-                  newsletterStatus === "loading" ||
-                  newsletterStatus === "success"
-                }
-                className="flex-1 px-6 py-4 rounded-xl text-gray-900 bg-white focus:outline-none focus:ring-4 focus:ring-white/10 transition-all shadow-xl"
+          <div className="grid gap-4 lg:grid-cols-3">
+            {STYLE_GUIDES.map((guide) => (
+              <motion.article
+                key={guide.title}
+                variants={fadeUp}
+                className={`group overflow-hidden rounded-lg border border-[#eadfe6] bg-gradient-to-br ${guide.palette} shadow-[0_16px_45px_rgba(47,19,37,0.08)] transition hover:-translate-y-1 hover:border-[#d8b46b] hover:shadow-[0_24px_60px_rgba(47,19,37,0.13)]`}
+              >
+                <div className="relative min-h-[280px] p-5">
+                  <span className="absolute inset-4 rounded-lg border border-white/80" />
+                  <span className="absolute right-7 top-7 rounded-full border border-white/80 bg-white/84 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-[#6b244d]">
+                    {guide.label}
+                  </span>
+                  <div className="absolute bottom-5 left-5 right-5">
+                    <Gem className="h-7 w-7 text-[#9d6b19]" aria-hidden="true" />
+                    <h3 className="brand-story-heading mt-4 text-3xl font-semibold leading-tight text-[#2f1325]">
+                      {guide.title}
+                    </h3>
+                    <p className="mt-3 text-sm font-semibold leading-6 text-[#60485a]">
+                      {guide.copy}
+                    </p>
+                  </div>
+                </div>
+              </motion.article>
+            ))}
+          </div>
+        </div>
+      </motion.section>
+
+      {showNewsletter ? (
+        <motion.section
+          initial="hidden"
+          whileInView="visible"
+          viewport={sectionViewport}
+          variants={staggerContainer}
+          className="border-y border-[#eadfe6] bg-[linear-gradient(135deg,#fff8f1_0%,#ffffff_46%,#f3ecff_100%)]"
+        >
+          <div className="container mx-auto grid gap-8 px-4 py-10 sm:py-14 lg:grid-cols-[1fr_0.75fr] lg:items-center">
+            <motion.div variants={fadeUp}>
+              <SectionHeading
+                eyebrow="Newsletter"
+                title={newsletterTitle}
+                copy={newsletterDescription}
               />
-              <button
-                type="submit"
-                disabled={
-                  newsletterStatus === "loading" ||
-                  newsletterStatus === "success"
-                }
-                className={`flex-none bg-gradient-to-r ${theme.accentStrong} text-white font-bold px-8 py-4 rounded-xl transition-all shadow-lg whitespace-nowrap disabled:opacity-70 disabled:cursor-not-allowed ${newsletterStatus === "loading" || newsletterStatus === "success" ? "" : "hover:shadow-xl hover:-translate-y-0.5"}`}
-              >
-                {newsletterStatus === "loading"
-                  ? "Subscribing..."
-                  : newsletterStatus === "success"
-                    ? "Subscribed"
-                    : pageConfig?.newsletter?.buttonText ||
-                      DEFAULT_PAGE.newsletter.buttonText}{" "}
-                {newsletterStatus === "loading" ||
-                newsletterStatus === "success"
-                  ? ""
-                  : "→"}{" "}
-              </button>
-            </form>
-            {newsletterMessage && (
-              <p
-                className={`text-sm mt-4 ${
-                  newsletterStatus === "success"
-                    ? "text-emerald-400"
-                    : "text-rose-300"
-                }`}
-              >
-                {newsletterMessage}
-              </p>
-            )}
+              <NewsletterForm
+                pageConfig={pageConfig}
+                newsletterEmail={newsletterEmail}
+                newsletterStatus={newsletterStatus}
+                newsletterMessage={newsletterMessage}
+                handleNewsletterEmailChange={handleNewsletterEmailChange}
+                handleNewsletterSubmit={handleNewsletterSubmit}
+              />
+            </motion.div>
+            <motion.div variants={fadeUp}>
+              <div className="rounded-lg border border-[#eadfe6] bg-white/86 p-5 shadow-[0_18px_50px_rgba(47,19,37,0.1)]">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {[
+                    "Styling Advice",
+                    "Fashion Inspiration",
+                    "Exclusive Previews",
+                    "Boutique Updates",
+                  ].map((item) => (
+                    <div
+                      key={item}
+                      className="rounded-lg border border-[#eadfe6] bg-[#fff8fb] p-4 text-sm font-black text-[#2f1325]"
+                    >
+                      <Heart className="mb-3 h-5 w-5 text-[#9d6b19]" aria-hidden="true" />
+                      {item}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        </motion.section>
+      ) : null}
 
-            {pageConfig?.newsletter?.note && (
-              <p className="text-xs text-gray-500 mt-6">
-                {pageConfig.newsletter.note}
-              </p>
-            )}
-            {newsletterStatus === "success" && (
-              <p className="text-xs font-semibold text-emerald-400 mt-3">
-                {newsletterMessage || "Thank you for subscribing!"}
-              </p>
-            )}
-            {newsletterStatus === "error" && (
-              <p className="text-xs font-semibold text-rose-400 mt-3">
-                {newsletterMessage || "Failed to subscribe. Please try again."}
-              </p>
-            )}
-          </motion.div>
-        </section>
-      )}
+      <motion.section
+        initial="hidden"
+        whileInView="visible"
+        viewport={sectionViewport}
+        variants={staggerContainer}
+        className="bg-white"
+      >
+        <div className="container mx-auto px-4 py-10 sm:py-14">
+          <div className="mb-7 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <SectionHeading
+              eyebrow="Instagram"
+              title="Follow Our Journey"
+              copy="See new arrivals, styling inspiration, boutique updates, and behind-the-scenes moments."
+            />
+            <a
+              href={contactConfig.instagramUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-[#ead3df] bg-[#fff8fb] px-4 text-sm font-black text-[#6b244d] transition hover:border-[#d8b46b] hover:bg-white"
+            >
+              <Instagram className="h-4 w-4" aria-hidden="true" />
+              {contactConfig.instagramHandle}
+            </a>
+          </div>
+
+          <div className="mb-6">
+            <EditorialArtwork
+              artworkKey="blog.instagramShowcase"
+              label="Instagram Showcase"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
+            {INSTAGRAM_PLACEHOLDERS.map((item, index) => (
+              <motion.a
+                key={item}
+                variants={fadeUp}
+                href={contactConfig.instagramUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="group relative aspect-[4/5] overflow-hidden rounded-lg border border-[#eadfe6] bg-[linear-gradient(135deg,#fff8f1_0%,#fff_48%,#f1ecff_100%)] shadow-[0_14px_35px_rgba(47,19,37,0.08)]"
+              >
+                <span className="absolute inset-3 rounded-lg border border-white/80" />
+                <span className="absolute left-5 top-5 h-16 w-12 rounded-t-full rounded-b-lg bg-white/88 shadow-md transition group-hover:-translate-y-1" />
+                <span className="absolute bottom-6 right-5 h-20 w-14 rounded-lg bg-[#f8d7e7]/80 shadow-md transition group-hover:translate-y-1" />
+                <span className="absolute inset-x-3 bottom-3 rounded-md bg-white/88 px-3 py-2 text-xs font-black text-[#2f1325] shadow-sm">
+                  {String(index + 1).padStart(2, "0")} / {item}
+                </span>
+              </motion.a>
+            ))}
+          </div>
+        </div>
+      </motion.section>
+
+      <section className="bg-[linear-gradient(135deg,#2f1325_0%,#4b1f3a_58%,#7c2d62_100%)] text-white">
+        <div className="container mx-auto grid gap-6 px-4 py-10 sm:py-12 lg:grid-cols-[1fr_auto] lg:items-center">
+          <div className="max-w-3xl">
+            <p className="text-xs font-black uppercase tracking-[0.2em] text-[#e8c67a]">
+              Ananya Boutique
+            </p>
+            <h2 className="brand-story-heading mt-3 text-4xl font-semibold text-white sm:text-5xl">
+              Fashion Is More Than Clothing
+            </h2>
+            <div className="mt-4 space-y-1 text-base font-medium leading-7 text-white/84 sm:text-lg">
+              <p>It is confidence.</p>
+              <p>It is self-expression.</p>
+              <p>It is the story we tell without speaking.</p>
+            </div>
+          </div>
+          <div className="flex flex-col gap-3 sm:flex-row lg:flex-col">
+            <Link
+              href="/products"
+              className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-white px-5 text-sm font-black uppercase tracking-[0.14em] text-[#2f1325] transition hover:-translate-y-0.5 hover:bg-[#fff8e8]"
+            >
+              <Sparkles className="h-4 w-4" aria-hidden="true" />
+              Explore Collection
+            </Link>
+            <a
+              href={contactConfig.instagramUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex h-12 items-center justify-center gap-2 rounded-lg border border-white/25 bg-white/10 px-5 text-sm font-black uppercase tracking-[0.14em] text-white transition hover:-translate-y-0.5 hover:bg-white/20"
+            >
+              <Instagram className="h-4 w-4" aria-hidden="true" />
+              Follow Instagram
+            </a>
+          </div>
+        </div>
+      </section>
     </main>
   );
 }

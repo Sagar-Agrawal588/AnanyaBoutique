@@ -32,6 +32,44 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "react-hot-toast";
 import { IoMdClose } from "react-icons/io";
 
+const PRODUCT_COLLECTIONS = [
+  "Sarees",
+  "Kurtis",
+  "Jewellery",
+  "Cosmetics",
+  "Dress Materials",
+  "Accessories",
+];
+
+const createEmptyVariant = (isDefault = false) => ({
+  name: "",
+  price: "",
+  originalPrice: "",
+  stock: "",
+  sku: "",
+  weight: "",
+  unit: "piece",
+  color: "",
+  size: "",
+  material: "",
+  customAttributes: "",
+  isDefault,
+});
+
+const buildBoutiqueVariantLabel = (variant, fallback = "Default") =>
+  [variant.size, variant.color, variant.material, variant.name]
+    .map((item) => String(item || "").trim())
+    .filter(Boolean)
+    .join(" / ") || fallback;
+
+const moveArrayItem = (items, fromIndex, toIndex) => {
+  if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0) return items;
+  const nextItems = [...items];
+  const [movedItem] = nextItems.splice(fromIndex, 1);
+  nextItems.splice(toIndex, 0, movedItem);
+  return nextItems;
+};
+
 const AddProduct = () => {
   const { token, isAuthenticated, loading } = useAdmin();
   const router = useRouter();
@@ -40,7 +78,13 @@ const AddProduct = () => {
   const [description, setDescription] = useState("");
   const [productStory, setProductStory] = useState("");
   const [shortDescription, setShortDescription] = useState("");
+  const [productSku, setProductSku] = useState("");
   const [categoryVal, setCategoryVal] = useState("");
+  const [regularPrice, setRegularPrice] = useState("");
+  const [salePrice, setSalePrice] = useState("");
+  const [stockQuantity, setStockQuantity] = useState("");
+  const [status, setStatus] = useState("published");
+  const [isFeatured, setIsFeatured] = useState(false);
   const [isNewArrival, setIsNewArrival] = useState(false);
   const [isBestSeller, setIsBestSeller] = useState(false);
   const [isExclusive, setIsExclusive] = useState(false);
@@ -49,8 +93,10 @@ const AddProduct = () => {
   const [hsnCode, setHsnCode] = useState("");
   const [tags, setTags] = useState("");
   const [images, setImages] = useState([]); // { file, preview }
+  const [draggedImageIndex, setDraggedImageIndex] = useState(null);
   const [videos, setVideos] = useState([]); // { file, preview, name, size }
   const [categories, setCategories] = useState([]);
+  const [collections, setCollections] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [productPage, setProductPage] = useState(() =>
     createDefaultProductPageConfig(),
@@ -59,33 +105,10 @@ const AddProduct = () => {
 
   // Variants
   const hasVariants = true;
-  const [variants, setVariants] = useState([
-    {
-      name: "",
-      price: "",
-      originalPrice: "",
-      stock: "",
-      sku: "",
-      weight: "",
-      unit: "g",
-      isDefault: true,
-    },
-  ]);
+  const [variants, setVariants] = useState([createEmptyVariant(true)]);
 
   const addVariant = () => {
-    setVariants([
-      ...variants,
-      {
-        name: "",
-        price: "",
-        originalPrice: "",
-        stock: "",
-        sku: "",
-        weight: "",
-        unit: "g",
-        isDefault: variants.length === 0,
-      },
-    ]);
+    setVariants([...variants, createEmptyVariant(variants.length === 0)]);
   };
 
   const updateVariant = (index, field, value) => {
@@ -112,6 +135,12 @@ const AddProduct = () => {
           : normalizedWeight;
       }
     }
+    if (["color", "size", "material"].includes(field)) {
+      const rawName = String(updated[index].name || "").trim();
+      if (!rawName || rawName === "Default") {
+        updated[index].name = buildBoutiqueVariantLabel(updated[index]);
+      }
+    }
     // Handle isDefault — only one can be default
     if (field === "isDefault" && value) {
       updated.forEach((v, i) => {
@@ -125,15 +154,19 @@ const AddProduct = () => {
     setVariants(variants.filter((_, i) => i !== index));
   };
 
+  const toggleCollection = (collection) => {
+    setCollections((current) =>
+      current.includes(collection)
+        ? current.filter((item) => item !== collection)
+        : [...current, collection],
+    );
+  };
+
   const fetchCategories = useCallback(async () => {
     try {
       const response = await getData("/api/categories", token);
       if (response.success) {
-        // Filter to get only parent categories (no parent or parent is null)
-        const parentCategories = (response.data || []).filter(
-          (cat) => !cat.parent,
-        );
-        setCategories(parentCategories);
+        setCategories(response.data || []);
       }
     } catch (error) {
       console.error("Failed to fetch categories:", error);
@@ -203,6 +236,47 @@ const AddProduct = () => {
     setImages(images.filter((_, i) => i !== index));
   };
 
+  const moveImage = (fromIndex, toIndex) => {
+    setImages((current) => moveArrayItem(current, fromIndex, toIndex));
+  };
+
+  const setThumbnailImage = (index) => {
+    moveImage(index, 0);
+  };
+
+  const replaceImage = async (index, event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      if (file.size > PRODUCT_IMAGE_MAX_SIZE_BYTES) {
+        toast.error(
+          `${file.name}: image size should be less than ${formatFileSize(PRODUCT_IMAGE_MAX_SIZE_BYTES)}`,
+        );
+        return;
+      }
+
+      const asset = await buildProductImageAsset({ file });
+      const dimensionError = getProductImageDimensionError(asset?.dimensions);
+      if (dimensionError) {
+        toast.error(`${file.name}: ${dimensionError}`);
+        return;
+      }
+
+      setImages((current) =>
+        current.map((image, imageIndex) => (imageIndex === index ? asset : image)),
+      );
+    } finally {
+      event.target.value = "";
+    }
+  };
+
+  const handleImageDrop = (index) => {
+    if (draggedImageIndex === null) return;
+    moveImage(draggedImageIndex, index);
+    setDraggedImageIndex(null);
+  };
+
   const handleVideoUpload = (e) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
@@ -262,25 +336,42 @@ const AddProduct = () => {
     let variantData = [];
     try {
       variantData = variants
-        .filter((v) => v.price)
+        .filter((v) => v.price || salePrice || regularPrice)
         .map((v, i) => {
-          const normalizedWeight = normalizeVariantWeight(v);
-          const variantPrice = Math.round(Number(v.price));
+          const hasWeight = String(v.weight || "").trim() !== "";
+          const normalizedWeight = hasWeight ? normalizeVariantWeight(v) : null;
+          const variantPrice = Math.round(
+            Number(v.price || salePrice || regularPrice),
+          );
           const variantOriginalPrice = v.originalPrice
             ? Math.round(Number(v.originalPrice))
-            : undefined;
+            : regularPrice
+              ? Math.round(Number(regularPrice))
+              : undefined;
+          const variantLabel =
+            normalizedWeight?.label || buildBoutiqueVariantLabel(v, "Default");
           return {
-            name: v.name || normalizedWeight.label,
-            label: normalizedWeight.label,
+            name: v.name || variantLabel,
+            label: variantLabel,
             sku:
               v.sku || `${productName.substring(0, 3).toUpperCase()}-V${i + 1}`,
             price: variantPrice,
             originalPrice: variantOriginalPrice,
-            weight: Number(v.weight),
-            unit: String(v.unit || "g").toLowerCase() === "kg" ? "kg" : "g",
+            weight: hasWeight ? Number(v.weight) : undefined,
+            unit: hasWeight
+              ? String(v.unit || "g").toLowerCase() === "kg"
+                ? "kg"
+                : "g"
+              : "piece",
+            color: v.color || "",
+            size: v.size || "",
+            material: v.material || "",
+            customAttributes: v.customAttributes || "",
             isDefault: !!v.isDefault,
-            stock: v.stock ? Number(v.stock) : 0,
-            stock_quantity: v.stock ? Number(v.stock) : 0,
+            stock: v.stock ? Number(v.stock) : Number(stockQuantity || 0),
+            stock_quantity: v.stock
+              ? Number(v.stock)
+              : Number(stockQuantity || 0),
           };
         });
     } catch (error) {
@@ -345,15 +436,28 @@ const AddProduct = () => {
         description,
         productStory,
         shortDescription,
+        sku: productSku.trim() || undefined,
         category: categoryVal,
-        price: defaultVariant.price,
-        originalPrice: defaultVariant.originalPrice,
+        price: Number(salePrice || defaultVariant.price),
+        salePrice: Number(salePrice || defaultVariant.price),
+        originalPrice: Number(
+          regularPrice ||
+            defaultVariant.originalPrice ||
+            salePrice ||
+            defaultVariant.price,
+        ),
+        status,
+        isFeatured,
         isNewArrival,
         isBestSeller,
         isExclusive,
         demandStatus,
         stock: variantData.reduce(
           (sum, variant) => sum + Number(variant.stock || 0),
+          0,
+        ),
+        stock_quantity: variantData.reduce(
+          (sum, variant) => sum + Number(variant.stock_quantity || 0),
           0,
         ),
         brand,
@@ -366,7 +470,8 @@ const AddProduct = () => {
         thumbnail: uploadedImageUrls[0] || "",
         hasVariants,
         variants: variantData,
-        variantType: hasVariants ? "weight" : "",
+        variantType: hasVariants ? "boutique" : "",
+        collections,
         productPage,
       };
 
@@ -420,6 +525,61 @@ const AddProduct = () => {
               placeholder="Enter product name"
               className="w-full h-[40px] border border-[rgba(0,0,0,0.2)] outline-none rounded-md focus:border-blue-500 px-3 text-[14px]"
             />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-5 mb-4">
+            <div className="col flex flex-col gap-1">
+              <span className="text-[15px] text-gray-800 font-medium">SKU</span>
+              <input
+                type="text"
+                value={productSku}
+                onChange={(e) => setProductSku(e.target.value.toUpperCase())}
+                placeholder="ANB-SAR-001"
+                className="w-full h-[40px] border border-[rgba(0,0,0,0.2)] outline-none rounded-md focus:border-blue-500 px-3 text-[14px]"
+              />
+            </div>
+            <div className="col flex flex-col gap-1">
+              <span className="text-[15px] text-gray-800 font-medium">
+                Status
+              </span>
+              <Select
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+                size="small"
+                className="bg-white"
+              >
+                <MenuItem value="published">Published</MenuItem>
+                <MenuItem value="draft">Draft</MenuItem>
+              </Select>
+            </div>
+            <div className="col flex flex-col gap-1">
+              <span className="text-[15px] text-gray-800 font-medium">
+                Regular Price
+              </span>
+              <input
+                type="number"
+                value={regularPrice}
+                onChange={(e) => setRegularPrice(e.target.value)}
+                placeholder="2499"
+                min="0"
+                step="1"
+                className="w-full h-[40px] border border-[rgba(0,0,0,0.2)] outline-none rounded-md focus:border-blue-500 px-3 text-[14px]"
+              />
+            </div>
+            <div className="col flex flex-col gap-1">
+              <span className="text-[15px] text-gray-800 font-medium">
+                Sale Price
+              </span>
+              <input
+                type="number"
+                value={salePrice}
+                onChange={(e) => setSalePrice(e.target.value)}
+                placeholder="1999"
+                min="0"
+                step="1"
+                className="w-full h-[40px] border border-[rgba(0,0,0,0.2)] outline-none rounded-md focus:border-blue-500 px-3 text-[14px]"
+              />
+            </div>
           </div>
 
           <div className="form-group mb-4 flex flex-col gap-1">
@@ -479,10 +639,61 @@ const AddProduct = () => {
                 </MenuItem>
                 {categories.map((cat) => (
                   <MenuItem key={cat._id} value={cat._id}>
+                    {"- ".repeat(Number(cat.level || 0))}
                     {cat.name}
                   </MenuItem>
                 ))}
               </Select>
+            </div>
+            <div className="col flex flex-col gap-1">
+              <span className="text-[15px] text-gray-800 font-medium">
+                Stock Quantity
+              </span>
+              <input
+                type="number"
+                value={stockQuantity}
+                onChange={(e) => setStockQuantity(e.target.value)}
+                placeholder="25"
+                min="0"
+                className="w-full h-[40px] border border-[rgba(0,0,0,0.2)] outline-none rounded-md focus:border-blue-500 px-3 text-[14px]"
+              />
+            </div>
+            <div className="col flex flex-col gap-1 md:col-span-1">
+              <span className="text-[15px] text-gray-800 font-medium">
+                Featured Product
+              </span>
+              <div className="flex items-center gap-2">
+                <Switch
+                  checked={isFeatured}
+                  onChange={(e) => setIsFeatured(e.target.checked)}
+                  color="secondary"
+                />
+                <span className="text-sm text-gray-600">
+                  {isFeatured ? "Featured" : "Standard"}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="mb-5 rounded-lg border border-gray-200 bg-gray-50 p-4">
+            <span className="text-[15px] text-gray-800 font-medium">
+              Collections
+            </span>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {PRODUCT_COLLECTIONS.map((collection) => (
+                <button
+                  key={collection}
+                  type="button"
+                  onClick={() => toggleCollection(collection)}
+                  className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
+                    collections.includes(collection)
+                      ? "border-pink-500 bg-pink-50 text-pink-700"
+                      : "border-gray-300 bg-white text-gray-700 hover:border-pink-200 hover:text-pink-700"
+                  }`}
+                >
+                  {collection}
+                </button>
+              ))}
             </div>
           </div>
 
@@ -528,7 +739,7 @@ const AddProduct = () => {
                 type="text"
                 value={tags}
                 onChange={(e) => setTags(e.target.value)}
-                placeholder="organic, healthy, natural (comma separated)"
+                placeholder="saree, kurti, festive (comma separated)"
                 className="w-full h-[40px] border border-[rgba(0,0,0,0.2)] outline-none rounded-md focus:border-blue-500 px-3 text-[14px]"
               />
             </div>
@@ -604,12 +815,12 @@ const AddProduct = () => {
               </p>
             </div>
           </div>
-          {/* Size / Weight Variants */}
+          {/* Boutique Variants */}
           <div className="mt-6 mb-5 border border-gray-200 rounded-lg p-5">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
                 <span className="text-[15px] text-gray-800 font-semibold">
-                  📦 Size / Weight Variants
+                  Boutique Variants
                 </span>
                 <span className="text-sm text-gray-500">Required</span>
               </div>
@@ -618,20 +829,20 @@ const AddProduct = () => {
                 onClick={addVariant}
                 className="!bg-blue-50 !text-blue-600 !text-sm !px-4 !py-1.5 hover:!bg-blue-100 !font-medium !normal-case"
               >
-                + Add Size
+                + Add Variant
               </Button>
             </div>
 
             <>
               <p className="text-xs text-gray-500 mb-4">
-                Add different sizes/weights for this product (e.g., 500g, 1 Kg).
-                Each variant has its own price & stock.
+                Add color, size, material, optional weight, price, stock and
+                custom attributes for boutique inventory.
               </p>
 
               {variants.length === 0 && (
                 <div className="text-center py-6 border-2 border-dashed border-gray-200 rounded-lg">
                   <p className="text-gray-400 text-sm">
-                    No variants added yet. Click &quot;+ Add Size&quot; to add
+                    No variants added yet. Click &quot;+ Add Variant&quot; to add
                     one.
                   </p>
                 </div>
@@ -641,7 +852,7 @@ const AddProduct = () => {
                 {variants.map((v, i) => (
                   <div
                     key={i}
-                    className={`grid grid-cols-1 sm:grid-cols-8 gap-3 items-end p-4 rounded-lg relative ${v.isDefault ? "bg-blue-50 border border-blue-200" : "bg-gray-50"}`}
+                    className={`grid grid-cols-1 sm:grid-cols-12 gap-3 items-end p-4 rounded-lg relative ${v.isDefault ? "bg-blue-50 border border-blue-200" : "bg-gray-50"}`}
                   >
                     {v.isDefault && (
                       <span className="absolute -top-2 left-3 bg-blue-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
@@ -650,7 +861,7 @@ const AddProduct = () => {
                     )}
                     <div className="sm:col-span-2 flex flex-col gap-1">
                       <span className="text-xs text-gray-600 font-medium">
-                        Weight *
+                        Weight
                       </span>
                       <div className="flex items-center gap-1">
                         <input
@@ -673,8 +884,51 @@ const AddProduct = () => {
                         >
                           <option value="g">g</option>
                           <option value="kg">kg</option>
+                          <option value="piece">pc</option>
                         </select>
                       </div>
+                    </div>
+                    <div className="sm:col-span-1 flex flex-col gap-1">
+                      <span className="text-xs text-gray-600 font-medium">
+                        Color
+                      </span>
+                      <input
+                        type="text"
+                        value={v.color || ""}
+                        onChange={(e) =>
+                          updateVariant(i, "color", e.target.value)
+                        }
+                        placeholder="Wine"
+                        className="w-full h-[36px] border border-gray-300 rounded-md px-2 text-sm focus:border-blue-500 outline-none"
+                      />
+                    </div>
+                    <div className="sm:col-span-1 flex flex-col gap-1">
+                      <span className="text-xs text-gray-600 font-medium">
+                        Size
+                      </span>
+                      <input
+                        type="text"
+                        value={v.size || ""}
+                        onChange={(e) =>
+                          updateVariant(i, "size", e.target.value)
+                        }
+                        placeholder="M"
+                        className="w-full h-[36px] border border-gray-300 rounded-md px-2 text-sm focus:border-blue-500 outline-none"
+                      />
+                    </div>
+                    <div className="sm:col-span-2 flex flex-col gap-1">
+                      <span className="text-xs text-gray-600 font-medium">
+                        Material
+                      </span>
+                      <input
+                        type="text"
+                        value={v.material || ""}
+                        onChange={(e) =>
+                          updateVariant(i, "material", e.target.value)
+                        }
+                        placeholder="Silk Blend"
+                        className="w-full h-[36px] border border-gray-300 rounded-md px-2 text-sm focus:border-blue-500 outline-none"
+                      />
                     </div>
                     <div className="sm:col-span-1 flex flex-col gap-1">
                       <span className="text-xs text-gray-600 font-medium">
@@ -734,6 +988,20 @@ const AddProduct = () => {
                           updateVariant(i, "sku", e.target.value)
                         }
                         placeholder="Auto"
+                        className="w-full h-[36px] border border-gray-300 rounded-md px-2 text-sm focus:border-blue-500 outline-none"
+                      />
+                    </div>
+                    <div className="sm:col-span-2 flex flex-col gap-1">
+                      <span className="text-xs text-gray-600 font-medium">
+                        Custom Attributes
+                      </span>
+                      <input
+                        type="text"
+                        value={v.customAttributes || ""}
+                        onChange={(e) =>
+                          updateVariant(i, "customAttributes", e.target.value)
+                        }
+                        placeholder="work:embroidered|occasion:festive"
                         className="w-full h-[36px] border border-gray-300 rounded-md px-2 text-sm focus:border-blue-500 outline-none"
                       />
                     </div>
@@ -850,7 +1118,14 @@ const AddProduct = () => {
             <div className="flex items-center gap-4 mt-2 flex-wrap">
               {images.map((img, index) => (
                 <div key={index} className="w-[176px]">
-                  <div className="w-[150px] h-[150px] rounded-md bg-gray-100 border-2 border-dashed border-gray-300 flex items-center justify-center relative overflow-hidden">
+                  <div
+                    className="w-[150px] h-[150px] rounded-md bg-gray-100 border-2 border-dashed border-gray-300 flex items-center justify-center relative overflow-hidden cursor-grab"
+                    draggable
+                    onDragStart={() => setDraggedImageIndex(index)}
+                    onDragOver={(event) => event.preventDefault()}
+                    onDrop={() => handleImageDrop(index)}
+                    onDragEnd={() => setDraggedImageIndex(null)}
+                  >
                     <img
                       src={img.preview}
                       alt={`preview ${index + 1}`}
@@ -870,6 +1145,25 @@ const AddProduct = () => {
                     </button>
                   </div>
                   <div className="mt-2 space-y-1">
+                    <div className="flex flex-wrap gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setThumbnailImage(index)}
+                        disabled={index === 0}
+                        className="rounded-full border border-gray-300 px-2 py-1 text-[11px] font-semibold text-gray-700 disabled:opacity-40"
+                      >
+                        Thumbnail
+                      </button>
+                      <label className="cursor-pointer rounded-full border border-gray-300 px-2 py-1 text-[11px] font-semibold text-gray-700 hover:border-blue-300">
+                        Replace
+                        <input
+                          type="file"
+                          accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+                          hidden
+                          onChange={(event) => replaceImage(index, event)}
+                        />
+                      </label>
+                    </div>
                     <span
                       className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${getProductImageQualityLabel(img).className}`}
                     >

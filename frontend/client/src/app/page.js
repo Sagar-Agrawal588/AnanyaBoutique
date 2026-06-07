@@ -1,5 +1,6 @@
 import { headers } from "next/headers";
 import nextDynamic from "next/dynamic";
+import { normalizeStorefrontContent } from "@/config/storefrontContent";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -135,12 +136,20 @@ const getHomepageData = async (path, requestOrigin = "") => {
 const getHomepageCategories = async (requestOrigin = "") => {
   const payload = await getHomepagePayload("/api/categories", requestOrigin);
   const items = Array.isArray(payload?.data) ? payload.data : [];
-  return items.filter((category) => !category?.parent);
+  return items.filter((category) => !category?.parent && !category?.parentCategory);
+};
+
+const getHomepageFeaturedProducts = async (requestOrigin = "") => {
+  const payload = await getHomepagePayload(
+    "/api/products/featured?includeCombos=false&limit=8",
+    requestOrigin,
+  );
+  return Array.isArray(payload?.data) ? payload.data : [];
 };
 
 const getHomepageNewArrivals = async (requestOrigin = "") => {
   const payload = await getHomepagePayload(
-    "/api/products?sortBy=createdAt&order=desc&includeCombos=false&limit=8",
+    "/api/products?newArrivals=true&sortBy=createdAt&order=desc&includeCombos=false&limit=8",
     requestOrigin,
   );
   return Array.isArray(payload?.data) ? payload.data : [];
@@ -148,7 +157,7 @@ const getHomepageNewArrivals = async (requestOrigin = "") => {
 
 const getHomepageBestSellers = async (requestOrigin = "") => {
   const payload = await getHomepagePayload(
-    "/api/products?sortBy=popular&order=desc&includeCombos=false&limit=8",
+    "/api/products?bestSeller=true&sortBy=soldCount&order=desc&includeCombos=false&limit=8",
     requestOrigin,
   );
   return Array.isArray(payload?.data) ? payload.data : [];
@@ -156,13 +165,23 @@ const getHomepageBestSellers = async (requestOrigin = "") => {
 
 export default async function Home() {
   const requestOrigin = await getRequestOrigin();
-  const [homepageCategories, newArrivals, bestSellers, featuredReviews] =
+  const [
+    homepageCategories,
+    featuredProducts,
+    newArrivals,
+    bestSellers,
+    featuredReviews,
+    storefrontPayload,
+  ] =
     await Promise.all([
       getHomepageCategories(requestOrigin),
+      getHomepageFeaturedProducts(requestOrigin),
       getHomepageNewArrivals(requestOrigin),
       getHomepageBestSellers(requestOrigin),
       getHomepageData("/api/reviews/featured/home?limit=6", requestOrigin),
+      getHomepagePayload("/api/settings/public/storefrontContent", requestOrigin),
     ]);
+  const storefrontContent = normalizeStorefrontContent(storefrontPayload?.data);
 
   return (
     <main
@@ -175,9 +194,13 @@ export default async function Home() {
     >
       <BoutiqueHomepage
         initialCategories={homepageCategories}
+        featuredProducts={featuredProducts}
         newArrivals={newArrivals}
         bestSellers={bestSellers}
         featuredReviews={featuredReviews}
+        content={storefrontContent.homepage}
+        contact={storefrontContent.contact}
+        mediaSlots={storefrontContent.mediaSlots}
       />
       <WhatsAppFloatingButton />
     </main>

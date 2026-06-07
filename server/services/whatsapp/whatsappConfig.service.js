@@ -10,7 +10,7 @@ const CACHE_TTL_MS = Math.max(
     5000,
   0,
 );
-const DEFAULT_VERIFY_TOKEN_PREFIX = "bog_whatsapp_verify";
+const DEFAULT_VERIFY_TOKEN_PREFIX = "ananya_whatsapp_verify";
 
 let cachedStoredRecord = null;
 let cacheExpiresAt = 0;

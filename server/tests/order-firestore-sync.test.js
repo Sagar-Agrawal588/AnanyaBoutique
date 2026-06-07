@@ -10,7 +10,7 @@ test("order firestore sync cache skips identical payloads", () => {
   const orderId = "order-cache-test";
   const payload = buildComparableOrderFirestorePayload({
     _id: orderId,
-    orderId: "H1G-2627/0001",
+    orderId: "ANB-2627/0001",
     user: { _id: "user-1" },
     order_status: "confirmed",
     payment_status: "paid",
@@ -47,7 +47,7 @@ test("order firestore sync cache skips identical payloads", () => {
 test("order firestore fingerprint changes when mirrored fields change", () => {
   const baseOrder = {
     _id: "order-2",
-    orderId: "H1G-2627/0002",
+    orderId: "ANB-2627/0002",
     userId: "user-2",
     order_status: "pending",
     payment_status: "pending",
@@ -72,7 +72,7 @@ test("order firestore fingerprint changes when mirrored fields change", () => {
 test("order firestore comparable payload normalizes ids and timestamps", () => {
   const payload = buildComparableOrderFirestorePayload({
     _id: "mongo-order",
-    orderId: "H1G-2627/0003",
+    orderId: "ANB-2627/0003",
     user: { _id: "mongo-user" },
     order_status: "shipped",
     paymentStatus: "paid",

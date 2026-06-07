@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { DEFAULT_PRODUCT_IMAGE_PATH } from "../config/mediaDefaults.js";
 import { checkExclusiveAccess } from "../middlewares/membershipGuard.js";
 import CategoryModel from "../models/category.model.js";
 import ComboModel from "../models/combo.model.js";
@@ -101,6 +102,167 @@ const normalizeStockValue = (value, fallback = 0) => {
 
 const toPlainObject = (value) =>
   value && typeof value.toObject === "function" ? value.toObject() : value;
+
+const PRODUCT_COLLECTIONS = [
+  "Sarees",
+  "Suits",
+  "Kurtis",
+  "Leggings",
+  "Cosmetics",
+  "Artificial Jewellery",
+  "Fashion Accessories",
+];
+
+const MERCHANDISING_COLLECTIONS = [
+  "Wedding Collection",
+  "Festive Collection",
+  "Daily Wear",
+  "Party Wear",
+  "New Arrivals",
+  "Best Sellers",
+];
+
+const DEMO_REVIEW_TEMPLATES = [
+  {
+    userName: "Priya S.",
+    city: "Kolkata",
+    rating: 5,
+    comment:
+      "Beautiful boutique selection. The product feels thoughtfully chosen and easy to style.",
+  },
+  {
+    userName: "Neha R.",
+    city: "Howrah",
+    rating: 5,
+    comment:
+      "Loved the finish and the value. It feels like shopping from a trusted local boutique.",
+  },
+  {
+    userName: "Anjali M.",
+    city: "Siliguri",
+    rating: 4,
+    comment:
+      "Comfortable, elegant and nicely priced. The collection has a warm boutique feel.",
+  },
+  {
+    userName: "Kavya T.",
+    city: "Durgapur",
+    rating: 5,
+    comment:
+      "The styling is graceful and practical. I would happily pick this again for gifting.",
+  },
+];
+
+const normalizeSlug = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+
+const ensureUniqueProductSlug = async (baseValue, excludeId = null) => {
+  const baseSlug = normalizeSlug(baseValue) || "product";
+  let candidate = baseSlug;
+  let suffix = 2;
+
+  while (
+    await ProductModel.exists({
+      slug: candidate,
+      ...(excludeId ? { _id: { $ne: excludeId } } : {}),
+    })
+  ) {
+    candidate = `${baseSlug}-${suffix}`;
+    suffix += 1;
+  }
+
+  return candidate;
+};
+
+const ensureUniqueProductSku = async (baseValue, excludeId = null) => {
+  const baseSku =
+    String(baseValue || "")
+      .trim()
+      .toUpperCase()
+      .replace(/[^A-Z0-9-]/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/(^-|-$)/g, "") ||
+    `ANB-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+  let candidate = baseSku;
+  let suffix = 2;
+
+  while (
+    await ProductModel.exists({
+      sku: candidate,
+      ...(excludeId ? { _id: { $ne: excludeId } } : {}),
+    })
+  ) {
+    candidate = `${baseSku}-${suffix}`;
+    suffix += 1;
+  }
+
+  return candidate;
+};
+
+const resolveProductStatus = (value, fallback = "published") => {
+  const normalized = String(value || fallback)
+    .trim()
+    .toLowerCase();
+  return normalized === "draft" ? "draft" : "published";
+};
+
+const normalizeCollectionName = (value) =>
+  String(value || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+
+const normalizeCollections = (value) => {
+  const rawValues = Array.isArray(value)
+    ? value
+    : String(value || "")
+        .split(/[|,]/)
+        .map((item) => item.trim());
+
+  return Array.from(
+    new Set(
+      rawValues
+        .map(normalizeCollectionName)
+        .filter(Boolean),
+    ),
+  );
+};
+
+const parseCustomAttributes = (value) => {
+  if (!value) return {};
+  if (value instanceof Map) return Object.fromEntries(value.entries());
+  if (typeof value === "object" && !Array.isArray(value)) return value;
+
+  return String(value || "")
+    .split(/[|;]/)
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .reduce((attrs, entry) => {
+      const [rawKey, ...rawValueParts] = entry.split(/[:=]/);
+      const key = String(rawKey || "").trim();
+      const attrValue = rawValueParts.join(":").trim();
+      if (key && attrValue) attrs[key] = attrValue;
+      return attrs;
+    }, {});
+};
+
+const buildVariantDisplayName = (variant = {}, fallback = "Default") => {
+  const pieces = [
+    variant.size,
+    variant.color,
+    variant.material,
+    variant.label,
+    variant.name,
+  ]
+    .map((item) => String(item || "").trim())
+    .filter(Boolean);
+
+  return pieces[0] || fallback;
+};
 
 const isInventoryTracked = (value) => {
   if (value?.track_inventory === false || value?.trackInventory === false) {
@@ -477,7 +639,15 @@ const stripWeightRangeFromLabel = (value) =>
     .trim();
 
 const normalizeVariantPayload = (variant = {}, fallbackStock = 0) => {
-  const normalizedWeight = normalizeVariantWeight(variant);
+  const hasWeight = String(variant?.weight ?? "").trim() !== "";
+  const normalizedWeight = hasWeight
+    ? normalizeVariantWeight(variant)
+    : {
+        weight: 0,
+        unit: String(variant?.unit || "piece").trim() || "piece",
+        label: "",
+        weightInGrams: 0,
+      };
   const variantPrice = roundWholeNumber(variant.price);
   const variantOriginalPrice =
     variant.originalPrice === undefined || variant.originalPrice === null
@@ -489,18 +659,34 @@ const normalizeVariantPayload = (variant = {}, fallbackStock = 0) => {
   );
   const cleanedName = stripWeightRangeFromLabel(variant.name);
   const submittedWeight = Number(variant.weight);
-  const submittedUnit = String(variant.unit || "g").trim().toLowerCase();
+  const submittedUnit = String(variant.unit || (hasWeight ? "g" : "piece"))
+    .trim()
+    .toLowerCase();
   const displayWeight =
     Number.isFinite(submittedWeight) && submittedWeight > 0
       ? submittedWeight
       : normalizedWeight.weight;
-  const displayUnit = submittedUnit === "kg" ? "kg" : "g";
-  const displayLabel = `${displayWeight}${displayUnit}`;
+  const displayUnit = submittedUnit === "kg" ? "kg" : hasWeight ? "g" : submittedUnit;
+  const displayLabel =
+    hasWeight && displayWeight > 0
+      ? `${displayWeight}${displayUnit}`
+      : buildVariantDisplayName(variant);
+  const attributes = {
+    ...parseCustomAttributes(variant.attributes),
+    ...parseCustomAttributes(variant.customAttributes),
+  };
+  if (variant.color) attributes.color = String(variant.color).trim();
+  if (variant.size) attributes.size = String(variant.size).trim();
+  if (variant.material) attributes.material = String(variant.material).trim();
 
   return {
     ...variant,
-    name: cleanedName || displayLabel,
+    name: cleanedName || displayLabel || "Default",
     label: displayLabel,
+    color: String(variant.color || "").trim(),
+    size: String(variant.size || "").trim(),
+    material: String(variant.material || "").trim(),
+    attributes,
     weight: displayWeight,
     unit: displayUnit,
     price: variantPrice ?? 0,
@@ -509,6 +695,61 @@ const normalizeVariantPayload = (variant = {}, fallbackStock = 0) => {
     stock_quantity: variantStock,
     reserved_quantity: normalizeStockValue(variant.reserved_quantity, 0),
   };
+};
+
+const buildVariantUniquenessKey = (variant = {}) => {
+  const color = String(variant.color || "").trim().toLowerCase();
+  const size = String(variant.size || "").trim().toLowerCase();
+  const material = String(variant.material || "").trim().toLowerCase();
+  const sku = String(variant.sku || "").trim().toLowerCase();
+  const weightLabel = formatVariantWeightLabel(variant).toLowerCase();
+  const name = String(variant.name || "").trim().toLowerCase();
+  return [sku, size, color, material, weightLabel, name]
+    .filter(Boolean)
+    .join("|");
+};
+
+const normalizeSubmittedVariants = ({
+  variants = [],
+  fallbackStock = 0,
+  existingVariantMap = new Map(),
+} = {}) => {
+  const processedVariants = variants.map((variant) => {
+    const existingVariant = existingVariantMap.get(String(variant?._id || ""));
+    const normalizedVariant = normalizeVariantPayload(
+      variant,
+      existingVariant?.stock_quantity ?? existingVariant?.stock ?? fallbackStock,
+    );
+    return {
+      ...normalizedVariant,
+      reserved_quantity: normalizeStockValue(
+        variant.reserved_quantity,
+        existingVariant?.reserved_quantity ?? 0,
+      ),
+    };
+  });
+
+  const uniqueKeys = new Set();
+  for (const variant of processedVariants) {
+    const key = buildVariantUniquenessKey(variant);
+    if (!key) continue;
+    if (uniqueKeys.has(key)) {
+      throw new Error("Duplicate variant SKU or attributes are not allowed");
+    }
+    uniqueKeys.add(key);
+  }
+
+  const defaults = processedVariants.filter((variant) => variant.isDefault);
+  if (processedVariants.length > 0 && defaults.length === 0) {
+    processedVariants[0].isDefault = true;
+  } else if (defaults.length > 1) {
+    const firstDefaultIndex = processedVariants.indexOf(defaults[0]);
+    processedVariants.forEach((variant, index) => {
+      variant.isDefault = index === firstDefaultIndex;
+    });
+  }
+
+  return processedVariants;
 };
 
 const resolveComboCardImage = (combo = {}) =>
@@ -561,9 +802,11 @@ export const getProducts = async (req, res) => {
       sortBy = "createdAt",
       order = "desc",
       featured,
+      isFeatured,
       newArrival,
       newArrivals,
       bestSeller,
+      collection,
       priceDrop,
       minDiscount,
       flavor,
@@ -574,6 +817,7 @@ export const getProducts = async (req, res) => {
       exclude,
       separateVariants,
       includeCombos,
+      includeDrafts,
     } = req.query;
 
     const shouldSeparateVariants =
@@ -591,9 +835,19 @@ export const getProducts = async (req, res) => {
         normalizedProductType !== "product");
 
     const canViewExclusive = req?.userIsAdmin === true;
+    const canIncludeDrafts =
+      canViewExclusive &&
+      String(includeDrafts || "")
+        .trim()
+        .toLowerCase() === "true";
 
     // Build filter object
     const filter = { isActive: { $ne: false } };
+    if (canIncludeDrafts) {
+      delete filter.isActive;
+    } else {
+      filter.status = { $ne: "draft" };
+    }
     // Exclusive products are never part of normal storefront listings.
     // Only admins can include them in this endpoint for dashboard management.
     if (!canViewExclusive) {
@@ -633,8 +887,11 @@ export const getProducts = async (req, res) => {
       // Build search conditions
       const searchConditions = [
         { name: { $regex: searchRegex } },
+        { sku: { $regex: searchRegex } },
+        { "variants.sku": { $regex: searchRegex } },
         { brand: { $regex: searchRegex } },
         { tags: { $elemMatch: { $regex: searchRegex } } },
+        { collections: { $elemMatch: { $regex: searchRegex } } },
       ];
 
       // Add category match if any categories match the search
@@ -718,10 +975,16 @@ export const getProducts = async (req, res) => {
     // Ratings are computed from ReviewModel at read time, not stored on Product.
 
     // Boolean filters
+    if (featured === "true" || isFeatured === "true") {
+      filter.isFeatured = true;
+    }
     if (newArrival === "true" || newArrivals === "true") {
       filter.isNewArrival = true;
     }
     if (bestSeller === "true") filter.isBestSeller = true;
+    if (collection) {
+      filter.collections = normalizeCollectionName(collection);
+    }
     if (onSale === "true") filter.isOnSale = true;
     if (priceDrop === "true") {
       const parsedMinDiscount = Number(minDiscount);
@@ -1228,7 +1491,11 @@ export const getProductById = async (req, res) => {
         .populate("reviews.user", "name avatar");
     }
 
-    if (!product || (product.isExclusive && !canViewExclusive)) {
+    if (
+      !product ||
+      (product.isExclusive && !canViewExclusive) ||
+      (product.status === "draft" && !canViewExclusive)
+    ) {
       return res.status(404).json({
         error: true,
         success: false,
@@ -1315,16 +1582,30 @@ export const getFeaturedProducts = async (req, res) => {
 
     const filter = {
       isActive: { $ne: false },
-      isBestSeller: true,
+      status: { $ne: "draft" },
+      isFeatured: true,
       ...(canViewExclusive ? {} : { isExclusive: { $ne: true } }),
     };
 
-    const products = await ProductModel.find(filter)
+    let products = await ProductModel.find(filter)
       .populate("category", "name slug")
       .select("-reviews -description")
-      .sort({ isPopular: -1, createdAt: -1 })
+      .sort({ isFeatured: -1, createdAt: -1 })
       .limit(Number(limit))
       .lean();
+
+    if (products.length === 0) {
+      products = await ProductModel.find({
+        ...filter,
+        isFeatured: { $ne: true },
+        isBestSeller: true,
+      })
+        .populate("category", "name slug")
+        .select("-reviews -description")
+        .sort({ soldCount: -1, createdAt: -1 })
+        .limit(Number(limit))
+        .lean();
+    }
 
     const productsWithReviewStats = await attachVariantReviewStatsToProducts(
       products.map(attachAvailabilityToProduct),
@@ -1481,6 +1762,7 @@ export const getRelatedProducts = async (req, res) => {
       _id: { $ne: id },
       category: product.category,
       isActive: { $ne: false },
+      status: { $ne: "draft" },
       ...(canViewExclusive ? {} : { isExclusive: { $ne: true } }),
     };
     if (Array.isArray(product.tags) && product.tags.length > 0) {
@@ -1506,6 +1788,7 @@ export const getRelatedProducts = async (req, res) => {
       relatedProducts = await ProductModel.find({
         _id: { $ne: id },
         isActive: { $ne: false },
+        status: { $ne: "draft" },
         ...(canViewExclusive ? {} : { isExclusive: { $ne: true } }),
       })
         .select("-reviews -description")
@@ -1626,6 +1909,823 @@ export const getCartUpsellProduct = async (req, res) => {
   }
 };
 
+const PRODUCT_CSV_COLUMNS = [
+  "name",
+  "sku",
+  "category",
+  "status",
+  "price",
+  "salePrice",
+  "stockQuantity",
+  "featured",
+  "newArrival",
+  "bestSeller",
+  "collections",
+  "shortDescription",
+  "description",
+  "images",
+  "color",
+  "size",
+  "material",
+  "customAttributes",
+];
+
+const csvEscape = (value) => {
+  const text = String(value ?? "");
+  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+};
+
+const stringifyProductsCsv = (products = []) => {
+  const rows = products.map((product) => {
+    const variant = Array.isArray(product?.variants)
+      ? product.variants.find((item) => item?.isDefault) || product.variants[0]
+      : null;
+    return {
+      name: product.name || "",
+      sku: product.sku || "",
+      category:
+        product.category?.name ||
+        product.categoryName ||
+        product.category?.slug ||
+        "",
+      status: product.status || (product.isActive === false ? "draft" : "published"),
+      price: product.originalPrice || product.price || "",
+      salePrice: product.salePrice || product.price || "",
+      stockQuantity: product.stock_quantity ?? product.stock ?? "",
+      featured: product.isFeatured ? "true" : "false",
+      newArrival: product.isNewArrival ? "true" : "false",
+      bestSeller: product.isBestSeller ? "true" : "false",
+      collections: Array.isArray(product.collections)
+        ? product.collections.join("|")
+        : "",
+      shortDescription: product.shortDescription || "",
+      description: product.description || "",
+      images: Array.isArray(product.images) ? product.images.join("|") : "",
+      color: variant?.color || variant?.attributes?.color || "",
+      size: variant?.size || variant?.attributes?.size || "",
+      material: variant?.material || variant?.attributes?.material || "",
+      customAttributes: variant?.attributes
+        ? Object.entries(
+            variant.attributes instanceof Map
+              ? Object.fromEntries(variant.attributes)
+              : variant.attributes,
+          )
+            .map(([key, value]) => `${key}:${value}`)
+            .join("|")
+        : "",
+    };
+  });
+
+  return [
+    PRODUCT_CSV_COLUMNS.join(","),
+    ...rows.map((row) =>
+      PRODUCT_CSV_COLUMNS.map((column) => csvEscape(row[column])).join(","),
+    ),
+  ].join("\n");
+};
+
+const parseCsvText = (csvText = "") => {
+  const rows = [];
+  let current = "";
+  let row = [];
+  let quoted = false;
+
+  for (let index = 0; index < csvText.length; index += 1) {
+    const char = csvText[index];
+    const nextChar = csvText[index + 1];
+
+    if (char === '"' && quoted && nextChar === '"') {
+      current += '"';
+      index += 1;
+      continue;
+    }
+
+    if (char === '"') {
+      quoted = !quoted;
+      continue;
+    }
+
+    if (char === "," && !quoted) {
+      row.push(current);
+      current = "";
+      continue;
+    }
+
+    if ((char === "\n" || char === "\r") && !quoted) {
+      if (char === "\r" && nextChar === "\n") index += 1;
+      row.push(current);
+      if (row.some((cell) => String(cell || "").trim())) rows.push(row);
+      row = [];
+      current = "";
+      continue;
+    }
+
+    current += char;
+  }
+
+  row.push(current);
+  if (row.some((cell) => String(cell || "").trim())) rows.push(row);
+  if (rows.length === 0) return [];
+
+  const headers = rows[0].map((cell) =>
+    String(cell || "")
+      .trim()
+      .replace(/^\uFEFF/, ""),
+  );
+
+  return rows.slice(1).map((cells) =>
+    headers.reduce((record, header, index) => {
+      record[header] = String(cells[index] || "").trim();
+      return record;
+    }, {}),
+  );
+};
+
+const resolveCategoryPath = async (categoryPath, cache = new Map()) => {
+  const pathParts = String(categoryPath || "Sarees")
+    .split(">")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const safeParts = pathParts.length ? pathParts : ["Sarees"];
+  let parentCategory = null;
+  let category = null;
+
+  for (const [index, part] of safeParts.entries()) {
+    const cacheKey = `${parentCategory || "root"}>${part.toLowerCase()}`;
+    if (cache.has(cacheKey)) {
+      category = cache.get(cacheKey);
+      parentCategory = category?._id || null;
+      continue;
+    }
+
+    const slugBase = normalizeSlug(part);
+    category = await CategoryModel.findOne({
+      slug: slugBase,
+      parentCategory,
+    });
+
+    if (!category) {
+      category = await CategoryModel.create({
+        name: part,
+        slug: await ensureUniqueCategorySlug(slugBase),
+        parentCategory,
+        level: index,
+        isActive: true,
+        isFeatured: index === 0,
+        sortOrder: index,
+        image: DEFAULT_PRODUCT_IMAGE_PATH,
+      });
+    }
+
+    cache.set(cacheKey, category);
+    parentCategory = category?._id || null;
+  }
+
+  return category;
+};
+
+const ensureUniqueCategorySlug = async (baseValue) => {
+  const baseSlug = normalizeSlug(baseValue) || "category";
+  let candidate = baseSlug;
+  let suffix = 2;
+
+  while (await CategoryModel.exists({ slug: candidate })) {
+    candidate = `${baseSlug}-${suffix}`;
+    suffix += 1;
+  }
+
+  return candidate;
+};
+
+const productPayloadFromCsvRecord = async (
+  record,
+  categoryCache,
+  existingProductId = null,
+) => {
+  const name = String(record.name || "").trim();
+  if (!name) throw new Error("Product name is required");
+
+  const category = await resolveCategoryPath(record.category, categoryCache);
+  const regularPrice = Math.max(Number(record.price || 0), 0);
+  const salePrice = Math.max(Number(record.salePrice || regularPrice), 0);
+  const stockQuantity = Math.max(Number(record.stockQuantity || 0), 0);
+  const customAttributes = parseCustomAttributes(record.customAttributes);
+  const color = String(record.color || "").trim();
+  const size = String(record.size || "").trim();
+  const material = String(record.material || "").trim();
+  const variantName = buildVariantDisplayName({
+    color,
+    size,
+    material,
+    name: "Default",
+  });
+  const sku = await ensureUniqueProductSku(
+    record.sku || `ANB-${name}`,
+    existingProductId,
+  );
+
+  return {
+    name,
+    slug: await ensureUniqueProductSlug(name, existingProductId),
+    sku,
+    category: category._id,
+    description: record.description || "",
+    shortDescription: record.shortDescription || "",
+    brand: "Ananya Boutique",
+    price: salePrice || regularPrice,
+    salePrice: salePrice || regularPrice,
+    originalPrice: regularPrice || salePrice,
+    stock: stockQuantity,
+    stock_quantity: stockQuantity,
+    images: String(record.images || "")
+      .split("|")
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .slice(0, 10),
+    thumbnail: "",
+    status: resolveProductStatus(record.status),
+    isActive: resolveProductStatus(record.status) === "published",
+    isFeatured: toBoolean(record.featured),
+    isNewArrival: toBoolean(record.newArrival),
+    isBestSeller: toBoolean(record.bestSeller),
+    collections: normalizeCollections(record.collections || record.category),
+    hasVariants: true,
+    variantType: "boutique",
+    unit: "piece",
+    variants: [
+      normalizeVariantPayload({
+        name: variantName,
+        sku: `${sku}-1`,
+        price: salePrice || regularPrice,
+        originalPrice: regularPrice || salePrice,
+        stock: stockQuantity,
+        color,
+        size,
+        material,
+        attributes: customAttributes,
+        unit: "piece",
+        isDefault: true,
+      }),
+    ],
+    tags: normalizeCollections(record.collections || record.category).map((item) =>
+      item.toLowerCase(),
+    ),
+  };
+};
+
+const DEMO_COLLECTION_DATA = {
+  Sarees: {
+    nouns: [
+      "Silk Saree",
+      "Organza Saree",
+      "Festive Saree",
+      "Printed Saree",
+      "Embroidered Saree",
+    ],
+    colors: ["Rose", "Ivory", "Emerald", "Wine", "Gold", "Peach", "Teal"],
+    materials: ["Silk Blend", "Organza", "Georgette", "Chiffon", "Cotton Silk"],
+    price: [1299, 5499],
+  },
+  Suits: {
+    nouns: [
+      "Embroidered Suit Set",
+      "Straight Suit Set",
+      "Festive Suit Set",
+      "Printed Suit Set",
+      "Chanderi Suit Set",
+    ],
+    colors: ["Plum", "Powder Blue", "Mustard", "Fuchsia", "Cream", "Olive"],
+    materials: ["Cotton Blend", "Chanderi Blend", "Rayon", "Georgette", "Viscose"],
+    price: [999, 3499],
+  },
+  Kurtis: {
+    nouns: [
+      "Cotton Kurti",
+      "A-Line Kurti",
+      "Embroidered Kurti",
+      "Daily Kurti",
+      "Straight Kurti",
+    ],
+    colors: ["Indigo", "Marigold", "Mint", "Coral", "Black", "White", "Lilac"],
+    materials: ["Cotton", "Rayon", "Viscose", "Modal", "Flex Cotton"],
+    price: [499, 1899],
+  },
+  Leggings: {
+    nouns: [
+      "Ankle Length Leggings",
+      "Cotton Stretch Leggings",
+      "Daily Wear Leggings",
+      "Churidar Leggings",
+      "Soft Knit Leggings",
+    ],
+    colors: ["Black", "White", "Maroon", "Navy", "Beige", "Bottle Green"],
+    materials: ["Cotton Stretch", "Lycra Blend", "Soft Knit", "Cotton Rib"],
+    price: [249, 799],
+  },
+  Cosmetics: {
+    nouns: [
+      "Matte Lip Colour",
+      "Kajal Pencil",
+      "Compact Powder",
+      "Glow Tint",
+      "Blush Palette",
+    ],
+    colors: ["Nude", "Berry", "Rose", "Bronze", "Clear", "Coral", "Mocha"],
+    materials: ["Cosmetic Grade", "Travel Friendly", "Daily Wear", "Soft Finish"],
+    price: [199, 999],
+  },
+  "Artificial Jewellery": {
+    nouns: [
+      "Statement Earrings",
+      "Pendant Set",
+      "Bangle Stack",
+      "Choker Set",
+      "Festive Ring Set",
+    ],
+    colors: ["Gold Tone", "Silver Tone", "Pearl", "Ruby", "Kundan", "Mirror"],
+    materials: ["Alloy", "Pearl Finish", "Stone Work", "Bead Work", "Kundan Work"],
+    price: [299, 2199],
+  },
+  "Fashion Accessories": {
+    nouns: [
+      "Potli Bag",
+      "Hair Accessory Set",
+      "Dupatta",
+      "Clutch",
+      "Scarf",
+    ],
+    colors: ["Champagne", "Black", "Blush", "Tan", "Gold", "Silver", "Aqua"],
+    materials: ["Fabric", "Bead Work", "Vegan Leather", "Embroidered", "Satin"],
+    price: [249, 1699],
+  },
+};
+
+const pickDemoValue = (items, index) => items[index % items.length];
+const demoPriceFor = ([min, max], index) => {
+  const spread = max - min;
+  const price = min + ((index * 137) % Math.max(spread, 1));
+  return Math.round(price / 50) * 50 - 1;
+};
+
+const getDemoMerchandisingCollections = ({
+  collection,
+  index,
+  isNewArrival,
+  isBestSeller,
+}) => {
+  const primary =
+    collection === "Sarees" ||
+    collection === "Suits" ||
+    collection === "Artificial Jewellery"
+      ? pickDemoValue(["Wedding Collection", "Festive Collection", "Party Wear"], index)
+      : collection === "Leggings"
+        ? "Daily Wear"
+        : pickDemoValue(
+            ["Daily Wear", "Festive Collection", "Party Wear"],
+            index,
+          );
+  return Array.from(
+    new Set([
+      primary,
+      index % 5 === 0 ? "Wedding Collection" : "",
+      index % 3 === 0 ? "Festive Collection" : "",
+      isNewArrival ? "New Arrivals" : "",
+      isBestSeller ? "Best Sellers" : "",
+    ].filter(Boolean)),
+  );
+};
+
+const buildDemoProductPayload = async ({
+  collection,
+  index,
+  category,
+}) => {
+  const data = DEMO_COLLECTION_DATA[collection];
+  const localIndex = Math.floor(index / PRODUCT_COLLECTIONS.length);
+  const color = pickDemoValue(data.colors, localIndex + index);
+  const material = pickDemoValue(data.materials, index + 2);
+  const noun = pickDemoValue(data.nouns, index + 1);
+  const name = `${color} ${noun} ${String(index + 1).padStart(3, "0")}`;
+  const price = demoPriceFor(data.price, index);
+  const originalPrice = Math.round((price * 1.28) / 50) * 50 - 1;
+  const isFeatured = index % 8 === 0 || collection === "Sarees";
+  const isNewArrival = index % 3 === 0;
+  const isBestSeller = index % 5 === 0;
+  const merchandisingCollections = getDemoMerchandisingCollections({
+    collection,
+    index,
+    isNewArrival,
+    isBestSeller,
+  });
+  const sku = await ensureUniqueProductSku(
+    `ANB-${normalizeSlug(collection).slice(0, 4).toUpperCase()}-${String(index + 1).padStart(3, "0")}`,
+  );
+
+  return {
+    name,
+    slug: await ensureUniqueProductSlug(name),
+    description: `${name} from Ananya Boutique, selected for graceful styling, comfortable wear, and easy gifting. Designed for the ${merchandisingCollections[0].toLowerCase()} edit, this demo product includes realistic inventory fields and is ready to be replaced with real stock details later.`,
+    shortDescription: `${material} boutique pick for ${collection.toLowerCase()} styling.`,
+    brand: "Ananya Boutique",
+    price,
+    salePrice: price,
+    originalPrice,
+    images: [DEFAULT_PRODUCT_IMAGE_PATH],
+    thumbnail: DEFAULT_PRODUCT_IMAGE_PATH,
+    category: category._id,
+    sku,
+    stock: 8 + (index % 31),
+    stock_quantity: 8 + (index % 31),
+    track_inventory: true,
+    hasVariants: true,
+    variantType: "boutique",
+    unit: "piece",
+    status: "published",
+    isActive: true,
+    isFeatured,
+    isNewArrival,
+    isBestSeller,
+    collections: merchandisingCollections,
+    tags: [
+      "demo-catalog",
+      "phase-13b",
+      collection.toLowerCase(),
+      color.toLowerCase(),
+      material.toLowerCase(),
+      ...merchandisingCollections.map((item) => item.toLowerCase()),
+    ],
+    variants: [
+      normalizeVariantPayload({
+        name: "Default",
+        sku: `${sku}-STD`,
+        price,
+        originalPrice,
+        stock: 8 + (index % 31),
+        color,
+        size:
+          collection === "Artificial Jewellery" || collection === "Cosmetics"
+            ? "One Size"
+            : collection === "Leggings"
+              ? pickDemoValue(["S", "M", "L", "XL", "XXL"], index)
+            : pickDemoValue(["S", "M", "L", "XL", "Free Size"], index),
+        material,
+        attributes: {
+          collection,
+          merchandising: merchandisingCollections.join(", "),
+          demo: "true",
+        },
+        unit: "piece",
+        isDefault: true,
+      }),
+    ],
+  };
+};
+
+const seedDemoReviewsForProducts = async () => {
+  const products = await ProductModel.find({
+    tags: "phase-13b",
+    status: { $ne: "draft" },
+  })
+    .select("_id variants")
+    .sort({ createdAt: 1 })
+    .limit(100)
+    .lean();
+
+  let inserted = 0;
+  for (const [index, product] of products.entries()) {
+    const existingCount = await ReviewModel.countDocuments({
+      productId: product._id,
+      source: "admin",
+      userEmail: /@demo\.ananyaboutique$/i,
+    });
+    const targetCount = index % 4 === 0 ? 2 : 1;
+    if (existingCount >= targetCount) continue;
+
+    const variant =
+      Array.isArray(product.variants) && product.variants.length > 0
+        ? product.variants.find((item) => item?.isDefault) || product.variants[0]
+        : null;
+    const missingCount = targetCount - existingCount;
+    const reviews = Array.from({ length: missingCount }).map((_, reviewIndex) => {
+      const template =
+        DEMO_REVIEW_TEMPLATES[
+          (index + existingCount + reviewIndex) % DEMO_REVIEW_TEMPLATES.length
+        ];
+      return {
+        productId: product._id,
+        variantId: variant?._id || null,
+        orderId: new mongoose.Types.ObjectId(),
+        userId: new mongoose.Types.ObjectId(),
+        userName: template.userName,
+        userEmail: `demo-review-${index}-${existingCount + reviewIndex}@demo.ananyaboutique`,
+        city: template.city,
+        rating: template.rating,
+        comment: template.comment,
+        source: "admin",
+        visibility: "visible",
+        isVerifiedPurchase: true,
+        moderatedAt: new Date(),
+      };
+    });
+
+    if (reviews.length > 0) {
+      await ReviewModel.insertMany(reviews, { ordered: false });
+      inserted += reviews.length;
+    }
+  }
+
+  return inserted;
+};
+
+export const seedBoutiqueDemoCatalog = async ({ count = 100 } = {}) => {
+  const categoryCache = new Map();
+  const categories = {};
+
+  for (const collection of PRODUCT_COLLECTIONS) {
+    categories[collection] = await resolveCategoryPath(collection, categoryCache);
+  }
+
+  const products = [];
+  const categoryTargets = PRODUCT_COLLECTIONS.reduce((targets, collection, index) => {
+    const baseTarget = Math.floor(count / PRODUCT_COLLECTIONS.length);
+    const remainder = count % PRODUCT_COLLECTIONS.length;
+    targets[collection] = baseTarget + (index < remainder ? 1 : 0);
+    return targets;
+  }, {});
+  const skippedByCategory = {};
+  let globalIndex = 0;
+
+  for (const collection of PRODUCT_COLLECTIONS) {
+    const category = categories[collection];
+    const existingCount = await ProductModel.countDocuments({
+      category: category._id,
+      tags: "phase-13b",
+    });
+    const targetCount = categoryTargets[collection];
+    skippedByCategory[collection] = existingCount;
+
+    for (let itemIndex = existingCount; itemIndex < targetCount; itemIndex += 1) {
+      const payload = await buildDemoProductPayload({
+        collection,
+        index: globalIndex + itemIndex,
+        category,
+      });
+      products.push(payload);
+    }
+
+    globalIndex += targetCount;
+  }
+
+  if (products.length === 0) {
+    const reviewsInserted = await seedDemoReviewsForProducts();
+    return {
+      inserted: 0,
+      reviewsInserted,
+      skipped: Object.values(skippedByCategory).reduce(
+        (sum, value) => sum + Number(value || 0),
+        0,
+      ),
+      skippedByCategory,
+      categoryTargets,
+      merchandisingCollections: MERCHANDISING_COLLECTIONS,
+      categories: PRODUCT_COLLECTIONS.length,
+    };
+  }
+
+  const result = await ProductModel.insertMany(products, { ordered: false });
+  const reviewsInserted = await seedDemoReviewsForProducts();
+
+  for (const category of Object.values(categories)) {
+    await CategoryModel.updateOne(
+      { _id: category._id },
+      { $set: { productCount: await ProductModel.countDocuments({ category: category._id }) } },
+    );
+  }
+
+  return {
+    inserted: result.length,
+    reviewsInserted,
+    skipped: Object.values(skippedByCategory).reduce(
+      (sum, value) => sum + Number(value || 0),
+      0,
+    ),
+    skippedByCategory,
+    categoryTargets,
+    merchandisingCollections: MERCHANDISING_COLLECTIONS,
+    categories: PRODUCT_COLLECTIONS.length,
+  };
+};
+
+export const exportProductsCsv = async (req, res) => {
+  try {
+    const products = await ProductModel.find({})
+      .populate("category", "name slug")
+      .sort({ createdAt: -1 })
+      .lean();
+    const csv = stringifyProductsCsv(products);
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="ananya-products-${new Date().toISOString().slice(0, 10)}.csv"`,
+    );
+    return res.status(200).send(csv);
+  } catch (error) {
+    return res.status(500).json({
+      error: true,
+      success: false,
+      message: "Failed to export products",
+      details: error.message,
+    });
+  }
+};
+
+export const importProductsCsv = async (req, res) => {
+  try {
+    const csvText = String(req.body?.csv || "");
+    if (!csvText.trim()) {
+      return res.status(400).json({
+        error: true,
+        success: false,
+        message: "CSV content is required",
+      });
+    }
+
+    const records = parseCsvText(csvText);
+    const categoryCache = new Map();
+    const inserted = [];
+    const updated = [];
+    const failed = [];
+
+    for (const [index, record] of records.entries()) {
+      try {
+        const submittedSku = String(record.sku || "")
+          .trim()
+          .toUpperCase();
+        const existingProduct = submittedSku
+          ? await ProductModel.findOne({ sku: submittedSku }).lean()
+          : null;
+        const payload = await productPayloadFromCsvRecord(
+          record,
+          categoryCache,
+          existingProduct?._id || null,
+        );
+        if (!payload.images.length) {
+          payload.images = [DEFAULT_PRODUCT_IMAGE_PATH];
+          payload.thumbnail = DEFAULT_PRODUCT_IMAGE_PATH;
+        } else {
+          payload.thumbnail = payload.images[0];
+        }
+        if (existingProduct?._id) {
+          const previousCategoryId = String(existingProduct.category || "");
+          await ProductModel.updateOne(
+            { _id: existingProduct._id },
+            { $set: payload },
+            { runValidators: true },
+          );
+          if (previousCategoryId !== String(payload.category || "")) {
+            await CategoryModel.updateOne(
+              { _id: previousCategoryId },
+              { $inc: { productCount: -1 } },
+            );
+            await CategoryModel.updateOne(
+              { _id: payload.category },
+              { $inc: { productCount: 1 } },
+            );
+          }
+          updated.push(existingProduct._id);
+        } else {
+          const product = await ProductModel.create(payload);
+          await CategoryModel.updateOne(
+            { _id: payload.category },
+            { $inc: { productCount: 1 } },
+          );
+          inserted.push(product._id);
+        }
+      } catch (error) {
+        failed.push({
+          row: index + 2,
+          message: error.message || "Import failed",
+        });
+      }
+    }
+
+    await invalidateProductResponseCache(CATALOG_RESPONSE_CACHE_NAMESPACES);
+    invalidateAdminReadCaches();
+
+    return res
+      .status(failed.length && !inserted.length && !updated.length ? 400 : 200)
+      .json({
+      error: failed.length && !inserted.length && !updated.length,
+      success: inserted.length > 0 || updated.length > 0,
+      message: `${inserted.length} products imported, ${updated.length} updated`,
+      data: {
+        inserted: inserted.length,
+        updated: updated.length,
+        failed,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      error: true,
+      success: false,
+      message: "Failed to import products",
+      details: error.message,
+    });
+  }
+};
+
+export const duplicateProduct = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const product = await ProductModel.findById(id).lean();
+    if (!product) {
+      return res.status(404).json({
+        error: true,
+        success: false,
+        message: "Product not found",
+      });
+    }
+
+    const duplicateName = `${product.name} Copy`;
+    const duplicateSku = await ensureUniqueProductSku(`${product.sku || "ANB"}-COPY`);
+    const clone = {
+      ...product,
+      _id: undefined,
+      id: undefined,
+      name: duplicateName,
+      slug: await ensureUniqueProductSlug(duplicateName),
+      sku: duplicateSku,
+      status: "draft",
+      isActive: false,
+      isFeatured: false,
+      soldCount: 0,
+      viewCount: 0,
+      reviews: [],
+      createdAt: undefined,
+      updatedAt: undefined,
+      variants: Array.isArray(product.variants)
+        ? product.variants.map((variant, index) => ({
+            ...variant,
+            _id: undefined,
+            sku: `${duplicateSku}-V${index + 1}`,
+          }))
+        : [],
+    };
+
+    const created = await ProductModel.create(clone);
+    if (created.category) {
+      await CategoryModel.updateOne(
+        { _id: created.category },
+        { $inc: { productCount: 1 } },
+      );
+    }
+    await invalidateProductResponseCache(CATALOG_RESPONSE_CACHE_NAMESPACES);
+    invalidateAdminReadCaches();
+
+    return res.status(201).json({
+      error: false,
+      success: true,
+      message: "Product duplicated as draft",
+      data: withProductMediaUrls(created.toObject()),
+    });
+  } catch (error) {
+    return res.status(500).json({
+      error: true,
+      success: false,
+      message: "Failed to duplicate product",
+      details: error.message,
+    });
+  }
+};
+
+export const seedDemoProducts = async (req, res) => {
+  try {
+    const count = Math.min(
+      Math.max(Number(req.body?.count || req.query?.count || 100), 1),
+      100,
+    );
+    const result = await seedBoutiqueDemoCatalog({ count });
+
+    await invalidateProductResponseCache(CATALOG_RESPONSE_CACHE_NAMESPACES);
+    invalidateAdminReadCaches();
+
+    return res.status(201).json({
+      error: false,
+      success: true,
+      message: `${result.inserted} demo products seeded`,
+      data: result,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      error: true,
+      success: false,
+      message: "Failed to seed demo catalog",
+      details: error.message,
+    });
+  }
+};
+
 // ==================== ADMIN ENDPOINTS ====================
 
 /**
@@ -1648,6 +2748,7 @@ export const createProduct = async (req, res) => {
     const {
       name,
       description,
+      productStory,
       shortDescription,
       brand,
       price,
@@ -1760,38 +2861,15 @@ export const createProduct = async (req, res) => {
       Array.isArray(processedVariants) &&
       processedVariants.length > 0
     ) {
-      let normalizedWeightEntries = [];
       try {
-        normalizedWeightEntries = processedVariants.map((variant) =>
-          normalizeVariantWeight(variant),
-        );
+        processedVariants = normalizeSubmittedVariants({
+          variants: processedVariants,
+        });
       } catch (error) {
         return res.status(400).json({
           error: true,
           success: false,
-          message: error.message || "Invalid weight format",
-        });
-      }
-      const uniqueWeights = new Set(
-        normalizedWeightEntries.map((entry) => `${entry.weight}${entry.unit}`),
-      );
-      if (uniqueWeights.size !== normalizedWeightEntries.length) {
-        return res.status(400).json({
-          error: true,
-          success: false,
-          message: "Duplicate variant weights are not allowed",
-        });
-      }
-      processedVariants = processedVariants.map((variant) =>
-        normalizeVariantPayload(variant, 0),
-      );
-      // Ensure exactly one default
-      const defaults = processedVariants.filter((v) => v.isDefault);
-      if (defaults.length === 0) {
-        processedVariants[0].isDefault = true;
-      } else if (defaults.length > 1) {
-        processedVariants.forEach((v, i) => {
-          v.isDefault = i === processedVariants.indexOf(defaults[0]);
+          message: error.message || "Invalid variant options",
         });
       }
     }
@@ -1814,6 +2892,7 @@ export const createProduct = async (req, res) => {
     const product = new ProductModel({
       name: String(name || "").trim(),
       description,
+      productStory,
       shortDescription,
       brand,
       price: derivedPrice,
@@ -1825,6 +2904,7 @@ export const createProduct = async (req, res) => {
       category,
       subCategory,
       sku,
+      salePrice: Number(req.body?.salePrice || 0) || derivedPrice,
       stock: variantInventoryTotals?.stock ?? normalizedStock,
       stock_quantity: variantInventoryTotals?.stock ?? normalizedStock,
       reserved_quantity:
@@ -1838,8 +2918,12 @@ export const createProduct = async (req, res) => {
       unit: defaultVariant?.unit || unit || "g",
       hsnCode: normalizeHsnCode(hsnCode),
       tags: tags || [],
+      collections: normalizeCollections(req.body?.collections),
+      isFeatured: toBoolean(req.body?.isFeatured),
       isNewArrival: toBoolean(newArrival ?? isNewArrival),
       isBestSeller: toBoolean(isBestSeller),
+      status: resolveProductStatus(req.body?.status),
+      isActive: resolveProductStatus(req.body?.status) === "published",
       isExclusive: toBoolean(isExclusive),
       demandStatus: demandStatus || "NORMAL",
       specifications,
@@ -1961,7 +3045,24 @@ export const updateProduct = async (req, res) => {
       updateData.isNewArrival = toBoolean(updateData.isNewArrival);
     }
     delete updateData.newArrival;
-    delete updateData.isFeatured;
+    if ("isFeatured" in updateData) {
+      updateData.isFeatured = toBoolean(updateData.isFeatured);
+    }
+    if ("status" in updateData) {
+      updateData.status = resolveProductStatus(updateData.status);
+      updateData.isActive = updateData.status === "published";
+    }
+    if ("salePrice" in updateData) {
+      const rounded = roundWholeNumber(updateData.salePrice);
+      if (rounded !== null) {
+        updateData.salePrice = rounded;
+      } else {
+        delete updateData.salePrice;
+      }
+    }
+    if ("collections" in updateData) {
+      updateData.collections = normalizeCollections(updateData.collections);
+    }
     delete updateData.discount;
     if ("price" in updateData) {
       const rounded = roundWholeNumber(updateData.price);
@@ -2011,57 +3112,22 @@ export const updateProduct = async (req, res) => {
       Array.isArray(updateData.variants) &&
       updateData.variants.length > 0
     ) {
-      let normalizedWeightEntries = [];
-      try {
-        normalizedWeightEntries = updateData.variants.map((variant) =>
-          normalizeVariantWeight(variant),
-        );
-      } catch (error) {
-        return res.status(400).json({
-          error: true,
-          success: false,
-          message: error.message || "Invalid weight format",
-        });
-      }
-      const uniqueWeights = new Set(
-        normalizedWeightEntries.map((entry) => `${entry.weight}${entry.unit}`),
-      );
-      if (uniqueWeights.size !== normalizedWeightEntries.length) {
-        return res.status(400).json({
-          error: true,
-          success: false,
-          message: "Duplicate variant weights are not allowed",
-        });
-      }
       const existingVariantMap = new Map(
         (product.variants || []).map((variant) => [
           String(variant?._id || ""),
           variant,
         ]),
       );
-      updateData.variants = updateData.variants.map((variant) => {
-        const existingVariant = existingVariantMap.get(
-          String(variant?._id || ""),
-        );
-        const normalizedVariant = normalizeVariantPayload(
-          variant,
-          existingVariant?.stock_quantity ?? existingVariant?.stock ?? 0,
-        );
-        return {
-          ...normalizedVariant,
-          reserved_quantity: normalizeStockValue(
-            variant.reserved_quantity,
-            existingVariant?.reserved_quantity ?? 0,
-          ),
-        };
-      });
-      // Ensure exactly one default
-      const defaults = updateData.variants.filter((v) => v.isDefault);
-      if (defaults.length === 0) {
-        updateData.variants[0].isDefault = true;
-      } else if (defaults.length > 1) {
-        updateData.variants.forEach((v, i) => {
-          v.isDefault = i === updateData.variants.indexOf(defaults[0]);
+      try {
+        updateData.variants = normalizeSubmittedVariants({
+          variants: updateData.variants,
+          existingVariantMap,
+        });
+      } catch (error) {
+        return res.status(400).json({
+          error: true,
+          success: false,
+          message: error.message || "Invalid variant options",
         });
       }
     }
@@ -2082,6 +3148,7 @@ export const updateProduct = async (req, res) => {
         updateData.variants[0];
       if (defaultVariant) {
         updateData.price = defaultVariant.price;
+        updateData.salePrice = updateData.salePrice || defaultVariant.price;
         updateData.originalPrice = defaultVariant.originalPrice;
         updateData.weight = defaultVariant.weight;
         updateData.unit = defaultVariant.unit || "g";
@@ -2638,6 +3705,10 @@ export default {
   getFeaturedProducts,
   getExclusiveProducts,
   getRelatedProducts,
+  exportProductsCsv,
+  importProductsCsv,
+  duplicateProduct,
+  seedDemoProducts,
   createProduct,
   updateProduct,
   deleteProduct,

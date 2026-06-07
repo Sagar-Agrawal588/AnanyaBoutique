@@ -14,6 +14,7 @@ import {
   Users,
 } from "lucide-react";
 import BrandArtworkFrame from "@/components/brand/BrandArtworkFrame";
+import useStorefrontContent from "@/hooks/useStorefrontContent";
 import {
   BrandPillarGrid,
   FounderSignatureSection,
@@ -206,12 +207,15 @@ const quotes = [
   "Every order carries more than a product. It carries belief, effort, and a family's journey.",
 ];
 
+const storyIcons = [Heart, Home, Users, Sparkles, Gem, Store, Star];
+
 function StoryArtwork({
   title,
   subtext,
   orientation = "wide",
   Icon = Sparkles,
   artworkKey,
+  imageUrl = "",
 }) {
   const isPortrait = orientation === "portrait";
 
@@ -223,7 +227,16 @@ function StoryArtwork({
       className={isPortrait ? "mx-auto w-full max-w-[520px]" : "w-full"}
     >
       <BrandArtworkFrame
-        artworkKey={artworkKey}
+        artwork={
+          imageUrl
+            ? {
+                source: imageUrl,
+                title,
+                copy: subtext,
+              }
+            : undefined
+        }
+        artworkKey={imageUrl ? undefined : artworkKey}
         title={title}
         copy={subtext}
         aspect={isPortrait ? "portrait" : "wide"}
@@ -235,7 +248,7 @@ function StoryArtwork({
 }
 
 function StorySection({ section, index }) {
-  const Icon = section.icon;
+  const Icon = section.icon || storyIcons[index % storyIcons.length] || Sparkles;
   const content = (
     <motion.div
       variants={fadeUp}
@@ -289,7 +302,9 @@ function StorySection({ section, index }) {
   );
 }
 
-function TimelineSection() {
+function TimelineSection({ items = timelineItems }) {
+  const safeItems = Array.isArray(items) && items.length ? items : timelineItems;
+
   return (
     <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8 lg:py-16">
       <motion.div
@@ -309,7 +324,7 @@ function TimelineSection() {
         </motion.div>
 
         <div className="mt-8 grid gap-5 lg:grid-cols-3">
-          {timelineItems.map((item) => (
+          {safeItems.map((item) => (
             <motion.article
               key={item.year}
               variants={fadeUp}
@@ -334,7 +349,9 @@ function TimelineSection() {
   );
 }
 
-function StatsSection() {
+function StatsSection({ items = stats }) {
+  const safeItems = Array.isArray(items) && items.length ? items : stats;
+
   return (
     <section className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8 lg:py-14">
       <motion.div
@@ -344,7 +361,7 @@ function StatsSection() {
         viewport={{ once: true, amount: 0.25 }}
         className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
       >
-        {stats.map((stat) => (
+        {safeItems.map((stat) => (
           <motion.div
             key={stat.label}
             variants={fadeUp}
@@ -387,6 +404,20 @@ function QuoteSection({ quote, index }) {
 }
 
 export default function AboutUsPage() {
+  const { content: storefrontContent } = useStorefrontContent();
+  const aboutContent = storefrontContent.about;
+  const mediaSlots = storefrontContent.mediaSlots || {};
+  const hero = aboutContent.hero || {};
+  const cta = aboutContent.cta || {};
+  const safeStorySections =
+    Array.isArray(aboutContent.storySections) && aboutContent.storySections.length
+      ? aboutContent.storySections
+      : storySections;
+  const safeQuotes =
+    Array.isArray(aboutContent.quotes) && aboutContent.quotes.length
+      ? aboutContent.quotes
+      : quotes;
+
   return (
     <main className="overflow-hidden bg-[linear-gradient(180deg,#fffaf6_0%,#ffffff_34%,#fff3f8_70%,#ffffff_100%)] text-[#2f1325]">
       <section className="relative px-4 pb-12 pt-10 sm:px-6 sm:pt-16 lg:px-8 lg:pb-20">
@@ -400,43 +431,45 @@ export default function AboutUsPage() {
           <motion.div variants={fadeUp}>
             <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-[#efd8b0] bg-white/80 px-4 py-2 text-xs font-semibold uppercase tracking-[0.24em] text-[#9d6b19] shadow-sm">
               <Sparkles className="h-4 w-4 text-[#cc7a9b]" aria-hidden="true" />
-              Ananya Boutique
+              {hero.eyebrow || "Ananya Boutique"}
             </div>
             <h1 className="font-serif text-6xl font-semibold leading-none text-[#2f1325] sm:text-7xl lg:text-8xl">
-              OUR STORY
+              {hero.title || "OUR STORY"}
             </h1>
             <p className="mt-6 max-w-2xl text-xl leading-8 text-[#604354] sm:text-2xl">
-              Behind every product is a dream, a family, and years of determination.
+              {hero.subtitle}
             </p>
             <p className="mt-6 max-w-2xl text-base leading-8 text-[#765d6c]">
-              This is a story for every woman who has carried a dream quietly,
-              worked for it patiently, and kept going even when the world did not
-              see the effort.
+              {hero.description}
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
               <Link
-                href="/products"
+                href={hero.primaryButtonHref || "/products"}
                 className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-[#2f1325] px-6 text-sm font-semibold text-white shadow-xl shadow-[#2f1325]/20 transition hover:-translate-y-0.5 hover:bg-[#4b1f3a]"
               >
-                {fashionMicrocopy.shopCollection}
+                {hero.primaryButtonText || fashionMicrocopy.shopCollection}
                 <ArrowRight className="h-4 w-4" aria-hidden="true" />
               </Link>
               <Link
-                href="/contact"
+                href={hero.secondaryButtonHref || "/contact"}
                 className="inline-flex h-12 items-center justify-center gap-2 rounded-full border border-[#efd8b0] bg-white px-6 text-sm font-semibold text-[#8a5a12] shadow-sm transition hover:-translate-y-0.5 hover:bg-[#fff8f0]"
               >
-                Connect With Us
+                {hero.secondaryButtonText || "Connect With Us"}
                 <Heart className="h-4 w-4" aria-hidden="true" />
               </Link>
             </div>
           </motion.div>
 
           <StoryArtwork
-            title="A Dream That Grew With Love"
-            subtext="A founder's journey held in soft colour, quiet strength, and family belief."
+            title={hero.visualTitle || "A Dream That Grew With Love"}
+            subtext={
+              hero.visualSubtext ||
+              "A founder's journey held in soft colour, quiet strength, and family belief."
+            }
             orientation="portrait"
             Icon={Heart}
             artworkKey="story.founder"
+            imageUrl={mediaSlots?.[hero.mediaSlot]}
           />
         </motion.div>
       </section>
@@ -448,15 +481,15 @@ export default function AboutUsPage() {
         </div>
       </section>
 
-      <TimelineSection />
-      <StatsSection />
-      <QuoteSection quote={quotes[0]} index={0} />
+      <TimelineSection items={aboutContent.timeline} />
+      <StatsSection items={aboutContent.stats} />
+      <QuoteSection quote={safeQuotes[0]} index={0} />
 
-      {storySections.map((section, index) => (
+      {safeStorySections.map((section, index) => (
         <StorySection key={section.title} section={section} index={index} />
       ))}
 
-      <QuoteSection quote={quotes[1]} index={1} />
+      {safeQuotes[1] ? <QuoteSection quote={safeQuotes[1]} index={1} /> : null}
 
       <section className="px-4 py-12 sm:px-6 lg:px-8 lg:py-20">
         <motion.div
@@ -467,37 +500,38 @@ export default function AboutUsPage() {
           className="mx-auto grid max-w-7xl gap-9 overflow-hidden rounded-[2rem] border border-[#efd8b0]/85 bg-gradient-to-br from-white via-[#fff8f3] to-[#fae8ff] p-6 shadow-[0_28px_100px_rgba(93,45,74,0.16)] sm:p-8 lg:grid-cols-[0.92fr_1.08fr] lg:p-10"
         >
           <StoryArtwork
-            title="Welcome To The Family"
-            subtext="A warm community frame for women, families, and shared support."
+            title={cta.visualTitle || "Welcome To The Family"}
+            subtext={
+              cta.visualSubtext ||
+              "A warm community frame for women, families, and shared support."
+            }
             orientation="wide"
             Icon={Users}
             artworkKey="story.community"
           />
           <motion.div variants={fadeUp} className="flex flex-col justify-center">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#9d6b19]">
-              The story continues with you
+              {cta.eyebrow || "The story continues with you"}
             </p>
             <h2 className="mt-3 font-serif text-4xl font-semibold leading-tight text-[#2f1325] sm:text-5xl">
-              Every purchase becomes part of this journey.
+              {cta.title || "Every purchase becomes part of this journey."}
             </h2>
             <p className="mt-5 text-base leading-8 text-[#604354] sm:text-lg">
-              Ananya Boutique is built on family, trust, courage, and the belief
-              that women deserve beauty, confidence, and opportunity at every
-              stage of life.
+              {cta.description}
             </p>
             <div className="mt-7 flex flex-col gap-3 sm:flex-row">
               <Link
-                href="/products"
+                href={cta.primaryButtonHref || "/products"}
                 className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-[#2f1325] px-6 text-sm font-semibold text-white shadow-xl shadow-[#2f1325]/20 transition hover:-translate-y-0.5 hover:bg-[#4b1f3a]"
               >
-                {fashionMicrocopy.shopProducts}
+                {cta.primaryButtonText || fashionMicrocopy.shopProducts}
                 <ArrowRight className="h-4 w-4" aria-hidden="true" />
               </Link>
               <Link
-                href="/membership"
+                href={cta.secondaryButtonHref || "/membership"}
                 className="inline-flex h-12 items-center justify-center gap-2 rounded-full border border-[#efd8b0] bg-white px-6 text-sm font-semibold text-[#8a5a12] shadow-sm transition hover:-translate-y-0.5 hover:bg-[#fff8f0]"
               >
-                Join The Family
+                {cta.secondaryButtonText || "Join The Family"}
                 <Sparkles className="h-4 w-4" aria-hidden="true" />
               </Link>
             </div>

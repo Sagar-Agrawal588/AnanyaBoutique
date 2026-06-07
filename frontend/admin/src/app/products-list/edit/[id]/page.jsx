@@ -36,6 +36,55 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "react-hot-toast";
 import { IoMdClose } from "react-icons/io";
 
+const PRODUCT_COLLECTIONS = [
+  "Sarees",
+  "Kurtis",
+  "Jewellery",
+  "Cosmetics",
+  "Dress Materials",
+  "Accessories",
+];
+
+const createEmptyVariant = (isDefault = false) => ({
+  name: "",
+  price: "",
+  originalPrice: "",
+  stock: "",
+  sku: "",
+  weight: "",
+  unit: "piece",
+  color: "",
+  size: "",
+  material: "",
+  customAttributes: "",
+  isDefault,
+});
+
+const buildBoutiqueVariantLabel = (variant, fallback = "Default") =>
+  [variant.size, variant.color, variant.material, variant.name]
+    .map((item) => String(item || "").trim())
+    .filter(Boolean)
+    .join(" / ") || fallback;
+
+const moveArrayItem = (items, fromIndex, toIndex) => {
+  if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0) return items;
+  const nextItems = [...items];
+  const [movedItem] = nextItems.splice(fromIndex, 1);
+  nextItems.splice(toIndex, 0, movedItem);
+  return nextItems;
+};
+
+const attributesToText = (attributes) => {
+  if (!attributes) return "";
+  const plain =
+    attributes instanceof Map ? Object.fromEntries(attributes.entries()) : attributes;
+  if (!plain || typeof plain !== "object") return "";
+  return Object.entries(plain)
+    .filter(([key]) => !["color", "size", "material"].includes(key))
+    .map(([key, value]) => `${key}:${value}`)
+    .join("|");
+};
+
 const EditProduct = () => {
   const { token, isAuthenticated, loading } = useAdmin();
   const router = useRouter();
@@ -46,7 +95,13 @@ const EditProduct = () => {
   const [description, setDescription] = useState("");
   const [productStory, setProductStory] = useState("");
   const [shortDescription, setShortDescription] = useState("");
+  const [productSku, setProductSku] = useState("");
   const [categoryVal, setCategoryVal] = useState("");
+  const [regularPrice, setRegularPrice] = useState("");
+  const [salePrice, setSalePrice] = useState("");
+  const [stockQuantity, setStockQuantity] = useState("");
+  const [status, setStatus] = useState("published");
+  const [isFeatured, setIsFeatured] = useState(false);
   const [isNewArrival, setIsNewArrival] = useState(false);
   const [isBestSeller, setIsBestSeller] = useState(false);
   const [isExclusive, setIsExclusive] = useState(false);
@@ -56,9 +111,16 @@ const EditProduct = () => {
   const [tags, setTags] = useState("");
   const [newImages, setNewImages] = useState([]); // { file, preview }
   const [existingImages, setExistingImages] = useState([]); // URLs
+  const [replacementImages, setReplacementImages] = useState({});
+  const [selectedNewThumbnailIndex, setSelectedNewThumbnailIndex] =
+    useState(null);
+  const [draggedExistingImageIndex, setDraggedExistingImageIndex] =
+    useState(null);
+  const [draggedNewImageIndex, setDraggedNewImageIndex] = useState(null);
   const [newVideos, setNewVideos] = useState([]); // { file, preview, name, size }
   const [existingVideos, setExistingVideos] = useState([]); // URLs
   const [categories, setCategories] = useState([]);
+  const [collections, setCollections] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [productPage, setProductPage] = useState(() =>
@@ -71,19 +133,7 @@ const EditProduct = () => {
   const [variants, setVariants] = useState([]);
 
   const addVariant = () => {
-    setVariants([
-      ...variants,
-      {
-        name: "",
-        price: "",
-        originalPrice: "",
-        stock: "",
-        sku: "",
-        weight: "",
-        unit: "g",
-        isDefault: variants.length === 0,
-      },
-    ]);
+    setVariants([...variants, createEmptyVariant(variants.length === 0)]);
   };
 
   const updateVariant = (index, field, value) => {
@@ -110,6 +160,12 @@ const EditProduct = () => {
           : normalizedWeight;
       }
     }
+    if (["color", "size", "material"].includes(field)) {
+      const rawName = String(updated[index].name || "").trim();
+      if (!rawName || rawName === "Default") {
+        updated[index].name = buildBoutiqueVariantLabel(updated[index]);
+      }
+    }
     // Handle isDefault — only one can be default
     if (field === "isDefault" && value) {
       updated.forEach((v, i) => {
@@ -133,14 +189,19 @@ const EditProduct = () => {
     setVariants(updated);
   };
 
+  const toggleCollection = (collection) => {
+    setCollections((current) =>
+      current.includes(collection)
+        ? current.filter((item) => item !== collection)
+        : [...current, collection],
+    );
+  };
+
   const fetchCategories = useCallback(async () => {
     try {
       const response = await getData("/api/categories", token);
       if (response.success) {
-        const parentCategories = (response.data || []).filter(
-          (cat) => !cat.parent,
-        );
-        setCategories(parentCategories);
+        setCategories(response.data || []);
       }
     } catch (error) {
       console.error("Failed to fetch categories:", error);
@@ -156,7 +217,7 @@ const EditProduct = () => {
     setIsLoading(true);
     try {
       console.log("Fetching product:", productId);
-      const response = await getData(`/api/products/${productId}`, token);
+      const response = await getData(`/api/products/admin/${productId}`, token);
       console.log("Product response:", response);
 
       if (response.success && response.data) {
@@ -165,8 +226,22 @@ const EditProduct = () => {
         setDescription(product.description || "");
         setProductStory(product.productStory || "");
         setShortDescription(product.shortDescription || "");
+        setProductSku(product.sku || "");
         const catId = product.category?._id || product.category || "";
         setCategoryVal(catId);
+        setRegularPrice(
+          Number.isFinite(Number(product.originalPrice))
+            ? Math.round(Number(product.originalPrice))
+            : "",
+        );
+        setSalePrice(
+          Number.isFinite(Number(product.salePrice || product.price))
+            ? Math.round(Number(product.salePrice || product.price))
+            : "",
+        );
+        setStockQuantity(product.stock_quantity ?? product.stock ?? "");
+        setStatus(product.status || (product.isActive === false ? "draft" : "published"));
+        setIsFeatured(Boolean(product.isFeatured));
         setIsNewArrival(product.isNewArrival || false);
         setIsBestSeller(product.isBestSeller || false);
         setIsExclusive(Boolean(product.isExclusive));
@@ -174,7 +249,10 @@ const EditProduct = () => {
         setBrand(product.brand || "");
         setHsnCode(product.hsnCode || "");
         setTags(product.tags ? product.tags.join(", ") : "");
+        setCollections(Array.isArray(product.collections) ? product.collections : []);
         setExistingImages(product.images || []);
+        setReplacementImages({});
+        setSelectedNewThumbnailIndex(null);
         setExistingVideos(product.videos || []);
         setProductPage(mergeProductPageConfig(product.productPage));
 
@@ -206,7 +284,11 @@ const EditProduct = () => {
                 sku: v.sku || "",
                 weight: parsedWeight || "",
                 label: v.label || "",
-                unit: parsedUnit,
+                unit: parsedWeight ? parsedUnit : "piece",
+                color: v.color || v.attributes?.color || "",
+                size: v.size || v.attributes?.size || "",
+                material: v.material || v.attributes?.material || "",
+                customAttributes: attributesToText(v.attributes),
                 isDefault: v.isDefault || false,
               };
             }),
@@ -235,7 +317,11 @@ const EditProduct = () => {
               stock: product.stock_quantity ?? product.stock ?? "",
               sku: product.sku || "",
               weight: product.weight || "",
-              unit: product.unit || "g",
+              unit: product.weight ? product.unit || "g" : "piece",
+              color: "",
+              size: "",
+              material: "",
+              customAttributes: "",
               isDefault: true,
             },
           ]);
@@ -317,10 +403,92 @@ const EditProduct = () => {
 
   const removeNewImage = (index) => {
     setNewImages(newImages.filter((_, i) => i !== index));
+    setSelectedNewThumbnailIndex(null);
   };
 
   const removeExistingImage = (index) => {
     setExistingImages(existingImages.filter((_, i) => i !== index));
+    setReplacementImages((current) => {
+      const next = {};
+      Object.entries(current).forEach(([key, value]) => {
+        const numericKey = Number(key);
+        if (numericKey < index) next[numericKey] = value;
+        if (numericKey > index) next[numericKey - 1] = value;
+      });
+      return next;
+    });
+  };
+
+  const moveExistingImage = (fromIndex, toIndex) => {
+    setExistingImages((current) => moveArrayItem(current, fromIndex, toIndex));
+    setReplacementImages((current) => {
+      const orderedEntries = existingImages.map((_, index) => current[index] || null);
+      const movedEntries = moveArrayItem(orderedEntries, fromIndex, toIndex);
+      return movedEntries.reduce((next, item, index) => {
+        if (item) next[index] = item;
+        return next;
+      }, {});
+    });
+  };
+
+  const moveNewImage = (fromIndex, toIndex) => {
+    setNewImages((current) => moveArrayItem(current, fromIndex, toIndex));
+    setSelectedNewThumbnailIndex(null);
+  };
+
+  const replaceExistingImage = async (index, event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      if (file.size > PRODUCT_IMAGE_MAX_SIZE_BYTES) {
+        toast.error(
+          `${file.name}: image size should be less than ${formatFileSize(PRODUCT_IMAGE_MAX_SIZE_BYTES)}`,
+        );
+        return;
+      }
+
+      const asset = await buildProductImageAsset({ file });
+      const dimensionError = getProductImageDimensionError(asset?.dimensions);
+      if (dimensionError) {
+        toast.error(`${file.name}: ${dimensionError}`);
+        return;
+      }
+
+      setReplacementImages((current) => ({
+        ...current,
+        [index]: asset,
+      }));
+    } finally {
+      event.target.value = "";
+    }
+  };
+
+  const replaceNewImage = async (index, event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      if (file.size > PRODUCT_IMAGE_MAX_SIZE_BYTES) {
+        toast.error(
+          `${file.name}: image size should be less than ${formatFileSize(PRODUCT_IMAGE_MAX_SIZE_BYTES)}`,
+        );
+        return;
+      }
+
+      const asset = await buildProductImageAsset({ file });
+      const dimensionError = getProductImageDimensionError(asset?.dimensions);
+      if (dimensionError) {
+        toast.error(`${file.name}: ${dimensionError}`);
+        return;
+      }
+
+      setNewImages((current) =>
+        current.map((image, imageIndex) => (imageIndex === index ? asset : image)),
+      );
+    } finally {
+      event.target.value = "";
+    }
   };
 
   const handleVideoUpload = (e) => {
@@ -390,24 +558,39 @@ const EditProduct = () => {
     let variantData = [];
     try {
       variantData = variants
-        .filter((v) => v.price)
+        .filter((v) => v.price || salePrice || regularPrice)
         .map((v, i) => {
-          const normalizedWeight = normalizeVariantWeight(v);
+          const hasWeight = String(v.weight || "").trim() !== "";
+          const normalizedWeight = hasWeight ? normalizeVariantWeight(v) : null;
+          const variantLabel =
+            normalizedWeight?.label || buildBoutiqueVariantLabel(v, "Default");
           return {
             _id: v._id || undefined,
-            name: v.name || normalizedWeight.label,
-            label: normalizedWeight.label,
+            name: v.name || variantLabel,
+            label: variantLabel,
             sku:
               v.sku || `${productName.substring(0, 3).toUpperCase()}-V${i + 1}`,
-            price: Math.round(Number(v.price)),
+            price: Math.round(Number(v.price || salePrice || regularPrice)),
             originalPrice: v.originalPrice
               ? Math.round(Number(v.originalPrice))
-              : undefined,
-            weight: Number(v.weight),
-            unit: String(v.unit || "g").toLowerCase() === "kg" ? "kg" : "g",
+              : regularPrice
+                ? Math.round(Number(regularPrice))
+                : undefined,
+            weight: hasWeight ? Number(v.weight) : undefined,
+            unit: hasWeight
+              ? String(v.unit || "g").toLowerCase() === "kg"
+                ? "kg"
+                : "g"
+              : "piece",
+            color: v.color || "",
+            size: v.size || "",
+            material: v.material || "",
+            customAttributes: v.customAttributes || "",
             isDefault: !!v.isDefault,
-            stock: v.stock ? Number(v.stock) : 0,
-            stock_quantity: v.stock ? Number(v.stock) : 0,
+            stock: v.stock ? Number(v.stock) : Number(stockQuantity || 0),
+            stock_quantity: v.stock
+              ? Number(v.stock)
+              : Number(stockQuantity || 0),
           };
         });
     } catch (error) {
@@ -442,6 +625,30 @@ const EditProduct = () => {
     setIsSubmitting(true);
 
     try {
+      const nextExistingImages = [];
+      for (const [index, imageUrl] of existingImages.entries()) {
+        const replacement = replacementImages[index];
+        if (!replacement?.file) {
+          nextExistingImages.push(imageUrl);
+          continue;
+        }
+
+        const uploadResult = await uploadFile(replacement.file, token, {
+          folder: "products",
+          preserveQuality: true,
+        });
+        if (uploadResult.success && uploadResult.data?.url) {
+          nextExistingImages.push(uploadResult.data.url);
+        } else {
+          toast.error(
+            "Failed to upload replacement image: " +
+              (uploadResult.message || "Unknown error"),
+          );
+          setIsSubmitting(false);
+          return;
+        }
+      }
+
       // Upload new images first
       const uploadedImageUrls = [];
 
@@ -462,8 +669,22 @@ const EditProduct = () => {
         }
       }
 
-      // Combine existing and new images
-      const allImages = [...existingImages, ...uploadedImageUrls];
+      // Combine existing and new images, allowing a newly uploaded image to
+      // become the thumbnail at save time.
+      let allImages = [...nextExistingImages, ...uploadedImageUrls];
+      if (
+        selectedNewThumbnailIndex !== null &&
+        uploadedImageUrls[selectedNewThumbnailIndex]
+      ) {
+        const selectedThumbnail = uploadedImageUrls[selectedNewThumbnailIndex];
+        allImages = [
+          selectedThumbnail,
+          ...nextExistingImages,
+          ...uploadedImageUrls.filter(
+            (_, imageIndex) => imageIndex !== selectedNewThumbnailIndex,
+          ),
+        ];
+      }
 
       const uploadedVideoUrls = [];
 
@@ -490,13 +711,30 @@ const EditProduct = () => {
         description,
         productStory,
         shortDescription,
+        sku: productSku.trim() || undefined,
         category: categoryVal,
-        price: defaultVariant.price,
-        originalPrice: defaultVariant.originalPrice,
+        price: Number(salePrice || defaultVariant.price),
+        salePrice: Number(salePrice || defaultVariant.price),
+        originalPrice: Number(
+          regularPrice ||
+            defaultVariant.originalPrice ||
+            salePrice ||
+            defaultVariant.price,
+        ),
+        status,
+        isFeatured,
         isNewArrival,
         isBestSeller,
         isExclusive,
         demandStatus,
+        stock: variantData.reduce(
+          (sum, variant) => sum + Number(variant.stock || 0),
+          0,
+        ),
+        stock_quantity: variantData.reduce(
+          (sum, variant) => sum + Number(variant.stock_quantity || 0),
+          0,
+        ),
         brand,
         hsnCode: String(hsnCode || "").trim(),
         tags: tags ? tags.split(",").map((t) => t.trim()) : [],
@@ -505,9 +743,10 @@ const EditProduct = () => {
         thumbnail: allImages[0] || "",
         hasVariants,
         variants: variantData,
-        variantType: hasVariants ? "weight" : "",
+        variantType: hasVariants ? "boutique" : "",
         weight: defaultVariant.weight || undefined,
         unit: defaultVariant.unit || "g",
+        collections,
         productPage,
       };
 
@@ -569,6 +808,61 @@ const EditProduct = () => {
             />
           </div>
 
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-5 mb-4">
+            <div className="col flex flex-col gap-1">
+              <span className="text-[15px] text-gray-800 font-medium">SKU</span>
+              <input
+                type="text"
+                value={productSku}
+                onChange={(e) => setProductSku(e.target.value.toUpperCase())}
+                placeholder="ANB-SAR-001"
+                className="w-full h-[40px] border border-[rgba(0,0,0,0.2)] outline-none rounded-md focus:border-blue-500 px-3 text-[14px] bg-white text-gray-900"
+              />
+            </div>
+            <div className="col flex flex-col gap-1">
+              <span className="text-[15px] text-gray-800 font-medium">
+                Status
+              </span>
+              <Select
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+                size="small"
+                className="bg-white"
+              >
+                <MenuItem value="published">Published</MenuItem>
+                <MenuItem value="draft">Draft</MenuItem>
+              </Select>
+            </div>
+            <div className="col flex flex-col gap-1">
+              <span className="text-[15px] text-gray-800 font-medium">
+                Regular Price
+              </span>
+              <input
+                type="number"
+                value={regularPrice}
+                onChange={(e) => setRegularPrice(e.target.value)}
+                placeholder="2499"
+                min="0"
+                step="1"
+                className="w-full h-[40px] border border-[rgba(0,0,0,0.2)] outline-none rounded-md focus:border-blue-500 px-3 text-[14px] bg-white text-gray-900"
+              />
+            </div>
+            <div className="col flex flex-col gap-1">
+              <span className="text-[15px] text-gray-800 font-medium">
+                Sale Price
+              </span>
+              <input
+                type="number"
+                value={salePrice}
+                onChange={(e) => setSalePrice(e.target.value)}
+                placeholder="1999"
+                min="0"
+                step="1"
+                className="w-full h-[40px] border border-[rgba(0,0,0,0.2)] outline-none rounded-md focus:border-blue-500 px-3 text-[14px] bg-white text-gray-900"
+              />
+            </div>
+          </div>
+
           <div className="form-group mb-4 flex flex-col gap-1">
             <span className="text-[15px] text-gray-800 font-medium">
               Short Description
@@ -626,10 +920,61 @@ const EditProduct = () => {
                 </MenuItem>
                 {categories.map((cat) => (
                   <MenuItem key={cat._id} value={cat._id}>
+                    {"- ".repeat(Number(cat.level || 0))}
                     {cat.name}
                   </MenuItem>
                 ))}
               </Select>
+            </div>
+            <div className="col flex flex-col gap-1">
+              <span className="text-[15px] text-gray-800 font-medium">
+                Stock Quantity
+              </span>
+              <input
+                type="number"
+                value={stockQuantity}
+                onChange={(e) => setStockQuantity(e.target.value)}
+                placeholder="25"
+                min="0"
+                className="w-full h-[40px] border border-[rgba(0,0,0,0.2)] outline-none rounded-md focus:border-blue-500 px-3 text-[14px]"
+              />
+            </div>
+            <div className="col flex flex-col gap-1">
+              <span className="text-[15px] text-gray-800 font-medium">
+                Featured Product
+              </span>
+              <div className="flex items-center gap-2">
+                <Switch
+                  checked={isFeatured}
+                  onChange={(e) => setIsFeatured(e.target.checked)}
+                  color="secondary"
+                />
+                <span className="text-sm text-gray-600">
+                  {isFeatured ? "Featured" : "Standard"}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="mb-5 rounded-lg border border-gray-200 bg-gray-50 p-4">
+            <span className="text-[15px] text-gray-800 font-medium">
+              Collections
+            </span>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {PRODUCT_COLLECTIONS.map((collection) => (
+                <button
+                  key={collection}
+                  type="button"
+                  onClick={() => toggleCollection(collection)}
+                  className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
+                    collections.includes(collection)
+                      ? "border-pink-500 bg-pink-50 text-pink-700"
+                      : "border-gray-300 bg-white text-gray-700 hover:border-pink-200 hover:text-pink-700"
+                  }`}
+                >
+                  {collection}
+                </button>
+              ))}
             </div>
           </div>
 
@@ -675,7 +1020,7 @@ const EditProduct = () => {
                 type="text"
                 value={tags}
                 onChange={(e) => setTags(e.target.value)}
-                placeholder="organic, healthy, natural (comma separated)"
+                placeholder="saree, kurti, festive (comma separated)"
                 className="w-full h-[40px] border border-[rgba(0,0,0,0.2)] outline-none rounded-md focus:border-blue-500 px-3 text-[14px]"
               />
             </div>
@@ -751,12 +1096,12 @@ const EditProduct = () => {
               </p>
             </div>
           </div>
-          {/* Size / Weight Variants */}
+          {/* Boutique Variants */}
           <div className="mt-6 mb-5 border border-gray-200 rounded-lg p-5">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
                 <span className="text-[15px] text-gray-800 font-semibold">
-                  📦 Size / Weight Variants
+                  Boutique Variants
                 </span>
                 <span className="text-sm text-blue-600 font-medium">
                   Required
@@ -767,20 +1112,20 @@ const EditProduct = () => {
                 onClick={addVariant}
                 className="!bg-blue-50 !text-blue-600 !text-sm !px-4 !py-1.5 hover:!bg-blue-100 !font-medium !normal-case"
               >
-                + Add Size
+                + Add Variant
               </Button>
             </div>
 
             <>
               <p className="text-xs text-gray-500 mb-4">
-                Add different sizes/weights for this product (e.g., 500g, 1 Kg).
-                Each variant has its own price & stock.
+                Add color, size, material, optional weight, price, stock and
+                custom attributes for boutique inventory.
               </p>
 
               {variants.length === 0 && (
                 <div className="text-center py-6 border-2 border-dashed border-gray-200 rounded-lg">
                   <p className="text-gray-400 text-sm">
-                    No variants added yet. Click &quot;+ Add Size&quot; to add
+                    No variants added yet. Click &quot;+ Add Variant&quot; to add
                     one.
                   </p>
                 </div>
@@ -790,7 +1135,7 @@ const EditProduct = () => {
                 {variants.map((v, i) => (
                   <div
                     key={v._id || i}
-                    className={`grid grid-cols-1 sm:grid-cols-8 gap-3 items-end p-4 rounded-lg relative ${v.isDefault ? "bg-blue-50 border border-blue-200" : "bg-gray-50"}`}
+                    className={`grid grid-cols-1 sm:grid-cols-12 gap-3 items-end p-4 rounded-lg relative ${v.isDefault ? "bg-blue-50 border border-blue-200" : "bg-gray-50"}`}
                   >
                     {v.isDefault && (
                       <span className="absolute -top-2 left-3 bg-blue-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
@@ -799,7 +1144,7 @@ const EditProduct = () => {
                     )}
                     <div className="sm:col-span-2 flex flex-col gap-1">
                       <span className="text-xs text-gray-600 font-medium">
-                        Weight *
+                        Weight
                       </span>
                       <div className="flex items-center gap-1">
                         <input
@@ -822,8 +1167,51 @@ const EditProduct = () => {
                         >
                           <option value="g">g</option>
                           <option value="kg">kg</option>
+                          <option value="piece">pc</option>
                         </select>
                       </div>
+                    </div>
+                    <div className="sm:col-span-1 flex flex-col gap-1">
+                      <span className="text-xs text-gray-600 font-medium">
+                        Color
+                      </span>
+                      <input
+                        type="text"
+                        value={v.color || ""}
+                        onChange={(e) =>
+                          updateVariant(i, "color", e.target.value)
+                        }
+                        placeholder="Wine"
+                        className="w-full h-[36px] border border-gray-300 rounded-md px-2 text-sm focus:border-blue-500 outline-none"
+                      />
+                    </div>
+                    <div className="sm:col-span-1 flex flex-col gap-1">
+                      <span className="text-xs text-gray-600 font-medium">
+                        Size
+                      </span>
+                      <input
+                        type="text"
+                        value={v.size || ""}
+                        onChange={(e) =>
+                          updateVariant(i, "size", e.target.value)
+                        }
+                        placeholder="M"
+                        className="w-full h-[36px] border border-gray-300 rounded-md px-2 text-sm focus:border-blue-500 outline-none"
+                      />
+                    </div>
+                    <div className="sm:col-span-2 flex flex-col gap-1">
+                      <span className="text-xs text-gray-600 font-medium">
+                        Material
+                      </span>
+                      <input
+                        type="text"
+                        value={v.material || ""}
+                        onChange={(e) =>
+                          updateVariant(i, "material", e.target.value)
+                        }
+                        placeholder="Silk Blend"
+                        className="w-full h-[36px] border border-gray-300 rounded-md px-2 text-sm focus:border-blue-500 outline-none"
+                      />
                     </div>
                     <div className="sm:col-span-1 flex flex-col gap-1">
                       <span className="text-xs text-gray-600 font-medium">
@@ -883,6 +1271,20 @@ const EditProduct = () => {
                           updateVariant(i, "sku", e.target.value)
                         }
                         placeholder="Auto"
+                        className="w-full h-[36px] border border-gray-300 rounded-md px-2 text-sm focus:border-blue-500 outline-none"
+                      />
+                    </div>
+                    <div className="sm:col-span-2 flex flex-col gap-1">
+                      <span className="text-xs text-gray-600 font-medium">
+                        Custom Attributes
+                      </span>
+                      <input
+                        type="text"
+                        value={v.customAttributes || ""}
+                        onChange={(e) =>
+                          updateVariant(i, "customAttributes", e.target.value)
+                        }
+                        placeholder="work:embroidered|occasion:festive"
                         className="w-full h-[36px] border border-gray-300 rounded-md px-2 text-sm focus:border-blue-500 outline-none"
                       />
                     </div>
@@ -1001,13 +1403,25 @@ const EditProduct = () => {
               {/* Existing Images */}
               {existingImages.map((img, index) => (
                 <div key={`existing-${index}`} className="w-[176px]">
-                  <div className="w-[150px] h-[150px] rounded-md bg-gray-100 border-2 border-dashed border-gray-300 flex items-center justify-center relative overflow-hidden">
+                  <div
+                    className="w-[150px] h-[150px] rounded-md bg-gray-100 border-2 border-dashed border-gray-300 flex items-center justify-center relative overflow-hidden cursor-grab"
+                    draggable
+                    onDragStart={() => setDraggedExistingImageIndex(index)}
+                    onDragOver={(event) => event.preventDefault()}
+                    onDrop={() => {
+                      if (draggedExistingImageIndex !== null) {
+                        moveExistingImage(draggedExistingImageIndex, index);
+                      }
+                      setDraggedExistingImageIndex(null);
+                    }}
+                    onDragEnd={() => setDraggedExistingImageIndex(null)}
+                  >
                     <img
-                      src={getImageUrl(img)}
+                      src={replacementImages[index]?.preview || getImageUrl(img)}
                       alt={`product ${index + 1}`}
                       className="w-full h-full object-cover"
                     />
-                    {index === 0 && newImages.length === 0 && (
+                    {index === 0 && selectedNewThumbnailIndex === null && (
                       <span className="absolute top-1 left-1 bg-blue-600 text-white text-xs px-2 py-0.5 rounded">
                         Thumbnail
                       </span>
@@ -1020,16 +1434,52 @@ const EditProduct = () => {
                       <IoMdClose size={16} />
                     </button>
                   </div>
-                  <p className="mt-2 text-[11px] text-gray-500">
-                    Existing image
-                  </p>
+                  <div className="mt-2 space-y-1">
+                    <div className="flex flex-wrap gap-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          moveExistingImage(index, 0);
+                          setSelectedNewThumbnailIndex(null);
+                        }}
+                        disabled={index === 0 && selectedNewThumbnailIndex === null}
+                        className="rounded-full border border-gray-300 px-2 py-1 text-[11px] font-semibold text-gray-700 disabled:opacity-40"
+                      >
+                        Thumbnail
+                      </button>
+                      <label className="cursor-pointer rounded-full border border-gray-300 px-2 py-1 text-[11px] font-semibold text-gray-700 hover:border-blue-300">
+                        Replace
+                        <input
+                          type="file"
+                          accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+                          hidden
+                          onChange={(event) => replaceExistingImage(index, event)}
+                        />
+                      </label>
+                    </div>
+                    <p className="text-[11px] text-gray-500">
+                      {replacementImages[index] ? "Replacement selected" : "Existing image"}
+                    </p>
+                  </div>
                 </div>
               ))}
 
               {/* New Images */}
               {newImages.map((img, index) => (
                 <div key={`new-${index}`} className="w-[176px]">
-                  <div className="w-[150px] h-[150px] rounded-md bg-gray-100 border-2 border-dashed border-green-400 flex items-center justify-center relative overflow-hidden">
+                  <div
+                    className="w-[150px] h-[150px] rounded-md bg-gray-100 border-2 border-dashed border-green-400 flex items-center justify-center relative overflow-hidden cursor-grab"
+                    draggable
+                    onDragStart={() => setDraggedNewImageIndex(index)}
+                    onDragOver={(event) => event.preventDefault()}
+                    onDrop={() => {
+                      if (draggedNewImageIndex !== null) {
+                        moveNewImage(draggedNewImageIndex, index);
+                      }
+                      setDraggedNewImageIndex(null);
+                    }}
+                    onDragEnd={() => setDraggedNewImageIndex(null)}
+                  >
                     <img
                       src={img.preview}
                       alt={`preview ${index + 1}`}
@@ -1038,6 +1488,11 @@ const EditProduct = () => {
                     <span className="absolute bottom-1 left-1 bg-green-600 text-white text-xs px-2 py-0.5 rounded">
                       New
                     </span>
+                    {selectedNewThumbnailIndex === index && (
+                      <span className="absolute top-1 left-1 bg-blue-600 text-white text-xs px-2 py-0.5 rounded">
+                        Thumbnail
+                      </span>
+                    )}
                     <button
                       type="button"
                       onClick={() => removeNewImage(index)}
@@ -1047,6 +1502,25 @@ const EditProduct = () => {
                     </button>
                   </div>
                   <div className="mt-2 space-y-1">
+                    <div className="flex flex-wrap gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedNewThumbnailIndex(index)}
+                        disabled={selectedNewThumbnailIndex === index}
+                        className="rounded-full border border-gray-300 px-2 py-1 text-[11px] font-semibold text-gray-700 disabled:opacity-40"
+                      >
+                        Thumbnail
+                      </button>
+                      <label className="cursor-pointer rounded-full border border-gray-300 px-2 py-1 text-[11px] font-semibold text-gray-700 hover:border-blue-300">
+                        Replace
+                        <input
+                          type="file"
+                          accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+                          hidden
+                          onChange={(event) => replaceNewImage(index, event)}
+                        />
+                      </label>
+                    </div>
                     <span
                       className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${getProductImageQualityLabel(img).className}`}
                     >

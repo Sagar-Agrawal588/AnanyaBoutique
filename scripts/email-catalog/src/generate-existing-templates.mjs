@@ -14,7 +14,7 @@ const outputDir = path.join(projectRoot, "output");
 const screenshotsDir = path.join(projectRoot, "screenshots");
 const ORDER_ID_TOKEN = "__ORDER_ID__";
 const ORDER_ID_SERIES = {
-  prefix: String(process.env.EMAIL_ORDER_ID_PREFIX || "H1G2526"),
+  prefix: String(process.env.EMAIL_ORDER_ID_PREFIX || "ANB2526"),
   start: Number.parseInt(String(process.env.EMAIL_ORDER_ID_START || "1"), 10),
   width: Number.parseInt(String(process.env.EMAIL_ORDER_ID_WIDTH || "4"), 10),
 };
@@ -151,7 +151,7 @@ const jobs = [
       message:
         "Enjoy your favorite boutique picks at a discounted price.",
       offer_details: "Use code below to get discount",
-      coupon_code: "HOG20",
+      coupon_code: "BOUTIQUE20",
       cta_label: "Shop Now",
       cta_url: "https://ananyaboutique.com",
     },

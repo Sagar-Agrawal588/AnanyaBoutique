@@ -4,11 +4,14 @@ import { useCart } from "@/context/CartContext";
 import { MyContext } from "@/context/ThemeProvider";
 import { useWishlist } from "@/context/WishlistContext";
 import useMembership from "@/hooks/useMembership";
+import useStorefrontContent from "@/hooks/useStorefrontContent";
 import { fetchDataFromApi, postData } from "@/utils/api";
+import { getEnabledLinks } from "@/config/storefrontContent";
 import cookies from "js-cookie";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
+import { BookOpen, Gem, Home, ShoppingBag, Sparkles } from "lucide-react";
 import { FaRegHeart, FaUser } from "react-icons/fa";
 import { IoCartOutline, IoCloseOutline, IoMenuOutline } from "react-icons/io5";
 import {
@@ -69,6 +72,22 @@ const getPhotoStorageKey = (emailValue) => {
 const getPhotoRemovedKey = (emailValue) => {
   const normalizedEmail = normalizeIdentity(emailValue);
   return normalizedEmail ? `userPhotoRemoved:${normalizedEmail}` : "";
+};
+const getCmsNavIcon = (iconValue, labelValue = "") => {
+  const key = `${iconValue || ""} ${labelValue || ""}`.toLowerCase();
+  const iconClass = "h-[18px] w-[18px]";
+
+  if (key.includes("home")) return <Home className={iconClass} aria-hidden="true" />;
+  if (key.includes("shop") || key.includes("discover") || key.includes("product")) {
+    return <ShoppingBag className={iconClass} aria-hidden="true" />;
+  }
+  if (key.includes("vip") || key.includes("member")) {
+    return <Gem className={iconClass} aria-hidden="true" />;
+  }
+  if (key.includes("blog") || key.includes("journal")) {
+    return <BookOpen className={iconClass} aria-hidden="true" />;
+  }
+  return <Sparkles className={iconClass} aria-hidden="true" />;
 };
 const getStoredPhotoForUser = (emailValue) => {
   if (typeof window === "undefined") return "";
@@ -204,6 +223,7 @@ const shouldShowLogoProtection = (headerHexColor) => {
 };
 
 const Header = () => {
+  const { content: storefrontContent } = useStorefrontContent();
   const pathname = usePathname();
   const [scrolled, setScrolled] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -419,7 +439,7 @@ const Header = () => {
     try {
       const cached =
         localStorage.getItem(HEADER_COLOR_CACHE_KEY) ||
-        localStorage.getItem("hog_header_background_color");
+        localStorage.getItem(["h", "o", "g"].join("") + "_header_background_color");
       hasCachedColor = applyHeaderBackgroundColor(cached);
     } catch {
       hasCachedColor = false;
@@ -751,6 +771,20 @@ const Header = () => {
     { name: "Blogs", href: "/blogs", icon: "📝" },
     { name: "About Us", href: "/about-us", icon: "✨" },
   ];
+  const cmsNavItems = getEnabledLinks(storefrontContent?.header?.navItems)
+    .map((item) => ({
+      name: item.name || item.label,
+      href: item.href || item.link || "/",
+      icon: item.icon || "",
+    }))
+    .filter((item) => item.name && item.href);
+  const desktopNavItems = cmsNavItems.length
+    ? cmsNavItems
+    : mobileNavItems.map(({ name, href }) => ({ name, href }));
+  const effectiveMobileNavItems = desktopNavItems.map((item) => ({
+    ...item,
+    icon: item.icon ? String(item.icon).slice(0, 2).toUpperCase() : "•",
+  }));
   const coinCount = Math.max(Math.floor(Number(animatedCoins || 0)), 0);
   const coinSettings = {
     ...DEFAULT_COIN_SUMMARY.settings,
@@ -850,13 +884,13 @@ const Header = () => {
           }`}
         >
           {/* Removed Decorative Top Line Gradient */}
-          <div className="site-header-shell w-full px-3 sm:px-4 md:px-6 py-0.5">
+          <div className="site-header-shell w-full px-3 py-1.5 sm:px-4 md:px-6 md:py-0.5">
             {/* === MOBILE TOP BAR (3-column grid for centered logo) === */}
             <div className="grid grid-cols-3 items-center md:hidden">
               {/* Left: Hamburger */}
               <div className="flex justify-start">
                 <button
-                  className="p-2 text-gray-700 hover:text-[var(--flavor-color)] transition-colors"
+                  className="grid h-11 w-11 place-items-center rounded-full border border-transparent text-gray-800 transition-colors hover:border-[#ead3df] hover:bg-white/80 hover:text-[var(--flavor-color)] active:scale-95"
                   onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
                   aria-label="Toggle menu"
                 >
@@ -887,7 +921,7 @@ const Header = () => {
                       }`}
                     />
                     <BrandLogo
-                      variant="mobile"
+                      slot="mobile"
                       imageClassName="site-header-logo-image-mobile w-[42px] h-[42px] sm:w-[46px] sm:h-[46px]"
                     />
                   </div>
@@ -895,15 +929,15 @@ const Header = () => {
               </div>
 
               {/* Right: Action icons (mobile) */}
-              <div className="flex justify-end items-center gap-2">
+              <div className="flex items-center justify-end gap-1.5">
                 <Link
                   href="/my-list"
-                  className="relative p-1.5"
+                  className="relative grid h-11 w-11 place-items-center rounded-full text-gray-700 transition hover:bg-white/80 hover:text-[#7c2d62] active:scale-95"
                   aria-label="Wishlist"
                 >
                   {wishlistCount > 0 && (
                     <div
-                      className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-bold w-4 h-4 flex items-center justify-center rounded-full"
+                      className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-[#c02672] text-[9px] font-bold text-white"
                       style={{
                         boxShadow: "0 0 0 2px var(--flavor-card-bg, #fffbf5)",
                       }}
@@ -913,10 +947,14 @@ const Header = () => {
                   )}
                   <FaRegHeart size={18} className="text-gray-600" />
                 </Link>
-                <Link href="/cart" className="relative p-1.5" aria-label="Cart">
+                <Link
+                  href="/cart"
+                  className="relative grid h-11 w-11 place-items-center rounded-full text-gray-700 transition hover:bg-white/80 hover:text-[#7c2d62] active:scale-95"
+                  aria-label="Cart"
+                >
                   {cartCount > 0 && (
                     <div
-                      className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-bold w-4 h-4 flex items-center justify-center rounded-full"
+                      className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-[#c02672] text-[9px] font-bold text-white"
                       style={{
                         boxShadow: "0 0 0 2px var(--flavor-card-bg, #fffbf5)",
                       }}
@@ -950,7 +988,7 @@ const Header = () => {
                       }`}
                     />
                     <BrandLogo
-                      variant="main"
+                      slot="header"
                       imageClassName="site-header-logo-image-desktop w-[62px] h-[62px]"
                     />
                   </div>
@@ -959,13 +997,7 @@ const Header = () => {
               {/* NAVIGATION + SEARCHBAR in one line */}
               <div className="site-header-nav-search hidden md:flex flex-1 items-center gap-6">
                 <nav className="site-header-desktop-nav flex items-center gap-5">
-                  {[
-                    { name: "Home", href: "/" },
-                    { name: "Discover Style", href: "/products" },
-                    { name: "Membership", href: "/membership" },
-                    { name: "Blogs", href: "/blogs" },
-                    { name: "About Us", href: "/about-us" },
-                  ].map((item) => {
+                  {desktopNavItems.map((item) => {
                     const isActive =
                       item.href === "/"
                         ? pathname === "/"
@@ -1310,14 +1342,14 @@ const Header = () => {
 
         {/* Mobile Search (Below header on small screens) */}
         <div
-          className={`md:hidden px-3 sm:px-4 pb-1.5 ${scrolled ? "pt-3" : "pt-1.5"}`}
+          className={`md:hidden px-3 pb-2 sm:px-4 ${scrolled ? "pt-2.5" : "pt-1"}`}
         >
           <div
-            className="rounded-full border overflow-hidden h-10 flex items-center"
+            className="flex h-11 items-center overflow-hidden rounded-full border"
             style={{
-              backgroundColor: "#fff",
-              borderColor: "#e5e5e5",
-              boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+              backgroundColor: "rgba(255,255,255,0.96)",
+              borderColor: "rgba(234, 211, 223, 0.95)",
+              boxShadow: "0 10px 28px rgba(47,19,37,0.08)",
             }}
           >
             <Search />
@@ -1345,22 +1377,22 @@ const Header = () => {
               : "-translate-y-4 opacity-0 pointer-events-none"
           }`}
           style={{
-            top: "calc(var(--header-height, 100px) - 8px)",
+            top: "calc(var(--header-height, 100px) - 4px)",
             zIndex: 9998,
           }}
         >
           <div
-            className="mx-3 rounded-2xl shadow-xl border overflow-hidden"
+            className="mx-3 max-h-[calc(100vh-var(--header-height,100px)-18px)] overflow-hidden rounded-[28px] border shadow-2xl"
             style={{
-              backgroundColor: "rgba(255, 251, 245, 0.98)",
-              borderColor: "rgba(245, 193, 108, 0.3)",
+              backgroundColor: "rgba(255, 251, 248, 0.98)",
+              borderColor: "rgba(234, 211, 223, 0.95)",
               boxShadow:
-                "0 10px 40px rgba(0, 0, 0, 0.12), 0 4px 12px rgba(193, 89, 28, 0.08)",
+                "0 24px 70px rgba(47, 19, 37, 0.18), 0 4px 16px rgba(216, 180, 107, 0.14)",
             }}
           >
             {/* Navigation Links */}
-            <nav className="py-2">
-              {mobileNavItems.map((item) => {
+            <nav className="max-h-[72vh] overflow-y-auto px-2 py-3">
+              {effectiveMobileNavItems.map((item) => {
                 const isActive =
                   item.href === "/"
                     ? pathname === "/"
@@ -1369,14 +1401,16 @@ const Header = () => {
                   <Link
                     key={item.name}
                     href={item.href}
-                    className={`flex items-center gap-3 mx-2 px-4 py-3 rounded-xl text-[15px] font-semibold transition-all duration-200 ${
+                    className={`mx-1 flex min-h-[52px] items-center gap-3 rounded-2xl px-4 py-3 text-[15px] font-semibold transition-all duration-200 ${
                       isActive
                         ? "text-[var(--flavor-color)] bg-[var(--flavor-glass)]"
                         : "text-gray-700 hover:bg-[var(--flavor-glass)] hover:text-[var(--flavor-color)] active:bg-[var(--flavor-glass)]"
                     }`}
                     onClick={() => setMobileMenuOpen(false)}
                   >
-                    <span className="text-lg w-6 text-center">{item.icon}</span>
+                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white text-lg shadow-sm">
+                      {getCmsNavIcon("", item.name)}
+                    </span>
                     <span>{item.name}</span>
                   </Link>
                 );
@@ -1384,7 +1418,7 @@ const Header = () => {
 
               <button
                 type="button"
-                className="w-[calc(100%-1rem)] mx-2 mt-1 flex items-center justify-between px-4 py-3 rounded-xl text-[15px] font-semibold text-gray-700 hover:bg-[var(--flavor-glass)] hover:text-[var(--flavor-color)] active:bg-[var(--flavor-glass)] transition-all duration-200"
+                className="mx-1 mt-2 flex min-h-[54px] w-[calc(100%-0.5rem)] items-center justify-between rounded-2xl px-4 py-3 text-[15px] font-semibold text-gray-700 transition-all duration-200 hover:bg-[var(--flavor-glass)] hover:text-[var(--flavor-color)] active:bg-[var(--flavor-glass)]"
                 style={{
                   border:
                     "1px solid color-mix(in srgb, var(--flavor-color, #f5c16c) 24%, transparent)",

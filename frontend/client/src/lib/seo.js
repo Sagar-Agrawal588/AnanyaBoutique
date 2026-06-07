@@ -1,4 +1,6 @@
 // Lightweight SEO helper for client-side components
+import { sanitizeBrandText } from "@/config/brandAssets";
+
 let cached = null;
 let pending = null;
 
@@ -45,14 +47,16 @@ export function resolveAltText(target, seoSettings) {
     if (!rule || !rule.target) continue;
     const ruleTarget = String(rule.target || "").toLowerCase();
     if (!ruleTarget) continue;
-    if (ruleTarget === t) return rule.altText || null;
+    if (ruleTarget === t) return sanitizeBrandText(rule.altText) || null;
   }
   // Fallback: substring match
   for (const rule of seoSettings.imageAltTexts) {
     if (!rule || !rule.target) continue;
     const ruleTarget = String(rule.target || "").toLowerCase();
     if (!ruleTarget) continue;
-    if (t.includes(ruleTarget) || ruleTarget.includes(t)) return rule.altText || null;
+    if (t.includes(ruleTarget) || ruleTarget.includes(t)) {
+      return sanitizeBrandText(rule.altText) || null;
+    }
   }
   return null;
 }

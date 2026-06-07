@@ -243,6 +243,13 @@ export default function AdminDashboard() {
       description: "Manage banners",
     },
     {
+      name: "Storefront CMS",
+      icon: MdOutlineHub,
+      href: "/storefront-cms",
+      color: "bg-violet-500",
+      description: "Edit storefront content",
+    },
+    {
       name: "Orders",
       icon: FiShoppingCart,
       href: "/orders",

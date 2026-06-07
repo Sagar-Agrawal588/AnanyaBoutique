@@ -19,11 +19,13 @@ import {
 } from "lucide-react";
 import {
   artworkRegistry,
-  brandIdentity,
-  fashionMicrocopy,
 } from "@/config/visualIdentity";
-import { contactConfig, getWhatsAppHref } from "@/config/siteConfig";
+import {
+  DEFAULT_STOREFRONT_CONTENT,
+  buildContactHelpers,
+} from "@/config/storefrontContent";
 import BrandArtworkFrame from "./brand/BrandArtworkFrame";
+import ProductItem from "./ProductItem";
 
 const fadeUp = {
   hidden: { opacity: 0, y: 28 },
@@ -153,9 +155,49 @@ const demoTestimonials = [
   },
 ];
 
-const whatsappHref = getWhatsAppHref(
-  "Hi Ananya Boutique, I would like to chat about your collection.",
-);
+const badgeIconCycle = [Sparkles, Home, Heart, ShieldCheck];
+const trustIconCycle = [ShieldCheck, Sparkles, Gem, MessageCircle, Home, Users];
+
+const toBadge = (badge, index = 0) => {
+  if (badge && typeof badge === "object") {
+    return {
+      label: badge.label || badge.title || "",
+      Icon: badge.Icon || badgeIconCycle[index % badgeIconCycle.length],
+    };
+  }
+  return {
+    label: String(badge || "").trim(),
+    Icon: badgeIconCycle[index % badgeIconCycle.length],
+  };
+};
+
+const toBadges = (items, fallback = founderBadges) => {
+  const source = Array.isArray(items) && items.length ? items : fallback;
+  return source.map(toBadge).filter((badge) => badge.label);
+};
+
+const toTrustCards = (items) => {
+  const source = Array.isArray(items) && items.length ? items : trustCards;
+  return source.map((card, index) => ({
+    title: card.title || "",
+    copy: card.copy || card.description || "",
+    Icon: card.Icon || trustIconCycle[index % trustIconCycle.length],
+  }));
+};
+
+const getSlotArtwork = (mediaSlots, slot, fallbackArtwork, title, copy) => {
+  const source = slot ? String(mediaSlots?.[slot] || "").trim() : "";
+  if (!source) return fallbackArtwork;
+  return {
+    ...(fallbackArtwork || {}),
+    source,
+    title: title || fallbackArtwork?.title,
+    copy: copy || fallbackArtwork?.copy,
+  };
+};
+
+const getWhatsappHref = (contact, message) =>
+  buildContactHelpers(contact).whatsappHref(message);
 
 function AnimatedBadge({ badge, index }) {
   const Icon = badge.Icon;
@@ -204,14 +246,20 @@ function SectionHeading({ eyebrow, title, copy, centered = false }) {
   );
 }
 
-function BoutiqueVisual({ compact = false }) {
+function BoutiqueVisual({ compact = false, content, mediaSlots }) {
+  const fallbackArtwork = compact
+    ? artworkRegistry.homepage.heroMobile
+    : artworkRegistry.homepage.heroDesktop;
+
   return (
     <BrandArtworkFrame
-      artwork={
-        compact
-          ? artworkRegistry.homepage.heroMobile
-          : artworkRegistry.homepage.heroDesktop
-      }
+      artwork={getSlotArtwork(
+        mediaSlots,
+        content?.mediaSlot,
+        fallbackArtwork,
+        content?.title,
+        content?.subtitle,
+      )}
       aspect={compact ? "portrait" : "hero"}
       icon={Sparkles}
       label="Ananya Boutique"
@@ -219,48 +267,55 @@ function BoutiqueVisual({ compact = false }) {
   );
 }
 
-function FounderStorySection() {
+function FounderStorySection({ content, mediaSlots, contact }) {
+  const section = {
+    ...DEFAULT_STOREFRONT_CONTENT.homepage.founder,
+    ...(content || {}),
+  };
+  const badges = toBadges(section.badges);
+  const whatsappHref = getWhatsappHref(
+    contact,
+    "Hi Ananya Boutique, I would like to chat about your collection.",
+  );
+
   return (
     <motion.section
       variants={stagger}
       initial="hidden"
       whileInView="visible"
       viewport={sectionViewport}
-      className="mx-auto grid w-full max-w-7xl gap-8 px-4 py-12 sm:px-6 lg:grid-cols-[0.95fr_1.05fr] lg:px-8 lg:py-16"
+      className="mx-auto grid w-full max-w-7xl gap-7 px-4 py-10 sm:px-6 sm:py-12 lg:grid-cols-[0.95fr_1.05fr] lg:px-8 lg:py-16"
     >
       <motion.div variants={fadeUp}>
         <BrandArtworkFrame
-          artwork={artworkRegistry.homepage.founderPortrait}
+          artwork={getSlotArtwork(
+            mediaSlots,
+            section.mediaSlot,
+            artworkRegistry.homepage.founderPortrait,
+            section.title,
+            section.paragraphs?.[0],
+          )}
           aspect="portrait"
           icon={Heart}
-          className="min-h-[460px]"
+          className="min-h-[380px] sm:min-h-[460px]"
           label="Founder Story"
         />
       </motion.div>
 
       <motion.div
         variants={fadeUp}
-        className="flex flex-col justify-center rounded-[2rem] border border-[#f0d7e2] bg-white/86 p-6 shadow-[0_24px_80px_rgba(124,45,98,0.12)] sm:p-8"
+        className="flex flex-col justify-center rounded-[1.6rem] border border-[#f0d7e2] bg-white/86 p-5 shadow-[0_24px_80px_rgba(124,45,98,0.12)] sm:rounded-[2rem] sm:p-8"
       >
         <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#9d174d]">
-          Real founder. Real family. Real story.
+          {section.eyebrow}
         </p>
         <h2 className="mt-3 brand-story-heading text-3xl font-semibold leading-tight text-[#2f1325] sm:text-4xl lg:text-5xl">
-          Meet The Woman Behind Ananya Boutique
+          {section.title}
         </h2>
         <div className="mt-5 space-y-4 text-base leading-8 text-[#604354]">
-          <p>
-            In 2012, a homemaker with a passion for fashion decided to take a
-            chance on a dream.
-          </p>
-          <p>
-            While raising three children and managing her family, she began
-            building a boutique one customer at a time.
-          </p>
-          <p>
-            Today that dream continues through every saree, every order, and
-            every smile from our customers.
-          </p>
+          {(section.paragraphs || []).map((paragraph) => (
+            <p key={paragraph}>{paragraph}</p>
+          ))}
         </div>
 
         <motion.div
@@ -268,26 +323,26 @@ function FounderStorySection() {
           className="mt-6 flex flex-wrap gap-2"
           aria-label="Founder story badges"
         >
-          {founderBadges.map((badge, index) => (
+          {badges.map((badge, index) => (
             <AnimatedBadge key={badge.label} badge={badge} index={index} />
           ))}
         </motion.div>
 
         <div className="mt-8 flex flex-col gap-3 sm:flex-row">
           <Link
-            href="/about-us"
-            className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-[#2f1325] px-6 text-sm font-semibold text-white shadow-xl shadow-[#2f1325]/20 transition hover:-translate-y-0.5 hover:bg-[#4b1f3a]"
+            href={section.primaryButtonHref || "/about-us"}
+            className="inline-flex h-12 items-center justify-center gap-2 rounded-[18px] bg-[#2f1325] px-6 text-sm font-semibold text-white shadow-xl shadow-[#2f1325]/20 transition hover:-translate-y-0.5 hover:bg-[#4b1f3a] sm:rounded-full"
           >
-            Read Our Story
+            {section.primaryButtonText}
             <ArrowRight className="h-4 w-4" aria-hidden="true" />
           </Link>
           <a
             href={whatsappHref}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex h-12 items-center justify-center gap-2 rounded-full border border-[#f0d7e2] bg-white px-6 text-sm font-semibold text-[#7c2d62] shadow-sm transition hover:-translate-y-0.5 hover:bg-[#fff1f7]"
+            className="inline-flex h-12 items-center justify-center gap-2 rounded-[18px] border border-[#f0d7e2] bg-white px-6 text-sm font-semibold text-[#7c2d62] shadow-sm transition hover:-translate-y-0.5 hover:bg-[#fff1f7] sm:rounded-full"
           >
-            Chat On WhatsApp
+            {section.secondaryButtonText}
             <MessageCircle className="h-4 w-4" aria-hidden="true" />
           </a>
         </div>
@@ -296,7 +351,13 @@ function FounderStorySection() {
   );
 }
 
-function TrustSection() {
+function TrustSection({ content }) {
+  const section = {
+    ...DEFAULT_STOREFRONT_CONTENT.homepage.trust,
+    ...(content || {}),
+  };
+  const cards = toTrustCards(section.cards);
+
   return (
     <motion.section
       variants={stagger}
@@ -307,12 +368,12 @@ function TrustSection() {
     >
       <SectionHeading
         centered
-        eyebrow="Trusted since 2012"
-        title="Why Women Trust Ananya Boutique"
-        copy="The boutique grew because women returned, recommended, and trusted the care behind every order."
+        eyebrow={section.eyebrow}
+        title={section.title}
+        copy={section.copy}
       />
       <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {trustCards.map((card) => {
+        {cards.map((card) => {
           const Icon = card.Icon;
           return (
             <motion.article
@@ -338,7 +399,15 @@ function TrustSection() {
   );
 }
 
-function JourneyTimelineSection() {
+function JourneyTimelineSection({ content }) {
+  const section = {
+    ...DEFAULT_STOREFRONT_CONTENT.homepage.timeline,
+    ...(content || {}),
+  };
+  const items = Array.isArray(section.items) && section.items.length
+    ? section.items
+    : timelineItems;
+
   return (
     <motion.section
       variants={stagger}
@@ -350,13 +419,13 @@ function JourneyTimelineSection() {
       <div className="mx-auto max-w-7xl">
         <SectionHeading
           centered
-          eyebrow="Our journey"
-          title="A Journey Built With Love"
-          copy="A simple timeline of a dream that kept growing through care and customer trust."
+          eyebrow={section.eyebrow}
+          title={section.title}
+          copy={section.copy}
         />
         <div className="relative mt-10 grid gap-5 lg:grid-cols-3">
           <div className="pointer-events-none absolute left-6 top-8 hidden h-px w-[calc(100%-3rem)] bg-[linear-gradient(90deg,#c02672,#e8c67a,#7c3aed)] lg:block" />
-          {timelineItems.map((item, index) => (
+          {items.map((item, index) => (
             <motion.article
               key={item.year}
               variants={fadeUp}
@@ -383,7 +452,15 @@ function JourneyTimelineSection() {
   );
 }
 
-function DreamSupportSection() {
+function DreamSupportSection({ content }) {
+  const section = {
+    ...DEFAULT_STOREFRONT_CONTENT.homepage.dream,
+    ...(content || {}),
+  };
+  const supports = Array.isArray(section.supports) && section.supports.length
+    ? section.supports
+    : dreamSupports;
+
   return (
     <motion.section
       variants={stagger}
@@ -398,17 +475,16 @@ function DreamSupportSection() {
             <Quote className="h-5 w-5 text-[#f8d88a]" aria-hidden="true" />
           </div>
           <h2 className="brand-story-heading text-4xl font-semibold leading-tight sm:text-5xl">
-            Every Order Supports A Dream
+            {section.title}
           </h2>
           <p className="mt-5 max-w-2xl text-base leading-8 text-white/78 sm:text-lg">
-            When you shop at Ananya Boutique, you&apos;re not buying from a
-            large corporation.
+            {section.copy}
           </p>
           <p className="mt-5 text-sm font-semibold uppercase tracking-[0.18em] text-[#f8d88a]">
-            You&apos;re supporting:
+            {section.supportLabel}
           </p>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            {dreamSupports.map((item) => (
+            {supports.map((item) => (
               <div
                 key={item}
                 className="flex items-center gap-3 rounded-2xl border border-white/12 bg-white/10 px-4 py-3 text-sm font-semibold text-white"
@@ -419,8 +495,7 @@ function DreamSupportSection() {
             ))}
           </div>
           <blockquote className="mt-8 max-w-3xl border-l-2 border-[#f8d88a] pl-5 brand-story-heading text-2xl font-semibold leading-snug text-white sm:text-3xl">
-            &quot;Every saree, every order, and every message from a customer
-            keeps this dream alive.&quot;
+            &quot;{section.quote}&quot;
           </blockquote>
         </motion.div>
         <motion.div variants={fadeUp}>
@@ -437,7 +512,15 @@ function DreamSupportSection() {
   );
 }
 
-function PromiseSection() {
+function PromiseSection({ content }) {
+  const section = {
+    ...DEFAULT_STOREFRONT_CONTENT.homepage.promise,
+    ...(content || {}),
+  };
+  const items = Array.isArray(section.items) && section.items.length
+    ? section.items
+    : promiseCards;
+
   return (
     <motion.section
       variants={stagger}
@@ -448,12 +531,12 @@ function PromiseSection() {
     >
       <SectionHeading
         centered
-        eyebrow="Our promise"
-        title="The Boutique Promise"
-        copy="A clear promise for every customer who chooses Ananya Boutique."
+        eyebrow={section.eyebrow}
+        title={section.title}
+        copy={section.copy}
       />
       <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {promiseCards.map((promise, index) => (
+        {items.map((promise, index) => (
           <motion.article
             key={promise}
             variants={fadeUp}
@@ -480,7 +563,76 @@ function PromiseSection() {
   );
 }
 
-function InstagramShowcaseSection() {
+function ProductShowcaseSection({
+  title,
+  copy,
+  products = [],
+  viewAllLink = "/products",
+}) {
+  const safeProducts = Array.isArray(products)
+    ? products.filter((product) => product && product.isExclusive !== true).slice(0, 8)
+    : [];
+
+  if (!safeProducts.length) return null;
+
+  return (
+    <motion.section
+      initial="hidden"
+      whileInView="visible"
+      viewport={sectionViewport}
+      variants={stagger}
+      className="px-4 py-12 sm:px-6 sm:py-14 lg:px-8"
+    >
+      <div className="mx-auto max-w-7xl">
+        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <SectionHeading eyebrow="Collection" title={title} copy={copy} />
+          <motion.div variants={fadeUp}>
+            <Link
+              href={viewAllLink}
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-[#e7bfd0] bg-white px-5 text-sm font-semibold text-[#7c2d62] shadow-sm transition hover:-translate-y-0.5 hover:bg-[#fff1f7]"
+            >
+              Explore Collection
+              <ArrowRight className="h-4 w-4" aria-hidden="true" />
+            </Link>
+          </motion.div>
+        </div>
+
+        <motion.div
+          variants={stagger}
+          className="grid grid-cols-2 gap-3.5 sm:grid-cols-3 sm:gap-5 lg:grid-cols-4"
+        >
+          {safeProducts.map((product) => (
+            <motion.div key={product._id || product.id} variants={fadeUp}>
+              <ProductItem
+                id={product._id || product.id}
+                name={product.name}
+                brand={product.brand || "Ananya Boutique"}
+                price={product.price}
+                originalPrice={product.originalPrice}
+                discount={product.discount}
+                rating={product.rating}
+                image={product.thumbnail || product.images?.[0]}
+                product={product}
+              />
+            </motion.div>
+          ))}
+        </motion.div>
+      </div>
+    </motion.section>
+  );
+}
+
+function InstagramShowcaseSection({ content, mediaSlots, contact }) {
+  const section = {
+    ...DEFAULT_STOREFRONT_CONTENT.homepage.instagram,
+    ...(content || {}),
+  };
+  const cards = Array.isArray(section.placeholders) && section.placeholders.length
+    ? section.placeholders
+    : instagramCards;
+  const instagramUrl =
+    contact?.instagramUrl || DEFAULT_STOREFRONT_CONTENT.contact.instagramUrl;
+
   return (
     <motion.section
       variants={stagger}
@@ -493,7 +645,13 @@ function InstagramShowcaseSection() {
         <div className="grid gap-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
           <motion.div variants={fadeUp}>
             <BrandArtworkFrame
-              artwork={artworkRegistry.homepage.instagramShowcase}
+              artwork={getSlotArtwork(
+                mediaSlots,
+                section.mediaSlot,
+                artworkRegistry.homepage.instagramShowcase,
+                section.title,
+                section.copy,
+              )}
               aspect="wide"
               icon={Instagram}
               className="min-h-[340px]"
@@ -502,29 +660,28 @@ function InstagramShowcaseSection() {
           </motion.div>
           <motion.div variants={fadeUp}>
             <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#9d174d]">
-              Instagram showcase
+              {section.eyebrow}
             </p>
             <h2 className="mt-3 brand-story-heading text-4xl font-semibold leading-tight text-[#2f1325] sm:text-5xl">
-              Follow Our Journey
+              {section.title}
             </h2>
             <p className="mt-4 max-w-2xl text-base leading-7 text-[#6b4b5c]">
-              Follow new arrivals, styling moments, customer stories, and the
-              everyday work behind Ananya Boutique.
+              {section.copy}
             </p>
             <a
-              href={contactConfig.instagramUrl}
+              href={instagramUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="mt-6 inline-flex h-12 items-center justify-center gap-2 rounded-full bg-[#2f1325] px-6 text-sm font-semibold text-white shadow-xl shadow-[#2f1325]/20 transition hover:-translate-y-0.5 hover:bg-[#4b1f3a]"
             >
-              Follow @ananya___boutique
+              {section.buttonText}
               <Instagram className="h-4 w-4" aria-hidden="true" />
             </a>
           </motion.div>
         </div>
 
         <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
-          {instagramCards.map((label, index) => (
+          {cards.map((label, index) => (
             <motion.div
               key={label}
               variants={fadeUp}
@@ -550,7 +707,15 @@ function InstagramShowcaseSection() {
   );
 }
 
-function CustomerLoveSection() {
+function CustomerLoveSection({ content }) {
+  const section = {
+    ...DEFAULT_STOREFRONT_CONTENT.homepage.testimonials,
+    ...(content || {}),
+  };
+  const items = Array.isArray(section.items) && section.items.length
+    ? section.items
+    : demoTestimonials;
+
   return (
     <motion.section
       variants={stagger}
@@ -560,13 +725,13 @@ function CustomerLoveSection() {
       className="mx-auto w-full max-w-7xl px-4 py-12 sm:px-6 lg:px-8 lg:py-16"
     >
       <SectionHeading
-        eyebrow="Customer love"
-        title="Customer Love"
-        copy="Kind words from our boutique family, written to match the warm, fashion-focused voice of Ananya Boutique."
+        eyebrow={section.eyebrow}
+        title={section.title}
+        copy={section.copy}
       />
       <div className="-mx-4 mt-8 overflow-x-auto px-4 pb-4">
         <div className="flex snap-x snap-mandatory gap-4">
-          {demoTestimonials.map((testimonial) => (
+          {items.map((testimonial) => (
             <motion.article
               key={testimonial.name}
               variants={fadeUp}
@@ -596,7 +761,19 @@ function CustomerLoveSection() {
   );
 }
 
-function FinalCtaSection() {
+function FinalCtaSection({ content, contact }) {
+  const section = {
+    ...DEFAULT_STOREFRONT_CONTENT.homepage.finalCta,
+    ...(content || {}),
+  };
+  const lines = Array.isArray(section.lines) && section.lines.length
+    ? section.lines
+    : DEFAULT_STOREFRONT_CONTENT.homepage.finalCta.lines;
+  const whatsappHref = getWhatsappHref(
+    contact,
+    "Hi Ananya Boutique, I would like to chat about your collection.",
+  );
+
   return (
     <motion.section
       variants={stagger}
@@ -608,24 +785,22 @@ function FinalCtaSection() {
       <div className="mx-auto grid max-w-7xl gap-8 overflow-hidden rounded-[2rem] border border-[#f0d7e2] bg-[linear-gradient(135deg,#fff8fb_0%,#ffffff_48%,#f7f0ff_100%)] p-6 shadow-[0_30px_100px_rgba(124,45,98,0.16)] sm:p-8 lg:grid-cols-[1fr_0.95fr] lg:p-10">
         <motion.div variants={fadeUp} className="flex flex-col justify-center">
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#9d174d]">
-            Ananya Boutique family
+            {section.eyebrow}
           </p>
           <h2 className="mt-3 brand-story-heading text-4xl font-semibold leading-tight text-[#2f1325] sm:text-5xl">
-            Join The Ananya Boutique Family
+            {section.title}
           </h2>
           <div className="mt-5 max-w-2xl space-y-2 text-base leading-8 text-[#604354] sm:text-lg">
-            <p>Fashion chosen with love.</p>
-            <p>A boutique built with trust.</p>
-            <p>
-              A dream that continues because of customers like you.
-            </p>
+            {lines.map((line) => (
+              <p key={line}>{line}</p>
+            ))}
           </div>
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
             <Link
-              href="/products"
+              href={section.primaryButtonHref || "/products"}
               className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-[#2f1325] px-6 text-sm font-semibold text-white shadow-xl shadow-[#2f1325]/20 transition hover:-translate-y-0.5 hover:bg-[#4b1f3a]"
             >
-              Shop Collection
+              {section.primaryButtonText}
               <ArrowRight className="h-4 w-4" aria-hidden="true" />
             </Link>
             <a
@@ -634,7 +809,7 @@ function FinalCtaSection() {
               rel="noopener noreferrer"
               className="inline-flex h-12 items-center justify-center gap-2 rounded-full border border-[#f0d7e2] bg-white px-6 text-sm font-semibold text-[#7c2d62] shadow-sm transition hover:-translate-y-0.5 hover:bg-[#fff1f7]"
             >
-              WhatsApp Us
+              {section.secondaryButtonText}
               <MessageCircle className="h-4 w-4" aria-hidden="true" />
             </a>
           </div>
@@ -653,10 +828,31 @@ function FinalCtaSection() {
   );
 }
 
-export default function BoutiqueHomepage() {
+export default function BoutiqueHomepage({
+  featuredProducts = [],
+  newArrivals = [],
+  bestSellers = [],
+  content,
+  contact,
+  mediaSlots,
+}) {
+  const homeContent = {
+    ...DEFAULT_STOREFRONT_CONTENT.homepage,
+    ...(content || {}),
+  };
+  const contactContent = {
+    ...DEFAULT_STOREFRONT_CONTENT.contact,
+    ...(contact || {}),
+  };
+  const hero = {
+    ...DEFAULT_STOREFRONT_CONTENT.homepage.hero,
+    ...(homeContent.hero || {}),
+  };
+  const heroBadges = toBadges(hero.trustPills);
+
   return (
     <div className="overflow-hidden bg-[linear-gradient(180deg,#fff9fc_0%,#ffffff_28%,#fbf7ff_68%,#ffffff_100%)] text-slate-950">
-      <section className="relative px-4 pb-10 pt-8 sm:px-6 sm:pt-12 lg:px-8 lg:pb-16">
+      <section className="relative px-4 pb-10 pt-7 sm:px-6 sm:pt-12 lg:px-8 lg:pb-16">
         <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-pink-200 to-transparent" />
         <div className="mx-auto grid max-w-7xl items-center gap-10 lg:grid-cols-[1.03fr_0.97fr]">
           <motion.div
@@ -673,24 +869,22 @@ export default function BoutiqueHomepage() {
                 className="h-4 w-4 text-pink-600"
                 aria-hidden="true"
               />
-              Founder-Led Fashion Boutique
+              {hero.eyebrow}
             </motion.div>
             <motion.h1
               variants={fadeUp}
-              className="brand-story-heading text-5xl font-semibold leading-tight text-slate-950 sm:text-6xl lg:text-7xl"
+              className="brand-story-heading text-[3.25rem] font-semibold leading-[0.94] text-slate-950 sm:text-6xl sm:leading-tight lg:text-7xl"
             >
-              {brandIdentity.coreMessage}
+              {hero.title}
             </motion.h1>
             <motion.p
               variants={fadeUp}
               className="mt-5 max-w-2xl text-base leading-7 text-slate-600 sm:text-lg"
             >
-              {brandIdentity.supportingMessage} Discover sarees, suits,
-              kurtis, cosmetics, jewellery and fashion essentials curated with
-              elegance and affordability.
+              {hero.subtitle}
             </motion.p>
             <motion.div variants={stagger} className="mt-6 flex flex-wrap gap-2">
-              {founderBadges.map((badge, index) => (
+              {heroBadges.map((badge, index) => (
                 <AnimatedBadge key={badge.label} badge={badge} index={index} />
               ))}
             </motion.div>
@@ -699,17 +893,17 @@ export default function BoutiqueHomepage() {
               className="mt-8 flex flex-col gap-3 sm:flex-row"
             >
               <Link
-                href="/products"
-                className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-slate-950 px-6 text-sm font-semibold text-white shadow-xl shadow-slate-950/20 transition hover:-translate-y-0.5 hover:bg-purple-900"
+                href={hero.primaryButtonHref || "/products"}
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-[18px] bg-slate-950 px-6 text-sm font-semibold text-white shadow-xl shadow-slate-950/20 transition hover:-translate-y-0.5 hover:bg-purple-900 sm:rounded-full"
               >
-                {fashionMicrocopy.shopCollection}
+                {hero.primaryButtonText}
                 <ArrowRight className="h-4 w-4" aria-hidden="true" />
               </Link>
               <Link
-                href="/about-us"
-                className="inline-flex h-12 items-center justify-center gap-2 rounded-full border border-purple-200 bg-white px-6 text-sm font-semibold text-purple-800 shadow-sm transition hover:-translate-y-0.5 hover:bg-purple-50"
+                href={hero.secondaryButtonHref || "/about-us"}
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-[18px] border border-purple-200 bg-white px-6 text-sm font-semibold text-purple-800 shadow-sm transition hover:-translate-y-0.5 hover:bg-purple-50 sm:rounded-full"
               >
-                Meet Our Story
+                {hero.secondaryButtonText}
                 <Sparkles className="h-4 w-4" aria-hidden="true" />
               </Link>
             </motion.div>
@@ -721,7 +915,7 @@ export default function BoutiqueHomepage() {
             transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
             className="lg:hidden"
           >
-            <BoutiqueVisual compact />
+            <BoutiqueVisual compact content={hero} mediaSlots={mediaSlots} />
           </motion.div>
           <motion.div
             initial={{ opacity: 0, scale: 0.97 }}
@@ -729,19 +923,45 @@ export default function BoutiqueHomepage() {
             transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
             className="hidden lg:block"
           >
-            <BoutiqueVisual />
+            <BoutiqueVisual content={hero} mediaSlots={mediaSlots} />
           </motion.div>
         </div>
       </section>
 
-      <FounderStorySection />
-      <TrustSection />
-      <JourneyTimelineSection />
-      <DreamSupportSection />
-      <PromiseSection />
-      <InstagramShowcaseSection />
-      <CustomerLoveSection />
-      <FinalCtaSection />
+      <FounderStorySection
+        content={homeContent.founder}
+        mediaSlots={mediaSlots}
+        contact={contactContent}
+      />
+      <TrustSection content={homeContent.trust} />
+      <JourneyTimelineSection content={homeContent.timeline} />
+      <DreamSupportSection content={homeContent.dream} />
+      <PromiseSection content={homeContent.promise} />
+      <ProductShowcaseSection
+        title="Featured Boutique Picks"
+        copy="Hand-selected products ready for the homepage collection."
+        products={featuredProducts}
+        viewAllLink="/products"
+      />
+      <ProductShowcaseSection
+        title="New Arrivals"
+        copy="Fresh styles recently added to the Ananya Boutique catalog."
+        products={newArrivals}
+        viewAllLink="/products?newArrivals=true"
+      />
+      <ProductShowcaseSection
+        title="Best Sellers"
+        copy="Customer-loved pieces curated for quick discovery."
+        products={bestSellers}
+        viewAllLink="/products?bestSeller=true"
+      />
+      <InstagramShowcaseSection
+        content={homeContent.instagram}
+        mediaSlots={mediaSlots}
+        contact={contactContent}
+      />
+      <CustomerLoveSection content={homeContent.testimonials} />
+      <FinalCtaSection content={homeContent.finalCta} contact={contactContent} />
     </div>
   );
 }

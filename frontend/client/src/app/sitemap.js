@@ -53,7 +53,7 @@ export default async function sitemap() {
       priority: 0.6,
     },
     {
-      url: `${BASE_URL}/healthy-boutique-style-guide`,
+      url: `${BASE_URL}/style-guide`,
       lastModified: new Date(),
       changeFrequency: "weekly",
       priority: 0.65,

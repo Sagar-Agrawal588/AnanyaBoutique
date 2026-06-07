@@ -1,6 +1,7 @@
 export const metadata = {
-  title: "PRODUCTS PAGE",
-  description: "PRODUCTS",
+  title: "Discover Your Style | Ananya Boutique",
+  description:
+    "Fashion, beauty, and accessories curated with love since 2012.",
 };
 
 // src/app/products/layout.jsx

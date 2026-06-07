@@ -546,6 +546,13 @@ settingsSchema.statics.defaultSettings = [
     category: "general",
   },
   {
+    key: "storefrontContent",
+    value: {},
+    description:
+      "Business-owner managed storefront content for homepage, navigation, footer, contact, membership, about, and media slots",
+    category: "display",
+  },
+  {
     key: "reviewSettings",
     value: {
       ...DEFAULT_REVIEW_SETTINGS,

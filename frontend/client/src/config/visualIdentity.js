@@ -1,3 +1,20 @@
+import { getBrandLogo } from "./brandAssets";
+import {
+  artworkRegistry,
+  getArtwork,
+  getArtworkSource,
+  getCategoryArtwork,
+  normalizeArtworkSlug,
+} from "./artworkRegistry";
+
+export {
+  artworkRegistry,
+  getArtwork,
+  getArtworkSource,
+  getCategoryArtwork,
+  normalizeArtworkSlug,
+};
+
 export const brandDesignTokens = {
   colors: {
     softPink: "#FCE7F3",
@@ -120,331 +137,33 @@ export const fashionMicrocopy = {
 export const getFashionMicrocopy = (key, fallback = "") =>
   fashionMicrocopy[key] || fallback;
 
+const toLegacyLogoVariant = (slot, overrides = {}) => {
+  const logo = getBrandLogo(slot);
+  return {
+    asset: logo.src,
+    label: logo.alt,
+    lockup: logo.lockup,
+    tagline: logo.tagline,
+    width: logo.width,
+    height: logo.height,
+    ...overrides,
+  };
+};
+
 export const logoRegistry = {
-  main: {
-    asset: "/logo-header.png",
-    label: "Ananya Boutique",
-    lockup: "Ananya Boutique",
-    tagline: "Fashion & Beauty Boutique",
-    width: 72,
-    height: 72,
-  },
-  icon: {
-    asset: "/logo-header.png",
+  main: toLegacyLogoVariant("main"),
+  header: toLegacyLogoVariant("header"),
+  icon: toLegacyLogoVariant("mobile", {
     label: "Ananya Boutique icon",
-    lockup: "AB",
     width: 52,
     height: 52,
-  },
-  mobile: {
-    asset: "/logo-header.png",
-    label: "Ananya Boutique mobile logo",
-    lockup: "AB",
-    width: 48,
-    height: 48,
-  },
-  footer: {
-    asset: "/logo-header.png",
-    label: "Ananya Boutique footer logo",
-    lockup: "Ananya Boutique",
-    tagline: "Trusted Since 2012",
-    width: 58,
-    height: 58,
-  },
+  }),
+  mobile: toLegacyLogoVariant("mobile"),
+  footer: toLegacyLogoVariant("footer"),
+  admin: toLegacyLogoVariant("admin"),
+  login: toLegacyLogoVariant("login"),
+  invoice: toLegacyLogoVariant("invoice"),
 };
-
-const baseArtwork = {
-  source: "",
-  status: "ai-ready",
-  replacementNote:
-    "Replace source with a generated image path when final AI artwork is approved.",
-};
-
-export const artworkRegistry = {
-  homepage: {
-    heroDesktop: {
-      ...baseArtwork,
-      key: "homepage.heroDesktop",
-      title: "Fashion That Celebrates Every Woman",
-      copy: "Desktop hero artwork for a premium fashion boutique campaign.",
-      aspect: "hero",
-      palette: "blush",
-      prompt:
-        "Elegant Indian boutique fashion campaign, sarees, suits, kurtis, cosmetics and jewellery, soft pink lavender white champagne gold, premium editorial lighting, no text.",
-    },
-    heroMobile: {
-      ...baseArtwork,
-      key: "homepage.heroMobile",
-      title: "Mobile Boutique Edit",
-      copy: "Portrait hero artwork optimized for mobile first screens.",
-      aspect: "portrait",
-      palette: "blush",
-      prompt:
-        "Mobile portrait fashion illustration for Ananya Boutique, graceful feminine styling, soft pink and lavender, champagne gold accents, no text.",
-    },
-    founderPortrait: {
-      ...baseArtwork,
-      key: "homepage.founderPortrait",
-      title: "Founder Portrait",
-      copy: "Illustration placeholder for the woman behind Ananya Boutique.",
-      aspect: "portrait",
-      palette: "blush",
-      prompt:
-        "Warm founder-led Indian boutique portrait illustration, homemaker mother entrepreneur, elegant feminine fashion studio, soft blush lavender champagne palette, no text.",
-    },
-    dreamSection: {
-      ...baseArtwork,
-      key: "homepage.dreamSection",
-      title: "Every Order Supports A Dream",
-      copy: "Illustration placeholder for the dream that started inside a home.",
-      aspect: "wide",
-      palette: "gold",
-      prompt:
-        "Emotional Indian family boutique dream illustration, mother entrepreneur, home beginning, sarees and parcels, warm premium light, no text.",
-    },
-    instagramShowcase: {
-      ...baseArtwork,
-      key: "homepage.instagramShowcase",
-      title: "Follow Our Journey",
-      copy: "Illustration placeholder for Instagram moments and boutique updates.",
-      aspect: "wide",
-      palette: "rose",
-      prompt:
-        "Instagram-style boutique fashion showcase illustration, six elegant fashion moments, sarees jewellery beauty details, soft feminine palette, no text.",
-    },
-    finalCta: {
-      ...baseArtwork,
-      key: "homepage.finalCta",
-      title: "Join The Ananya Boutique Family",
-      copy: "Illustration placeholder for the final emotional homepage call to action.",
-      aspect: "wide",
-      palette: "plum",
-      prompt:
-        "Premium emotional boutique family call-to-action illustration, women supporting woman entrepreneur, fashion chosen with love, no text.",
-    },
-    categoryBanner: {
-      ...baseArtwork,
-      key: "homepage.categoryBanner",
-      title: "Category Story Banner",
-      copy: "Wide banner structure for category-led shopping moments.",
-      aspect: "wide",
-      palette: "lavender",
-      prompt:
-        "Luxury category banner collage for Indian boutique fashion, sarees suits kurtis cosmetics jewellery accessories, airy premium layout, no text.",
-    },
-    fashionGallery: {
-      ...baseArtwork,
-      key: "homepage.fashionGallery",
-      title: "Fashion Gallery",
-      copy: "Campaign artwork slots for seasonal edits and visual merchandising.",
-      aspect: "wide",
-      palette: "blush",
-      prompt:
-        "Premium fashion gallery illustration panels, festive drapes, jewellery details, beauty essentials, soft feminine palette, no text.",
-    },
-    testimonials: {
-      ...baseArtwork,
-      key: "homepage.testimonials",
-      title: "Customer Love",
-      copy: "Soft community artwork for testimonials and customer stories.",
-      aspect: "wide",
-      palette: "gold",
-      prompt:
-        "Warm customer community fashion boutique illustration, women smiling, shopping experience, soft pink champagne gold, no text.",
-    },
-  },
-  categories: {
-    sarees: {
-      ...baseArtwork,
-      key: "categories.sarees",
-      title: "Sarees",
-      copy: "Elegant drapes for celebration and everyday grace.",
-      aspect: "banner",
-      palette: "blush",
-    },
-    suits: {
-      ...baseArtwork,
-      key: "categories.suits",
-      title: "Suits",
-      copy: "Coordinated looks for work, visits, and special moments.",
-      aspect: "banner",
-      palette: "lavender",
-    },
-    kurtis: {
-      ...baseArtwork,
-      key: "categories.kurtis",
-      title: "Kurtis",
-      copy: "Easy everyday elegance with boutique detail.",
-      aspect: "banner",
-      palette: "rose",
-    },
-    leggings: {
-      ...baseArtwork,
-      key: "categories.leggings",
-      title: "Leggings",
-      copy: "Essential comfort for polished daily styling.",
-      aspect: "banner",
-      palette: "lavender",
-    },
-    cosmetics: {
-      ...baseArtwork,
-      key: "categories.cosmetics",
-      title: "Cosmetics",
-      copy: "Beauty essentials for the final glow.",
-      aspect: "banner",
-      palette: "blush",
-    },
-    "artificial-jewellery": {
-      ...baseArtwork,
-      key: "categories.artificial-jewellery",
-      title: "Artificial Jewellery",
-      copy: "Statement details and delicate finishing pieces.",
-      aspect: "banner",
-      palette: "gold",
-    },
-    "fashion-accessories": {
-      ...baseArtwork,
-      key: "categories.fashion-accessories",
-      title: "Fashion Accessories",
-      copy: "Finishing touches for every outfit story.",
-      aspect: "banner",
-      palette: "rose",
-    },
-  },
-  story: {
-    founder: {
-      ...baseArtwork,
-      key: "story.founder",
-      title: "Founder Story",
-      copy: "A mother, a dream, and the courage to begin.",
-      aspect: "portrait",
-      palette: "blush",
-    },
-    homemaker: {
-      ...baseArtwork,
-      key: "story.homemaker",
-      title: "Homemaker Journey",
-      copy: "A business built between care, work, and responsibility.",
-      aspect: "wide",
-      palette: "gold",
-    },
-    family: {
-      ...baseArtwork,
-      key: "story.family",
-      title: "Family Support",
-      copy: "The encouragement behind every milestone.",
-      aspect: "wide",
-      palette: "lavender",
-    },
-    growth: {
-      ...baseArtwork,
-      key: "story.growth",
-      title: "Boutique Growth",
-      copy: "Fashion, beauty, accessories, and customer trust.",
-      aspect: "portrait",
-      palette: "rose",
-    },
-    community: {
-      ...baseArtwork,
-      key: "story.community",
-      title: "Community Impact",
-      copy: "Every customer becomes part of the journey.",
-      aspect: "wide",
-      palette: "blush",
-    },
-  },
-  membership: {
-    hero: {
-      ...baseArtwork,
-      key: "membership.hero",
-      title: "Fashion Insider Club Hero",
-      copy: "A private style world with rewards and boutique care.",
-      aspect: "portrait",
-      palette: "blush",
-    },
-    rewards: {
-      ...baseArtwork,
-      key: "membership.rewards",
-      title: "Rewards",
-      copy: "A polished rewards dashboard visual for fashion points.",
-      aspect: "wide",
-      palette: "gold",
-    },
-    vip: {
-      ...baseArtwork,
-      key: "membership.vip",
-      title: "VIP Experience",
-      copy: "Private launches, premium support, and elevated member care.",
-      aspect: "portrait",
-      palette: "plum",
-    },
-    tiers: {
-      ...baseArtwork,
-      key: "membership.tiers",
-      title: "Membership Tiers",
-      copy: "Luxury tier cards and club level storytelling.",
-      aspect: "wide",
-      palette: "lavender",
-    },
-  },
-  contact: {
-    whatsapp: {
-      ...baseArtwork,
-      key: "contact.whatsapp",
-      title: "WhatsApp Styling Consultation",
-      copy: "Instant styling, product, and order support.",
-      aspect: "wide",
-      palette: "blush",
-    },
-    location: {
-      ...baseArtwork,
-      key: "contact.location",
-      title: "Boutique Location",
-      copy: "An elegant location card ready for storefront artwork.",
-      aspect: "wide",
-      palette: "gold",
-    },
-    support: {
-      ...baseArtwork,
-      key: "contact.support",
-      title: "Customer Support",
-      copy: "A warm support experience across phone, email, and WhatsApp.",
-      aspect: "wide",
-      palette: "lavender",
-    },
-    community: {
-      ...baseArtwork,
-      key: "contact.community",
-      title: "Community Connection",
-      copy: "Instagram journey, customer stories, and behind-the-scenes moments.",
-      aspect: "wide",
-      palette: "rose",
-    },
-  },
-};
-
-export const getArtwork = (path, fallback = null) => {
-  const segments = String(path || "").split(".").filter(Boolean);
-  let current = artworkRegistry;
-  for (const segment of segments) {
-    current = current?.[segment];
-    if (!current) return fallback;
-  }
-  return current || fallback;
-};
-
-const normalizeArtworkSlug = (value) =>
-  String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/['’]/g, "")
-    .replace(/&/g, "and")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-
-export const getCategoryArtwork = (slug) =>
-  artworkRegistry.categories[normalizeArtworkSlug(slug)] ||
-  artworkRegistry.homepage.categoryBanner;
 
 export const getLogoVariant = (variant = "main") =>
   logoRegistry[variant] || logoRegistry.main;
@@ -460,8 +179,10 @@ const visualIdentity = {
   logoRegistry,
   artworkRegistry,
   getArtwork,
+  getArtworkSource,
   getCategoryArtwork,
   getLogoVariant,
+  normalizeArtworkSlug,
 };
 
 export default visualIdentity;

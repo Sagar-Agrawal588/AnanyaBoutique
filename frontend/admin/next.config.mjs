@@ -9,6 +9,52 @@ if (!rawApiUrl) {
 }
 
 const parsedApiUrl = new URL(rawApiUrl);
+const bareAdminRouteRedirectSources = [
+  "/about-page/:path*",
+  "/analytics/:path*",
+  "/banners/:path*",
+  "/behavior-analytics/:path*",
+  "/blogs/:path*",
+  "/blogs-page/:path*",
+  "/cancellation-policy/:path*",
+  "/category-list/:path*",
+  "/coins/:path*",
+  "/combos/:path*",
+  "/coupons/:path*",
+  "/crm/:path*",
+  "/customer-care/:path*",
+  "/email-templates/:path*",
+  "/forgot-password/:path*",
+  "/home-slides/:path*",
+  "/influencers/:path*",
+  "/login/:path*",
+  "/membership/:path*",
+  "/newsletter/:path*",
+  "/notifications/:path*",
+  "/orders/:path*",
+  "/partner-api/:path*",
+  "/products/:path*",
+  "/products-list/:path*",
+  "/profile/:path*",
+  "/purchase-orders/:path*",
+  "/register/:path*",
+  "/reset-password/:path*",
+  "/reviews/:path*",
+  "/sales-analytics/:path*",
+  "/seo-pages/:path*",
+  "/settings/:path*",
+  "/storefront-cms/:path*",
+  "/shipping/:path*",
+  "/statistics/:path*",
+  "/terms-and-conditions/:path*",
+  "/users/:path*",
+  "/verify/:path*",
+  "/whatsapp-crm/:path*",
+];
+
+const toAdminDestination = (source) =>
+  `/admin${source.replace("/:path*", "/:path*")}`;
+
 const apiImagePattern = [
   {
     protocol: parsedApiUrl.protocol.replace(":", ""),
@@ -36,6 +82,12 @@ const nextConfig = {
         permanent: false,
         basePath: false,
       },
+      ...bareAdminRouteRedirectSources.map((source) => ({
+        source,
+        destination: toAdminDestination(source),
+        permanent: false,
+        basePath: false,
+      })),
     ];
   },
   async rewrites() {

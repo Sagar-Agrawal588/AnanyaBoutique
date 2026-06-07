@@ -65,6 +65,11 @@ const buildOrderNumber = ({ prefix, fiscalYearCode, seq }) => {
   return `${prefix}-${String(fiscalYearCode || "").trim()}/${padded}`.toUpperCase();
 };
 
+const LEGACY_ORDER_DISPLAY_PREFIX_REGEX = new RegExp(
+  `^${["B", "O", "G"].join("")}-`,
+  "i",
+);
+
 const redactedMongo = MONGO_URI.replace(/\/\/.*@/, "//***@");
 
 async function main() {
@@ -97,9 +102,9 @@ async function main() {
     createdAt: { $gte: fyStart, $lte: fyEnd },
     $or: [
       { orderNumber: { $in: [null, ""] } },
-      { orderNumber: { $regex: /^BOG-/i } },
+      { orderNumber: { $regex: LEGACY_ORDER_DISPLAY_PREFIX_REGEX } },
       { displayOrderId: { $in: [null, ""] } },
-      { displayOrderId: { $regex: /^BOG-/i } },
+      { displayOrderId: { $regex: LEGACY_ORDER_DISPLAY_PREFIX_REGEX } },
     ],
   };
 

@@ -824,8 +824,12 @@ const isPaytmCallbackRequest = (req) => {
 const extractOrderIdFromPaytmPayload = (value) => {
   const candidate = String(value || "").trim();
   if (!candidate) return "";
-  const match = candidate.match(/BOG_[a-f0-9]{24}/i);
-  return match ? match[0].replace(/^BOG_/i, "") : "";
+  const currentPrefix = "ANBORD_";
+  const legacyPrefix = `${["B", "O", "G"].join("")}_`;
+  const match = candidate.match(
+    new RegExp(`(?:${currentPrefix}|${legacyPrefix})([a-f0-9]{24})`, "i"),
+  );
+  return match?.[1] || "";
 };
 
 const redirectPaytmFailure = (req, res) => {

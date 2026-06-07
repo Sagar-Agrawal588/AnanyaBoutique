@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1500" role="img" aria-labelledby="title desc">
+  <title id="title">Ananya Boutique product placeholder</title>
+  <desc id="desc">Premium boutique placeholder artwork for product imagery.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#fff8fb"/>
+      <stop offset="0.48" stop-color="#fffdf8"/>
+      <stop offset="1" stop-color="#efe7ff"/>
+    </linearGradient>
+    <linearGradient id="cloth" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.58" stop-color="#fce7f3"/>
+      <stop offset="1" stop-color="#d8b4fe"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#f7d989"/>
+      <stop offset="1" stop-color="#b7791f"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="28" stdDeviation="30" flood-color="#4a1838" flood-opacity="0.14"/>
+    </filter>
+  </defs>
+  <rect width="1200" height="1500" fill="url(#bg)"/>
+  <rect x="94" y="96" width="1012" height="1308" rx="82" fill="none" stroke="#ead3df" stroke-width="4"/>
+  <rect x="150" y="154" width="900" height="1192" rx="56" fill="#ffffff" fill-opacity="0.58"/>
+  <g filter="url(#shadow)">
+    <path d="M354 312c112 0 182 88 182 203v520H232V492c0-100 51-180 122-180z" fill="#fff"/>
+    <path d="M706 252c154 24 262 144 262 309v488H586V424c0-104 45-186 120-172z" fill="url(#cloth)"/>
+    <path d="M489 707c154 0 279 125 279 279v205H210V986c0-154 125-279 279-279z" fill="#fffafc"/>
+  </g>
+  <g opacity="0.72">
+    <circle cx="926" cy="297" r="72" fill="#fff" stroke="#f0cf83" stroke-width="4"/>
+    <path d="M926 250v94M879 297h94" stroke="url(#gold)" stroke-width="16" stroke-linecap="round"/>
+    <path d="M900 271l52 52M952 271l-52 52" stroke="url(#gold)" stroke-width="10" stroke-linecap="round" opacity="0.42"/>
+  </g>
+  <g text-anchor="middle">
+    <text x="600" y="1268" fill="#2f1325" font-family="Georgia, 'Times New Roman', serif" font-size="58" font-weight="700">Ananya Boutique</text>
+    <text x="600" y="1332" fill="#9d6b19" font-family="Arial, sans-serif" font-size="28" font-weight="700" letter-spacing="8">CURATED WITH LOVE</text>
+  </g>
+</svg>

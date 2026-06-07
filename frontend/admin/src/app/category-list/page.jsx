@@ -20,6 +20,8 @@ import { RiEdit2Line } from "react-icons/ri";
 const columns = [
   { id: "IMAGE", label: "IMAGE", minWidth: 100 },
   { id: "CATEGORYNAME", label: "CATEGORY NAME", minWidth: 300 },
+  { id: "PARENT", label: "PARENT", minWidth: 180 },
+  { id: "LEVEL", label: "LEVEL", minWidth: 100 },
   { id: "ACTIONS", label: "ACTIONS", minWidth: 200 },
 ];
 
@@ -137,7 +139,22 @@ const CategoryList = () => {
 
                     <TableCell>
                       <span className="font-medium text-gray-800">
+                        {"- ".repeat(Number(category.level || 0))}
                         {category.name}
+                      </span>
+                    </TableCell>
+
+                    <TableCell>
+                      <span className="text-sm text-gray-600">
+                        {category.parentCategory?.name ||
+                          category.parent?.name ||
+                          "Top Level"}
+                      </span>
+                    </TableCell>
+
+                    <TableCell>
+                      <span className="text-sm text-gray-600">
+                        {Number(category.level || 0)}
                       </span>
                     </TableCell>
 

@@ -1,13 +1,11 @@
 "use client";
 
 import { API_BASE_URL, postData } from "@/utils/api";
+import useStorefrontContent from "@/hooks/useStorefrontContent";
 import {
-  contactConfig,
-  getMailtoHref,
-  getMapHref,
-  getPhoneHref,
-  getWhatsAppHref,
-} from "@/config/siteConfig";
+  buildContactHelpers,
+  getEnabledLinks,
+} from "@/config/storefrontContent";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -37,6 +35,9 @@ const API_URL = API_BASE_URL.endsWith("/api")
   : API_BASE_URL;
 
 const Footer = () => {
+  const { content: storefrontContent } = useStorefrontContent();
+  const contactContent = storefrontContent.contact;
+  const footerContent = storefrontContent.footer;
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState(null);
   const [message, setMessage] = useState("");
@@ -104,12 +105,28 @@ const Footer = () => {
     fetchPolicyLinks();
   }, []);
 
-  const supportLink = getMailtoHref("Ananya Boutique support");
-  const supportPhoneHref = getPhoneHref();
-  const mapHref = getMapHref();
-  const whatsappHref = getWhatsAppHref(
-    contactConfig.whatsappActions[0]?.message,
+  const contactHelpers = buildContactHelpers(contactContent);
+  const supportLink = contactHelpers.mailtoHref("Ananya Boutique support");
+  const supportPhoneHref = contactHelpers.phoneHref;
+  const mapHref = contactContent.mapUrl || "#";
+  const whatsappHref = contactHelpers.whatsappHref(
+    contactContent.whatsappActions?.[0]?.message,
   );
+  const footerColumns = Array.isArray(footerContent.linkColumns)
+    ? footerContent.linkColumns
+    : [];
+  const resolveFooterLink = (item) => {
+    if (item?.href === "/policy/terms-and-conditions") {
+      return {
+        name: item.name || policyLinks.terms.name,
+        href: policyLinks.terms.link,
+      };
+    }
+    return {
+      name: item?.name || item?.label || "",
+      href: item?.href || item?.link || "/",
+    };
+  };
 
   const featureIcons = [FiShield, FiHome, FiStar, FiHeart, FiHeadphones];
   const features = brandPillars.map((pillar, index) => ({
@@ -163,7 +180,7 @@ const Footer = () => {
 
       <div className="container mx-auto px-4 sm:px-6 relative z-10">
         {/* ============ FEATURE CARDS ============ */}
-        <div className="mx-auto grid max-w-7xl grid-cols-2 justify-center gap-3 py-10 sm:grid-cols-3 sm:gap-4 sm:py-14 lg:grid-cols-6">
+        <div className="mx-auto grid max-w-7xl grid-cols-2 justify-center gap-2.5 py-8 sm:grid-cols-3 sm:gap-4 sm:py-14 lg:grid-cols-6">
           {features.map((item, i) => (
             <motion.div
               key={i}
@@ -173,7 +190,7 @@ const Footer = () => {
               transition={{ duration: 0.24, delay: i * 0.04 }}
               whileHover={{ y: -2, transition: { duration: 0.16 } }}
               whileTap={{ scale: 0.98, transition: { duration: 0.12 } }}
-              className="group mx-auto flex h-full w-full max-w-[14rem] cursor-default flex-col items-center rounded-2xl p-4 active:bg-white/[0.08] sm:p-6"
+              className="group mx-auto flex h-full w-full max-w-[14rem] cursor-default flex-col items-center rounded-[18px] p-3.5 active:bg-white/[0.08] sm:rounded-2xl sm:p-6"
               style={{
                 background: "rgba(255, 255, 255, 0.04)",
                 border: "1px solid rgba(255, 255, 255, 0.06)",
@@ -209,7 +226,7 @@ const Footer = () => {
         />
 
         {/* ============ MAIN FOOTER CONTENT ============ */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 sm:gap-10 py-10 sm:py-14">
+        <div className="grid grid-cols-1 gap-9 py-10 sm:gap-10 sm:py-14 md:grid-cols-2 lg:grid-cols-4">
           {/* 1. CONTACT */}
           {/* 1. CONTACT */}
           <motion.div
@@ -217,7 +234,7 @@ const Footer = () => {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.28 }}
-            className="flex flex-col gap-4 sm:gap-5 lg:border-r lg:pr-8 border-white/5"
+            className="flex flex-col gap-4 rounded-[24px] border border-white/5 bg-white/[0.025] p-4 sm:gap-5 sm:p-0 md:bg-transparent lg:border-r lg:pr-8"
           >
             <BrandLogo
               variant="footer"
@@ -226,20 +243,20 @@ const Footer = () => {
               textClassName="text-white"
             />
             <h3 className="text-[16px] sm:text-[18px] font-extrabold text-white uppercase tracking-[0.15em]">
-              Contact Us
+              {footerContent.contactTitle}
             </h3>
             <p className="text-[13px] sm:text-[14px] leading-relaxed text-gray-400">
-              {brandIdentity.supportingMessage}
+              {footerContent.description || brandIdentity.supportingMessage}
             </p>
             <p className="text-[13px] sm:text-[14px] leading-relaxed text-gray-400">
-              {globalTrustMessages.founder}
+              {footerContent.founderMessage || globalTrustMessages.founder}
             </p>
             <a
               href={supportLink}
               className="inline-flex items-center gap-2 text-[14px] font-semibold text-gray-400 hover:text-primary transition-colors duration-300"
             >
               <FiMail />
-              {contactConfig.email}
+              {contactContent.email}
             </a>
             <a
               href={supportPhoneHref}
@@ -247,7 +264,7 @@ const Footer = () => {
               style={{ color: "var(--primary)" }}
             >
               <FiPhone />
-              {contactConfig.phone}
+              {contactContent.phone}
             </a>
             <a
               href={whatsappHref}
@@ -259,13 +276,13 @@ const Footer = () => {
               WhatsApp Support
             </a>
             <a
-              href={contactConfig.instagramUrl}
+              href={contactContent.instagramUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 text-[14px] font-semibold text-gray-400 hover:text-primary transition-colors duration-300"
             >
               <FaInstagram />
-              {contactConfig.instagramHandle}
+              {contactContent.instagramHandle}
             </a>
 
             {/* Map Card */}
@@ -322,18 +339,13 @@ const Footer = () => {
             transition={{ duration: 0.28, delay: 0.08 }}
           >
             <h3 className="text-[16px] sm:text-[18px] font-extrabold text-white uppercase tracking-[0.15em] mb-5 sm:mb-7">
-              Discover
+              {footerColumns[0]?.title || "Discover"}
             </h3>
             <ul className="space-y-3.5">
-              {[
-                { name: "Special Offers", link: "/products?priceDrop=true" },
-                { name: "New Arrivals", link: "/products?newArrivals=true" },
-                { name: "Loved Most", link: "/products?bestSeller=true" },
-                { name: "Discover Your Style", link: "/products" },
-              ].map((item, i) => (
+              {getEnabledLinks(footerColumns[0]?.links).map(resolveFooterLink).map((item, i) => (
                 <li key={i}>
                   <Link
-                    href={item.link}
+                    href={item.href}
                     className="group flex items-center text-[14px] font-medium text-gray-500 hover:text-primary active:text-primary transition-all duration-300"
                   >
                     <span
@@ -359,23 +371,13 @@ const Footer = () => {
             transition={{ duration: 0.28, delay: 0.12 }}
           >
             <h3 className="text-[16px] sm:text-[18px] font-extrabold text-white uppercase tracking-[0.15em] mb-5 sm:mb-7">
-              Our Company
+              {footerColumns[1]?.title || "Our Company"}
             </h3>
             <ul className="space-y-3.5">
-              {[
-                { name: "Collaborator Portal", link: "/affiliate/login" },
-                { name: "Delivery", link: "/delivery" },
-                { name: "Secure payment", link: "/secure-payment" },
-                { name: "Privacy Policy", link: "/privacy-policy" },
-                policyLinks.terms,
-                { name: "Refund/Cancellation", link: "/cancellation" },
-                { name: "About Us", link: "/about-us" },
-                { name: "Contact us", link: "/contact" },
-                { name: "Our Blogs", link: "/blogs" },
-              ].map((item, i) => (
+              {getEnabledLinks(footerColumns[1]?.links).map(resolveFooterLink).map((item, i) => (
                 <li key={i}>
                   <Link
-                    href={item.link}
+                    href={item.href}
                     className="group flex items-center text-[14px] font-medium text-gray-500 hover:text-primary active:text-primary transition-all duration-300"
                   >
                     <span
@@ -401,11 +403,10 @@ const Footer = () => {
             transition={{ duration: 0.28, delay: 0.16 }}
           >
             <h3 className="text-[16px] sm:text-[18px] font-extrabold text-white uppercase tracking-[0.15em] mb-3 sm:mb-4">
-              Join the boutique family
+              {footerContent.newsletterTitle}
             </h3>
             <p className="text-[12px] sm:text-[13px] text-gray-500 mb-5 sm:mb-6 leading-relaxed">
-              Get thoughtful styling notes, new arrivals, and boutique offers
-              selected with care.
+              {footerContent.newsletterDescription}
             </p>
 
             <form
@@ -488,11 +489,19 @@ const Footer = () => {
           {/* Social Icons */}
           <div className="flex gap-2.5 sm:gap-3">
             {[
-              {
-                Icon: FaInstagram,
-                link: contactConfig.instagramUrl,
-                hoverColor: "#E4405F",
-              },
+              ...(getEnabledLinks(footerContent.socialLinks).length
+                ? getEnabledLinks(footerContent.socialLinks).map((link) => ({
+                    Icon: FaInstagram,
+                    link: link.href,
+                    hoverColor: "#E4405F",
+                  }))
+                : [
+                    {
+                      Icon: FaInstagram,
+                      link: contactContent.instagramUrl,
+                      hoverColor: "#E4405F",
+                    },
+                  ]),
             ].map(({ Icon, link, hoverColor }, i) => (
               <motion.a
                 key={i}
@@ -527,7 +536,7 @@ const Footer = () => {
           </div>
 
           <p className="text-center text-[11px] sm:text-[13px] font-medium text-gray-600">
-            &copy; 2026 Ananya Boutique. All rights reserved.
+            &copy; {footerContent.copyrightText}
           </p>
         </div>
       </div>

@@ -1,4 +1,5 @@
 "use client";
+import BrandLogo from "@/components/brand/BrandLogo";
 import OtpBox from "@/components/OtpBox";
 import { MyContext } from "@/context/ThemeProvider";
 import { postData } from "@/utils/api";
@@ -119,6 +120,13 @@ const Verify = () => {
           onSubmit={handleSubmit}
           className="bg-white p-10 rounded-2xl shadow-xl w-full max-w-[480px] border border-gray-100 flex flex-col items-center"
         >
+          <BrandLogo
+            variant="login"
+            showText
+            imageClassName="h-12 w-auto"
+            textClassName="text-gray-800"
+            className="mb-5"
+          />
           <img
             src="/forgot-password.webp"
             alt="image"

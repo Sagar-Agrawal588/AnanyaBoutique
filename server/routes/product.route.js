@@ -3,6 +3,8 @@ import {
   bulkUpdateProducts,
   createProduct,
   deleteProduct,
+  duplicateProduct,
+  exportProductsCsv,
   getExclusiveProducts,
   getFrequentlyBoughtProducts,
   getCartUpsellProduct,
@@ -10,7 +12,9 @@ import {
   getProductById,
   getProducts,
   getRelatedProducts,
+  importProductsCsv,
   incrementProductViewCountBestEffort,
+  seedDemoProducts,
   updateDemandStatus,
   updateProduct,
   updateStock,
@@ -49,6 +53,11 @@ const productDetailCache = createPublicResponseCacheMiddleware({
   onHit: (req) => incrementProductViewCountBestEffort(req.params.id),
 });
 
+const markAdminCatalogRequest = (req, res, next) => {
+  req.userIsAdmin = true;
+  next();
+};
+
 /**
  * Product Routes
  *
@@ -74,6 +83,30 @@ router.get(
 // Get exclusive products (members only)
 // Security: auth + membership guard prevents non-members from receiving data.
 router.get("/exclusive", auth, requireActiveMembership, getExclusiveProducts);
+
+// ==================== ADMIN READ / IMPORT ROUTES ====================
+
+router.get(
+  "/admin/list",
+  auth,
+  admin,
+  markAdminCatalogRequest,
+  (req, res, next) => {
+    req.query.includeDrafts = req.query.includeDrafts || "true";
+    next();
+  },
+  getProducts,
+);
+
+router.get("/admin/export.csv", auth, admin, exportProductsCsv);
+
+router.post("/admin/import-csv", auth, admin, importProductsCsv);
+
+router.post("/admin/seed-demo", auth, admin, seedDemoProducts);
+
+router.get("/admin/:id", auth, admin, markAdminCatalogRequest, getProductById);
+
+router.post("/:id/duplicate", auth, admin, duplicateProduct);
 
 // Get related products
 router.get(

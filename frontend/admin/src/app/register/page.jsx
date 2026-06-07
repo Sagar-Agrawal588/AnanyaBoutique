@@ -1,4 +1,5 @@
 "use client";
+import AdminBrandLogo from "@/components/brand/AdminBrandLogo";
 import { withAdminBasePath } from "@/utils/basePath";
 import { Button } from "@mui/material";
 import Link from "next/link";
@@ -19,11 +20,7 @@ const Register = () => (
     {/* Header */}
     <div className="fixed top-0 left-0 w-full py-4 z-50">
       <div className="w-[90%] mx-auto flex items-center justify-between">
-        <img
-          src={withAdminBasePath("/logo.png")}
-          alt="logo"
-          className="w-[150px]"
-        />
+        <AdminBrandLogo slot="login" imageClassName="h-12 w-auto" />
 
         <div className="flex gap-3">
           <Link href={"/login"}>

@@ -1,7 +1,9 @@
 "use client";
+import AdminBrandLogo from "@/components/brand/AdminBrandLogo";
 import { postData } from "@/utils/api";
 import { withAdminBasePath } from "@/utils/basePath";
 import { Button, CircularProgress } from "@mui/material";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { MdLock } from "react-icons/md";
@@ -78,6 +80,20 @@ const ResetPasswordContent = () => {
 
       {/* Soft overlay */}
       <div className="absolute inset-0 bg-white/85" />
+
+      <div className="fixed top-0 left-0 w-full py-4 z-50">
+        <div className="w-[90%] mx-auto flex items-center justify-between">
+          <AdminBrandLogo slot="login" imageClassName="h-12 w-auto" />
+
+          <div className="flex gap-3">
+            <Link href={"/login"}>
+              <Button className=" !px-5 !py-2 !rounded-full !border !text-gray-800">
+                SIGN IN
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </div>
 
       {/* Main Content */}
       <div className="relative z-20 flex flex-col items-center justify-center min-h-screen pt-20 px-4">

@@ -88,7 +88,7 @@ function wrapper({ title, subtitle, body, footer, accent, soft }) {
             <div style="font-size:12px;letter-spacing:1.3px;opacity:0.85;">ANANYA BOUTIQUE</div>
             <div style="font-size:16px;font-weight:700;">Fresh choices, delivered with care</div>
           </div>
-          <div style="height:44px;width:44px;border-radius:12px;background:rgba(255,255,255,0.18);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;">HOG</div>
+          <div style="height:44px;width:44px;border-radius:12px;background:rgba(255,255,255,0.18);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;">AB</div>
         </div>
       </td>
     </tr>
@@ -258,7 +258,7 @@ function buildBody(emailType, data, theme) {
             <div style="font-size:28px;font-weight:800;margin-top:6px;">20% OFF</div>
             <div style="font-size:14px;margin-top:8px;">Use code <strong>${escapeHtml(data.promo_code)}</strong> before ${escapeHtml(data.expiry_date)}</div>
           </div>
-          <p style="margin:0 0 16px;font-size:15px;color:${brand.lightInk};">Curated wellness picks, same-day dispatch, and premium quality guaranteed.</p>
+          <p style="margin:0 0 16px;font-size:15px;color:${brand.lightInk};">Curated boutique picks, thoughtful dispatch, and premium quality care.</p>
           ${ctaButton(theme.cta, theme.accent)}
         `,
         footer: commonFooter,
@@ -269,8 +269,8 @@ function buildBody(emailType, data, theme) {
         body: `
           <div style="margin:0 0 16px;border-radius:14px;overflow:hidden;border:1px solid #dbe4f0;">
             <div style="background:linear-gradient(90deg, #0b1b4a, #12396b);padding:18px 16px 14px;text-align:center;color:#ffffff;">
-              <div style="display:inline-flex;height:42px;width:42px;border-radius:10px;background:#ffffff;color:#0f766e;align-items:center;justify-content:center;font-weight:800;font-size:13px;">HOG</div>
-              <div style="font-size:11px;opacity:0.9;margin-top:8px;">Healthy living, trusted choices</div>
+              <div style="display:inline-flex;height:42px;width:42px;border-radius:10px;background:#ffffff;color:#0f766e;align-items:center;justify-content:center;font-weight:800;font-size:13px;">AB</div>
+              <div style="font-size:11px;opacity:0.9;margin-top:8px;">Fashion selected with care</div>
             </div>
             <div style="background:linear-gradient(120deg, #112d59, #a8551d);padding:16px;">
               <div style="font-size:34px;line-height:1.1;color:#ffffff;font-weight:800;letter-spacing:0.2px;">New Arrivals Are Here</div>
@@ -280,13 +280,13 @@ function buildBody(emailType, data, theme) {
               </div>
             </div>
           </div>
-          <p style="margin:0 0 10px;font-size:14px;color:${brand.lightInk};">Discover our latest products made for healthy living. Be the first to try them and share your feedback.</p>
+          <p style="margin:0 0 10px;font-size:14px;color:${brand.lightInk};">Discover the latest boutique pieces selected with care. Be the first to explore them and share your feedback.</p>
           <div style="margin:0 0 10px;padding:12px;border:1px solid ${brand.border};border-radius:10px;background:#f8fafc;">
             <div style="font-size:14px;font-weight:700;color:${brand.ink};margin-bottom:6px;">Why people love Ananya Boutique</div>
             <ul style="margin:0;padding-left:18px;color:${brand.lightInk};font-size:13px;line-height:1.6;">
-              <li>Premium quality products curated for health-focused families.</li>
-              <li>Faster delivery and transparent order support.</li>
-              <li>Exclusive subscriber-only offers and updates.</li>
+              <li>Boutique fashion, beauty, and accessories curated with care.</li>
+              <li>Thoughtful support from a family-owned business.</li>
+              <li>Subscriber-only previews, styling notes, and updates.</li>
             </ul>
           </div>
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate;border-spacing:6px 0;margin:0 0 16px;">
@@ -300,8 +300,8 @@ function buildBody(emailType, data, theme) {
                 <div style="font-size:12px;color:#1e3a8a;margin-top:4px;">Unlock newsletter-only discounts and rewards.</div>
               </td>
               <td style="width:33.3%;padding:10px;border-radius:10px;background:#ecfeff;border:1px solid #67e8f9;vertical-align:top;">
-                <div style="font-size:10px;font-weight:700;letter-spacing:0.5px;color:#0891b2;">WELLNESS TIPS</div>
-                <div style="font-size:12px;color:#155e75;margin-top:4px;">Practical ideas to stay healthy every day.</div>
+                <div style="font-size:10px;font-weight:700;letter-spacing:0.5px;color:#0891b2;">STYLING NOTES</div>
+                <div style="font-size:12px;color:#155e75;margin-top:4px;">Practical ideas to style pieces with confidence.</div>
               </td>
             </tr>
           </table>

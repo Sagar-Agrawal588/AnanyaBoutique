@@ -24,11 +24,7 @@ const AddCategory = () => {
     try {
       const response = await getData("/api/categories", token);
       if (response.success) {
-        // Only show parent categories (no parent)
-        const parentCategories = (response.data || []).filter(
-          (cat) => !cat.parent,
-        );
-        setCategories(parentCategories);
+        setCategories(response.data || []);
       }
     } catch (error) {
       console.error("Failed to fetch categories:", error);
@@ -92,7 +88,7 @@ const AddCategory = () => {
         name: categoryName,
         image: uploadResult.data.url,
         color,
-        parent: parentCategory || undefined,
+        parentCategory: parentCategory || undefined,
       };
 
       const response = await postData("/api/categories", categoryData, token);
@@ -156,6 +152,7 @@ const AddCategory = () => {
               </MenuItem>
               {categories.map((cat) => (
                 <MenuItem key={cat._id} value={cat._id}>
+                  {"- ".repeat(Number(cat.level || 0))}
                   {cat.name}
                 </MenuItem>
               ))}

@@ -1,4 +1,9 @@
 import { DEFAULT_BANNER_IMAGES } from "@/utils/mediaDefaults";
+import {
+  BRAND_DESCRIPTION,
+  BRAND_NAME,
+  getBrandSocialImage,
+} from "@/config/brandAssets";
 
 const DEFAULT_SITE_URL = "https://ananyaboutique.com";
 const DEFAULT_API_ORIGIN = "https://api.ananyaboutique.com";
@@ -87,6 +92,8 @@ const fetchWithTimeout = async (url, options = {}) => {
 
 const getSiteUrl = () =>
   sanitizeBaseUrl(process.env.NEXT_PUBLIC_SITE_URL) || DEFAULT_SITE_URL;
+const getDefaultSocialImageUrl = () =>
+  `${getSiteUrl()}${getBrandSocialImage("openGraphImage").src}`;
 
 const getApiCandidates = () => {
   const configured = [
@@ -131,7 +138,7 @@ const resolveProductImage = (product, apiBaseUrl) => {
           if (/^\/uploads\//i.test(imagePath)) {
             return `${apiBaseUrl || siteUrl}${imagePath}`;
           }
-          return `${siteUrl}/logo-og-v2.png`;
+          return getDefaultSocialImageUrl();
         }
       } catch {
         // If URL parsing fails, fall through to return original.
@@ -150,7 +157,7 @@ const resolveProductImage = (product, apiBaseUrl) => {
     return `${siteUrl}${normalizedPath}`;
   }
 
-  return `${getSiteUrl()}/logo-og-v2.png`;
+  return getDefaultSocialImageUrl();
 };
 
 const fetchProductForMetadata = async (id) => {
@@ -183,13 +190,13 @@ export async function generateMetadata({ params }) {
 
   if (!routeId) {
     return {
-      title: "Product | Ananya Boutique",
-      description: "Explore boutique fashion and accessories from Ananya Boutique.",
+      title: `Product | ${BRAND_NAME}`,
+      description: BRAND_DESCRIPTION,
     };
   }
 
   if (routeId.toLowerCase() === DEMO_PRODUCT_ID) {
-    const title = "Ananya Signature Kurta Set | Ananya Boutique";
+    const title = `Ananya Signature Kurta Set | ${BRAND_NAME}`;
     const description =
       "Preview the upgraded storefront product detail experience with demo data, richer visuals, and conversion-focused layout blocks.";
     const url = `${siteUrl}/product/${DEMO_PRODUCT_ID}`;
@@ -207,7 +214,7 @@ export async function generateMetadata({ params }) {
         url,
         type: "website",
         locale: "en_IN",
-        siteName: "Ananya Boutique",
+        siteName: BRAND_NAME,
         images: [
           {
             url: imageUrl,
@@ -229,16 +236,16 @@ export async function generateMetadata({ params }) {
   const { product, apiBase } = await fetchProductForMetadata(routeId);
   if (!product) {
     return {
-      title: "Product | Ananya Boutique",
-      description: "Explore boutique fashion and accessories from Ananya Boutique.",
+      title: `Product | ${BRAND_NAME}`,
+      description: BRAND_DESCRIPTION,
     };
   }
 
   const slugOrId = String(product?.slug || product?._id || routeId);
-  const title = `${String(product?.name || "Product").trim()} | Ananya Boutique`;
+  const title = `${String(product?.name || "Product").trim()} | ${BRAND_NAME}`;
   const description =
     stripHtml(product?.shortDescription || product?.description) ||
-    "Premium boutique fashion and accessories from Ananya Boutique.";
+    BRAND_DESCRIPTION;
   const url = `${siteUrl}/product/${encodeURIComponent(slugOrId)}`;
   const imageUrl = resolveProductImage(product, apiBase);
 
@@ -254,13 +261,13 @@ export async function generateMetadata({ params }) {
       url,
       type: "website",
       locale: "en_IN",
-      siteName: "Ananya Boutique",
+      siteName: BRAND_NAME,
       images: [
         {
           url: imageUrl,
           width: 1200,
           height: 630,
-          alt: String(product?.name || "Ananya Boutique Product"),
+          alt: String(product?.name || `${BRAND_NAME} Product`),
         },
       ],
     },

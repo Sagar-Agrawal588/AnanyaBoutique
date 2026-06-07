@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { getBrandSocialImage } from "@/config/brandAssets";
 import { DEFAULT_HOME_SLIDES } from "@/utils/mediaDefaults";
 
 const siteUrl = String(
@@ -12,6 +13,7 @@ const siteUrl = String(
 const pagePath = "/style-guide";
 const pageUrl = `${siteUrl}${pagePath}`;
 const heroImage = DEFAULT_HOME_SLIDES[0];
+const publisherLogo = getBrandSocialImage("openGraphImage");
 
 export const metadata = {
   title: "Boutique Style Guide | Ananya Boutique",
@@ -114,7 +116,7 @@ const jsonLd = {
         name: "Ananya Boutique",
         logo: {
           "@type": "ImageObject",
-          url: `${siteUrl}/logo-og-v2.png`,
+          url: `${siteUrl}${publisherLogo.src}`,
         },
       },
       mainEntityOfPage: pageUrl,
