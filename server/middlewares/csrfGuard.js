@@ -45,6 +45,7 @@ const normalizeRequestPath = (value) => {
 
 export const createCookieCsrfGuard = ({
   allowedOrigins = [],
+  isAllowedOrigin = null,
   isProduction = false,
 } = {}) => {
   const allowed = new Set(
@@ -98,6 +99,13 @@ export const createCookieCsrfGuard = ({
     }
 
     if (allowed.has(requestOrigin)) {
+      return next();
+    }
+
+    if (
+      typeof isAllowedOrigin === "function" &&
+      isAllowedOrigin(requestOrigin)
+    ) {
       return next();
     }
 

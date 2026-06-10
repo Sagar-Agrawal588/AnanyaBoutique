@@ -19,7 +19,7 @@ Cloud Run must provide these values as service environment variables:
 - CLIENT_URL=https://ananyaboutique.com
 - FRONTEND_URL=https://ananyaboutique.com
 - ADMIN_URL=https://admin.ananyaboutique.com
-- CORS_ORIGINS=https://ananyaboutique.com,https://ananyaboutique.com,https://admin.ananyaboutique.com
+- CORS_ORIGINS=https://ananyaboutique.com,https://www.ananyaboutique.com,https://ananya-boutique-client.vercel.app,https://admin.ananyaboutique.com
 
 Preserve the existing payment, email, Firebase, storage, analytics, and shipping
 secrets from server/.env when updating Cloud Run. Do not commit actual secret
@@ -51,13 +51,15 @@ Verification
 ------------
 - GET <backend-url>/ should return 200 and show port 8080.
 - GET <backend-url>/healthz/ should return 200 ok.
-- GET <backend-url>/api/products?limit=1 with Origin: https://ananyaboutique.com should return CORS for that origin.
+- GET <backend-url>/api/products?limit=1 with Origin: https://ananya-boutique-client.vercel.app should return CORS for that origin.
 - OPTIONS <backend-url>/api/admin/login with the admin hosted origin should return 204 and Access-Control-Allow-Credentials: true.
 - Cloud Run logs should include selected PORT=8080, NODE_ENV=production, Connected to MongoDB, and API service started successfully.
 
-Firebase App Hosting
---------------------
-Both frontend/client/apphosting.yaml and frontend/admin/apphosting.yaml must use:
+Vercel / Firebase App Hosting
+-----------------------------
+The Vercel client project must define these production environment variables
+until the custom API domain is connected. Use the deployed Cloud Run service URL
+if api.ananyaboutique.com is not resolvable yet:
 
 - NEXT_PUBLIC_BACKEND_URL=https://api.ananyaboutique.com
 - NEXT_PUBLIC_API_URL=https://api.ananyaboutique.com/api

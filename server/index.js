@@ -196,6 +196,9 @@ const defaultProductionCorsOrigins = [
   "https://admin.ananyaboutique.com",
   "https://ananyaboutique.com",
   "https://admin.ananyaboutique.com",
+  "https://ananya-boutique-client.vercel.app",
+  "https://ananya-boutique-client-sagar-agrawal588s-projects.vercel.app",
+  "https://ananya-boutique-client-git-main-sagar-agrawal588s-projects.vercel.app",
 ].map(normalizeOrigin);
 const defaultDevCorsOrigins = [
   "http://localhost:3000",
@@ -209,6 +212,41 @@ const allowedOrigins = [
     ...(isProductionEnv ? defaultProductionCorsOrigins : defaultDevCorsOrigins),
   ]),
 ];
+
+const isTrustedVercelStorefrontOrigin = (origin) => {
+  if (!isProductionEnv) return false;
+
+  try {
+    const parsed = new URL(normalizeOrigin(origin));
+    const hostname = parsed.hostname.toLowerCase();
+
+    if (parsed.protocol !== "https:") {
+      return false;
+    }
+
+    if (
+      hostname === "ananya-boutique-client.vercel.app" ||
+      hostname === "ananya-boutique-client-sagar-agrawal588s-projects.vercel.app" ||
+      hostname === "ananya-boutique-client-git-main-sagar-agrawal588s-projects.vercel.app"
+    ) {
+      return true;
+    }
+
+    return /^ananya-boutique-client-[a-z0-9-]+-sagar-agrawal588s-projects\.vercel\.app$/i.test(
+      hostname,
+    );
+  } catch {
+    return false;
+  }
+};
+
+const isAllowedRequestOrigin = (origin) => {
+  const normalizedOrigin = normalizeOrigin(origin);
+  return (
+    allowedOrigins.includes(normalizedOrigin) ||
+    isTrustedVercelStorefrontOrigin(normalizedOrigin)
+  );
+};
 
 if (isProductionEnv && allowedOrigins.length === 0) {
   failStartup(
@@ -398,7 +436,7 @@ app.use(
 
     if (
       !origin ||
-      allowedOrigins.includes(normalizedOrigin) ||
+      isAllowedRequestOrigin(normalizedOrigin) ||
       allowLocalDevOrigin
     ) {
       callback(null, {
@@ -671,6 +709,7 @@ const urlEncodedParserMiddleware = express.urlencoded({
 const cookieParserMiddleware = cookieParser();
 const csrfGuardMiddleware = createCookieCsrfGuard({
   allowedOrigins,
+  isAllowedOrigin: isAllowedRequestOrigin,
   isProduction: isProductionEnv,
 });
 
@@ -926,6 +965,8 @@ connectDb()
 
     initSocket(server, {
       origins: allowedOrigins,
+      isAllowedOrigin: isAllowedRequestOrigin,
+      isProduction: isProductionEnv,
       jwtSecret: accessTokenSecret,
     });
 

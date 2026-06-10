@@ -38,7 +38,18 @@ const parseCookies = (cookieHeader) => {
   }, {});
 };
 
-export const initSocket = (httpServer, { origins = [], jwtSecret } = {}) => {
+const normalizeOrigin = (origin) =>
+  String(origin || "")
+    .trim()
+    .replace(/\/+$/, "");
+
+const isLocalOrigin = (origin) =>
+  /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(normalizeOrigin(origin));
+
+export const initSocket = (
+  httpServer,
+  { origins = [], isAllowedOrigin = null, isProduction = false, jwtSecret } = {},
+) => {
   if (ioInstance) return ioInstance;
 
   const socketTransports = resolveSocketTransports();
@@ -47,9 +58,30 @@ export const initSocket = (httpServer, { origins = [], jwtSecret } = {}) => {
     true,
   );
 
+  const allowedOrigins = new Set(
+    (Array.isArray(origins) ? origins : [])
+      .map(normalizeOrigin)
+      .filter(Boolean),
+  );
+
   ioInstance = new Server(httpServer, {
     cors: {
-      origin: origins,
+      origin(origin, callback) {
+        const normalizedOrigin = normalizeOrigin(origin);
+
+        if (
+          !origin ||
+          allowedOrigins.has(normalizedOrigin) ||
+          (typeof isAllowedOrigin === "function" &&
+            isAllowedOrigin(normalizedOrigin)) ||
+          (!isProduction && isLocalOrigin(normalizedOrigin))
+        ) {
+          callback(null, true);
+          return;
+        }
+
+        callback(new Error("Not allowed by CORS"));
+      },
       credentials: true,
     },
     transports: socketTransports,

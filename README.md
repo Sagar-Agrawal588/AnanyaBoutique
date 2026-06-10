@@ -200,7 +200,7 @@ All deploy workflows:
 | `REFRESH_TOKEN_SECRET` | Yes | Refresh JWT secret (32+ chars) |
 | `CLIENT_URL` | Yes | Allowed storefront origin(s) |
 | `ADMIN_URL` | Yes | Allowed admin origin(s) |
-| `CORS_ORIGINS` | No | Extra comma-separated CORS origins |
+| `CORS_ORIGINS` | No | Extra comma-separated CORS origins, including the active Vercel storefront URL before the custom domain is live |
 | `COOKIE_DOMAIN` | No | Cookie domain override in production |
 | `EMAIL`, `EMAIL_PASSWORD` | No | SMTP for OTP/support |
 | `PAYTM_*` | Conditional | Paytm integration |
@@ -213,6 +213,7 @@ All deploy workflows:
 ### Client (`frontend/client/.env.local`)
 | Variable | Required | Purpose |
 |---|---|---|
+| `NEXT_PUBLIC_BACKEND_URL` | Yes | Backend origin, for example `https://api.ananyaboutique.com` or the temporary Cloud Run URL |
 | `NEXT_PUBLIC_API_URL` | Yes | API base URL |
 | `NEXT_PUBLIC_APP_API_URL` | No | Explicit app API override |
 | `NEXT_PUBLIC_SITE_URL` | Yes | Public canonical site URL |
