@@ -1,17 +1,4 @@
-const DEFAULT_PRODUCTION_API_URL =
-  "https://api.ananyaboutique.com/api";
-
-const sanitizeBaseUrl = (value) =>
-  String(value || "")
-    .trim()
-    .replace(/^['"]|['"]$/g, "")
-    .replace(/\/+$/, "");
-
-const normalizeApiBaseUrl = (value) => {
-  const normalized = sanitizeBaseUrl(value);
-  if (!/^https?:\/\//i.test(normalized)) return "";
-  return /\/api$/i.test(normalized) ? normalized : `${normalized}/api`;
-};
+import { pickApiUrl } from "@/utils/apiBaseUrl";
 
 const shouldUseLocalApiBase = () => {
   if (typeof window === "undefined") {
@@ -23,13 +10,12 @@ const shouldUseLocalApiBase = () => {
 };
 
 const getMediaApiBaseUrl = () =>
-  normalizeApiBaseUrl(
-    (shouldUseLocalApiBase() ? process.env.NEXT_PUBLIC_LOCAL_API_URL : "") ||
-      process.env.NEXT_PUBLIC_BACKEND_URL ||
-      process.env.NEXT_PUBLIC_APP_API_URL ||
-      process.env.NEXT_PUBLIC_API_URL ||
-      DEFAULT_PRODUCTION_API_URL,
-  ) || DEFAULT_PRODUCTION_API_URL;
+  pickApiUrl(
+    shouldUseLocalApiBase() ? process.env.NEXT_PUBLIC_LOCAL_API_URL : "",
+    process.env.NEXT_PUBLIC_BACKEND_URL,
+    process.env.NEXT_PUBLIC_APP_API_URL,
+    process.env.NEXT_PUBLIC_API_URL,
+  );
 
 const buildMediaProxyUrl = (objectPath) =>
   `${getMediaApiBaseUrl()}/media/gcs?path=${encodeURIComponent(objectPath)}`;

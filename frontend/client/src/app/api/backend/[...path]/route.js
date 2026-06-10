@@ -1,12 +1,10 @@
-const BACKEND_URL = String(
-  process.env.NEXT_PUBLIC_BACKEND_URL ||
-    process.env.NEXT_PUBLIC_APP_API_URL ||
-    process.env.NEXT_PUBLIC_API_URL ||
-    "https://api.ananyaboutique.com/api",
-)
-  .trim()
-  .replace(/\/+$/, "")
-  .replace(/\/api$/i, "");
+import { pickApiOrigin } from "@/utils/apiBaseUrl";
+
+const BACKEND_URL = pickApiOrigin(
+  process.env.NEXT_PUBLIC_BACKEND_URL,
+  process.env.NEXT_PUBLIC_APP_API_URL,
+  process.env.NEXT_PUBLIC_API_URL,
+);
 
 const HOP_BY_HOP_HEADERS = new Set([
   "connection",

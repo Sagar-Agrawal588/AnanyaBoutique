@@ -1,3 +1,5 @@
+import { pickApiOrigin } from "@/utils/apiBaseUrl";
+
 /**
  * Sitemap Generator
  *
@@ -7,15 +9,7 @@
 
 const BASE_URL =
   process.env.NEXT_PUBLIC_SITE_URL || "https://ananyaboutique.com";
-const DEFAULT_API_BASE_URL = "https://api.ananyaboutique.com";
 const SITEMAP_REVALIDATE_SECONDS = 3600;
-
-const normalizeBaseUrl = (value) =>
-  String(value || "")
-    .trim()
-    .replace(/^["']|["']$/g, "")
-    .replace(/\/+$/, "")
-    .replace(/\/api$/i, "");
 
 export const revalidate = 3600;
 
@@ -74,9 +68,7 @@ export default async function sitemap() {
 
   // Try to include admin-managed SEO pages from settings (seoSettings.pages)
   try {
-    const apiBase = normalizeBaseUrl(
-      process.env.NEXT_PUBLIC_API_URL || DEFAULT_API_BASE_URL,
-    );
+    const apiBase = pickApiOrigin(process.env.NEXT_PUBLIC_API_URL);
     const resp = await fetch(`${apiBase}/api/settings/public`, {
       headers: { "content-type": "application/json" },
       next: { revalidate: SITEMAP_REVALIDATE_SECONDS },

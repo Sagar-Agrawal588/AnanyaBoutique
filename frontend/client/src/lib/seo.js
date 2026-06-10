@@ -1,16 +1,9 @@
 // Lightweight SEO helper for client-side components
 import { sanitizeBrandText } from "@/config/brandAssets";
+import { pickApiOrigin } from "@/utils/apiBaseUrl";
 
 let cached = null;
 let pending = null;
-
-const normalizeApiBase = (value) =>
-  String(value || "")
-    .trim()
-    .replace(/^['"]|['"]$/g, "")
-    .replace(/\/+$/, "")
-    .replace(/\/api$/i, "");
-const DEFAULT_API_BASE_URL = "https://api.ananyaboutique.com";
 
 export async function fetchSeoSettings() {
   if (cached) return cached;
@@ -18,9 +11,7 @@ export async function fetchSeoSettings() {
 
   pending = (async () => {
     try {
-      const apiBase = normalizeApiBase(
-        process.env.NEXT_PUBLIC_API_URL || DEFAULT_API_BASE_URL,
-      );
+      const apiBase = pickApiOrigin(process.env.NEXT_PUBLIC_API_URL);
       const resp = await fetch(`${apiBase}/api/settings/public`, {
         cache: "no-store",
       });

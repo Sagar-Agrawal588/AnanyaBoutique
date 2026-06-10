@@ -3,6 +3,7 @@
 import BlogHtmlDocumentFrame from "@/components/BlogHtmlDocumentFrame";
 import BlogMediaAsset from "@/components/BlogMediaAsset";
 import { useProducts } from "@/context/ProductContext";
+import { pickApiOrigin } from "@/utils/apiBaseUrl";
 import { fetchDataFromApi } from "@/utils/api";
 import { extractImageCandidatesFromBlogHtml } from "@/utils/blogHtml";
 import Link from "next/link";
@@ -99,19 +100,10 @@ const normalizeHexColor = (value, fallback) => {
 };
 
 const resolveBlogApiBaseUrl = () => {
-  const configuredBase = String(
-    process.env.NEXT_PUBLIC_APP_API_URL || process.env.NEXT_PUBLIC_API_URL || "",
-  )
-    .trim()
-    .replace(/^['"]|['"]$/g, "")
-    .replace(/\/+$/, "")
-    .replace(/\/api$/i, "");
-
-  if (configuredBase) {
-    return configuredBase;
-  }
-
-  return "https://api.ananyaboutique.com";
+  return pickApiOrigin(
+    process.env.NEXT_PUBLIC_APP_API_URL,
+    process.env.NEXT_PUBLIC_API_URL,
+  );
 };
 
 const estimateReadTime = (content) => {

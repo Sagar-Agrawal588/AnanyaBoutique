@@ -7,6 +7,7 @@ import {
   getBrandSocialImage,
   sanitizeBrandText,
 } from "@/config/brandAssets";
+import { pickApiOrigin } from "@/utils/apiBaseUrl";
 import { resolvePublicSiteUrl } from "@/utils/siteUrl";
 import { Inter, Playfair_Display, Poppins } from "next/font/google";
 import Script from "next/script";
@@ -104,14 +105,7 @@ const buildDefaultMetadata = (siteUrl, mediaOverrides = {}) => {
   };
 };
 
-const normalizeApiBase = (value) =>
-  String(value || "")
-    .trim()
-    .replace(/^["']|["']$/g, "")
-    .replace(/\/+$/, "")
-    .replace(/\/api$/i, "");
 const DEFAULT_PUBLIC_SITE_URL = "https://ananyaboutique.com";
-const DEFAULT_API_BASE_URL = "https://api.ananyaboutique.com";
 const PUBLIC_SETTINGS_REVALIDATE_SECONDS = 300;
 const PUBLIC_SETTINGS_FETCH_TIMEOUT_MS = 2500;
 
@@ -164,9 +158,7 @@ export async function generateMetadata({ request }) {
       request?.headers?.get("x-forwarded-proto") || "https:";
     const siteUrl = resolvePublicSiteUrl({ requestHost, requestProtocol });
     defaultMetadata = buildDefaultMetadata(siteUrl);
-    const apiBase = normalizeApiBase(
-      process.env.NEXT_PUBLIC_API_URL || DEFAULT_API_BASE_URL,
-    );
+    const apiBase = pickApiOrigin(process.env.NEXT_PUBLIC_API_URL);
     const resp = await fetchWithTimeout(`${apiBase}/api/settings/public`, {
       next: { revalidate: PUBLIC_SETTINGS_REVALIDATE_SECONDS },
     });

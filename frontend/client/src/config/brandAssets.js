@@ -133,15 +133,15 @@ export const brandAssets = {
     }),
   },
   favicon: {
-    src: "/logo.png",
-    type: "image/png",
+    src: "/favicon.ico",
+    type: "image/x-icon",
     sizes: "32x32",
     alt: "Ananya Boutique favicon placeholder",
     replaceNote:
       "Replace with final favicon file when the final logo system is approved.",
   },
   appleTouchIcon: {
-    src: "/logo.png",
+    src: "/favicon.png",
     type: "image/png",
     sizes: "180x180",
     alt: "Ananya Boutique app icon placeholder",

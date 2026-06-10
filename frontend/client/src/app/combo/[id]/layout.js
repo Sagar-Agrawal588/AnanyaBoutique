@@ -3,17 +3,15 @@ import {
   BRAND_NAME,
   getBrandSocialImage,
 } from "@/config/brandAssets";
+import { normalizeApiOrigin, pickApiOrigin } from "@/utils/apiBaseUrl";
 
 const DEFAULT_SITE_URL = "https://ananyaboutique.com";
-const DEFAULT_API_ORIGIN = "https://api.ananyaboutique.com";
 
 const sanitizeBaseUrl = (value) =>
   String(value || "")
     .trim()
     .replace(/^['"]|['"]$/g, "")
     .replace(/\/+$/, "");
-
-const removeApiSuffix = (value) => String(value || "").replace(/\/api$/i, "");
 
 const isAbsoluteUrl = (value) => /^https?:\/\//i.test(String(value || ""));
 
@@ -76,20 +74,18 @@ const getDefaultSocialImageUrl = () =>
   `${getSiteUrl()}${getBrandSocialImage("openGraphImage").src}`;
 
 const getApiCandidates = () => {
-  const configured = [
-    process.env.NODE_ENV === "production"
-      ? ""
-      : process.env.NEXT_PUBLIC_LOCAL_API_URL,
-    process.env.NEXT_PUBLIC_APP_API_URL,
-    process.env.NEXT_PUBLIC_API_URL,
-  ]
-    .map(sanitizeBaseUrl)
-    .filter(Boolean)
-    .map(removeApiSuffix)
-    .filter(Boolean);
-
   return [
-    ...new Set([...configured, DEFAULT_API_ORIGIN].filter(Boolean)),
+    ...new Set(
+      [
+        process.env.NODE_ENV === "production"
+          ? ""
+          : normalizeApiOrigin(process.env.NEXT_PUBLIC_LOCAL_API_URL),
+        pickApiOrigin(
+          process.env.NEXT_PUBLIC_APP_API_URL,
+          process.env.NEXT_PUBLIC_API_URL,
+        ),
+      ].filter(Boolean),
+    ),
   ];
 };
 

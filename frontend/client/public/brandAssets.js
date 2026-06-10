@@ -8,7 +8,7 @@ self.ANANYA_BRAND_ASSETS = Object.freeze({
     admin: "/logo.png",
     login: "/logo.png",
     invoice: "/logo.png",
-    favicon: "/logo.png",
+    favicon: "/favicon.ico",
     openGraphImage: "/logo-og-v2.png",
     socialShareImage: "/logo-og-v2.png",
   }),

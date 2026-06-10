@@ -1,6 +1,7 @@
 "use client";
 
 import { API_BASE_URL, invalidatePublicGetCache } from "@/utils/api";
+import { isLocalhostUrl } from "@/utils/apiBaseUrl";
 import { io } from "socket.io-client";
 
 const normalizeBaseUrl = (value) =>
@@ -13,7 +14,10 @@ const SOCKET_URL_FROM_ENV = normalizeBaseUrl(
 );
 
 const resolveSocketUrl = () => {
-  if (SOCKET_URL_FROM_ENV) {
+  if (
+    SOCKET_URL_FROM_ENV &&
+    (process.env.NODE_ENV !== "production" || !isLocalhostUrl(SOCKET_URL_FROM_ENV))
+  ) {
     return SOCKET_URL_FROM_ENV;
   }
 

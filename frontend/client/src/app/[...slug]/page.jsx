@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { sanitizeBrandText } from "@/config/brandAssets";
+import { pickApiOrigin } from "@/utils/apiBaseUrl";
 
 const SITE_URL = String(
   process.env.NEXT_PUBLIC_SITE_URL || "https://ananyaboutique.com",
@@ -8,15 +9,6 @@ const SITE_URL = String(
   .trim()
   .replace(/^["']|["']$/g, "")
   .replace(/\/+$/, "");
-
-const normalizeBaseUrl = (value) =>
-  String(value || "")
-    .trim()
-    .replace(/^["']|["']$/g, "")
-    .replace(/\/+$/, "")
-    .replace(/\/api$/i, "");
-
-const DEFAULT_API_BASE_URL = "https://api.ananyaboutique.com";
 
 const DEFAULT_METADATA = {
   title: "Ananya Boutique - Curated Fashion Boutique",
@@ -51,9 +43,7 @@ const normalizePath = (segments = []) => {
 
 const fetchSeoSettings = async () => {
   try {
-    const apiBase = normalizeBaseUrl(
-      process.env.NEXT_PUBLIC_API_URL || DEFAULT_API_BASE_URL,
-    );
+    const apiBase = pickApiOrigin(process.env.NEXT_PUBLIC_API_URL);
     const response = await fetch(`${apiBase}/api/settings/public`, {
       cache: "no-store",
     });

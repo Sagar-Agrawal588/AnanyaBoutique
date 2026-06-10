@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import nextDynamic from "next/dynamic";
 import { normalizeStorefrontContent } from "@/config/storefrontContent";
+import { pickApiOrigin, sanitizeBaseUrl } from "@/utils/apiBaseUrl";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -18,23 +19,14 @@ const WhatsAppFloatingButton = nextDynamic(
   },
 );
 
-const sanitizeBaseUrl = (value) =>
-  String(value || "")
-    .trim()
-    .replace(/^['"]|['"]$/g, "")
-    .replace(/\/+$/, "");
-
-const removeApiSuffix = (value) => String(value || "").replace(/\/api$/i, "");
-
 const API_BASE_URL = sanitizeBaseUrl(
-  removeApiSuffix(
-    process.env.NEXT_PUBLIC_APP_API_URL ||
-      process.env.NEXT_PUBLIC_API_URL ||
-      "https://api.ananyaboutique.com/api",
+  pickApiOrigin(
+    process.env.NEXT_PUBLIC_APP_API_URL,
+    process.env.NEXT_PUBLIC_API_URL,
   ),
 );
 const LOCAL_DEV_API_BASE_URL = sanitizeBaseUrl(
-  process.env.NEXT_PUBLIC_LOCAL_API_URL,
+  process.env.NODE_ENV === "production" ? "" : process.env.NEXT_PUBLIC_LOCAL_API_URL,
 );
 const HOMEPAGE_FETCH_TIMEOUT_MS = Math.max(
   Number.parseInt(

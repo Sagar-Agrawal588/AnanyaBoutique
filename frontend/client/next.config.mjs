@@ -4,8 +4,7 @@ import { fileURLToPath } from "url";
 const configFilePath = fileURLToPath(import.meta.url);
 const configDir = path.dirname(configFilePath);
 const DEFAULT_PUBLIC_API_URL = "https://api.ananyaboutique.com/api";
-const rawApiUrl =
-  process.env.NEXT_PUBLIC_API_URL?.trim() || DEFAULT_PUBLIC_API_URL;
+const rawConfiguredApiUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
 const rawLocalDevApiUrl = process.env.NEXT_PUBLIC_LOCAL_API_URL?.trim();
 
 const sanitizeUrl = (value) =>
@@ -35,6 +34,11 @@ const normalizeLoopbackUrl = (value) => {
     return sanitized;
   }
 };
+
+const rawApiUrl =
+  process.env.NODE_ENV === "production" && isLocalhostUrl(rawConfiguredApiUrl)
+    ? DEFAULT_PUBLIC_API_URL
+    : rawConfiguredApiUrl || DEFAULT_PUBLIC_API_URL;
 
 const normalizedApiUrl = rawApiUrl.replace(/\/+$/, "").replace(/\/api$/i, "");
 const normalizedLocalDevApiUrl = rawLocalDevApiUrl

@@ -1,8 +1,6 @@
 import axios from "axios";
 import Cookies from "js-cookie";
-
-const DEFAULT_PRODUCTION_API_URL =
-  "https://api.ananyaboutique.com/api";
+import { DEFAULT_PRODUCTION_API_URL, isLocalhostUrl } from "@/utils/apiBaseUrl";
 
 const LOCAL_API_FALLBACKS = [
   "http://127.0.0.1:8000",
@@ -75,22 +73,13 @@ const pickFirstApiUrl = (...values) => {
   for (const value of values) {
     const normalized = normalizeApiBaseUrl(value);
     if (!isHttpUrl(normalized)) continue;
+    if (process.env.NODE_ENV === "production" && isLocalhostUrl(normalized)) {
+      continue;
+    }
     if (isFrontendUrl(normalized)) continue;
     return normalized;
   }
   return "";
-};
-
-const isLocalhostUrl = (value) => {
-  try {
-    const parsed = new URL(String(value || ""));
-    return (
-      parsed.hostname.toLowerCase() === "localhost" ||
-      parsed.hostname === "127.0.0.1"
-    );
-  } catch {
-    return false;
-  }
 };
 
 const normalizeLocalFallbacks = () =>
@@ -292,6 +281,14 @@ const getApiBaseCandidates = () => {
   const resolvedBase = sanitizeBaseUrl(API_BASE_URL);
   const localDevBase = normalizeApiBaseUrl(process.env.NEXT_PUBLIC_LOCAL_API_URL);
   const candidates = [];
+  const addCandidate = (value) => {
+    const candidate = sanitizeBaseUrl(value);
+    if (!candidate) return;
+    if (process.env.NODE_ENV === "production" && isLocalhostUrl(candidate)) {
+      return;
+    }
+    candidates.push(candidate);
+  };
 
   if (typeof window !== "undefined") {
     const hostname = String(window.location.hostname || "").toLowerCase();
@@ -299,19 +296,19 @@ const getApiBaseCandidates = () => {
     if (isLocalhost) {
       // On local dev, prefer local API targets first to avoid remote CORS/network failures.
       if (preferred && isLocalhostUrl(preferred)) {
-        candidates.push(preferred);
+        addCandidate(preferred);
       }
       if (localDevBase) {
-        candidates.push(localDevBase);
+        addCandidate(localDevBase);
       }
-      candidates.push(...normalizeLocalFallbacks());
+      normalizeLocalFallbacks().forEach(addCandidate);
 
       // Keep remote bases as final fallback candidates.
       if (preferred && !isLocalhostUrl(preferred)) {
-        candidates.push(preferred);
+        addCandidate(preferred);
       }
       if (resolvedBase && !isLocalhostUrl(resolvedBase)) {
-        candidates.push(resolvedBase);
+        addCandidate(resolvedBase);
       }
 
       return [...new Set(candidates.filter(Boolean))];
@@ -320,12 +317,12 @@ const getApiBaseCandidates = () => {
   }
 
   if (preferred) {
-    candidates.push(preferred);
+    addCandidate(preferred);
   }
 
-  candidates.push(resolvedBase);
+  addCandidate(resolvedBase);
   if (DEFAULT_PRODUCTION_API_URL) {
-    candidates.push(sanitizeBaseUrl(DEFAULT_PRODUCTION_API_URL));
+    addCandidate(DEFAULT_PRODUCTION_API_URL);
   }
 
   return [...new Set(candidates.filter(Boolean))];

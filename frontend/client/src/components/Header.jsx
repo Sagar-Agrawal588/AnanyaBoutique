@@ -6,6 +6,7 @@ import { useWishlist } from "@/context/WishlistContext";
 import useMembership from "@/hooks/useMembership";
 import useStorefrontContent from "@/hooks/useStorefrontContent";
 import { fetchDataFromApi, postData } from "@/utils/api";
+import { pickApiOrigin } from "@/utils/apiBaseUrl";
 import { getEnabledLinks } from "@/config/storefrontContent";
 import cookies from "js-cookie";
 import Link from "next/link";
@@ -254,13 +255,10 @@ const Header = () => {
   const coinFetchInFlightRef = useRef(null);
   const coinFetchStartedAtRef = useRef(0);
   const router = useRouter();
-  const API_URL = (
-    process.env.NEXT_PUBLIC_APP_API_URL ||
-    process.env.NEXT_PUBLIC_API_URL ||
-    "https://api.ananyaboutique.com/api"
-  )
-    .trim()
-    .replace(/\/+$/, "");
+  const API_URL = pickApiOrigin(
+    process.env.NEXT_PUBLIC_APP_API_URL,
+    process.env.NEXT_PUBLIC_API_URL,
+  );
   const context = useContext(MyContext);
   const { cartCount } = useCart();
   const { wishlistCount } = useWishlist();
