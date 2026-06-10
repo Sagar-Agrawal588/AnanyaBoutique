@@ -356,8 +356,9 @@ jobs:
 
           node scripts/production-smoke-check.mjs \
             --backend-url "$BACKEND_SMOKE_URL" \
+            --origin "https://ananya-boutique-client.vercel.app" \
             --origin "https://ananyaboutique.com" \
-            --origin "https://ananyaboutique.com" \
+            --origin "https://www.ananyaboutique.com" \
             --origin "https://admin.ananyaboutique.com"
 
       - name: Cleanup
