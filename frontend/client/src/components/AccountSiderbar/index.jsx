@@ -21,7 +21,7 @@ const AccountSidebar = () => {
     API_BASE_URL ||
     process.env.NEXT_PUBLIC_APP_API_URL ||
     process.env.NEXT_PUBLIC_API_URL ||
-    "https://api.ananyaboutique.com/api"
+    "https://ananya-boutique-api.onrender.com/api"
   )
     .replace(/\/+$/, "")
     .replace(/\/api$/i, "");

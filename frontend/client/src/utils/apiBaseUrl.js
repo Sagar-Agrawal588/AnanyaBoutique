@@ -1,4 +1,5 @@
-export const DEFAULT_PRODUCTION_API_ORIGIN = "https://api.ananyaboutique.com";
+export const DEFAULT_PRODUCTION_API_ORIGIN =
+  "https://ananya-boutique-api.onrender.com";
 export const DEFAULT_PRODUCTION_API_URL = `${DEFAULT_PRODUCTION_API_ORIGIN}/api`;
 
 export const sanitizeBaseUrl = (value) =>

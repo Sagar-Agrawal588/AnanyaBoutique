@@ -3,7 +3,8 @@ import { fileURLToPath } from "url";
 
 const configFilePath = fileURLToPath(import.meta.url);
 const configDir = path.dirname(configFilePath);
-const DEFAULT_PUBLIC_API_URL = "https://api.ananyaboutique.com/api";
+const DEFAULT_PUBLIC_API_URL =
+  "https://ananya-boutique-api.onrender.com/api";
 const rawConfiguredApiUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
 const rawLocalDevApiUrl = process.env.NEXT_PUBLIC_LOCAL_API_URL?.trim();
 
