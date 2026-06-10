@@ -83,6 +83,27 @@ const apiImagePattern = [
     : []),
 ];
 
+const freshDocumentHeaders = [
+  {
+    key: "Cache-Control",
+    value: "private, no-cache, no-store, max-age=0, must-revalidate",
+  },
+  {
+    key: "CDN-Cache-Control",
+    value: "no-store",
+  },
+  {
+    key: "Surrogate-Control",
+    value: "no-store",
+  },
+];
+const sharedSecurityHeaders = [
+  {
+    key: "Referrer-Policy",
+    value: "strict-origin-when-cross-origin",
+  },
+];
+
 const nextConfig = {
   outputFileTracingRoot: configDir,
   turbopack: {
@@ -116,6 +137,15 @@ const nextConfig = {
         pathname: "/**",
       },
     ],
+  },
+  async redirects() {
+    return [
+      {
+        source: "/products/:slug",
+        destination: "/product/:slug",
+        permanent: true,
+      },
+    ];
   },
   async rewrites() {
     const rewrites = [];
@@ -153,12 +183,12 @@ const nextConfig = {
     return [
       {
         source: "/:path*",
-        headers: [
-          {
-            key: "Referrer-Policy",
-            value: "strict-origin-when-cross-origin",
-          },
-        ],
+        headers: sharedSecurityHeaders,
+      },
+      {
+        source:
+          "/:path((?!_next/|api/|.*\\.(?:avif|bmp|css|gif|ico|jpe?g|js|json|map|png|svg|txt|webp|woff2?|xml)$).*)",
+        headers: freshDocumentHeaders,
       },
     ];
   },
