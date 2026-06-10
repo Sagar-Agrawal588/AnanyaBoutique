@@ -2,11 +2,11 @@ runtime: nodejs22
 service: admin
 
 build_env_variables:
-  NEXT_PUBLIC_BACKEND_URL: "https://api.ananyaboutique.com"
+  NEXT_PUBLIC_BACKEND_URL: "https://ananya-boutique-api.onrender.com"
   NEXT_PUBLIC_ADMIN_URL: "https://admin.ananyaboutique.com/admin"
   NEXT_PUBLIC_CLIENT_URL: "https://ananyaboutique.com"
-  NEXT_PUBLIC_API_URL: "https://api.ananyaboutique.com/api"
-  NEXT_PUBLIC_APP_API_URL: "https://api.ananyaboutique.com/api"
+  NEXT_PUBLIC_API_URL: "https://ananya-boutique-api.onrender.com/api"
+  NEXT_PUBLIC_APP_API_URL: "https://ananya-boutique-api.onrender.com/api"
   NEXT_PUBLIC_SITE_URL: "https://ananyaboutique.com"
   NEXT_PUBLIC_FIREBASE_API_KEY: "SET_VIA_APP_HOSTING_SECRET"
   NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: "studio-8452116634-cdb59.firebaseapp.com"
@@ -17,11 +17,11 @@ build_env_variables:
   NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID: "SET_VIA_APP_HOSTING_SECRET"
 
 env_variables:
-  NEXT_PUBLIC_BACKEND_URL: "https://api.ananyaboutique.com"
+  NEXT_PUBLIC_BACKEND_URL: "https://ananya-boutique-api.onrender.com"
   NEXT_PUBLIC_ADMIN_URL: "https://admin.ananyaboutique.com/admin"
   NEXT_PUBLIC_CLIENT_URL: "https://ananyaboutique.com"
-  NEXT_PUBLIC_API_URL: "https://api.ananyaboutique.com/api"
-  NEXT_PUBLIC_APP_API_URL: "https://api.ananyaboutique.com/api"
+  NEXT_PUBLIC_API_URL: "https://ananya-boutique-api.onrender.com/api"
+  NEXT_PUBLIC_APP_API_URL: "https://ananya-boutique-api.onrender.com/api"
   NEXT_PUBLIC_SITE_URL: "https://ananyaboutique.com"
   NEXT_PUBLIC_FIREBASE_API_KEY: "SET_VIA_APP_HOSTING_SECRET"
   NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: "studio-8452116634-cdb59.firebaseapp.com"

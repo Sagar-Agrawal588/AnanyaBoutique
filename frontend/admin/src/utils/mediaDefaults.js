@@ -1,5 +1,5 @@
 const DEFAULT_PRODUCTION_API_URL =
-  "https://api.ananyaboutique.com/api";
+  "https://ananya-boutique-api.onrender.com/api";
 
 const sanitizeBaseUrl = (value) =>
   String(value || "")

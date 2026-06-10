@@ -4,7 +4,7 @@ runConfig:
 
 env:
   - variable: NEXT_PUBLIC_BACKEND_URL
-    value: "https://api.ananyaboutique.com"
+    value: "https://ananya-boutique-api.onrender.com"
     availability:
       - BUILD
       - RUNTIME
@@ -19,12 +19,12 @@ env:
       - BUILD
       - RUNTIME
   - variable: NEXT_PUBLIC_API_URL
-    value: "https://api.ananyaboutique.com/api"
+    value: "https://ananya-boutique-api.onrender.com/api"
     availability:
       - BUILD
       - RUNTIME
   - variable: NEXT_PUBLIC_APP_API_URL
-    value: "https://api.ananyaboutique.com/api"
+    value: "https://ananya-boutique-api.onrender.com/api"
     availability:
       - BUILD
       - RUNTIME

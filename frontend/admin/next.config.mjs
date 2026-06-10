@@ -3,11 +3,10 @@ import { fileURLToPath } from "url";
 
 const configFilePath = fileURLToPath(import.meta.url);
 const configDir = path.dirname(configFilePath);
-const rawApiUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
-
-if (!rawApiUrl) {
-  throw new Error("NEXT_PUBLIC_API_URL is not defined");
-}
+const DEFAULT_PUBLIC_API_URL =
+  "https://ananya-boutique-api.onrender.com/api";
+const rawApiUrl =
+  process.env.NEXT_PUBLIC_API_URL?.trim() || DEFAULT_PUBLIC_API_URL;
 
 const parsedApiUrl = new URL(rawApiUrl);
 const bareAdminRouteRedirectSources = [

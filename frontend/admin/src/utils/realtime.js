@@ -3,7 +3,7 @@ import { io } from "socket.io-client";
 
 const SOCKET_TRANSPORTS = ["websocket", "polling"];
 const PRODUCTION_SOCKET_FALLBACK =
-  "https://api.ananyaboutique.com";
+  "https://ananya-boutique-api.onrender.com";
 
 const sanitizeBaseUrl = (value) =>
   String(value || "")
