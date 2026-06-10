@@ -1,7 +1,8 @@
 import path from "path";
 import { fileURLToPath } from "url";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const configFilePath = fileURLToPath(import.meta.url);
+const configDir = path.dirname(configFilePath);
 const DEFAULT_PUBLIC_API_URL = "https://api.ananyaboutique.com/api";
 const rawApiUrl =
   process.env.NEXT_PUBLIC_API_URL?.trim() || DEFAULT_PUBLIC_API_URL;
@@ -83,9 +84,9 @@ const apiImagePattern = [
 ];
 
 const nextConfig = {
-  outputFileTracingRoot: __dirname,
+  outputFileTracingRoot: configDir,
   turbopack: {
-    root: __dirname,
+    root: configDir,
   },
   images: {
     deviceSizes: [360, 480, 640, 750, 828, 1080, 1200, 1600, 1920],

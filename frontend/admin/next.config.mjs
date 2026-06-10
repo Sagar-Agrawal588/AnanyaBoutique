@@ -1,7 +1,8 @@
 import path from "path";
 import { fileURLToPath } from "url";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const configFilePath = fileURLToPath(import.meta.url);
+const configDir = path.dirname(configFilePath);
 const rawApiUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
 
 if (!rawApiUrl) {
@@ -73,7 +74,7 @@ const apiImagePattern = [
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   basePath: "/admin",
-  outputFileTracingRoot: __dirname,
+  outputFileTracingRoot: configDir,
   async redirects() {
     return [
       {
@@ -98,7 +99,7 @@ const nextConfig = {
     ];
   },
   turbopack: {
-    root: __dirname,
+    root: configDir,
   },
   images: {
     remotePatterns: [
