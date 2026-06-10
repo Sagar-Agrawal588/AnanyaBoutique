@@ -16,8 +16,7 @@
 - Auto deploy: enabled
 
 If Render reports a different service URL, update `BACKEND_URL`,
-`API_BASE_URL`, payment callback URLs, and the Vercel client API variables to
-the actual URL.
+`API_BASE_URL`, and the Vercel client API variables to the actual URL.
 
 ## Required Render Environment Variables
 
@@ -33,27 +32,33 @@ the actual URL.
 | `CORS_ORIGINS` | Yes | Vercel + custom domains | Include storefront, admin, and future custom domains. |
 | `BACKEND_URL` | Yes | `https://ananya-boutique-api.onrender.com` | Public backend origin. |
 | `API_BASE_URL` | Yes | `https://ananya-boutique-api.onrender.com` | Public backend origin, no `/api` suffix. |
+| `MEDIA_STORAGE_PROVIDER` | Yes | `cloudinary` | Required on Render because local disk is ephemeral. |
+| `CLOUDINARY_CLOUD_NAME` | Yes | none | Required for admin uploads. |
+| `CLOUDINARY_API_KEY` | Yes | none | Required for admin uploads. |
+| `CLOUDINARY_API_SECRET` | Yes | none | Required for admin uploads. |
 
 ## Feature-Specific Render Environment Variables
 
 | Variable | Required When | Default | Notes |
 | --- | --- | --- | --- |
-| `MEDIA_STORAGE_PROVIDER` | Uploads | `cloudinary` | Recommended on Render because local disk is ephemeral. |
-| `CLOUDINARY_CLOUD_NAME` | Cloudinary uploads | none | Required for admin uploads. |
-| `CLOUDINARY_API_KEY` | Cloudinary uploads | none | Required for admin uploads. |
-| `CLOUDINARY_API_SECRET` | Cloudinary uploads | none | Required for admin uploads. |
-| `SMTP_HOST` | Email | `smtp.gmail.com` | Optional until live email is needed. |
-| `SMTP_PORT` | Email | `587` | Optional until live email is needed. |
-| `SMTP_SECURE` | Email | `false` | Optional until live email is needed. |
-| `SMTP_USER` | Email | none | Optional until live email is needed. |
-| `SMTP_PASS` | Email | none | Optional until live email is needed. |
-| `EMAIL_FROM_NAME` | Email | `Ananya Boutique` | Display sender name. |
-| `EMAIL_FROM_ADDRESS` | Email | none | Required with SMTP. |
-| `PAYTM_*` | Paytm payments | disabled | Set only with complete production credentials. |
-| `PHONEPE_*` | PhonePe payments | disabled | Set only with complete production credentials. |
+| `SMTP_HOST` | Email | `smtp.gmail.com` | Do not add until live email is needed. |
+| `SMTP_PORT` | Email | `587` | Do not add until live email is needed. |
+| `SMTP_SECURE` | Email | `false` | Do not add until live email is needed. |
+| `SMTP_USER` | Email | none | Do not add until live email is needed. |
+| `SMTP_PASS` | Email | none | Do not add until live email is needed. |
+| `EMAIL_FROM_NAME` | Email | `Ananya Boutique` | Do not add until live email is needed. |
+| `EMAIL_FROM_ADDRESS` | Email | none | Do not add until live email is needed. |
+| `PAYMENT_PROVIDER` | Online payments | none | Do not add until Paytm or PhonePe credentials are issued. |
+| `PAYTM_*` | Paytm payments | disabled | Do not add until complete Paytm production credentials are issued. |
+| `PHONEPE_*` | PhonePe payments | disabled | Do not add until complete PhonePe production credentials are issued. |
 | `FIREBASE_*` | Push/GCS media | none | Optional when using Cloudinary-only uploads. |
 | `REDIS_URL` | Distributed cache/rate limiting | none | Optional. |
 | `COOKIE_DOMAIN` | Custom same-site subdomains | none | Leave blank for Vercel + Render cross-site setup. |
+
+The Blueprint intentionally omits SMTP, Paytm, and PhonePe variables. Email
+sending is skipped safely without SMTP credentials. Online payment providers
+remain disabled until their `*_ENABLED=true` flag and full credential set are
+added.
 
 ## MongoDB Atlas
 
