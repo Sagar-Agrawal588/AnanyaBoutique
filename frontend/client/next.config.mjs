@@ -109,7 +109,6 @@ const sharedSecurityHeaders = [
 ];
 
 const nextConfig = {
-  outputFileTracingRoot: configDir,
   turbopack: {
     root: configDir,
   },
