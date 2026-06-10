@@ -8,6 +8,10 @@ export const BRAND_TAGLINE =
 
 export const BRAND_SHORT_NAME = "Ananya";
 
+export const OFFICIAL_BRAND_LOGO_SRC = "/ab_logo.png";
+export const OFFICIAL_BRAND_LOGO_WIDTH = 1254;
+export const OFFICIAL_BRAND_LOGO_HEIGHT = 1254;
+
 const LEGACY_BRAND_REPLACEMENTS = [
   [/Healthy OneGram/gi, BRAND_NAME],
   [/Healthy One Gram/gi, BRAND_NAME],
@@ -52,10 +56,10 @@ export const sanitizeBrandText = (value, fallback = "") => {
 
 const makeLogo = ({
   slot,
-  src,
+  src = OFFICIAL_BRAND_LOGO_SRC,
   alt,
-  width,
-  height,
+  width = OFFICIAL_BRAND_LOGO_WIDTH,
+  height = OFFICIAL_BRAND_LOGO_HEIGHT,
   lockup = BRAND_NAME,
   tagline = BRAND_TAGLINE,
 }) => ({
@@ -66,8 +70,7 @@ const makeLogo = ({
   height,
   lockup,
   tagline,
-  replaceNote:
-    "Replace this slot source when the final Ananya Boutique logo system is approved.",
+  official: true,
 });
 
 export const brandAssets = {
@@ -78,57 +81,36 @@ export const brandAssets = {
   logos: {
     main: makeLogo({
       slot: "main",
-      src: "",
       alt: "Ananya Boutique main logo",
-      width: 72,
-      height: 72,
     }),
     header: makeLogo({
       slot: "header",
-      src: "",
       alt: "Ananya Boutique header logo",
-      width: 72,
-      height: 72,
     }),
     mobile: makeLogo({
       slot: "mobile",
-      src: "",
       alt: "Ananya Boutique mobile logo",
-      width: 48,
-      height: 48,
       lockup: "AB",
       tagline: "",
     }),
     footer: makeLogo({
       slot: "footer",
-      src: "",
       alt: "Ananya Boutique footer logo",
-      width: 58,
-      height: 58,
       tagline: "Trusted Since 2012",
     }),
     admin: makeLogo({
       slot: "admin",
-      src: "/logo.png",
       alt: "Ananya Boutique admin logo",
-      width: 160,
-      height: 56,
       tagline: "Admin",
     }),
     login: makeLogo({
       slot: "login",
-      src: "/logo.png",
       alt: "Ananya Boutique login logo",
-      width: 160,
-      height: 56,
       tagline: "Secure Sign In",
     }),
     invoice: makeLogo({
       slot: "invoice",
-      src: "/logo.png",
       alt: "Ananya Boutique invoice logo",
-      width: 160,
-      height: 56,
       tagline: "Invoice",
     }),
   },
@@ -136,62 +118,60 @@ export const brandAssets = {
     src: "/favicon.ico",
     type: "image/x-icon",
     sizes: "32x32",
-    alt: "Ananya Boutique favicon placeholder",
-    replaceNote:
-      "Replace with final favicon file when the final logo system is approved.",
+    alt: "Ananya Boutique favicon",
   },
   appleTouchIcon: {
     src: "/favicon.png",
     type: "image/png",
     sizes: "180x180",
-    alt: "Ananya Boutique app icon placeholder",
+    alt: "Ananya Boutique app icon",
   },
   social: {
     openGraphImage: {
-      src: "/logo-og-v2.png",
-      width: 512,
-      height: 512,
+      src: OFFICIAL_BRAND_LOGO_SRC,
+      width: OFFICIAL_BRAND_LOGO_WIDTH,
+      height: OFFICIAL_BRAND_LOGO_HEIGHT,
       alt: "Ananya Boutique social sharing image",
     },
     twitterImage: {
-      src: "/logo-og-v2.png",
-      width: 512,
-      height: 512,
+      src: OFFICIAL_BRAND_LOGO_SRC,
+      width: OFFICIAL_BRAND_LOGO_WIDTH,
+      height: OFFICIAL_BRAND_LOGO_HEIGHT,
       alt: "Ananya Boutique Twitter sharing image",
     },
     shareImage: {
-      src: "/logo-og-v2.png",
-      width: 512,
-      height: 512,
+      src: OFFICIAL_BRAND_LOGO_SRC,
+      width: OFFICIAL_BRAND_LOGO_WIDTH,
+      height: OFFICIAL_BRAND_LOGO_HEIGHT,
       alt: "Ananya Boutique share image",
     },
     socialShareImage: {
-      src: "/logo-og-v2.png",
-      width: 512,
-      height: 512,
+      src: OFFICIAL_BRAND_LOGO_SRC,
+      width: OFFICIAL_BRAND_LOGO_WIDTH,
+      height: OFFICIAL_BRAND_LOGO_HEIGHT,
       alt: "Ananya Boutique social share image",
     },
   },
   pwa: {
     manifest: "/manifest.webmanifest",
-    themeColor: "#2f1325",
-    backgroundColor: "#fffaf6",
+    themeColor: "#050505",
+    backgroundColor: "#050505",
     icon192: {
-      src: "/logo.png",
+      src: "/ab-icon-192.png",
       sizes: "192x192",
       type: "image/png",
       purpose: "any maskable",
     },
     icon512: {
-      src: "/logo-og-v2.png",
+      src: "/ab-icon-512.png",
       sizes: "512x512",
       type: "image/png",
       purpose: "any maskable",
     },
   },
   notification: {
-    icon: "/logo.png",
-    badge: "/logo.png",
+    icon: "/ab-icon-192.png",
+    badge: "/ab-icon-192.png",
   },
 };
 

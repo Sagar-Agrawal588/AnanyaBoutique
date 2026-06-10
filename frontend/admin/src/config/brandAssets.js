@@ -7,13 +7,16 @@ export const BRAND_TAGLINE =
   "Fashion, Beauty & Accessories Curated With Love Since 2012";
 
 export const ADMIN_BRAND_TITLE = "Ananya Boutique Admin";
+export const OFFICIAL_BRAND_LOGO_SRC = "/ab_logo.png";
+export const OFFICIAL_BRAND_LOGO_WIDTH = 1254;
+export const OFFICIAL_BRAND_LOGO_HEIGHT = 1254;
 
 const makeLogo = ({
   slot,
-  src,
+  src = OFFICIAL_BRAND_LOGO_SRC,
   alt,
-  width,
-  height,
+  width = OFFICIAL_BRAND_LOGO_WIDTH,
+  height = OFFICIAL_BRAND_LOGO_HEIGHT,
   lockup = BRAND_NAME,
   tagline = "Admin",
 }) => ({
@@ -24,8 +27,7 @@ const makeLogo = ({
   height,
   lockup,
   tagline,
-  replaceNote:
-    "Replace this slot source when the final Ananya Boutique logo system is approved.",
+  official: true,
 });
 
 export const brandAssets = {
@@ -36,112 +38,94 @@ export const brandAssets = {
   logos: {
     admin: makeLogo({
       slot: "admin",
-      src: "/logo.png",
       alt: "Ananya Boutique admin logo",
-      width: 160,
-      height: 56,
     }),
     login: makeLogo({
       slot: "login",
-      src: "/logo.png",
       alt: "Ananya Boutique login logo",
-      width: 160,
-      height: 56,
       tagline: "Secure Sign In",
     }),
     header: makeLogo({
       slot: "header",
-      src: "/logo.png",
       alt: "Ananya Boutique admin header logo",
-      width: 120,
-      height: 42,
     }),
     mobile: makeLogo({
       slot: "mobile",
-      src: "/logo.png",
       alt: "Ananya Boutique admin mobile logo",
-      width: 44,
-      height: 44,
       lockup: "AB",
       tagline: "",
     }),
     footer: makeLogo({
       slot: "footer",
-      src: "/logo.png",
       alt: "Ananya Boutique admin footer logo",
-      width: 120,
-      height: 42,
       tagline: "Trusted Since 2012",
     }),
     invoice: makeLogo({
       slot: "invoice",
-      src: "/logo.png",
       alt: "Ananya Boutique invoice logo",
-      width: 160,
-      height: 56,
       tagline: "Invoice",
     }),
   },
   favicon: {
-    src: "/logo.png",
+    src: "/ab-icon-192.png",
     type: "image/png",
-    sizes: "32x32",
-    alt: "Ananya Boutique admin favicon placeholder",
+    sizes: "192x192",
+    alt: "Ananya Boutique admin favicon",
   },
   appleTouchIcon: {
-    src: "/logo.png",
+    src: "/ab-icon-192.png",
     type: "image/png",
-    sizes: "180x180",
-    alt: "Ananya Boutique admin app icon placeholder",
+    sizes: "192x192",
+    alt: "Ananya Boutique admin app icon",
   },
   social: {
     openGraphImage: {
-      src: "/logo-og-v2.png",
-      width: 512,
-      height: 512,
+      src: OFFICIAL_BRAND_LOGO_SRC,
+      width: OFFICIAL_BRAND_LOGO_WIDTH,
+      height: OFFICIAL_BRAND_LOGO_HEIGHT,
       alt: "Ananya Boutique admin social image",
     },
     twitterImage: {
-      src: "/logo-og-v2.png",
-      width: 512,
-      height: 512,
+      src: OFFICIAL_BRAND_LOGO_SRC,
+      width: OFFICIAL_BRAND_LOGO_WIDTH,
+      height: OFFICIAL_BRAND_LOGO_HEIGHT,
       alt: "Ananya Boutique admin Twitter image",
     },
     shareImage: {
-      src: "/logo-og-v2.png",
-      width: 512,
-      height: 512,
+      src: OFFICIAL_BRAND_LOGO_SRC,
+      width: OFFICIAL_BRAND_LOGO_WIDTH,
+      height: OFFICIAL_BRAND_LOGO_HEIGHT,
       alt: "Ananya Boutique admin share image",
     },
     socialShareImage: {
-      src: "/logo-og-v2.png",
-      width: 512,
-      height: 512,
+      src: OFFICIAL_BRAND_LOGO_SRC,
+      width: OFFICIAL_BRAND_LOGO_WIDTH,
+      height: OFFICIAL_BRAND_LOGO_HEIGHT,
       alt: "Ananya Boutique admin social share image",
     },
   },
   email: {
     logo: {
-      src: "/logo-og-v2.png",
-      alt: "Ananya Boutique email logo placeholder",
+      src: OFFICIAL_BRAND_LOGO_SRC,
+      alt: "Ananya Boutique email logo",
     },
     heroPlaceholder: {
-      src: "/logo-header.png",
-      alt: "Ananya Boutique email hero placeholder",
+      src: OFFICIAL_BRAND_LOGO_SRC,
+      alt: "Ananya Boutique email hero",
     },
   },
   pwa: {
     manifest: "/admin/manifest.webmanifest",
-    themeColor: "#2f1325",
-    backgroundColor: "#fffaf6",
+    themeColor: "#050505",
+    backgroundColor: "#050505",
     icon192: {
-      src: "/logo.png",
+      src: "/ab-icon-192.png",
       sizes: "192x192",
       type: "image/png",
       purpose: "any maskable",
     },
     icon512: {
-      src: "/logo-og-v2.png",
+      src: "/ab-icon-512.png",
       sizes: "512x512",
       type: "image/png",
       purpose: "any maskable",

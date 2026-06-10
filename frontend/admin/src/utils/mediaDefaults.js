@@ -34,8 +34,8 @@ const getMediaApiBaseUrl = () =>
 const buildMediaProxyUrl = (objectPath) =>
   `${getMediaApiBaseUrl()}/media/gcs?path=${encodeURIComponent(objectPath)}`;
 
-const LOCAL_ADMIN_PLACEHOLDER_IMAGE = "/logo.png";
-const LOCAL_PRODUCT_FALLBACK_IMAGE = "/logo-og-v2.png";
+const LOCAL_ADMIN_PLACEHOLDER_IMAGE = "/ab_logo.png";
+const LOCAL_PRODUCT_FALLBACK_IMAGE = "/ab_logo.png";
 
 export const ADMIN_PLACEHOLDER_IMAGE_PATH =
   "ananyaboutique/system/admin-placeholder.png";

@@ -18,7 +18,7 @@ const BRAND_NAME = "Ananya Boutique";
 const BRAND_TAGLINE = "Fashion, Beauty & Accessories Curated With Love Since 2012";
 const BRAND_DESCRIPTION =
   "Fashion, beauty, and accessories curated with love since 2012.";
-const LOCAL_PRODUCT_FALLBACK_IMAGE = "/logo-og-v2.png";
+const LOCAL_PRODUCT_FALLBACK_IMAGE = "/product-boutique-placeholder.svg";
 const LEGACY_PRODUCT_FALLBACK_IMAGE =
   "ananyaboutique/system/product-default.webp";
 

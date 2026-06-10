@@ -93,7 +93,9 @@ const nextConfig = {
   },
   async rewrites() {
     return [
-      { source: "/logo.png", destination: "/admin/logo.png" },
+      { source: "/ab_logo.png", destination: "/admin/ab_logo.png" },
+      { source: "/ab-icon-192.png", destination: "/admin/ab-icon-192.png" },
+      { source: "/ab-icon-512.png", destination: "/admin/ab-icon-512.png" },
       { source: "/profile.png", destination: "/admin/profile.png" },
       { source: "/pattern.png", destination: "/admin/pattern.png" },
     ];

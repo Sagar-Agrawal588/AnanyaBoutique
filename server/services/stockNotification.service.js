@@ -224,7 +224,7 @@ const buildBackInStockEmailPayload = ({
     : `${productName} is back in stock`;
   const previewImage = String(
     toAbsoluteUrl(product?.thumbnail || product?.images?.[0]) ||
-      `${frontendBaseUrl}/logo.png`,
+      `${frontendBaseUrl}/ab_logo.png`,
   ).trim();
 
   return {

@@ -75,7 +75,7 @@ const seedEntry = cloneSeoPageEntry({
   heroTitle: "Style breakfast ideas that are realistic on busy mornings",
   heroSubtitle:
     "Use this landing page to target breakfast-intent SEO traffic with a clearer hero message, structured body content, FAQs, and a direct CTA into the catalog.",
-  heroImageUrl: "/logo-og-v2.png",
+  heroImageUrl: "/ab_logo.png",
   heroImageAlt: "Ananya Boutique boutique style SEO landing banner",
   ctaLabel: "Shop Breakfast-Friendly Products",
   ctaHref: "/products",

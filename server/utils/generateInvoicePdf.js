@@ -167,15 +167,13 @@ const resolveInvoiceLogoPath = (preferredPath = "") => {
     resolveLocalPath(preferredPath),
     resolveLocalPath(process.env.INVOICE_LOGO_PATH || ""),
     path.join(SERVER_ROOT, "assets", "invoice-logo.png"),
-    path.join(SERVER_ROOT, "assets", "logo.png"),
-    path.join(SERVER_ROOT, "..", "frontend", "client", "public", "logo.png"),
     path.join(
       SERVER_ROOT,
       "..",
       "frontend",
       "client",
       "public",
-      "logo-og-v2.png",
+      "ab_logo.png",
     ),
     path.join(SERVER_ROOT, "..", "frontend", "client", "public", "logo.svg"),
   ].filter(Boolean);

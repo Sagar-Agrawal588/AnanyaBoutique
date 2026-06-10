@@ -513,7 +513,7 @@ settingsSchema.statics.defaultSettings = [
       imageAltTexts: [
         {
           label: "Logo",
-          target: "/logo.png",
+          target: "/ab_logo.png",
           altText: "Ananya Boutique logo",
           titleText: "Ananya Boutique",
           notes: "Keep the brand logo alt text short.",

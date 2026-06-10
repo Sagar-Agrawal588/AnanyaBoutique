@@ -13,8 +13,8 @@ const serverRoot = path.resolve(__dirname, "..");
 dotenv.config({ path: path.resolve(serverRoot, ".env") });
 
 const siteUrl = "https://ananyaboutique.com";
-const logoUrl = `${siteUrl}/logo-og-v2.png`;
-const heroImageUrl = `${siteUrl}/logo-header.png`;
+const logoUrl = `${siteUrl}/ab_logo.png`;
+const heroImageUrl = `${siteUrl}/ab_logo.png`;
 
 const html = `
 <div style="margin:0;padding:20px 0;background:#f4f6fb;">

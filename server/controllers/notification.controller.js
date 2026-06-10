@@ -694,8 +694,8 @@ export const sendOfferNotification = async (coupon, options = {}) => {
             notification: {
               title: notification.title,
               body: notification.body,
-              icon: `${frontendBaseUrl}/logo.png`,
-              badge: `${frontendBaseUrl}/logo.png`,
+              icon: `${frontendBaseUrl}/ab-icon-192.png`,
+              badge: `${frontendBaseUrl}/ab-icon-192.png`,
               tag: data.notificationId || data.type || "offer",
             },
             fcmOptions: {
@@ -878,8 +878,8 @@ export const sendOrderUpdateNotification = async (order, newStatus) => {
         notification: {
           title: notification.title,
           body: notification.body,
-          icon: `${frontendBaseUrl}/logo.png`,
-          badge: `${frontendBaseUrl}/logo.png`,
+          icon: `${frontendBaseUrl}/ab-icon-192.png`,
+          badge: `${frontendBaseUrl}/ab-icon-192.png`,
           tag: data.notificationId || "order_update",
           requireInteraction: true,
         },

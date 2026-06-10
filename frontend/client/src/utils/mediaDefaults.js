@@ -22,14 +22,14 @@ const buildMediaProxyUrl = (objectPath) =>
 
 const LOCAL_PRODUCT_FALLBACK_IMAGE = "/product-boutique-placeholder.svg";
 const LOCAL_HOME_SLIDE_FALLBACK_IMAGES = [
-  "/logo-og-v2.png",
-  "/logo-header.png",
-  "/logo.png",
+  "/ab_logo.png",
+  "/ab_logo.png",
+  "/ab_logo.png",
 ];
 const LOCAL_BANNER_FALLBACK_IMAGES = [
-  "/logo-og-v2.png",
-  "/logo-header.png",
-  "/logo.png",
+  "/ab_logo.png",
+  "/ab_logo.png",
+  "/ab_logo.png",
 ];
 
 export const DEFAULT_PRODUCT_IMAGE_PATH =
@@ -78,8 +78,6 @@ export const LEGACY_LOCAL_MEDIA_MAP = {
   "/product_placeholder.png": DEFAULT_PRODUCT_IMAGE,
   "/product_1.png": DEFAULT_PRODUCT_IMAGE,
   "/product_1.webp": DEFAULT_PRODUCT_IMAGE,
-  "/logo-og-v2.png": DEFAULT_PRODUCT_IMAGE,
-  "/logo-header.png": DEFAULT_PRODUCT_IMAGE,
   "/slide_1.webp": DEFAULT_HOME_SLIDES[0],
   "/slide_2.webp": DEFAULT_HOME_SLIDES[1],
   "/slide_3.webp": DEFAULT_HOME_SLIDES[2],
@@ -89,8 +87,6 @@ export const LEGACY_LOCAL_MEDIA_MAP = {
   "product_placeholder.png": DEFAULT_PRODUCT_IMAGE,
   "product_1.png": DEFAULT_PRODUCT_IMAGE,
   "product_1.webp": DEFAULT_PRODUCT_IMAGE,
-  "logo-og-v2.png": DEFAULT_PRODUCT_IMAGE,
-  "logo-header.png": DEFAULT_PRODUCT_IMAGE,
   "slide_1.webp": DEFAULT_HOME_SLIDES[0],
   "slide_2.webp": DEFAULT_HOME_SLIDES[1],
   "slide_3.webp": DEFAULT_HOME_SLIDES[2],

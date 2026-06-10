@@ -126,14 +126,8 @@ const resolvePartnerApiRuntimeBaseUrl = (req) => {
 const resolvePartnerGuideLogoPath = () => {
   const cwd = process.cwd();
   const candidates = [
-    path.resolve(cwd, "frontend", "admin", "public", "logo.png"),
-    path.resolve(cwd, "frontend", "client", "public", "logo.png"),
-    path.resolve(cwd, "..", "frontend", "admin", "public", "logo.png"),
-    path.resolve(cwd, "..", "frontend", "client", "public", "logo.png"),
-    path.resolve(cwd, "frontend", "admin", "public", "logo-og-v2.png"),
-    path.resolve(cwd, "frontend", "client", "public", "logo-og-v2.png"),
-    path.resolve(cwd, "..", "frontend", "admin", "public", "logo-og-v2.png"),
-    path.resolve(cwd, "..", "frontend", "client", "public", "logo-og-v2.png"),
+    path.resolve(cwd, "frontend", "client", "public", "ab_logo.png"),
+    path.resolve(cwd, "..", "frontend", "client", "public", "ab_logo.png"),
   ];
 
   return candidates.find((filePath) => fs.existsSync(filePath)) || null;
