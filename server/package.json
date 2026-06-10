@@ -3,6 +3,10 @@
   "version": "1.0.0",
   "main": "index.js",
   "type": "module",
+  "engines": {
+    "node": "22.x",
+    "npm": ">=10"
+  },
   "scripts": {
     "start": "node index.js",
     "build": "node -e \"console.log('Server build: no transpilation required')\"",
@@ -37,8 +41,7 @@
     "backfill:order-item-sku-hsn": "node scripts/backfillOrderItemSkuHsn.mjs",
     "invoices:regenerate": "node scripts/regenerateAllInvoices.mjs",
     "normalize:variant-weights": "node scripts/normalizeVariantWeights.mjs",
-    "cleanup:product-page-config": "node scripts/cleanupProductPageSnapshotOverrides.mjs"
-    ,
+    "cleanup:product-page-config": "node scripts/cleanupProductPageSnapshotOverrides.mjs",
     "worker:newsletter": "node workers/newsletterWorker.js"
   },
   "keywords": [],

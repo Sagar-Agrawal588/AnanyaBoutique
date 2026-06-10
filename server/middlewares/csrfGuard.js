@@ -9,6 +9,12 @@ const CSRF_EXEMPT_PATH_PREFIXES = [
 const CSRF_EXEMPT_PATHS = new Set([
   "/api/admin/google-login",
   "/api/admin/login",
+  "/api/auth/authWithGoogle",
+  "/api/auth/google-login",
+  "/api/auth/google-register",
+  "/api/auth/login",
+  "/api/auth/refresh-token",
+  "/api/auth/register",
   "/api/influencers/login",
   "/api/influencers/refresh-token",
   "/api/user/authWithGoogle",

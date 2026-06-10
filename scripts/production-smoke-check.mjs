@@ -156,33 +156,49 @@ const verifyProductImages = async ({ backendUrl, origin }) => {
   );
 };
 
-const verifyAdminLogin = async ({ backendUrl, origin, adminEmail }) => {
-  const response = await fetchWithTimeout(`${backendUrl}/api/admin/login`, {
+const verifyPostRoute = async ({
+  backendUrl,
+  origin,
+  path,
+  body = {},
+  label = path,
+  maxExpectedStatus = 499,
+}) => {
+  const response = await fetchWithTimeout(`${backendUrl}${path}`, {
     method: "POST",
     headers: {
       Origin: origin,
       Accept: "application/json",
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      email: adminEmail,
-      password: "__smoke_test_invalid_password__",
-      rememberMe: true,
-    }),
+    body: JSON.stringify(body),
   });
 
+  assert(response.status !== 404, `${label} returned 404`);
   assert(
-    response.status !== 404,
-    "Admin login route returned 404 during smoke test",
-  );
-  assert(
-    response.status < 500,
-    `Admin login returned server error status ${response.status}`,
+    response.status <= maxExpectedStatus,
+    `${label} returned unexpected status ${response.status}`,
   );
   assert(
     isAllowedCorsOrigin(response, origin),
-    `Admin login missing expected CORS headers for ${origin}`,
+    `${label} missing expected CORS headers for ${origin}`,
   );
+
+  return response;
+};
+
+const verifyAdminLogin = async ({ backendUrl, origin, adminEmail }) => {
+  const response = await verifyPostRoute({
+    backendUrl,
+    origin,
+    path: "/api/admin/login",
+    label: "Admin login",
+    body: {
+      email: adminEmail,
+      password: "__smoke_test_invalid_password__",
+      rememberMe: true,
+    },
+  });
 
   const payload = await response.json();
   assert(
@@ -191,26 +207,64 @@ const verifyAdminLogin = async ({ backendUrl, origin, adminEmail }) => {
   );
 };
 
-const verifyUserLogin = async ({ backendUrl, origin }) => {
-  const response = await fetchWithTimeout(`${backendUrl}/api/user/login`, {
-    method: "POST",
-    headers: {
-      Origin: origin,
-      Accept: "application/json",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
+const verifyAuthAliasLogin = async ({ backendUrl, origin }) => {
+  await verifyPostRoute({
+    backendUrl,
+    origin,
+    path: "/api/auth/login",
+    label: "Auth alias login",
+    body: {
       email: "__smoke_test_missing_user__@example.com",
       password: "__smoke_test_invalid_password__",
-    }),
+    },
   });
+};
 
-  assert(response.status !== 404, "User login route returned 404");
-  assert(response.status < 500, `User login returned ${response.status}`);
-  assert(
-    isAllowedCorsOrigin(response, origin),
-    `User login missing expected CORS headers for ${origin}`,
-  );
+const verifyUserLogin = async ({ backendUrl, origin }) => {
+  await verifyPostRoute({
+    backendUrl,
+    origin,
+    path: "/api/user/login",
+    label: "User login",
+    body: {
+      email: "__smoke_test_missing_user__@example.com",
+      password: "__smoke_test_invalid_password__",
+    },
+  });
+};
+
+const verifySocketIoHandshake = async ({ backendUrl, origin }) => {
+  if (typeof WebSocket !== "function") {
+    console.warn(
+      "[production-smoke-check] WebSocket is unavailable in this Node runtime; skipping Socket.IO handshake.",
+    );
+    return;
+  }
+
+  const socketUrl = `${backendUrl.replace(/^http/i, "ws")}/socket.io/?EIO=4&transport=websocket`;
+
+  await new Promise((resolve, reject) => {
+    const socket = new WebSocket(socketUrl);
+    const timer = setTimeout(() => {
+      socket.close();
+      reject(new Error(`Socket.IO websocket handshake timed out for ${origin}`));
+    }, DEFAULT_TIMEOUT_MS);
+
+    socket.addEventListener("message", (event) => {
+      const payload = String(event?.data || "");
+      if (payload.startsWith("0")) {
+        clearTimeout(timer);
+        socket.close();
+        resolve();
+      }
+    });
+
+    socket.addEventListener("error", () => {
+      clearTimeout(timer);
+      socket.close();
+      reject(new Error(`Socket.IO websocket handshake failed for ${origin}`));
+    });
+  });
 };
 
 const main = async () => {
@@ -235,6 +289,12 @@ const main = async () => {
     await verifyCorsPreflight({
       backendUrl: normalizedBackendUrl,
       origin: normalizedOrigin,
+      path: "/api/auth/login",
+      method: "POST",
+    });
+    await verifyCorsPreflight({
+      backendUrl: normalizedBackendUrl,
+      origin: normalizedOrigin,
       path: "/api/admin/login",
       method: "POST",
     });
@@ -250,6 +310,18 @@ const main = async () => {
       path: "/api/products",
       method: "GET",
     });
+    await verifyCorsPreflight({
+      backendUrl: normalizedBackendUrl,
+      origin: normalizedOrigin,
+      path: "/api/orders",
+      method: "POST",
+    });
+    await verifyCorsPreflight({
+      backendUrl: normalizedBackendUrl,
+      origin: normalizedOrigin,
+      path: "/api/upload/single",
+      method: "POST",
+    });
   }
 
   console.log("[production-smoke-check] Verifying login endpoints");
@@ -259,6 +331,10 @@ const main = async () => {
     adminEmail,
   });
   await verifyUserLogin({
+    backendUrl: normalizedBackendUrl,
+    origin: clientOrigin,
+  });
+  await verifyAuthAliasLogin({
     backendUrl: normalizedBackendUrl,
     origin: clientOrigin,
   });
@@ -277,7 +353,39 @@ const main = async () => {
       origin: normalizedOrigin,
       path: "/api/products",
     });
+    await verifyJsonGet({
+      backendUrl: normalizedBackendUrl,
+      origin: normalizedOrigin,
+      path: "/api/categories",
+    });
   }
+
+  console.log("[production-smoke-check] Verifying payment/order/upload routes");
+  await verifyPostRoute({
+    backendUrl: normalizedBackendUrl,
+    origin: clientOrigin,
+    path: "/api/payment",
+    label: "Payment status alias",
+  });
+  await verifyPostRoute({
+    backendUrl: normalizedBackendUrl,
+    origin: clientOrigin,
+    path: "/api/orders",
+    label: "Order creation validation",
+  });
+  await verifyPostRoute({
+    backendUrl: normalizedBackendUrl,
+    origin: adminOrigin,
+    path: "/api/upload/single",
+    label: "Upload auth guard",
+    maxExpectedStatus: 401,
+  });
+
+  console.log("[production-smoke-check] Verifying Socket.IO");
+  await verifySocketIoHandshake({
+    backendUrl: normalizedBackendUrl,
+    origin: clientOrigin,
+  });
 
   console.log("[production-smoke-check] Verifying product image delivery");
   await verifyProductImages({

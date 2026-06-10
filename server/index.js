@@ -5,6 +5,7 @@ import dotenv from "dotenv";
 import express from "express";
 import helmet from "helmet";
 import http from "http";
+import mongoose from "mongoose";
 import morgan from "morgan";
 import dns from "node:dns";
 import path from "path";
@@ -285,7 +286,10 @@ if (accessTokenSecret === refreshTokenSecret) {
 
 // Route imports
 import { initializeFirebaseAdmin } from "./config/firebaseAdmin.js";
-import { startOrderPaymentReminderJob } from "./controllers/order.controller.js";
+import {
+  getPaymentGatewayStatus,
+  startOrderPaymentReminderJob,
+} from "./controllers/order.controller.js";
 import { initializeSettings } from "./controllers/settings.controller.js";
 import { initSocket } from "./realtime/socket.js";
 import aboutPageRouter from "./routes/aboutPage.route.js";
@@ -776,6 +780,7 @@ app.use("/api", publicGetLimiter);
 app.use("/api/about", generalLimiter, aboutPageRouter);
 app.use("/api", analyticsLimiter, trackingRouter);
 app.use("/api/analytics", analyticsLimiter, analyticsRouter);
+app.use("/api/auth", generalLimiter, userRouter);
 app.use("/api/user", generalLimiter, userRouter);
 app.use("/api/admin", adminLimiter, adminAuthRouter);
 app.use("/api/address", generalLimiter, addressRouter);
@@ -784,6 +789,9 @@ app.use("/api/categories", generalLimiter, categoryRouter);
 app.use("/api/banners", adminLimiter, bannerRouter);
 app.use("/api/home-slides", adminLimiter, homeSlideRouter);
 app.use("/api/blogs", adminLimiter, blogRouter);
+app.route("/api/payment")
+  .get(generalLimiter, getPaymentGatewayStatus)
+  .post(generalLimiter, getPaymentGatewayStatus);
 app.use("/api/orders", generalLimiter, orderRouter);
 app.use("/api/admin/orders", adminLimiter, adminOrdersRouter);
 app.use("/api/admin/analytics", adminLimiter, adminAnalyticsRouter);
@@ -991,10 +999,40 @@ connectDb()
     console.log(`[startup] NODE_ENV=${process.env.NODE_ENV || "development"}`);
     console.log(`[startup] binding host=${listenHost}`);
 
-    server.listen(activePort, listenHost, () => {
+    const activeServer = server.listen(activePort, listenHost, () => {
       console.log(`Server running on port ${activePort}`);
       console.log("API service started successfully");
     });
+
+    const shutdown = (signal) => {
+      console.log(`[shutdown] ${signal} received. Closing HTTP server.`);
+      activeServer.close(async (closeError) => {
+        if (closeError) {
+          console.error("[shutdown] HTTP server close failed:", closeError);
+          process.exit(1);
+        }
+
+        try {
+          await mongoose.connection.close(false);
+          console.log("[shutdown] MongoDB connection closed.");
+          process.exit(0);
+        } catch (error) {
+          console.error(
+            "[shutdown] MongoDB close failed:",
+            error?.message || error,
+          );
+          process.exit(1);
+        }
+      });
+
+      setTimeout(() => {
+        console.error("[shutdown] Forced exit after timeout.");
+        process.exit(1);
+      }, 10000).unref();
+    };
+
+    process.once("SIGTERM", () => shutdown("SIGTERM"));
+    process.once("SIGINT", () => shutdown("SIGINT"));
 
     try {
       startExpressbeesPolling();
@@ -1017,5 +1055,3 @@ connectDb()
     console.error("Server startup failed:", error?.message || error);
     process.exit(1);
   });
-
-// No custom shutdown handlers defined here; rely on default process behavior.
