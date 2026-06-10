@@ -9,7 +9,7 @@ env:
       - BUILD
       - RUNTIME
   - variable: NEXT_PUBLIC_ADMIN_URL
-    value: "https://admin.ananyaboutique.com/admin"
+    value: "https://ananyaboutique.com/admin"
     availability:
       - BUILD
       - RUNTIME

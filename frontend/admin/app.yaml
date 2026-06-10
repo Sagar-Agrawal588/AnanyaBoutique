@@ -3,7 +3,7 @@ service: admin
 
 build_env_variables:
   NEXT_PUBLIC_BACKEND_URL: "https://ananya-boutique-api.onrender.com"
-  NEXT_PUBLIC_ADMIN_URL: "https://admin.ananyaboutique.com/admin"
+  NEXT_PUBLIC_ADMIN_URL: "https://ananyaboutique.com/admin"
   NEXT_PUBLIC_CLIENT_URL: "https://ananyaboutique.com"
   NEXT_PUBLIC_API_URL: "https://ananya-boutique-api.onrender.com/api"
   NEXT_PUBLIC_APP_API_URL: "https://ananya-boutique-api.onrender.com/api"
@@ -18,7 +18,7 @@ build_env_variables:
 
 env_variables:
   NEXT_PUBLIC_BACKEND_URL: "https://ananya-boutique-api.onrender.com"
-  NEXT_PUBLIC_ADMIN_URL: "https://admin.ananyaboutique.com/admin"
+  NEXT_PUBLIC_ADMIN_URL: "https://ananyaboutique.com/admin"
   NEXT_PUBLIC_CLIENT_URL: "https://ananyaboutique.com"
   NEXT_PUBLIC_API_URL: "https://ananya-boutique-api.onrender.com/api"
   NEXT_PUBLIC_APP_API_URL: "https://ananya-boutique-api.onrender.com/api"

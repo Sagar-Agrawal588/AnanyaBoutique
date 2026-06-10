@@ -18,24 +18,16 @@
 Target admin URL:
 
 ```text
-https://admin.ananyaboutique.com/admin
-```
-
-This is the cleanest deployment with the current architecture because the admin is a separate Next.js application and already expects to run under `/admin`.
-
-If the business requires:
-
-```text
 https://ananyaboutique.com/admin
 ```
 
-then keep this admin app as a separate Vercel project and configure the customer frontend/domain layer to proxy `/admin/:path*` to the admin deployment. That setup is possible, but it is more complex than a subdomain because the customer storefront and admin app are separate Vercel projects.
+This is the selected long-term architecture. The admin remains a separate Next.js deployment with `basePath: "/admin"`, and the customer storefront rewrites `/admin` traffic to that admin zone.
 
 Recommended long-term setup:
 
 ```text
 Storefront: https://ananyaboutique.com
-Admin:      https://admin.ananyaboutique.com/admin
+Admin:      https://ananyaboutique.com/admin
 API:        https://ananya-boutique-api.onrender.com
 ```
 
@@ -47,14 +39,7 @@ Required for the Vercel Admin project:
 NEXT_PUBLIC_BACKEND_URL=https://ananya-boutique-api.onrender.com
 NEXT_PUBLIC_API_URL=https://ananya-boutique-api.onrender.com/api
 NEXT_PUBLIC_APP_API_URL=https://ananya-boutique-api.onrender.com/api
-NEXT_PUBLIC_ADMIN_URL=https://admin.ananyaboutique.com/admin
-NEXT_PUBLIC_CLIENT_URL=https://ananya-boutique-client.vercel.app
-NEXT_PUBLIC_SITE_URL=https://ananya-boutique-client.vercel.app
-```
-
-Update these after custom domain launch:
-
-```env
+NEXT_PUBLIC_ADMIN_URL=https://ananyaboutique.com/admin
 NEXT_PUBLIC_CLIENT_URL=https://ananyaboutique.com
 NEXT_PUBLIC_SITE_URL=https://ananyaboutique.com
 ```
@@ -75,11 +60,17 @@ NEXT_PUBLIC_FIREBASE_VAPID_KEY=
 Backend Render environment requirements for admin access:
 
 ```env
-ADMIN_URL=https://admin.ananyaboutique.com
+ADMIN_URL=https://ananyaboutique.com/admin
 CORS_ORIGINS=https://ananyaboutique.com,https://www.ananyaboutique.com,https://ananya-boutique-client.vercel.app,https://admin.ananyaboutique.com
 ```
 
-If the first Vercel admin deployment uses a generated Vercel URL before the custom domain is attached, add that exact generated URL to Render `CORS_ORIGINS` and redeploy/restart the backend.
+Customer Vercel project environment required for Multi-Zone routing:
+
+```env
+ADMIN_ZONE_URL=https://ananya-boutique-admin.vercel.app
+```
+
+Use the actual Admin Vercel deployment origin. Do not include `/admin`; the customer app adds that path in the rewrite target.
 
 ## Deployment Status
 
@@ -131,9 +122,9 @@ Backend CORS smoke:
 
 ```text
 OPTIONS https://ananya-boutique-api.onrender.com/api/admin/login
-Origin: https://admin.ananyaboutique.com
+Origin: https://ananyaboutique.com
 HTTP 204
-access-control-allow-origin: https://admin.ananyaboutique.com
+access-control-allow-origin: https://ananyaboutique.com
 access-control-allow-credentials: true
 ```
 
@@ -141,7 +132,7 @@ Admin auth route smoke:
 
 ```text
 POST https://ananya-boutique-api.onrender.com/api/admin/login
-Origin: https://admin.ananyaboutique.com
+Origin: https://ananyaboutique.com
 HTTP 400 for deliberately invalid credentials
 ```
 
@@ -169,7 +160,7 @@ Localhost references remain only as local-development guards. They are hostname-
 
 - The admin app has not been deployed automatically because Vercel credentials/project access are required.
 - A successful admin login has not been verified because production admin credentials were not available.
-- If deploying first to a generated Vercel admin URL, that generated URL must be added to Render `CORS_ORIGINS` until `admin.ananyaboutique.com` is active.
+- The customer Vercel project must set `ADMIN_ZONE_URL` to the Admin Vercel origin and redeploy before `/admin` can resolve.
 - If Google login is used, add the deployed admin domain to Firebase Authentication authorized domains.
 
 ## Manual Deployment Steps
@@ -183,9 +174,11 @@ Localhost references remain only as local-development guards. They are hostname-
 7. Set Node Version to `22.x`.
 8. Add all required environment variables listed above.
 9. Deploy from branch `main`.
-10. Add the custom domain `admin.ananyaboutique.com`.
-11. If the actual admin origin differs from `https://admin.ananyaboutique.com`, add it to Render `CORS_ORIGINS`.
-12. Smoke test login, dashboard, products, orders, uploads, settings, and logout.
+10. Copy the Admin Vercel deployment origin.
+11. In the Customer Vercel project, set `ADMIN_ZONE_URL` to that Admin origin.
+12. In the Customer Vercel project, assign `ananyaboutique.com` and `www.ananyaboutique.com`.
+13. Redeploy the Customer project so `/admin` rewrites become active.
+14. Smoke test login, dashboard, products, orders, uploads, settings, and logout at `https://ananyaboutique.com/admin`.
 
 ## Scalable Production Recommendation
 

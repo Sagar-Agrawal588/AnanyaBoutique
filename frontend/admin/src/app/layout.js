@@ -24,7 +24,7 @@ const geistMono = Geist_Mono({
 
 const adminUrl = String(
   process.env.NEXT_PUBLIC_ADMIN_URL ||
-    "https://admin.ananyaboutique.com/admin",
+    "https://ananyaboutique.com/admin",
 )
   .trim()
   .replace(/^["']|["']$/g, "")

@@ -155,6 +155,18 @@ const normalizeOrigin = (origin) =>
   String(origin || "")
     .trim()
     .replace(/\/+$/, "");
+const normalizeToHttpOrigin = (origin) => {
+  const normalized = normalizeOrigin(origin);
+  if (!normalized) return "";
+
+  try {
+    const parsed = new URL(normalized);
+    if (!/^https?:$/.test(parsed.protocol)) return normalized;
+    return `${parsed.protocol}//${parsed.host}`;
+  } catch {
+    return normalized;
+  }
+};
 const parseTrustedProxyHops = (value, fallback = 1) => {
   const parsed = Number.parseInt(String(value || "").trim(), 10);
   return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback;
@@ -173,7 +185,7 @@ const isLocalRequestHost = (value) =>
 const parseOriginList = (value) =>
   String(normalizeEnvValue(value) || "")
     .split(",")
-    .map(normalizeOrigin)
+    .map(normalizeToHttpOrigin)
     .filter((origin) => isHttpOrigin(origin));
 
 const requiredServerEnvVars = ["MONGO_URI"];

@@ -3,8 +3,8 @@ param(
   [string]$EnvFile = "",
   [string]$BackendUrl = "https://api.ananyaboutique.com",
   [string]$ClientUrl = "https://ananyaboutique.com",
-  [string]$AdminUrl = "https://admin.ananyaboutique.com",
-  [string]$CorsOrigins = "https://ananyaboutique.com,https://ananyaboutique.com,https://admin.ananyaboutique.com",
+  [string]$AdminUrl = "https://ananyaboutique.com/admin",
+  [string]$CorsOrigins = "https://ananyaboutique.com,https://www.ananyaboutique.com,https://ananya-boutique-client.vercel.app,https://admin.ananyaboutique.com",
   [switch]$DryRun
 )
 

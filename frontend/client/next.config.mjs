@@ -7,6 +7,12 @@ const DEFAULT_PUBLIC_API_URL =
   "https://ananya-boutique-api.onrender.com/api";
 const rawConfiguredApiUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
 const rawLocalDevApiUrl = process.env.NEXT_PUBLIC_LOCAL_API_URL?.trim();
+const rawConfiguredAdminZoneUrl =
+  process.env.ADMIN_ZONE_URL?.trim() ||
+  process.env.NEXT_PUBLIC_ADMIN_ZONE_URL?.trim();
+const rawLocalAdminZoneUrl =
+  process.env.LOCAL_ADMIN_ZONE_URL?.trim() ||
+  process.env.NEXT_PUBLIC_LOCAL_ADMIN_URL?.trim();
 
 const sanitizeUrl = (value) =>
   String(value || "")
@@ -35,6 +41,22 @@ const normalizeLoopbackUrl = (value) => {
     return sanitized;
   }
 };
+const normalizeAdminZoneOrigin = (value) => {
+  const sanitized = sanitizeUrl(value).replace(/\/admin$/i, "");
+  if (!sanitized) {
+    return "";
+  }
+
+  try {
+    const parsed = new URL(sanitized);
+    if (!/^https?:$/.test(parsed.protocol)) {
+      return "";
+    }
+    return `${parsed.protocol}//${parsed.host}`;
+  } catch {
+    return "";
+  }
+};
 
 const rawApiUrl =
   process.env.NODE_ENV === "production" && isLocalhostUrl(rawConfiguredApiUrl)
@@ -51,6 +73,11 @@ const resolvedDevApiUrl =
     : normalizedApiUrl;
 const parsedApiUrl = new URL(normalizedApiUrl);
 const parsedDevApiUrl = new URL(resolvedDevApiUrl);
+const resolvedAdminZoneOrigin = normalizeAdminZoneOrigin(
+  process.env.NODE_ENV !== "production" && rawLocalAdminZoneUrl
+    ? rawLocalAdminZoneUrl
+    : rawConfiguredAdminZoneUrl,
+);
 const firebaseProjectId = String(
   process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "",
 ).trim();
@@ -108,6 +135,18 @@ const sharedSecurityHeaders = [
     value: "strict-origin-when-cross-origin",
   },
 ];
+const adminZoneRewrites = resolvedAdminZoneOrigin
+  ? [
+      {
+        source: "/admin",
+        destination: `${resolvedAdminZoneOrigin}/admin`,
+      },
+      {
+        source: "/admin/:path*",
+        destination: `${resolvedAdminZoneOrigin}/admin/:path*`,
+      },
+    ]
+  : [];
 
 const nextConfig = {
   turbopack: {
@@ -152,10 +191,11 @@ const nextConfig = {
     ];
   },
   async rewrites() {
-    const rewrites = [];
+    const beforeFiles = [...adminZoneRewrites];
+    const fallback = [];
 
     if (firebaseProjectHost) {
-      rewrites.push(
+      beforeFiles.push(
         {
           source: "/__/auth/:path*",
           destination: `${firebaseProjectHost}/__/auth/:path*`,
@@ -168,11 +208,12 @@ const nextConfig = {
     }
 
     if (process.env.NODE_ENV === "production") {
-      return rewrites;
+      return {
+        beforeFiles,
+      };
     }
 
-    return [
-      ...rewrites,
+    fallback.push(
       {
         source: "/api/:path*",
         destination: `${resolvedDevApiUrl}/api/:path*`,
@@ -181,7 +222,12 @@ const nextConfig = {
         source: "/uploads/:path*",
         destination: `${resolvedDevApiUrl}/uploads/:path*`,
       },
-    ];
+    );
+
+    return {
+      beforeFiles,
+      fallback,
+    };
   },
   async headers() {
     return [

@@ -26,6 +26,8 @@ export default function robots() {
           "/verify",
           "/reset-password",
           "/forgot-password",
+          "/admin",
+          "/admin/",
         ],
       },
     ],
