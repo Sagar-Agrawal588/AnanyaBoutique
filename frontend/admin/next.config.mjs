@@ -69,6 +69,20 @@ const apiImagePattern = [
     pathname: "/api/media/**",
   },
 ];
+const freshDocumentHeaders = [
+  {
+    key: "Cache-Control",
+    value: "private, no-cache, no-store, max-age=0, must-revalidate",
+  },
+  {
+    key: "CDN-Cache-Control",
+    value: "no-store",
+  },
+  {
+    key: "Surrogate-Control",
+    value: "no-store",
+  },
+];
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -97,6 +111,19 @@ const nextConfig = {
       { source: "/ab-icon-512.png", destination: "/admin/ab-icon-512.png" },
       { source: "/profile.png", destination: "/admin/profile.png" },
       { source: "/pattern.png", destination: "/admin/pattern.png" },
+    ];
+  },
+  async headers() {
+    return [
+      {
+        source: "/",
+        headers: freshDocumentHeaders,
+      },
+      {
+        source:
+          "/:path((?!_next/|api/|.*\\.(?:avif|bmp|css|gif|ico|jpe?g|js|json|map|png|svg|txt|webp|woff2?|xml)$).*)",
+        headers: freshDocumentHeaders,
+      },
     ];
   },
   turbopack: {
