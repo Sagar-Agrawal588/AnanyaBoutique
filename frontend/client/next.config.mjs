@@ -2,12 +2,10 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const rawApiUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
+const DEFAULT_PUBLIC_API_URL = "https://api.ananyaboutique.com/api";
+const rawApiUrl =
+  process.env.NEXT_PUBLIC_API_URL?.trim() || DEFAULT_PUBLIC_API_URL;
 const rawLocalDevApiUrl = process.env.NEXT_PUBLIC_LOCAL_API_URL?.trim();
-
-if (!rawApiUrl) {
-  throw new Error("NEXT_PUBLIC_API_URL is not defined");
-}
 
 const sanitizeUrl = (value) =>
   String(value || "")
