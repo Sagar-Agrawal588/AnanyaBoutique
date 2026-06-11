@@ -48,20 +48,37 @@ jobs:
             --check "Client Build" \
             --check "Admin Build"
 
+      - name: Detect Firebase credentials
+        id: firebase_credentials
+        env:
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+        run: |
+          if [ -n "$GCP_SA_KEY" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+            echo "Firebase App Hosting credentials are configured."
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping Firebase App Hosting rollout because GCP_SA_KEY is not configured. Vercel remains the production client deployment target."
+          fi
+
       - name: Authenticate to Google Cloud
+        if: steps.firebase_credentials.outputs.available == 'true'
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
       - name: Setup Node
+        if: steps.firebase_credentials.outputs.available == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
       - name: Install Firebase CLI
+        if: steps.firebase_credentials.outputs.available == 'true'
         run: npm install -g firebase-tools@15.18.0
 
       - name: Validate Firebase App Hosting backend
+        if: steps.firebase_credentials.outputs.available == 'true'
         run: |
           test -n "$FIREBASE_PROJECT_ID"
           firebase apphosting:backends:get "$FIREBASE_APP_HOSTING_BACKEND" \
@@ -69,11 +86,13 @@ jobs:
             --non-interactive
 
       - name: Validate production API config
+        if: steps.firebase_credentials.outputs.available == 'true'
         run: |
           grep -q "ananyaboutique-api" frontend/client/apphosting.yaml
           ! grep -E "localhost|127\.0\.0\.1|ananyaboutique-backend" frontend/client/apphosting.yaml
 
       - name: Sync App Hosting secrets
+        if: steps.firebase_credentials.outputs.available == 'true'
         run: |
           set -euo pipefail
 
@@ -99,6 +118,7 @@ jobs:
           sync_secret "NEXT_PUBLIC_GOOGLE_MAPS_API_KEY" "$NEXT_PUBLIC_GOOGLE_MAPS_API_KEY"
 
       - name: Create Firebase App Hosting rollout
+        if: steps.firebase_credentials.outputs.available == 'true'
         run: |
           firebase apphosting:rollouts:create "$FIREBASE_APP_HOSTING_BACKEND" \
             --git-branch "${GITHUB_REF_NAME}" \

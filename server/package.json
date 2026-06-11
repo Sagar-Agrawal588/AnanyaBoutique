@@ -13,7 +13,7 @@
     "dev": "node scripts/devServer.mjs",
     "dev:direct": "nodemon index.js",
     "dev:memory": "node scripts/devServer.mjs --memory",
-    "test": "node --test",
+    "test": "node --test --test-concurrency=1",
     "test:partner:production": "node --test tests/partner.api.production.test.js",
     "test:analytics-smoke": "node scripts/analyticsSmokeTest.mjs",
     "test:partner:simulate": "node scripts/partnerApi/realWorldSimulation.mjs",
