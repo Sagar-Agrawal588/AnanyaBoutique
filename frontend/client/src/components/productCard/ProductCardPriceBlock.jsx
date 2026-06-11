@@ -17,17 +17,17 @@ const ProductCardPriceBlock = ({
   const safeSavings = toNumber(savings, 0);
 
   return (
-    <div>
+    <div className="leading-none">
       {safeOriginalPrice > safeFinalPrice && (
-        <span className="block text-[10px] font-medium text-gray-400 line-through">
+        <span className="mb-1 block text-[10px] font-semibold text-[#9b7b8d] line-through">
           {formatPrice(safeOriginalPrice)}
         </span>
       )}
-      <span className="block text-lg font-bold text-primary">
+      <span className="block text-[17px] font-black text-[#2f1325] sm:text-lg">
         {formatPrice(safeFinalPrice)}
       </span>
       {safeSavings > 0 && (
-        <span className="block text-[10px] font-medium text-emerald-600">
+        <span className="mt-1 block text-[10px] font-black uppercase tracking-[0.08em] text-[#8a4f1d]">
           Save {formatPrice(safeSavings)}
         </span>
       )}

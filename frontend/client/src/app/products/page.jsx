@@ -275,9 +275,15 @@ function CategoryArtworkSurface({ item }) {
 }
 
 const ProductsGridSkeleton = () => (
-    <div className="grid grid-cols-2 gap-3.5 sm:gap-5 md:grid-cols-3 lg:grid-cols-4">
+    <div className="grid grid-cols-2 gap-4 sm:gap-6 md:grid-cols-3 lg:grid-cols-4">
         {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
-            <div key={i} className="aspect-[3/4] animate-pulse rounded-[18px] bg-[#efe8e1] sm:aspect-[4/5] sm:rounded-[22px]" />
+            <div key={i} className="overflow-hidden rounded-[20px] border border-[#eadfe6] bg-white p-2 shadow-[0_18px_48px_rgba(47,19,37,0.08)] sm:rounded-[24px] sm:p-3">
+                <div className="aspect-[3/4] animate-pulse rounded-[16px] bg-[linear-gradient(110deg,#efe8e1_8%,#fff8fb_18%,#efe8e1_33%)] bg-[length:200%_100%] sm:aspect-[4/5] sm:rounded-[18px]" />
+                <div className="mt-3 h-3 w-20 animate-pulse rounded-full bg-[#eadfe6]" />
+                <div className="mt-2 h-4 w-4/5 animate-pulse rounded-full bg-[#eadfe6]" />
+                <div className="mt-2 h-3 w-3/5 animate-pulse rounded-full bg-[#f3e8ef]" />
+                <div className="mt-4 h-10 animate-pulse rounded-full bg-[#eadfe6]" />
+            </div>
         ))}
     </div>
 );
@@ -1180,7 +1186,7 @@ function ProductsPageContent() {
                                     placeholder="Search the collection"
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
-                                    className="h-12 w-full rounded-[18px] border border-[#ead3df] bg-[#fffdfb] pl-12 pr-4 text-sm font-bold text-[#2f1325] shadow-sm outline-none transition placeholder:text-[#a68c9d] focus:border-[#7c2d62] focus:ring-4 focus:ring-[#f8d7e7]/55 sm:h-[52px] sm:rounded-lg"
+                                    className="h-12 w-full rounded-[18px] border border-[#ead3df] bg-[#fffdfb] pl-12 pr-4 text-sm font-bold text-[#2f1325] shadow-sm outline-none transition placeholder:text-[#a68c9d] focus:border-[#7c2d62] focus:ring-4 focus:ring-[#f8d7e7]/55 sm:h-[52px]"
                                 />
                             </form>
 
@@ -1191,7 +1197,7 @@ function ProductsPageContent() {
                                         setShowFilters(true);
                                         setShowSort(false);
                                     }}
-                                    className="inline-flex h-11 items-center justify-center gap-2 rounded-[16px] border border-[#ead3df] bg-white px-4 text-xs font-black uppercase tracking-[0.12em] text-[#2f1325] shadow-sm transition hover:border-[#d8b46b] hover:text-[#7c2d62] active:scale-[0.98] sm:h-12 sm:rounded-lg sm:text-sm"
+                                    className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-[#ead3df] bg-white px-4 text-xs font-black uppercase tracking-[0.12em] text-[#2f1325] shadow-sm transition hover:border-[#d8b46b] hover:bg-[#fff8fb] hover:text-[#7c2d62] active:scale-[0.98] sm:h-12 sm:text-sm"
                                 >
                                     <Filter className="h-4 w-4" />
                                     Filters
@@ -1209,7 +1215,7 @@ function ProductsPageContent() {
                                         setShowSort(true);
                                         setShowFilters(false);
                                     }}
-                                    className="inline-flex h-11 items-center justify-center gap-2 rounded-[16px] border border-[#ead3df] bg-white px-4 text-xs font-black uppercase tracking-[0.12em] text-[#2f1325] shadow-sm transition hover:border-[#d8b46b] hover:text-[#7c2d62] active:scale-[0.98] sm:h-12 sm:rounded-lg sm:text-sm"
+                                    className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-[#ead3df] bg-white px-4 text-xs font-black uppercase tracking-[0.12em] text-[#2f1325] shadow-sm transition hover:border-[#d8b46b] hover:bg-[#fff8fb] hover:text-[#7c2d62] active:scale-[0.98] sm:h-12 sm:text-sm"
                                 >
                                     <SlidersHorizontal className="h-4 w-4" />
                                     Sort
@@ -1218,14 +1224,14 @@ function ProductsPageContent() {
                             </div>
                         </div>
 
-                        <div className="mt-3 flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                        <div className="mt-3 flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Collection shortcuts">
                             <button
                                 type="button"
                                 onClick={() => replaceProductsParams({ category: "", flavor: "" })}
-                                className={`h-9 shrink-0 rounded-full border px-4 text-xs font-black uppercase tracking-[0.12em] transition ${
+                                className={`h-10 shrink-0 rounded-full border px-4 text-xs font-black uppercase tracking-[0.12em] shadow-sm transition ${
                                     !urlCategory && !urlFlavor
                                         ? "border-[#2f1325] bg-[#2f1325] text-white"
-                                        : "border-[#ead3df] bg-[#fff8fb] text-[#6b244d] hover:border-[#d8b46b]"
+                                        : "border-[#ead3df] bg-[#fff8fb] text-[#6b244d] hover:border-[#d8b46b] hover:bg-white"
                                 }`}
                             >
                                 All
@@ -1246,10 +1252,10 @@ function ProductsPageContent() {
                                         key={`chip-${item.title}`}
                                         type="button"
                                         onClick={() => handleCategoryExplore(item)}
-                                        className={`h-9 shrink-0 rounded-full border px-4 text-xs font-black uppercase tracking-[0.12em] transition ${
+                                        className={`h-10 shrink-0 rounded-full border px-4 text-xs font-black uppercase tracking-[0.12em] shadow-sm transition ${
                                             isActive
                                                 ? "border-[#2f1325] bg-[#2f1325] text-white"
-                                                : "border-[#ead3df] bg-[#fff8fb] text-[#6b244d] hover:border-[#d8b46b]"
+                                                : "border-[#ead3df] bg-[#fff8fb] text-[#6b244d] hover:border-[#d8b46b] hover:bg-white"
                                         }`}
                                     >
                                         {item.title}
@@ -1263,10 +1269,10 @@ function ProductsPageContent() {
                                         featured: urlFeatured ? "" : "true",
                                     })
                                 }
-                                className={`h-9 shrink-0 rounded-full border px-4 text-xs font-black uppercase tracking-[0.12em] transition ${
+                                className={`h-10 shrink-0 rounded-full border px-4 text-xs font-black uppercase tracking-[0.12em] shadow-sm transition ${
                                     urlFeatured
                                         ? "border-[#2f1325] bg-[#2f1325] text-white"
-                                        : "border-[#ead3df] bg-white text-[#6b244d] hover:border-[#d8b46b]"
+                                        : "border-[#ead3df] bg-white text-[#6b244d] hover:border-[#d8b46b] hover:bg-[#fff8fb]"
                                 }`}
                             >
                                 Featured
@@ -1285,10 +1291,10 @@ function ProductsPageContent() {
                                                 : "New Arrivals",
                                     })
                                 }
-                                className={`h-9 shrink-0 rounded-full border px-4 text-xs font-black uppercase tracking-[0.12em] transition ${
+                                className={`h-10 shrink-0 rounded-full border px-4 text-xs font-black uppercase tracking-[0.12em] shadow-sm transition ${
                                     urlNewArrivals || urlCollection === "New Arrivals"
                                         ? "border-[#2f1325] bg-[#2f1325] text-white"
-                                        : "border-[#ead3df] bg-white text-[#6b244d] hover:border-[#d8b46b]"
+                                        : "border-[#ead3df] bg-white text-[#6b244d] hover:border-[#d8b46b] hover:bg-[#fff8fb]"
                                 }`}
                             >
                                 New Arrivals
@@ -1307,10 +1313,10 @@ function ProductsPageContent() {
                                                 : "Best Sellers",
                                     })
                                 }
-                                className={`h-9 shrink-0 rounded-full border px-4 text-xs font-black uppercase tracking-[0.12em] transition ${
+                                className={`h-10 shrink-0 rounded-full border px-4 text-xs font-black uppercase tracking-[0.12em] shadow-sm transition ${
                                     urlBestSeller || urlCollection === "Best Sellers"
                                         ? "border-[#2f1325] bg-[#2f1325] text-white"
-                                        : "border-[#ead3df] bg-white text-[#6b244d] hover:border-[#d8b46b]"
+                                        : "border-[#ead3df] bg-white text-[#6b244d] hover:border-[#d8b46b] hover:bg-[#fff8fb]"
                                 }`}
                             >
                                 Best Sellers
@@ -1329,10 +1335,10 @@ function ProductsPageContent() {
                                                 urlCollection === item.value ? "" : item.value,
                                         })
                                     }
-                                    className={`h-9 shrink-0 rounded-full border px-4 text-xs font-black uppercase tracking-[0.12em] transition ${
+                                    className={`h-10 shrink-0 rounded-full border px-4 text-xs font-black uppercase tracking-[0.12em] shadow-sm transition ${
                                         urlCollection === item.value
                                             ? "border-[#2f1325] bg-[#2f1325] text-white"
-                                            : "border-[#ead3df] bg-white text-[#6b244d] hover:border-[#d8b46b]"
+                                            : "border-[#ead3df] bg-white text-[#6b244d] hover:border-[#d8b46b] hover:bg-[#fff8fb]"
                                     }`}
                                 >
                                     {item.label}
@@ -1342,21 +1348,24 @@ function ProductsPageContent() {
                     </div>
                 </div>
 
-                <div className="container mx-auto px-4 py-8 sm:py-10">
-                    <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <div className="container mx-auto px-4 py-9 sm:py-12">
+                    <div className="mb-7 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                         <div>
-                            <p className="text-xs font-black uppercase tracking-[0.2em] text-[#9d6b19]">
-                                Collection
+                            <p className="inline-flex rounded-full border border-[#ead3df] bg-white px-3 py-1.5 text-xs font-black uppercase tracking-[0.18em] text-[#9d6b19] shadow-sm">
+                                Curated Collection
                             </p>
-                            <h2 className="brand-story-heading mt-2 text-3xl font-semibold text-[#2f1325] sm:text-4xl">
+                            <h2 className="brand-story-heading mt-3 text-3xl font-semibold text-[#2f1325] sm:text-4xl">
                                 Boutique Picks
                             </h2>
+                            <p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-[#806574]">
+                                Explore hand-selected pieces across everyday, festive, and occasion-ready edits.
+                            </p>
                         </div>
-                        <p className="text-sm font-bold text-[#806574]">
-                            Showing {products.length} of {totalProducts || products.length} products
-                            <span className="mx-2 text-[#d8b46b]">/</span>
-                            {activeSortLabel}
-                        </p>
+                        <div className="flex w-fit flex-wrap items-center gap-2 rounded-full border border-[#eadfe6] bg-white px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-[#6b244d] shadow-sm sm:text-sm">
+                            <span>{products.length} / {totalProducts || products.length}</span>
+                            <span className="h-1 w-1 rounded-full bg-[#d8b46b]" />
+                            <span>{activeSortLabel}</span>
+                        </div>
                     </div>
 
                     {legacyProductSlug ? (
@@ -1382,7 +1391,7 @@ function ProductsPageContent() {
                                             {productItems.length} items
                                         </span>
                                     </div>
-                                    <div className="grid grid-cols-2 gap-3.5 sm:gap-5 md:grid-cols-3 lg:grid-cols-4">
+                                    <div className="grid grid-cols-2 gap-4 sm:gap-6 md:grid-cols-3 lg:grid-cols-4">
                                         {productItems.map((product) => (
                                             <ProductItem
                                                 key={product._id}
@@ -1409,7 +1418,7 @@ function ProductsPageContent() {
                                             {outOfStockProductItems.length} items
                                         </span>
                                     </div>
-                                    <div className="mt-5 grid grid-cols-2 gap-3.5 sm:gap-5 md:grid-cols-3 lg:grid-cols-4">
+                                    <div className="mt-5 grid grid-cols-2 gap-4 sm:gap-6 md:grid-cols-3 lg:grid-cols-4">
                                         {outOfStockProductItems.map((product) => (
                                             <ProductItem
                                                 key={product._id}
@@ -1432,7 +1441,7 @@ function ProductsPageContent() {
                                         </div>
                                         <div className="h-px flex-1 bg-[linear-gradient(90deg,transparent,#d8b46b,transparent)]" />
                                     </div>
-                                    <div className="grid grid-cols-2 gap-3.5 sm:gap-5 md:grid-cols-3 lg:grid-cols-4">
+                                    <div className="grid grid-cols-2 gap-4 sm:gap-6 md:grid-cols-3 lg:grid-cols-4">
                                         {comboItems.map((product) => (
                                             <ProductItem
                                                 key={product._id}
@@ -1459,7 +1468,7 @@ function ProductsPageContent() {
                                             {outOfStockComboItems.length} items
                                         </span>
                                     </div>
-                                    <div className="mt-5 grid grid-cols-2 gap-3.5 sm:gap-5 md:grid-cols-3 lg:grid-cols-4">
+                                    <div className="mt-5 grid grid-cols-2 gap-4 sm:gap-6 md:grid-cols-3 lg:grid-cols-4">
                                         {outOfStockComboItems.map((product) => (
                                             <ProductItem
                                                 key={product._id}
@@ -1492,7 +1501,7 @@ function ProductsPageContent() {
                                         type="button"
                                         onClick={loadNextPage}
                                         disabled={loadingMore}
-                                        className="inline-flex h-11 items-center justify-center rounded-lg border border-[#ead3df] bg-white px-5 text-sm font-black text-[#2f1325] transition hover:border-[#d8b46b] hover:bg-[#fff8fb] disabled:cursor-not-allowed disabled:opacity-60"
+                                        className="inline-flex h-12 items-center justify-center rounded-full border border-[#ead3df] bg-white px-6 text-sm font-black text-[#2f1325] shadow-sm transition hover:-translate-y-0.5 hover:border-[#d8b46b] hover:bg-[#fff8fb] disabled:cursor-not-allowed disabled:opacity-60"
                                     >
                                         {loadingMore ? "Loading..." : "Load more products"}
                                     </button>
@@ -1500,12 +1509,14 @@ function ProductsPageContent() {
                             ) : null}
                         </div>
                     ) : (
-                        <div className="rounded-lg border border-dashed border-[#d9c8d2] bg-white px-5 py-16 text-center shadow-sm">
-                            <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-lg bg-[#fff1f7] text-xl font-black text-[#7c2d62]">
+                        <div className="rounded-[28px] border border-dashed border-[#d9c8d2] bg-white px-5 py-16 text-center shadow-[0_20px_60px_rgba(47,19,37,0.08)]">
+                            <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-full border border-[#ead3df] bg-[#fff1f7] text-xl font-black text-[#7c2d62]">
                                 AB
                             </div>
                             <h3 className="text-xl font-bold text-[#2f1325]">No products found</h3>
-                            <p className="mt-2 text-[#6c4b5d]">Try adjusting your search</p>
+                            <p className="mx-auto mt-2 max-w-md text-sm font-semibold leading-6 text-[#6c4b5d]">
+                                Try a broader search, clear filters, or explore another boutique category.
+                            </p>
                         </div>
                     )}
                 </div>

@@ -356,19 +356,19 @@ const DEFAULT_SUPPORT_CARDS = [
     Icon: FiShield,
   },
   {
-    title: "Easy Support",
-    description: "Boutique support for sizing, delivery, and order help.",
+    title: "Easy Returns",
+    description: "Helpful support for fit, exchanges, and order questions.",
     Icon: FiHeadphones,
+  },
+  {
+    title: "Premium Packaging",
+    description: "Packed with care so pieces arrive beautifully presented.",
+    Icon: FiShoppingBag,
   },
   {
     title: "Quality Assurance",
     description: "Every piece is checked before it leaves the boutique.",
     Icon: FiCheckCircle,
-  },
-  {
-    title: "Trusted Boutique Since 2012",
-    description: "A long-running boutique experience with loyal customers.",
-    Icon: FiShoppingBag,
   },
 ];
 
@@ -1245,8 +1245,8 @@ const ProductDetailPage = () => {
     ? "relative mt-5 grid gap-5 sm:mt-6 sm:gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-stretch"
     : "relative mt-6";
   const imageStageClassName = showHeroStoryCard
-    ? "product-image-stage relative flex min-h-[380px] overflow-hidden rounded-[26px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.92)_0%,rgba(244,236,229,0.88)_100%)] p-0 sm:min-h-[480px] sm:rounded-[30px] lg:h-full lg:min-h-[540px]"
-    : "product-image-stage relative mx-auto flex min-h-[360px] max-w-[840px] overflow-hidden rounded-[26px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.92)_0%,rgba(244,236,229,0.88)_100%)] p-0 sm:min-h-[420px] sm:rounded-[30px]";
+    ? "product-image-stage relative flex min-h-[380px] overflow-hidden rounded-[26px] border border-white/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.96)_0%,rgba(255,248,251,0.9)_100%)] p-0 shadow-inner sm:min-h-[480px] sm:rounded-[30px] lg:h-full lg:min-h-[540px]"
+    : "product-image-stage relative mx-auto flex min-h-[360px] max-w-[840px] overflow-hidden rounded-[26px] border border-white/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.96)_0%,rgba(255,248,251,0.9)_100%)] p-0 shadow-inner sm:min-h-[460px] sm:rounded-[30px]";
 
   const fetchReviewSettings = useCallback(async () => {
     try {
@@ -2491,30 +2491,30 @@ const ProductDetailPage = () => {
       style={{
         fontFamily: "var(--font-poppins), var(--font-inter), sans-serif",
         background:
-          "var(--flavor-page-bg, radial-gradient(circle_at_top, #f7efe5 0%, #fffaf5 42%, #f4eee7 100%))",
+          "var(--flavor-page-bg, radial-gradient(circle_at_top, #fff8fb 0%, #fffdfb 42%, #f6eef3 100%))",
       }}
     >
       <div className="mx-auto max-w-[1320px] px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
-        <div className="flex flex-wrap items-center gap-2 px-1 text-xs text-[#7f6657] sm:px-0 sm:text-sm">
-          <Link href="/" className="hover:text-[#23150f]">
+        <div className="flex flex-wrap items-center gap-2 px-1 text-xs font-semibold text-[#806574] sm:px-0 sm:text-sm">
+          <Link href="/" className="hover:text-[#2f1325]">
             Home
           </Link>
           <span>/</span>
-          <Link href="/products" className="hover:text-[#23150f]">
+          <Link href="/products" className="hover:text-[#2f1325]">
             Products
           </Link>
           <span>/</span>
-          <span className="font-medium text-[#23150f]">
+          <span className="font-black text-[#2f1325]">
             {product?.name || product?.title}
           </span>
         </div>
 
         <div className="mt-5 grid gap-5 sm:mt-6 sm:gap-6 xl:items-start xl:grid-cols-[minmax(0,1.05fr)_minmax(360px,0.95fr)]">
           <div className="space-y-4">
-            <div className="product-hero-shell product-reveal product-reveal-delay-1 relative overflow-hidden rounded-[28px] border border-[#e1cdbf] bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.96)_0%,_rgba(250,240,231,0.95)_38%,_rgba(238,225,210,0.92)_100%)] p-3 shadow-[0_34px_90px_-55px_rgba(44,29,20,0.45)] sm:rounded-[36px] sm:p-6">
+            <div className="product-hero-shell product-reveal product-reveal-delay-1 relative overflow-hidden rounded-[28px] border border-[#eadfe6] bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.98)_0%,_rgba(255,248,251,0.96)_42%,_rgba(246,236,243,0.94)_100%)] p-3 shadow-[0_34px_90px_-55px_rgba(47,19,37,0.45)] sm:rounded-[36px] sm:p-6">
               <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.55)_0%,rgba(255,255,255,0)_55%)]" />
               <div className="relative flex flex-wrap items-start justify-between gap-3">
-                <div className="inline-flex items-center gap-2 rounded-full border border-[#eadfd5] bg-white/90 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#6a4b39] backdrop-blur">
+                <div className="inline-flex items-center gap-2 rounded-full border border-[#ead3df] bg-white/90 px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-[#6b244d] backdrop-blur">
                   Product gallery
                 </div>
                 <div className="flex items-center gap-2">
@@ -2670,10 +2670,10 @@ const ProductDetailPage = () => {
                           setIsImageZoomOpen(true);
                         }
                       }}
-                      className={`min-w-[82px] overflow-hidden rounded-[18px] border bg-white p-1.5 shadow-sm transition sm:min-w-0 sm:rounded-[22px] sm:p-2 ${
+                      className={`min-w-[82px] overflow-hidden rounded-[18px] border bg-white p-1.5 shadow-sm transition hover:-translate-y-0.5 sm:min-w-0 sm:rounded-[22px] sm:p-2 ${
                         activeImageIndex === index
-                          ? "border-[#123b4a] shadow-[0_18px_40px_-28px_rgba(18,59,74,0.7)]"
-                          : "border-[#eadcd1] hover:-translate-y-0.5 hover:border-[#b9d0d8]"
+                          ? "border-[#2f1325] shadow-[0_18px_40px_-28px_rgba(47,19,37,0.7)]"
+                          : "border-[#ead3df] hover:border-[#d8b46b]"
                       }`}
                     >
                       {item.type === "video" ? (
@@ -2721,11 +2721,11 @@ const ProductDetailPage = () => {
           </div>
 
           <div className="xl:sticky xl:top-[calc(var(--header-height)+20px)]">
-            <div className="product-reveal product-reveal-delay-2 rounded-[28px] border border-[#e1cdbf] bg-white/90 p-5 shadow-[0_34px_90px_-55px_rgba(44,29,20,0.38)] backdrop-blur sm:rounded-[36px] sm:p-8">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7b6355]">
+            <div className="product-reveal product-reveal-delay-2 rounded-[28px] border border-[#eadfe6] bg-white/92 p-5 shadow-[0_34px_90px_-55px_rgba(47,19,37,0.38)] backdrop-blur sm:rounded-[36px] sm:p-8">
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-[#9d6b19]">
                 {product?.brand || "Ananya Boutique"}
               </p>
-              <h1 className="mt-3 text-2xl font-semibold leading-tight text-[#24150f] sm:text-[2.55rem]">
+              <h1 className="brand-story-heading mt-3 text-2xl font-semibold leading-tight text-[#2f1325] sm:text-[2.55rem]">
                 {product?.name || product?.title}
               </h1>
 
@@ -2736,7 +2736,7 @@ const ProductDetailPage = () => {
                   disabled={!showReviewsSection}
                   aria-controls="reviews"
                   aria-label="Jump to ratings and review form"
-                  className="inline-flex items-center gap-2 rounded-full border border-[#eaded5] bg-[#faf6f1] px-4 py-2 text-sm font-medium text-[#2f190f] transition hover:bg-[#f7efe7] disabled:cursor-default disabled:hover:bg-[#faf6f1]"
+                  className="inline-flex items-center gap-2 rounded-full border border-[#ead3df] bg-[#fff8fb] px-4 py-2 text-sm font-semibold text-[#2f1325] transition hover:bg-white disabled:cursor-default disabled:hover:bg-[#fff8fb]"
                 >
                   <Rating
                     value={productRating}
@@ -2747,7 +2747,7 @@ const ProductDetailPage = () => {
                   />
                   <span>({displayReviewCount})</span>
                 </button>
-                <div className="inline-flex items-center gap-2 rounded-full border border-[#eaded5] bg-[#f4eadf] px-4 py-2 text-sm font-medium text-[#6a4b39]">
+                <div className="inline-flex items-center gap-2 rounded-full border border-[#ead3df] bg-[#fff8fb] px-4 py-2 text-sm font-semibold text-[#6b244d]">
                   <MdVerified className="text-base" />
                   {heroStatusLabel}
                 </div>
@@ -2763,7 +2763,7 @@ const ProductDetailPage = () => {
                 </div>
               </div>
 
-              <p className="mt-5 text-base leading-7 text-[#5d4b41]">
+              <p className="mt-5 text-base font-medium leading-7 text-[#60485a]">
                 {product?.shortDescription ||
                   "A richer product detail layout with stronger visual storytelling, better CTA placement, and a cleaner lower content section."}
               </p>
@@ -2772,18 +2772,18 @@ const ProductDetailPage = () => {
                 <FounderStoryBadge label="Trusted Since 2012" compact />
               </div>
 
-              <div className="mt-7 flex flex-wrap items-end gap-3">
-                <p className="text-3xl font-semibold text-[#24150f] sm:text-4xl">
+              <div className="mt-7 flex flex-wrap items-end gap-3 rounded-[26px] border border-[#eadfe6] bg-[#fffdfb] p-4 shadow-sm">
+                <p className="text-3xl font-black text-[#2f1325] sm:text-4xl">
                   {formatPrice(toNumber(activePrice, 0))}
                 </p>
                 {toNumber(activeOriginalPrice, 0) > toNumber(activePrice, 0) ? (
-                  <p className="pb-1 text-lg font-medium text-[#9a8476] line-through">
+                  <p className="pb-1 text-lg font-semibold text-[#9b7b8d] line-through">
                     {formatPrice(toNumber(activeOriginalPrice, 0))}
                   </p>
                 ) : null}
                 {activeDiscountPercent > 0 ? (
                   <span
-                    className="rounded-full px-4 py-2 text-sm font-semibold"
+                    className="rounded-full px-4 py-2 text-sm font-black uppercase tracking-[0.08em]"
                     style={{
                       backgroundColor: "var(--primary)",
                       color: "var(--flavor-text, #ffffff)",
@@ -2798,7 +2798,7 @@ const ProductDetailPage = () => {
               Array.isArray(product?.variants) &&
               product.variants.length > 1 ? (
                 <div className="mt-8">
-                  <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#7b6355]">
+                  <p className="text-sm font-black uppercase tracking-[0.16em] text-[#9d6b19]">
                     Weight / Pack
                   </p>
                   <div className="mt-3 flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:flex-wrap sm:gap-3">
@@ -2820,7 +2820,7 @@ const ProductDetailPage = () => {
                           className={`min-h-[48px] shrink-0 rounded-2xl border px-4 py-3 text-left text-sm font-semibold transition sm:px-5 ${
                             isSelected
                               ? ""
-                              : "border-[#d5c3b7] bg-white text-[#38231a] hover:-translate-y-0.5"
+                              : "border-[#ead3df] bg-white text-[#2f1325] hover:-translate-y-0.5 hover:border-[#d8b46b] hover:bg-[#fff8fb]"
                           }`}
                           style={
                             isSelected
@@ -2844,12 +2844,12 @@ const ProductDetailPage = () => {
                 <button
                   type="button"
                   onClick={() => setIsSizeGuideOpen(true)}
-                  className="inline-flex min-h-[44px] items-center gap-2 rounded-full border border-[#d8c6bb] bg-[#fffaf5] px-4 py-2 text-sm font-semibold text-[#4b2b1e] transition hover:-translate-y-0.5 hover:border-[#c9a891]"
+                  className="inline-flex min-h-[44px] items-center gap-2 rounded-full border border-[#ead3df] bg-[#fff8fb] px-4 py-2 text-sm font-black text-[#6b244d] transition hover:-translate-y-0.5 hover:border-[#d8b46b] hover:bg-white"
                 >
                   <Ruler className="h-4 w-4" />
                   Size Guide
                 </button>
-                <span className="max-w-[18rem] text-sm leading-6 text-[#6d584a]">
+                <span className="max-w-[18rem] text-sm font-medium leading-6 text-[#806574]">
                   Boutique fit reference for apparel and occasion pieces.
                 </span>
               </div>
@@ -2858,9 +2858,9 @@ const ProductDetailPage = () => {
                 className={`mt-8 grid gap-4 ${showHeroDeliveryPreview ? "xl:grid-cols-2" : ""}`}
               >
                 {showHeroDeliveryPreview ? (
-                  <div className="h-full rounded-[28px] border border-[#e3d4c9] bg-[#fbf7f2] p-5">
+                  <div className="h-full rounded-[28px] border border-[#eadfe6] bg-[#fff8fb] p-5">
                     <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#7b6355]">
+                      <p className="text-sm font-black uppercase tracking-[0.16em] text-[#9d6b19]">
                         {mergeTextOverride(
                           pageConfig?.hero?.deliveryEyebrow,
                           "Delivery Preview",
@@ -2897,7 +2897,7 @@ const ProductDetailPage = () => {
                         pageConfig?.hero?.deliveryInputPlaceholder,
                         "Enter pincode",
                       )}
-                      className="product-delivery-input mt-4 h-14 w-full rounded-2xl border border-[#d8c6bb] bg-white px-4 text-base text-[#24150f] outline-none transition"
+                      className="product-delivery-input mt-4 h-14 w-full rounded-2xl border border-[#ead3df] bg-white px-4 text-base font-semibold text-[#2f1325] outline-none transition"
                     />
                     <p
                       className={`mt-3 text-sm ${
@@ -2911,12 +2911,12 @@ const ProductDetailPage = () => {
                   </div>
                 ) : null}
 
-                <div className="h-full rounded-[28px] border border-[#e3d4c9] bg-[#fbf7f2] p-5">
+                <div className="h-full rounded-[28px] border border-[#eadfe6] bg-[#fff8fb] p-5">
                   <div>
-                    <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#7b6355]">
+                    <p className="text-sm font-black uppercase tracking-[0.16em] text-[#9d6b19]">
                       Quantity
                     </p>
-                    <div className="mt-3 inline-flex items-center gap-3 rounded-2xl border border-[#d8c6bb] bg-white p-2">
+                    <div className="mt-3 inline-flex items-center gap-3 rounded-full border border-[#ead3df] bg-white p-2 shadow-sm">
                       <button
                         type="button"
                         onClick={() =>
@@ -2927,7 +2927,7 @@ const ProductDetailPage = () => {
                       >
                         -
                       </button>
-                      <span className="min-w-[40px] text-center text-lg font-semibold text-[#24150f]">
+                      <span className="min-w-[40px] text-center text-lg font-black text-[#2f1325]">
                         {quantity}
                       </span>
                       <button
@@ -2943,10 +2943,10 @@ const ProductDetailPage = () => {
                         +
                       </button>
                     </div>
-                    <p className="mt-4 text-xs font-semibold uppercase tracking-[0.16em] text-[#7b6355]">
+                    <p className="mt-4 text-xs font-black uppercase tracking-[0.16em] text-[#9d6b19]">
                       SKU
                     </p>
-                    <p className="mt-1 break-all text-sm font-semibold text-[#5d4b41]">
+                    <p className="mt-1 break-all text-sm font-semibold text-[#60485a]">
                       {displaySku || "-"}
                     </p>
                   </div>
@@ -3021,7 +3021,7 @@ const ProductDetailPage = () => {
                     type="button"
                     onClick={handleAddToCart}
                     disabled={actionLoading}
-                    className="flex min-h-[56px] items-center justify-center gap-2 rounded-2xl border bg-white px-3 py-4 text-sm font-semibold transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-[58px] sm:gap-3 sm:px-5 sm:text-base"
+                    className="flex min-h-[58px] items-center justify-center gap-2 rounded-full border bg-white px-3 py-4 text-sm font-black uppercase tracking-[0.08em] shadow-sm transition hover:-translate-y-0.5 hover:shadow-[0_18px_36px_rgba(47,19,37,0.12)] disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-[60px] sm:gap-3 sm:px-5 sm:text-base"
                     style={
                       currentVariantInCart
                         ? { borderColor: "#dc2626", color: "#dc2626" }
@@ -3040,7 +3040,7 @@ const ProductDetailPage = () => {
                     type="button"
                     onClick={handleBuyNow}
                     disabled={isBuyNowDisabled}
-                    className="product-cta-primary min-h-[56px] rounded-2xl px-4 py-4 text-sm font-semibold transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-[58px] sm:px-5 sm:text-base"
+                    className="product-cta-primary min-h-[58px] rounded-full px-4 py-4 text-sm font-black uppercase tracking-[0.08em] shadow-[0_20px_45px_rgba(47,19,37,0.22)] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-[60px] sm:px-5 sm:text-base"
                     style={{
                       backgroundColor: "var(--primary)",
                       color: "var(--flavor-text, #ffffff)",
@@ -3055,7 +3055,7 @@ const ProductDetailPage = () => {
                 active={isProductWishlisted}
                 onClick={handleToggleWishlist}
                 label="Save to Wishlist"
-                className="mt-4 w-full rounded-2xl"
+                className="mt-4 w-full rounded-full"
               />
 
               {showHeroSupportCards ? (
@@ -3067,7 +3067,7 @@ const ProductDetailPage = () => {
                     return (
                       <div
                         key={`${card.title}-${index}`}
-                        className="rounded-[24px] border border-[#e7dad1] bg-[#faf6f2] p-4"
+                        className="rounded-[24px] border border-[#eadfe6] bg-[#fff8fb] p-4 shadow-sm"
                       >
                         <div className="flex items-center gap-3">
                           <div className="product-trust-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl">
@@ -3935,13 +3935,13 @@ const ProductDetailPage = () => {
         </div>
       ) : null}
 
-      <div className="fixed inset-x-0 bottom-0 z-[1200] border-t border-[#e1cdbf] bg-white/96 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-20px_55px_-32px_rgba(42,28,20,0.45)] backdrop-blur-xl xl:hidden">
+      <div className="fixed inset-x-0 bottom-0 z-[1200] border-t border-[#eadfe6] bg-white/96 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-20px_55px_-32px_rgba(47,19,37,0.42)] backdrop-blur-xl xl:hidden">
         <div className="mx-auto grid max-w-2xl grid-cols-[minmax(0,1fr)_44px_auto_auto] items-center gap-2">
           <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#7b6355]">
+            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#9d6b19]">
               Price
             </p>
-            <p className="truncate text-[15px] font-semibold text-[#24150f] sm:text-base">
+            <p className="truncate text-[15px] font-black text-[#2f1325] sm:text-base">
               {formatPrice(toNumber(activePrice, 0))}
             </p>
           </div>
@@ -3955,7 +3955,7 @@ const ProductDetailPage = () => {
             type="button"
             onClick={handleAddToCart}
             disabled={actionLoading || (isOutOfStock && !currentVariantInCart)}
-            className="flex min-h-[46px] shrink-0 items-center justify-center gap-1.5 rounded-2xl border border-[#d8c6bb] bg-white px-3 text-xs font-semibold text-[#4b2b1e] transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 sm:px-4 sm:text-sm"
+            className="flex min-h-[46px] shrink-0 items-center justify-center gap-1.5 rounded-full border border-[#ead3df] bg-white px-3 text-xs font-black text-[#2f1325] shadow-sm transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 sm:px-4 sm:text-sm"
           >
             <IoMdCart className="text-lg" />
             <span>
@@ -3970,7 +3970,7 @@ const ProductDetailPage = () => {
             type="button"
             onClick={handleBuyNow}
             disabled={isBuyNowDisabled}
-            className="product-cta-primary min-h-[46px] shrink-0 rounded-2xl px-4 text-xs font-semibold transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 sm:px-5 sm:text-sm"
+            className="product-cta-primary min-h-[46px] shrink-0 rounded-full px-4 text-xs font-black uppercase tracking-[0.08em] shadow-[0_14px_32px_rgba(47,19,37,0.18)] transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 sm:px-5 sm:text-sm"
             style={{
               backgroundColor: "var(--primary)",
               color: "var(--flavor-text, #ffffff)",
@@ -4140,12 +4140,14 @@ const ProductDetailPage = () => {
         }
 
         .product-qty-action {
-          background: var(--flavor-glass, #f5ece5);
-          color: var(--pd-accent-text);
+          background: #fff8fb;
+          color: #2f1325;
         }
 
         .product-qty-action:hover {
-          filter: brightness(0.96);
+          background: #ffffff;
+          box-shadow: inset 0 0 0 1px #d8b46b;
+          filter: none;
         }
 
         .product-tab-active {
@@ -4162,8 +4164,8 @@ const ProductDetailPage = () => {
         }
 
         .product-trust-icon {
-          background: var(--pd-accent);
-          color: var(--pd-accent-text);
+          background: #2f1325;
+          color: #ffffff;
         }
 
         .product-trust-icon svg {
