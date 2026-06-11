@@ -158,10 +158,17 @@ const verifyProductImages = async ({ backendUrl, origin }) => {
     }
   })();
 
-  const response = await fetchWithTimeout(imageRequestUrl, {
-    method: "GET",
-    redirect: "follow",
-  });
+  let response;
+  try {
+    response = await fetchWithTimeout(imageRequestUrl, {
+      method: "GET",
+      redirect: "follow",
+    });
+  } catch (error) {
+    throw new Error(
+      `Product image failed to load: ${imageRequestUrl} (${error?.message || error})`,
+    );
+  }
   assert(
     response.ok,
     `Product image failed to load with status ${response.status}: ${imageRequestUrl}`,
@@ -290,7 +297,13 @@ const main = async () => {
     normalizedOrigins.find((origin) => origin.includes("admin")) ||
     normalizedOrigins[0];
   const clientOrigin =
-    normalizedOrigins.find((origin) => origin.includes("ananyaboutique.com")) ||
+    normalizedOrigins.find((origin) =>
+      origin.includes("ananya-boutique-client"),
+    ) ||
+    normalizedOrigins.find(
+      (origin) =>
+        origin.includes("ananyaboutique.com") && !origin.includes("admin"),
+    ) ||
     normalizedOrigins[0];
 
   console.log("[production-smoke-check] Verifying health endpoint");
