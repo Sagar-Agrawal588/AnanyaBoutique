@@ -212,6 +212,9 @@ const defaultProductionCorsOrigins = [
   "https://ananya-boutique-client.vercel.app",
   "https://ananya-boutique-client-sagar-agrawal588s-projects.vercel.app",
   "https://ananya-boutique-client-git-main-sagar-agrawal588s-projects.vercel.app",
+  "https://ananya-boutique-admin.vercel.app",
+  "https://ananya-boutique-admin-sagar-agrawal588s-projects.vercel.app",
+  "https://ananya-boutique-admin-git-main-sagar-agrawal588s-projects.vercel.app",
 ].map(normalizeOrigin);
 const defaultDevCorsOrigins = [
   "http://localhost:3000",
@@ -226,7 +229,7 @@ const allowedOrigins = [
   ]),
 ];
 
-const isTrustedVercelStorefrontOrigin = (origin) => {
+const isTrustedVercelAppOrigin = (origin) => {
   if (!isProductionEnv) return false;
 
   try {
@@ -240,12 +243,15 @@ const isTrustedVercelStorefrontOrigin = (origin) => {
     if (
       hostname === "ananya-boutique-client.vercel.app" ||
       hostname === "ananya-boutique-client-sagar-agrawal588s-projects.vercel.app" ||
-      hostname === "ananya-boutique-client-git-main-sagar-agrawal588s-projects.vercel.app"
+      hostname === "ananya-boutique-client-git-main-sagar-agrawal588s-projects.vercel.app" ||
+      hostname === "ananya-boutique-admin.vercel.app" ||
+      hostname === "ananya-boutique-admin-sagar-agrawal588s-projects.vercel.app" ||
+      hostname === "ananya-boutique-admin-git-main-sagar-agrawal588s-projects.vercel.app"
     ) {
       return true;
     }
 
-    return /^ananya-boutique-client-[a-z0-9-]+-sagar-agrawal588s-projects\.vercel\.app$/i.test(
+    return /^ananya-boutique-(client|admin)-[a-z0-9-]+-sagar-agrawal588s-projects\.vercel\.app$/i.test(
       hostname,
     );
   } catch {
@@ -257,7 +263,7 @@ const isAllowedRequestOrigin = (origin) => {
   const normalizedOrigin = normalizeOrigin(origin);
   return (
     allowedOrigins.includes(normalizedOrigin) ||
-    isTrustedVercelStorefrontOrigin(normalizedOrigin)
+    isTrustedVercelAppOrigin(normalizedOrigin)
   );
 };
 
