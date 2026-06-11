@@ -146,13 +146,25 @@ const verifyProductImages = async ({ backendUrl, origin }) => {
 
   assert(imageUrl, "Product API returned no image URL to verify");
 
-  const response = await fetchWithTimeout(imageUrl, {
+  const imageRequestUrl = (() => {
+    try {
+      return new URL(imageUrl).toString();
+    } catch {
+      const relativeBase =
+        imageUrl.startsWith("/uploads/") || imageUrl.startsWith("/api/media/")
+          ? backendUrl
+          : origin;
+      return new URL(imageUrl, relativeBase).toString();
+    }
+  })();
+
+  const response = await fetchWithTimeout(imageRequestUrl, {
     method: "GET",
     redirect: "follow",
   });
   assert(
     response.ok,
-    `Product image failed to load with status ${response.status}: ${imageUrl}`,
+    `Product image failed to load with status ${response.status}: ${imageRequestUrl}`,
   );
 };
 
