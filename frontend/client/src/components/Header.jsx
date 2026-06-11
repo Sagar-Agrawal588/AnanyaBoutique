@@ -12,7 +12,7 @@ import cookies from "js-cookie";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
-import { BookOpen, Gem, Home, ShoppingBag, Sparkles } from "lucide-react";
+import { BookOpen, Coins, Gem, Home, ShoppingBag, Sparkles } from "lucide-react";
 import { FaRegHeart, FaUser } from "react-icons/fa";
 import { IoCartOutline, IoCloseOutline, IoMenuOutline } from "react-icons/io5";
 import {
@@ -763,11 +763,11 @@ const Header = () => {
   };
 
   const mobileNavItems = [
-    { name: "Home", href: "/", icon: "🏠" },
-    { name: "Discover", href: "/products", icon: "🛍️" },
-    { name: "Membership", href: "/membership", icon: "💎" },
-    { name: "Blogs", href: "/blogs", icon: "📝" },
-    { name: "About Us", href: "/about-us", icon: "✨" },
+    { name: "Home", href: "/", icon: "home" },
+    { name: "Discover", href: "/products", icon: "shopping" },
+    { name: "Membership", href: "/membership", icon: "gem" },
+    { name: "Blogs", href: "/blogs", icon: "journal" },
+    { name: "About Us", href: "/about-us", icon: "sparkle" },
   ];
   const cmsNavItems = getEnabledLinks(storefrontContent?.header?.navItems)
     .map((item) => ({
@@ -778,10 +778,10 @@ const Header = () => {
     .filter((item) => item.name && item.href);
   const desktopNavItems = cmsNavItems.length
     ? cmsNavItems
-    : mobileNavItems.map(({ name, href }) => ({ name, href }));
+    : mobileNavItems.map(({ name, href, icon }) => ({ name, href, icon }));
   const effectiveMobileNavItems = desktopNavItems.map((item) => ({
     ...item,
-    icon: item.icon ? String(item.icon).slice(0, 2).toUpperCase() : "•",
+    icon: item.icon || "",
   }));
   const coinCount = Math.max(Math.floor(Number(animatedCoins || 0)), 0);
   const coinSettings = {
@@ -820,7 +820,10 @@ const Header = () => {
             <MdInfoOutline size={16} />
           </button>
         </div>
-        <p className="mt-1 text-xl font-bold text-gray-900">🪙 {coinCount}</p>
+        <p className="mt-1 flex items-center gap-2 text-xl font-bold text-gray-900">
+          <Coins className="h-5 w-5 text-amber-700" aria-hidden="true" />
+          {coinCount}
+        </p>
       </div>
       <div className="px-4 py-3 space-y-2 text-sm">
         <div className="flex items-center justify-between">
@@ -861,15 +864,17 @@ const Header = () => {
       {/* Main Header Container */}
       <div
         ref={headerRootRef}
-        className={`site-header-root fixed top-0 left-0 right-0 w-full z-50 transition-all duration-300 backdrop-blur-xl ${
-          scrolled ? "shadow-md border-b" : "border-b border-transparent"
+        className={`site-header-root fixed top-0 left-0 right-0 w-full z-50 transition-all duration-300 backdrop-blur-2xl backdrop-saturate-150 ${
+          scrolled
+            ? "border-b shadow-[0_14px_42px_rgba(47,19,37,0.12)]"
+            : "border-b border-transparent"
         } ${hideHeader ? "-translate-y-full" : "translate-y-0"}`}
         style={{
           backgroundColor: scrolled
-            ? "color-mix(in srgb, var(--header-bg-color, var(--flavor-card-bg, #fffbf5)) 85%, transparent)"
-            : "color-mix(in srgb, var(--header-bg-color, var(--flavor-card-bg, #fffbf5)) 70%, transparent)",
+            ? "color-mix(in srgb, var(--header-bg-color, var(--flavor-card-bg, #fffbf5)) 90%, white 8%)"
+            : "color-mix(in srgb, var(--header-bg-color, var(--flavor-card-bg, #fffbf5)) 76%, transparent)",
           borderColor: scrolled
-            ? `color-mix(in srgb, var(--flavor-color, #a7f3d0) 20%, transparent)`
+            ? `color-mix(in srgb, #d8b46b 42%, transparent)`
             : "transparent",
         }}
       >
@@ -966,7 +971,7 @@ const Header = () => {
             </div>
 
             {/* === DESKTOP TOP BAR (unchanged flex layout) === */}
-            <div className="site-header-desktop-row hidden md:flex items-center justify-between gap-8">
+            <div className="site-header-desktop-row hidden md:flex items-center justify-between gap-6">
               {/* LOGO */}
               <div className="shrink-0 md:pr-6 flex items-center h-full">
                 <Link
@@ -993,8 +998,8 @@ const Header = () => {
                 </Link>
               </div>
               {/* NAVIGATION + SEARCHBAR in one line */}
-              <div className="site-header-nav-search hidden md:flex flex-1 items-center gap-6">
-                <nav className="site-header-desktop-nav flex items-center gap-5">
+              <div className="site-header-nav-search hidden md:flex flex-1 items-center gap-4">
+                <nav className="site-header-desktop-nav flex items-center gap-2.5">
                   {desktopNavItems.map((item) => {
                     const isActive =
                       item.href === "/"
@@ -1005,7 +1010,7 @@ const Header = () => {
                         key={item.name}
                         href={item.href}
                         // Keep nav labels like "About Us" on one line under browser zoom
-                        className={`site-header-nav-pill whitespace-nowrap flex-shrink-0 font-semibold text-base px-3 py-1.5 rounded-full border transition ${
+                        className={`site-header-nav-pill whitespace-nowrap flex-shrink-0 px-3 py-2 text-[13px] font-semibold uppercase tracking-[0.08em] rounded-full border transition ${
                           isActive
                             ? useHighContrastNav
                               ? "site-header-nav-pill-active site-header-nav-pill-contrast-active"
@@ -1036,7 +1041,7 @@ const Header = () => {
                 </div>
               </div>
               {/* ACTIONS (Icons + Login Button) */}
-              <div className="site-header-actions flex items-center justify-end shrink-0 gap-4">
+              <div className="site-header-actions flex items-center justify-end shrink-0 gap-3">
                 <ThemePickerButton />
                 <div className="relative" ref={coinDesktopRef}>
                   <button
@@ -1054,7 +1059,7 @@ const Header = () => {
                     }}
                   >
                     <div className="flex items-center gap-2">
-                      <span className="text-[22px] leading-none">🪙</span>
+                      <Coins className="h-5 w-5 text-amber-700" aria-hidden="true" />
                       <span className="text-[15px] font-bold text-amber-700 min-w-8 text-left leading-none">
                         {coinLoading && isLoggedIn
                           ? "..."
@@ -1224,7 +1229,7 @@ const Header = () => {
                       </div>
                       <div className="flex flex-col items-start">
                         <span className="text-xs font-medium text-gray-500 leading-none">
-                          {isActiveMember ? "👑 Premium Member" : "Profile"}
+                          {isActiveMember ? "Premium Member" : "Profile"}
                         </span>
                         <span className="text-sm font-semibold text-gray-800 truncate max-w-25">
                           {userName}
@@ -1388,6 +1393,19 @@ const Header = () => {
                 "0 24px 70px rgba(47, 19, 37, 0.18), 0 4px 16px rgba(216, 180, 107, 0.14)",
             }}
           >
+            <div className="border-b border-[#ead8c5]/75 px-5 py-4">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#9d174d]">
+                Ananya Boutique
+              </p>
+              <p className="mt-1 brand-story-heading text-2xl font-semibold leading-tight text-[#241124]">
+                Curated fashion since 2012
+              </p>
+              <p className="mt-2 text-sm leading-6 text-[#604354]">
+                Browse collection stories, wishlist favourites, and reach your
+                wardrobe bag quickly.
+              </p>
+            </div>
+
             {/* Navigation Links */}
             <nav className="max-h-[72vh] overflow-y-auto px-2 py-3">
               {effectiveMobileNavItems.map((item) => {
@@ -1406,8 +1424,8 @@ const Header = () => {
                     }`}
                     onClick={() => setMobileMenuOpen(false)}
                   >
-                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white text-lg shadow-sm">
-                      {getCmsNavIcon("", item.name)}
+                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white text-[#7c2d62] shadow-sm">
+                      {getCmsNavIcon(item.icon, item.name)}
                     </span>
                     <span>{item.name}</span>
                   </Link>
@@ -1437,7 +1455,7 @@ const Header = () => {
                 title={coinTooltip}
               >
                 <span className="inline-flex items-center gap-3">
-                  <span className="text-lg w-6 text-center">🪙</span>
+                  <Coins className="h-5 w-5 text-amber-700" aria-hidden="true" />
                   <span>Coin Wallet</span>
                 </span>
                 <span className="text-[14px] font-bold text-amber-700">
@@ -1517,7 +1535,7 @@ const Header = () => {
                       {userName}
                     </p>
                     <p className="text-xs text-gray-500 truncate">
-                      {isActiveMember ? "👑 Premium Member" : userEmail}
+                      {isActiveMember ? "Premium Member" : userEmail}
                     </p>
                   </div>
                   <Link

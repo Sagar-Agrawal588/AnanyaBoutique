@@ -4,7 +4,9 @@ import { motion } from "framer-motion";
 import Link from "next/link";
 import {
   ArrowRight,
+  BadgeCheck,
   CheckCircle,
+  ChevronDown,
   Gem,
   Heart,
   Home,
@@ -12,6 +14,7 @@ import {
   MessageCircle,
   Quote,
   ShieldCheck,
+  Scissors,
   Sparkles,
   Star,
   Users,
@@ -19,13 +22,17 @@ import {
 } from "lucide-react";
 import {
   artworkRegistry,
+  getArtworkSource,
+  getCategoryArtwork,
 } from "@/config/visualIdentity";
 import {
   DEFAULT_STOREFRONT_CONTENT,
   buildContactHelpers,
 } from "@/config/storefrontContent";
+import { getCategoryImageUrl } from "@/utils/imageUtils";
 import BrandArtworkFrame from "./brand/BrandArtworkFrame";
 import ProductItem from "./ProductItem";
+import ResponsiveMediaImage from "./ResponsiveMediaImage";
 
 const fadeUp = {
   hidden: { opacity: 0, y: 28 },
@@ -157,6 +164,19 @@ const demoTestimonials = [
 
 const badgeIconCycle = [Sparkles, Home, Heart, ShieldCheck];
 const trustIconCycle = [ShieldCheck, Sparkles, Gem, MessageCircle, Home, Users];
+const heroStats = [
+  { value: "2012", label: "Founded with trust" },
+  { value: "100+", label: "Boutique demo styles" },
+  { value: "24/7", label: "WhatsApp-ready help" },
+];
+const categoryToneCycle = [
+  "from-[#331426] via-[#70402c] to-[#caa45f]",
+  "from-[#2a1924] via-[#7c2d62] to-[#e8c67a]",
+  "from-[#1f1812] via-[#6f4f2a] to-[#d9b66c]",
+  "from-[#241124] via-[#4f2741] to-[#c88b6a]",
+  "from-[#261b13] via-[#704b2a] to-[#f0d991]",
+  "from-[#271629] via-[#63345b] to-[#d8b46b]",
+];
 
 const toBadge = (badge, index = 0) => {
   if (badge && typeof badge === "object") {
@@ -198,6 +218,49 @@ const getSlotArtwork = (mediaSlots, slot, fallbackArtwork, title, copy) => {
 
 const getWhatsappHref = (contact, message) =>
   buildContactHelpers(contact).whatsappHref(message);
+
+const normalizeCategoryName = (value = "") =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+const isComboCategory = (category) => {
+  const key = `${category?.slug || ""} ${category?.name || ""}`.toLowerCase();
+  return /combo-(pack|deal)|combo pack|combo deal|combos/.test(key);
+};
+
+const getCategoryHref = (category) => {
+  if (isComboCategory(category)) return "/combo-deals";
+  const identifier = String(
+    category?._id || category?.id || category?.slug || category?.name || "",
+  ).trim();
+  return identifier
+    ? `/products?category=${encodeURIComponent(identifier)}`
+    : "/products";
+};
+
+const getCategoryImage = (category) =>
+  String(
+    category?.image ||
+      category?.thumbnail ||
+      category?.bannerImage ||
+      category?.heroImage ||
+      "",
+  ).trim();
+
+const getCategoryCount = (category) => {
+  const raw =
+    category?.productCount ??
+    category?.productsCount ??
+    category?.count ??
+    category?.totalProducts ??
+    0;
+  const count = Number(raw);
+  return Number.isFinite(count) && count > 0 ? Math.floor(count) : 0;
+};
 
 function AnimatedBadge({ badge, index }) {
   const Icon = badge.Icon;
@@ -264,6 +327,145 @@ function BoutiqueVisual({ compact = false, content, mediaSlots }) {
       icon={Sparkles}
       label="Ananya Boutique"
     />
+  );
+}
+
+function CategoryArtworkSurface({ category, index }) {
+  const rawImage = getCategoryImage(category);
+  const normalizedName = normalizeCategoryName(category?.slug || category?.name);
+  const artwork = getCategoryArtwork(normalizedName || category?.name, "card");
+  const artworkDesktop = getArtworkSource(artwork, "desktop");
+  const artworkMobile = getArtworkSource(artwork, "mobile") || artworkDesktop;
+
+  if (rawImage) {
+    const imageSrc = getCategoryImageUrl(rawImage);
+    return (
+      <ResponsiveMediaImage
+        desktopSrc={imageSrc}
+        mobileSrc={imageSrc}
+        alt={category?.name || "Ananya Boutique category"}
+        className="absolute inset-0"
+        imgClassName="transition duration-700 group-hover:scale-[1.04]"
+        desktopProfile="card"
+        mobileProfile="card"
+        loading="lazy"
+      />
+    );
+  }
+
+  if (artworkDesktop || artworkMobile) {
+    return (
+      <ResponsiveMediaImage
+        desktopSrc={artworkDesktop}
+        mobileSrc={artworkMobile}
+        alt={artwork.alt || category?.name || "Ananya Boutique category"}
+        className="absolute inset-0"
+        imgClassName="transition duration-700 group-hover:scale-[1.04]"
+        desktopProfile={artwork.variants?.desktop?.profile || "card"}
+        mobileProfile={artwork.variants?.mobile?.profile || "card"}
+        loading="lazy"
+      />
+    );
+  }
+
+  return (
+    <div
+      className={`absolute inset-0 bg-gradient-to-br ${
+        categoryToneCycle[index % categoryToneCycle.length]
+      }`}
+    >
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_18%,rgba(255,255,255,0.28),transparent_34%),radial-gradient(circle_at_78%_80%,rgba(232,198,122,0.26),transparent_32%)]" />
+      <div className="absolute inset-0 grid place-items-center">
+        <div className="grid h-16 w-16 place-items-center rounded-full border border-white/25 bg-white/12 text-white shadow-[0_16px_42px_rgba(0,0,0,0.18)] backdrop-blur-sm">
+          <Scissors className="h-7 w-7" aria-hidden="true" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CategoryShowcaseSection({ categories = [] }) {
+  const safeCategories = Array.isArray(categories)
+    ? categories.filter((category) => category?.name).slice(0, 8)
+    : [];
+
+  if (!safeCategories.length) return null;
+
+  return (
+    <motion.section
+      variants={stagger}
+      initial="hidden"
+      whileInView="visible"
+      viewport={sectionViewport}
+      className="relative border-y border-[#ead8c5]/70 bg-[#fffdf8] px-4 py-12 sm:px-6 sm:py-14 lg:px-8"
+    >
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(47,19,37,0.04),transparent_24%,transparent_76%,rgba(216,180,107,0.08))]" />
+      <div className="relative mx-auto max-w-7xl">
+        <div className="mb-7 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <SectionHeading
+            eyebrow="Boutique edits"
+            title="Shop By Story"
+            copy="Move through the collection the way a boutique owner would guide you: by occasion, mood, and the piece you need next."
+          />
+          <motion.div variants={fadeUp}>
+            <Link
+              href="/products"
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-[#d8b46b]/60 bg-[#2f1325] px-5 text-sm font-semibold text-white shadow-[0_16px_40px_rgba(47,19,37,0.2)] transition hover:-translate-y-0.5 hover:bg-[#4b1f3a]"
+            >
+              View all
+              <ArrowRight className="h-4 w-4" aria-hidden="true" />
+            </Link>
+          </motion.div>
+        </div>
+
+        <motion.div
+          variants={stagger}
+          className="-mx-4 flex snap-x snap-mandatory gap-4 overflow-x-auto px-4 pb-3 sm:mx-0 sm:grid sm:grid-cols-2 sm:overflow-visible sm:px-0 md:grid-cols-3 lg:grid-cols-4"
+          style={{ scrollbarWidth: "none" }}
+        >
+          {safeCategories.map((category, index) => {
+            const count = getCategoryCount(category);
+            return (
+              <motion.article
+                key={category._id || category.id || category.slug || category.name}
+                variants={fadeUp}
+                className="min-w-[76vw] snap-start sm:min-w-0"
+              >
+                <Link
+                  href={getCategoryHref(category)}
+                  className="group block h-full overflow-hidden rounded-[1.4rem] border border-[#ead8c5] bg-white shadow-[0_18px_54px_rgba(72,34,22,0.1)] transition duration-300 hover:-translate-y-1 hover:border-[#d8b46b] hover:shadow-[0_24px_70px_rgba(72,34,22,0.16)]"
+                >
+                  <div className="relative aspect-[4/5] overflow-hidden bg-[#2f1325]">
+                    <CategoryArtworkSurface category={category} index={index} />
+                    <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(18,12,8,0.04)_0%,rgba(18,12,8,0.1)_45%,rgba(18,12,8,0.64)_100%)]" />
+                    <div className="absolute left-4 top-4 inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/16 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-white backdrop-blur-md">
+                      <BadgeCheck className="h-3.5 w-3.5" aria-hidden="true" />
+                      Curated
+                    </div>
+                    <div className="absolute inset-x-0 bottom-0 p-4 text-white">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#f6d98a]">
+                        {count ? `${count} styles` : "Boutique edit"}
+                      </p>
+                      <h3 className="mt-1 brand-story-heading text-2xl font-semibold leading-tight">
+                        {category.name}
+                      </h3>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 px-4 py-4">
+                    <p className="text-sm font-medium text-[#604354]">
+                      Explore the edit
+                    </p>
+                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#fff5e4] text-[#7a4c12] transition group-hover:bg-[#2f1325] group-hover:text-white">
+                      <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                    </span>
+                  </div>
+                </Link>
+              </motion.article>
+            );
+          })}
+        </motion.div>
+      </div>
+    </motion.section>
   );
 }
 
@@ -829,6 +1031,7 @@ function FinalCtaSection({ content, contact }) {
 }
 
 export default function BoutiqueHomepage({
+  initialCategories = [],
   featuredProducts = [],
   newArrivals = [],
   bestSellers = [],
@@ -851,10 +1054,11 @@ export default function BoutiqueHomepage({
   const heroBadges = toBadges(hero.trustPills);
 
   return (
-    <div className="overflow-hidden bg-[linear-gradient(180deg,#fff9fc_0%,#ffffff_28%,#fbf7ff_68%,#ffffff_100%)] text-slate-950">
-      <section className="relative px-4 pb-10 pt-7 sm:px-6 sm:pt-12 lg:px-8 lg:pb-16">
-        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-pink-200 to-transparent" />
-        <div className="mx-auto grid max-w-7xl items-center gap-10 lg:grid-cols-[1.03fr_0.97fr]">
+    <div className="overflow-hidden bg-[linear-gradient(180deg,#fffaf4_0%,#ffffff_28%,#fff7fb_68%,#ffffff_100%)] text-slate-950">
+      <section className="relative min-h-[calc(100svh-var(--header-height,118px))] px-4 pb-10 pt-8 sm:px-6 sm:pt-12 lg:px-8 lg:pb-14">
+        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#e8c67a] to-transparent" />
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_8%_10%,rgba(216,180,107,0.16),transparent_28%),radial-gradient(circle_at_94%_18%,rgba(124,45,98,0.12),transparent_30%)]" />
+        <div className="relative mx-auto grid max-w-7xl items-center gap-10 lg:grid-cols-[1.03fr_0.97fr]">
           <motion.div
             initial="hidden"
             animate="visible"
@@ -863,23 +1067,23 @@ export default function BoutiqueHomepage({
           >
             <motion.div
               variants={fadeUp}
-              className="mb-5 inline-flex items-center gap-2 rounded-full border border-pink-200 bg-white px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-purple-800 shadow-sm"
+              className="mb-5 inline-flex items-center gap-2 rounded-full border border-[#e8c67a]/60 bg-white/88 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-[#70402c] shadow-[0_10px_30px_rgba(112,64,44,0.08)] backdrop-blur"
             >
               <WandSparkles
-                className="h-4 w-4 text-pink-600"
+                className="h-4 w-4 text-[#9d174d]"
                 aria-hidden="true"
               />
               {hero.eyebrow}
             </motion.div>
             <motion.h1
               variants={fadeUp}
-              className="brand-story-heading text-[3.25rem] font-semibold leading-[0.94] text-slate-950 sm:text-6xl sm:leading-tight lg:text-7xl"
+              className="brand-story-heading max-w-[11ch] text-[3.25rem] font-semibold leading-[0.92] text-[#241124] sm:text-6xl sm:leading-[0.95] lg:text-7xl"
             >
               {hero.title}
             </motion.h1>
             <motion.p
               variants={fadeUp}
-              className="mt-5 max-w-2xl text-base leading-7 text-slate-600 sm:text-lg"
+              className="mt-5 max-w-2xl text-base leading-7 text-[#604354] sm:text-lg"
             >
               {hero.subtitle}
             </motion.p>
@@ -894,18 +1098,39 @@ export default function BoutiqueHomepage({
             >
               <Link
                 href={hero.primaryButtonHref || "/products"}
-                className="inline-flex h-12 items-center justify-center gap-2 rounded-[18px] bg-slate-950 px-6 text-sm font-semibold text-white shadow-xl shadow-slate-950/20 transition hover:-translate-y-0.5 hover:bg-purple-900 sm:rounded-full"
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-[18px] bg-[#241124] px-6 text-sm font-semibold text-white shadow-xl shadow-[#241124]/20 transition hover:-translate-y-0.5 hover:bg-[#4b1f3a] sm:rounded-full"
               >
                 {hero.primaryButtonText}
                 <ArrowRight className="h-4 w-4" aria-hidden="true" />
               </Link>
               <Link
                 href={hero.secondaryButtonHref || "/about-us"}
-                className="inline-flex h-12 items-center justify-center gap-2 rounded-[18px] border border-purple-200 bg-white px-6 text-sm font-semibold text-purple-800 shadow-sm transition hover:-translate-y-0.5 hover:bg-purple-50 sm:rounded-full"
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-[18px] border border-[#e8c67a]/70 bg-white px-6 text-sm font-semibold text-[#70402c] shadow-sm transition hover:-translate-y-0.5 hover:bg-[#fff8ed] sm:rounded-full"
               >
                 {hero.secondaryButtonText}
                 <Sparkles className="h-4 w-4" aria-hidden="true" />
               </Link>
+            </motion.div>
+
+            <motion.div
+              variants={stagger}
+              className="mt-8 grid max-w-2xl grid-cols-3 overflow-hidden rounded-[1.25rem] border border-[#ead8c5] bg-white/82 shadow-[0_18px_54px_rgba(72,34,22,0.08)] backdrop-blur sm:rounded-[1.6rem]"
+              aria-label="Ananya Boutique highlights"
+            >
+              {heroStats.map((stat) => (
+                <motion.div
+                  key={stat.label}
+                  variants={fadeUp}
+                  className="border-r border-[#ead8c5] px-3 py-4 last:border-r-0 sm:px-5"
+                >
+                  <p className="brand-story-heading text-2xl font-semibold text-[#241124] sm:text-3xl">
+                    {stat.value}
+                  </p>
+                  <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#7a5b47]">
+                    {stat.label}
+                  </p>
+                </motion.div>
+              ))}
             </motion.div>
           </motion.div>
 
@@ -926,8 +1151,13 @@ export default function BoutiqueHomepage({
             <BoutiqueVisual content={hero} mediaSlots={mediaSlots} />
           </motion.div>
         </div>
+        <div className="pointer-events-none absolute bottom-4 left-1/2 hidden -translate-x-1/2 items-center gap-2 rounded-full border border-[#ead8c5] bg-white/78 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#70402c] shadow-sm backdrop-blur lg:flex">
+          Continue the edit
+          <ChevronDown className="h-4 w-4" aria-hidden="true" />
+        </div>
       </section>
 
+      <CategoryShowcaseSection categories={initialCategories} />
       <FounderStorySection
         content={homeContent.founder}
         mediaSlots={mediaSlots}
